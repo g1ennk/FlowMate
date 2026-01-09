@@ -9,11 +9,11 @@
   - [x] Backend/Frontend 계획 문서 — `docs(backend): update backend plan`, `docs(frontend): add frontend plan`
   - [x] AGENT 가이드 — `docs: add AGENT guide`
 - 1단계 Frontend
-  - [ ] 스캐폴딩(Vite/Router/Query/Zustand/Tailwind) — `feat(frontend): scaffold app shell`
-  - [ ] MSW 모킹 세팅(정상/에러) — `chore(frontend): add msw mocks`
-  - [ ] 타이머 store/로직(endAt, 단일 활성, 보정) — `feat(frontend): add timer store and completion flow`
-  - [ ] 페이지 구현(Todos/Settings/Timer) + 상태/검증 — `feat(frontend): build pages and forms`
-  - [ ] 프론트 통합 테스트(MSW) — `test(frontend): add integration coverage`
+  - [x] 스캐폴딩(Vite/Router/Query/Zustand/Tailwind) — `feat(frontend): scaffold app shell`
+  - [x] MSW 모킹 세팅(정상/에러) — `chore(frontend): add msw mocks`
+  - [x] 타이머 store/로직(endAt, 단일 활성, 보정) — `feat(frontend): add timer store and completion flow`
+  - [x] 페이지 구현(Todos/Settings/Timer) + 상태/검증 — `feat(frontend): build pages and forms`
+  - [x] 프론트 통합 테스트(MSW) — `test(frontend): add integration coverage`
 - 2단계 Backend
   - [ ] 스캐폴딩(Spring Boot, MySQL/H2, Flyway) — `feat(backend): scaffold api baseline`
   - [ ] Flyway V1 마이그레이션(todos, pomodoro_settings) — `chore(backend): add flyway V1 init`
