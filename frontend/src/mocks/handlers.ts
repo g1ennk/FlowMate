@@ -13,21 +13,7 @@ const today = () => {
 }
 const latency = 200
 
-// 기본 데이터
-const defaultTodos: Todo[] = [
-  {
-    id: crypto.randomUUID(),
-    title: 'UI 스켈레톤 점검',
-    note: '정적 라우트 확인',
-    date: today(),
-    isDone: false,
-    pomodoroDone: 0,
-    focusSeconds: 0,
-    createdAt: now(),
-    updatedAt: now(),
-  },
-]
-
+// 기본 설정 (Todo는 빈 상태)
 const defaultSettings: PomodoroSettings = {
   flowMin: 25,
   breakMin: 5,
@@ -47,7 +33,7 @@ function loadTodos(): Todo[] {
   } catch (e) {
     console.error('Failed to load todos from localStorage:', e)
   }
-  return defaultTodos
+  return [] // 빈 상태로 시작
 }
 
 function saveTodos(todos: Todo[]) {
@@ -148,6 +134,7 @@ export const handlers = [
     return HttpResponse.json(null, { status: 204 })
   }),
 
+  // 뽀모도로 완료 (횟수 + 시간)
   http.post('/api/todos/:id/pomodoro/complete', async ({ params, request }) => {
     await delay(latency)
     const id = params.id as string
@@ -174,6 +161,37 @@ export const handlers = [
     return HttpResponse.json({
       id,
       pomodoroDone: updated.pomodoroDone,
+      focusSeconds: updated.focusSeconds,
+      updatedAt: updated.updatedAt,
+    })
+  }),
+
+  // 일반 타이머 - 시간만 추가 (횟수 증가 X)
+  http.post('/api/todos/:id/focus/add', async ({ params, request }) => {
+    await delay(latency)
+    const id = params.id as string
+    const body = (await request.json()) as { durationSec?: number }
+    if (!body.durationSec || body.durationSec < 1 || body.durationSec > 10_800) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'durationSec invalid' } },
+        { status: 400 },
+      )
+    }
+    todos = loadTodos()
+    const existing = todos.find((t) => t.id === id)
+    if (!existing) {
+      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
+    }
+    const updated: Todo = {
+      ...existing,
+      // pomodoroDone은 증가시키지 않음
+      focusSeconds: existing.focusSeconds + body.durationSec,
+      updatedAt: now(),
+    }
+    todos = todos.map((t) => (t.id === id ? updated : t))
+    saveTodos(todos)
+    return HttpResponse.json({
+      id,
       focusSeconds: updated.focusSeconds,
       updatedAt: updated.updatedAt,
     })

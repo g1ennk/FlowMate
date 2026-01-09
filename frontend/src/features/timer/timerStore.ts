@@ -25,10 +25,13 @@ type TimerActions = {
   pause: () => void
   resume: () => void
   stop: () => void
+  reset: () => void // 🔄 전체 리셋 (첫 Flow로, cycleCount=0)
   tick: () => void
   completePhase: () => void
-  skipToBreak: () => void
-  skipToFlow: () => void
+  skipToPrev: () => void // ← 이전 세션으로
+  skipToNext: () => void // → 다음 세션으로
+  canSkipToPrev: () => boolean // ← 활성화 여부
+  canSkipToNext: () => boolean // → 활성화 여부
   restore: () => void
   syncWithNow: () => void
 }
@@ -165,7 +168,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   },
 
   resume: () => {
-    const { status, remainingMs, settingsSnapshot, phase, mode } = get()
+    const { status, remainingMs, settingsSnapshot, mode } = get()
     
     // Stopwatch 모드
     if (mode === 'stopwatch') {
@@ -178,30 +181,15 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     // Pomodoro 모드
     if (!settingsSnapshot) return
     
-    // waiting 상태에서 resume하면 다음 phase 시작
+    // waiting 상태에서 resume하면 현재 phase 시작
     if (status === 'waiting') {
-      if (phase === 'flow') {
-        // 휴식으로 전환
-        const nextCycle = get().cycleCount + 1
-        const isLong = nextCycle % settingsSnapshot.cycleEvery === 0
-        const nextPhase: TimerPhase = isLong ? 'long' : 'short'
-        const nextDuration = isLong ? settingsSnapshot.longBreakMin : settingsSnapshot.breakMin
-        set({
-          phase: nextPhase,
-          status: 'running',
-          endAt: computeEndAt(nextDuration),
-          remainingMs: null,
-          cycleCount: nextCycle,
-        })
-      } else {
-        // Flow로 전환
-        set({
-          phase: 'flow',
-          status: 'running',
-          endAt: computeEndAt(settingsSnapshot.flowMin),
-          remainingMs: null,
-        })
-      }
+      if (!remainingMs) return
+      // 현재 phase(flow 또는 break)를 그대로 시작
+      set({
+        status: 'running',
+        endAt: Date.now() + remainingMs,
+        remainingMs: null,
+      })
       return
     }
     
@@ -210,6 +198,42 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   },
 
   stop: () => set({ ...initialTimerState, status: 'idle' }),
+
+  // 전체 리셋: 첫 Flow로 돌아가고 cycleCount=0
+  reset: () => {
+    const { todoId, mode, settingsSnapshot } = get()
+    if (!todoId) return
+    
+    if (mode === 'stopwatch') {
+      // 일반 타이머는 0으로 초기화하고 시작
+      set({
+        todoId,
+        mode: 'stopwatch',
+        settingsSnapshot: null,
+        phase: 'flow',
+        status: 'running',
+        endAt: null,
+        remainingMs: null,
+        elapsedMs: 0,
+        startedAt: Date.now(),
+        cycleCount: 0,
+      })
+    } else if (mode === 'pomodoro' && settingsSnapshot) {
+      // 뽀모도로는 첫 Flow로 리셋
+      set({
+        todoId,
+        mode: 'pomodoro',
+        settingsSnapshot,
+        phase: 'flow',
+        status: 'running',
+        endAt: computeEndAt(settingsSnapshot.flowMin),
+        remainingMs: null,
+        elapsedMs: 0,
+        startedAt: null,
+        cycleCount: 0,
+      })
+    }
+  },
 
   tick: () => {
     const { status, endAt, mode, startedAt } = get()
@@ -286,34 +310,84 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     }
   },
 
-  skipToBreak: () => {
-    const { settingsSnapshot, todoId, cycleCount } = get()
+  // ← 이전 세션으로 (타임라인 기준)
+  skipToPrev: () => {
+    const { settingsSnapshot, todoId, phase, cycleCount } = get()
     if (!settingsSnapshot || !todoId) return
     
-    const nextCycle = cycleCount + 1
-    const isLong = nextCycle % settingsSnapshot.cycleEvery === 0
-    const nextPhase: TimerPhase = isLong ? 'long' : 'short'
-    const nextDuration = isLong ? settingsSnapshot.longBreakMin : settingsSnapshot.breakMin
-    
-    set({
-      phase: nextPhase,
-      status: 'running',
-      endAt: computeEndAt(nextDuration),
-      remainingMs: null,
-      cycleCount: nextCycle,
-    })
+    if (phase === 'flow') {
+      // Flow → 이전 Break로 (cycleCount가 0이면 불가)
+      if (cycleCount === 0) return
+      
+      const isLong = cycleCount % settingsSnapshot.cycleEvery === 0
+      const prevPhase: TimerPhase = isLong ? 'long' : 'short'
+      const prevDuration = isLong ? settingsSnapshot.longBreakMin : settingsSnapshot.breakMin
+      
+      set({
+        phase: prevPhase,
+        status: 'running',
+        endAt: computeEndAt(prevDuration),
+        remainingMs: null,
+        // cycleCount 유지 (이전 break는 현재 사이클의 일부)
+      })
+    } else {
+      // Break → 이전 Flow로 (cycleCount - 1)
+      set({
+        phase: 'flow',
+        status: 'running',
+        endAt: computeEndAt(settingsSnapshot.flowMin),
+        remainingMs: null,
+        cycleCount: Math.max(0, cycleCount - 1),
+      })
+    }
   },
 
-  skipToFlow: () => {
-    const { settingsSnapshot, todoId } = get()
+  // → 다음 세션으로 (타임라인 기준)
+  skipToNext: () => {
+    const { settingsSnapshot, todoId, phase, cycleCount } = get()
     if (!settingsSnapshot || !todoId) return
     
-    set({
-      phase: 'flow',
-      status: 'running',
-      endAt: computeEndAt(settingsSnapshot.flowMin),
-      remainingMs: null,
-    })
+    if (phase === 'flow') {
+      // Flow → 다음 Break로 (cycleCount + 1)
+      const nextCycle = cycleCount + 1
+      const isLong = nextCycle % settingsSnapshot.cycleEvery === 0
+      const nextPhase: TimerPhase = isLong ? 'long' : 'short'
+      const nextDuration = isLong ? settingsSnapshot.longBreakMin : settingsSnapshot.breakMin
+      
+      set({
+        phase: nextPhase,
+        status: 'running',
+        endAt: computeEndAt(nextDuration),
+        remainingMs: null,
+        cycleCount: nextCycle,
+      })
+    } else {
+      // Break → 다음 Flow로
+      set({
+        phase: 'flow',
+        status: 'running',
+        endAt: computeEndAt(settingsSnapshot.flowMin),
+        remainingMs: null,
+        // cycleCount 유지
+      })
+    }
+  },
+
+  // ← 이전으로 갈 수 있는지
+  canSkipToPrev: () => {
+    const { phase, cycleCount, mode } = get()
+    if (mode !== 'pomodoro') return false
+    // 첫 Flow에서는 이전 불가
+    if (phase === 'flow' && cycleCount === 0) return false
+    return true
+  },
+
+  // → 다음으로 갈 수 있는지
+  canSkipToNext: () => {
+    const { mode } = get()
+    if (mode !== 'pomodoro') return false
+    // 항상 다음으로 스킵 가능
+    return true
   },
 
   restore: () => {

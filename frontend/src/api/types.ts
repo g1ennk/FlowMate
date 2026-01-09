@@ -48,6 +48,17 @@ export const PomodoroCompleteResponseSchema = z.object({
   updatedAt: z.string(),
 })
 
+// 일반 타이머용 (시간만 추가, 횟수 X)
+export const FocusAddRequestSchema = z.object({
+  durationSec: z.number().int().min(1).max(10_800),
+})
+
+export const FocusAddResponseSchema = z.object({
+  id: z.string().uuid(),
+  focusSeconds: z.number().int(),
+  updatedAt: z.string(),
+})
+
 export type Todo = z.infer<typeof TodoSchema>
 export type TodoList = z.infer<typeof TodoListSchema>
 export type TodoCreateInput = z.infer<typeof TodoCreateSchema>
@@ -56,3 +67,5 @@ export type TodoPatchInput = z.infer<typeof TodoPatchSchema>
 export type PomodoroSettings = z.infer<typeof PomodoroSettingsSchema>
 export type PomodoroCompleteRequest = z.infer<typeof PomodoroCompleteRequestSchema>
 export type PomodoroCompleteResponse = z.infer<typeof PomodoroCompleteResponseSchema>
+export type FocusAddRequest = z.infer<typeof FocusAddRequestSchema>
+export type FocusAddResponse = z.infer<typeof FocusAddResponseSchema>

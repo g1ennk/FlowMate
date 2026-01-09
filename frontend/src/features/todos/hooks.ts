@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { todoApi } from '../../api/todos'
 import {
+  type FocusAddRequest,
+  type FocusAddResponse,
   type PomodoroCompleteRequest,
   type PomodoroCompleteResponse,
   type Todo,
@@ -42,11 +44,26 @@ export function useDeleteTodo() {
   })
 }
 
+// 뽀모도로 완료 (횟수 + 시간)
 export function useCompleteTodo() {
   const qc = useQueryClient()
   return useMutation<PomodoroCompleteResponse, unknown, { id: string; body: PomodoroCompleteRequest }>(
     {
       mutationFn: ({ id, body }) => todoApi.complete(id, body),
+      onSuccess: (_, { id }) => {
+        qc.invalidateQueries({ queryKey: queryKeys.todos() })
+        qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
+      },
+    },
+  )
+}
+
+// 일반 타이머 (시간만 추가, 횟수 X)
+export function useAddFocus() {
+  const qc = useQueryClient()
+  return useMutation<FocusAddResponse, unknown, { id: string; body: FocusAddRequest }>(
+    {
+      mutationFn: ({ id, body }) => todoApi.addFocus(id, body),
       onSuccess: (_, { id }) => {
         qc.invalidateQueries({ queryKey: queryKeys.todos() })
         qc.invalidateQueries({ queryKey: queryKeys.todo(id) })

@@ -122,7 +122,7 @@ describe('timerStore', () => {
     expect(useTimerStore.getState().status).toBe('waiting')
   })
 
-  it('skipToBreak transitions to break phase', () => {
+  it('skipToNext from flow transitions to break phase', () => {
     useTimerStore.setState({
       ...initialTimerState,
       todoId: 'todo-1',
@@ -134,13 +134,13 @@ describe('timerStore', () => {
       endAt: Date.now() + 1000,
     })
 
-    useTimerStore.getState().skipToBreak()
+    useTimerStore.getState().skipToNext()
     expect(useTimerStore.getState().phase).toBe('short')
     expect(useTimerStore.getState().status).toBe('running')
     expect(useTimerStore.getState().cycleCount).toBe(1)
   })
 
-  it('skipToFlow transitions to flow phase', () => {
+  it('skipToNext from break transitions to flow phase', () => {
     useTimerStore.setState({
       ...initialTimerState,
       todoId: 'todo-1',
@@ -152,8 +152,41 @@ describe('timerStore', () => {
       endAt: Date.now() + 1000,
     })
 
-    useTimerStore.getState().skipToFlow()
+    useTimerStore.getState().skipToNext()
     expect(useTimerStore.getState().phase).toBe('flow')
     expect(useTimerStore.getState().status).toBe('running')
+  })
+
+  it('skipToPrev from break goes back to flow', () => {
+    useTimerStore.setState({
+      ...initialTimerState,
+      todoId: 'todo-1',
+      mode: 'pomodoro',
+      settingsSnapshot: settings,
+      status: 'running',
+      phase: 'short',
+      cycleCount: 1,
+      endAt: Date.now() + 1000,
+    })
+
+    useTimerStore.getState().skipToPrev()
+    expect(useTimerStore.getState().phase).toBe('flow')
+    expect(useTimerStore.getState().status).toBe('running')
+    expect(useTimerStore.getState().cycleCount).toBe(0) // cycleCount 감소
+  })
+
+  it('canSkipToPrev returns false on first flow', () => {
+    useTimerStore.setState({
+      ...initialTimerState,
+      todoId: 'todo-1',
+      mode: 'pomodoro',
+      settingsSnapshot: settings,
+      status: 'running',
+      phase: 'flow',
+      cycleCount: 0,
+    })
+
+    expect(useTimerStore.getState().canSkipToPrev()).toBe(false)
+    expect(useTimerStore.getState().canSkipToNext()).toBe(true)
   })
 })

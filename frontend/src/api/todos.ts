@@ -1,11 +1,15 @@
 import { api } from './http'
 import {
+  FocusAddRequestSchema,
+  FocusAddResponseSchema,
   PomodoroCompleteRequestSchema,
   PomodoroCompleteResponseSchema,
   TodoCreateSchema,
   TodoListSchema,
   TodoPatchSchema,
   TodoSchema,
+  type FocusAddRequest,
+  type FocusAddResponse,
   type PomodoroCompleteRequest,
   type PomodoroCompleteResponse,
   type Todo,
@@ -20,11 +24,19 @@ export const todoApi = {
   update: (id: string, body: TodoPatchInput): Promise<Todo> =>
     api.patch(`/todos/${id}`, body, TodoSchema),
   remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`),
+  // 뽀모도로 완료 (횟수 + 시간)
   complete: (id: string, body: PomodoroCompleteRequest): Promise<PomodoroCompleteResponse> =>
     api.post(
       `/todos/${id}/pomodoro/complete`,
       PomodoroCompleteRequestSchema.parse(body),
       PomodoroCompleteResponseSchema,
+    ),
+  // 일반 타이머 (시간만 추가)
+  addFocus: (id: string, body: FocusAddRequest): Promise<FocusAddResponse> =>
+    api.post(
+      `/todos/${id}/focus/add`,
+      FocusAddRequestSchema.parse(body),
+      FocusAddResponseSchema,
     ),
   createShape: TodoCreateSchema,
   patchShape: TodoPatchSchema,
