@@ -22,8 +22,8 @@ export function SortableTodoItem({ id, ...props }: SortableTodoItemProps) {
     opacity: isDragging ? 0.5 : 1,
   }
 
-  // 활성 타이머, 편집 중, 완료된 항목은 드래그 불가
-  const canDrag = !props.isDone && !props.isActive && !props.isEditing
+  // 활성 타이머, 편집 중인 항목은 드래그 불가
+  const canDrag = !props.isActive && !props.isEditing
 
   return (
     <div

@@ -38,7 +38,6 @@ import {
   DocumentIcon,
 } from '../../ui/Icons'
 import { SortableTodoItem } from './SortableTodoItem'
-import { TodoItem } from './TodoItem'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
 import { DailyStatsBadges } from './components/DailyStatsBadges'
 import { useTodoActions } from './useTodoActions'
@@ -67,7 +66,8 @@ function TodosPage() {
 
   // UI 상태
   const [showInput, setShowInput] = useState(false)
-  const [localOrder, setLocalOrder] = useState<string[]>([])
+  const [activeOrder, setActiveOrder] = useState<string[]>([])
+  const [doneOrder, setDoneOrder] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   // 폼
@@ -114,17 +114,27 @@ function TodosPage() {
   }, [data?.items])
 
   const activeTodosRaw = todosForSelectedDate.filter((t) => !t.isDone)
-  const doneTodos = todosForSelectedDate.filter((t) => t.isDone)
+  const doneTodosRaw = todosForSelectedDate.filter((t) => t.isDone)
 
   const activeTodos = useMemo(() => {
-    if (localOrder.length === 0) return activeTodosRaw
-    const orderMap = new Map(localOrder.map((id, idx) => [id, idx]))
+    if (activeOrder.length === 0) return activeTodosRaw
+    const orderMap = new Map(activeOrder.map((id, idx) => [id, idx]))
     return [...activeTodosRaw].sort((a, b) => {
       const orderA = orderMap.get(a.id) ?? Infinity
       const orderB = orderMap.get(b.id) ?? Infinity
       return orderA - orderB
     })
-  }, [activeTodosRaw, localOrder])
+  }, [activeTodosRaw, activeOrder])
+
+  const doneTodos = useMemo(() => {
+    if (doneOrder.length === 0) return doneTodosRaw
+    const orderMap = new Map(doneOrder.map((id, idx) => [id, idx]))
+    return [...doneTodosRaw].sort((a, b) => {
+      const orderA = orderMap.get(a.id) ?? Infinity
+      const orderB = orderMap.get(b.id) ?? Infinity
+      return orderA - orderB
+    })
+  }, [doneTodosRaw, doneOrder])
 
   // 타이머 상태
   const remainingMs = useMemo(() => {
@@ -160,13 +170,23 @@ function TodosPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleActiveDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = activeTodos.findIndex((t) => t.id === active.id)
     const newIndex = activeTodos.findIndex((t) => t.id === over.id)
     if (oldIndex !== -1 && newIndex !== -1) {
-      setLocalOrder(arrayMove(activeTodos.map((t) => t.id), oldIndex, newIndex))
+      setActiveOrder(arrayMove(activeTodos.map((t) => t.id), oldIndex, newIndex))
+    }
+  }
+
+  const handleDoneDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = doneTodos.findIndex((t) => t.id === active.id)
+    const newIndex = doneTodos.findIndex((t) => t.id === over.id)
+    if (oldIndex !== -1 && newIndex !== -1) {
+      setDoneOrder(arrayMove(doneTodos.map((t) => t.id), oldIndex, newIndex))
     }
   }
 
@@ -255,8 +275,8 @@ function TodosPage() {
           </div>
         ) : (
           <div className="space-y-1">
-            {/* 활성 Todo (드래그 가능) */}
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            {/* 미완료 Todo (드래그 가능) */}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActiveDragEnd}>
               <SortableContext items={activeTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {activeTodos.map((todo) => {
                   const isActive = store.todoId === todo.id && store.status !== 'idle'
@@ -293,33 +313,42 @@ function TodosPage() {
               </SortableContext>
             </DndContext>
 
-            {/* 완료된 Todo */}
-            {doneTodos.length > 0 && activeTodos.length > 0 && (
-              <div className="py-2">
-                <p className="text-xs font-medium text-gray-400">완료됨</p>
-              </div>
+            {/* 완료된 Todo (드래그 가능) */}
+            {doneTodos.length > 0 && (
+              <>
+                {activeTodos.length > 0 && (
+                  <div className="py-2">
+                    <p className="text-xs font-medium text-gray-400">완료됨</p>
+                  </div>
+                )}
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDoneDragEnd}>
+                  <SortableContext items={doneTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                    {doneTodos.map((todo) => (
+                      <SortableTodoItem
+                        key={todo.id}
+                        id={todo.id}
+                        title={todo.title}
+                        note={todo.note}
+                        pomodoroDone={todo.pomodoroDone}
+                        focusSeconds={todo.focusSeconds}
+                        isDone={todo.isDone}
+                        isActive={false}
+                        isEditing={actions.editingId === todo.id}
+                        editingTitle={actions.editingTitle}
+                        onEditingTitleChange={actions.setEditingTitle}
+                        onToggle={() => actions.handleToggleDone(todo.id, !todo.isDone)}
+                        onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                        onSaveEdit={actions.handleSaveEdit}
+                        onCancelEdit={actions.handleCancelEdit}
+                        onDelete={() => actions.handleDelete(todo.id)}
+                        onOpenMenu={() => actions.setSelectedTodo(todo)}
+                        onOpenTimer={() => actions.handleOpenTimer(todo)}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </>
             )}
-            {doneTodos.map((todo) => (
-              <TodoItem
-                key={todo.id}
-                title={todo.title}
-                note={todo.note}
-                pomodoroDone={todo.pomodoroDone}
-                focusSeconds={todo.focusSeconds}
-                isDone={todo.isDone}
-                isActive={false}
-                isEditing={actions.editingId === todo.id}
-                editingTitle={actions.editingTitle}
-                onEditingTitleChange={actions.setEditingTitle}
-                onToggle={() => actions.handleToggleDone(todo.id, !todo.isDone)}
-                onEdit={() => actions.handleEdit(todo.id, todo.title)}
-                onSaveEdit={actions.handleSaveEdit}
-                onCancelEdit={actions.handleCancelEdit}
-                onDelete={() => actions.handleDelete(todo.id)}
-                onOpenMenu={() => actions.setSelectedTodo(todo)}
-                onOpenTimer={() => actions.handleOpenTimer(todo)}
-              />
-            ))}
           </div>
         )}
       </div>
