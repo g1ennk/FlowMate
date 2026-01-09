@@ -18,10 +18,8 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { usePomodoroSettings } from '../settings/hooks'
 import { useTimerStore } from '../timer/timerStore'
 import { useTimerTicker } from '../timer/useTimerTicker'
-import { MINUTE_MS } from '../../lib/time'
 import { Calendar, formatDateKey } from '../../ui/Calendar'
 import {
   BottomSheet,
@@ -52,7 +50,6 @@ type CreateForm = z.infer<typeof createSchema>
 // === 메인 컴포넌트 ===
 function TodosPage() {
   const { data, isLoading } = useTodos()
-  const { data: settings } = usePomodoroSettings()
   const store = useTimerStore()
 
   useTimerTicker()
@@ -137,21 +134,6 @@ function TodosPage() {
   }, [doneTodosRaw, doneOrder])
 
   // 타이머 상태
-  const remainingMs = useMemo(() => {
-    return store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : (settings?.flowMin ?? 25) * MINUTE_MS)
-  }, [store.remainingMs, store.endAt, settings?.flowMin])
-
-  const cycleEvery = store.settingsSnapshot?.cycleEvery ?? settings?.cycleEvery ?? 4
-
-  const timerState = {
-    phase: store.phase,
-    status: store.status,
-    remainingMs,
-    cycleCount: store.cycleCount,
-    cycleEvery,
-    isPending: actions.isCompleting,
-  }
-
   // === 핸들러 ===
   const onSubmit = handleSubmit(async (values) => {
     try {
@@ -279,7 +261,6 @@ function TodosPage() {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActiveDragEnd}>
               <SortableContext items={activeTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {activeTodos.map((todo) => {
-                  const isActive = store.todoId === todo.id && store.status !== 'idle'
                   return (
                     <SortableTodoItem
                       key={todo.id}
@@ -289,7 +270,6 @@ function TodosPage() {
                       pomodoroDone={todo.pomodoroDone}
                       focusSeconds={todo.focusSeconds}
                       isDone={todo.isDone}
-                      isActive={isActive}
                       isEditing={actions.editingId === todo.id}
                       editingTitle={actions.editingTitle}
                       onEditingTitleChange={actions.setEditingTitle}
@@ -300,13 +280,6 @@ function TodosPage() {
                       onDelete={() => actions.handleDelete(todo.id)}
                       onOpenMenu={() => actions.setSelectedTodo(todo)}
                       onOpenTimer={() => actions.handleOpenTimer(todo)}
-                      timerState={isActive ? timerState : undefined}
-                      onPause={isActive ? store.pause : undefined}
-                      onResume={isActive ? store.resume : undefined}
-                      onStop={isActive ? actions.handleStopTimer : undefined}
-                      onSkipToBreak={isActive ? store.skipToBreak : undefined}
-                      onSkipToFlow={isActive ? store.skipToFlow : undefined}
-                      onCompleteTask={isActive ? actions.handleCompleteTask : undefined}
                     />
                   )
                 })}
@@ -332,7 +305,6 @@ function TodosPage() {
                         pomodoroDone={todo.pomodoroDone}
                         focusSeconds={todo.focusSeconds}
                         isDone={todo.isDone}
-                        isActive={false}
                         isEditing={actions.editingId === todo.id}
                         editingTitle={actions.editingTitle}
                         onEditingTitleChange={actions.setEditingTitle}
