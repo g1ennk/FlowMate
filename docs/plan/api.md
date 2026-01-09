@@ -152,3 +152,4 @@ Content-Type: `application/json`
 |------|----------|
 | 2026-01-09 | Todo에 `date` 필드 추가 (날짜별 관리) |
 | 2026-01-09 | PomodoroSettings에 `autoStartBreak`, `autoStartSession` 추가 |
+| 2026-01-09 | `POST /api/todos/{id}/focus/add` API 추가 (일반 타이머 전용) |
