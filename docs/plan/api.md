@@ -92,9 +92,9 @@ Content-Type: `application/json`
 
 ---
 
-## 4. Pomodoro Completion
+## 4. Timer Completion
 
-### 4.1 Complete a Flow on a Todo
+### 4.1 Complete a Pomodoro Flow
 - `POST /api/todos/{id}/pomodoro/complete`
 - Body:
 ```json
@@ -111,6 +111,24 @@ Content-Type: `application/json`
 }
 ```
 - Errors: 404 Not Found, 400 Validation Error (durationSec 1~10800 권장)
+
+### 4.2 Add Focus Time (일반 타이머)
+- `POST /api/todos/{id}/focus/add`
+- Body:
+```json
+{ "durationSec": 900 }
+```
+- Behavior: `focusSeconds += durationSec` (pomodoroDone은 증가 안 함), `updatedAt` 갱신
+- Response 200:
+```json
+{
+  "id": "uuid",
+  "focusSeconds": 4500,
+  "updatedAt": "2026-01-09T12:20:00Z"
+}
+```
+- Errors: 404 Not Found, 400 Validation Error (durationSec 1~10800 권장)
+- Note: 일반 타이머(Stopwatch)는 시간만 누적하고 세션 횟수는 증가시키지 않음
 
 ---
 

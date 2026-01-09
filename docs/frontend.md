@@ -88,15 +88,17 @@ src/
 - `useCreateTodo` - Todo 생성
 - `useUpdateTodo` - Todo 수정
 - `useDeleteTodo` - Todo 삭제
-- `useCompleteTodo` - 세션 완료 기록
+- `useCompleteTodo` - 뽀모도로 세션 완료 기록 (시간+횟수)
+- `useAddFocus` - 일반 타이머 시간 기록 (시간만)
 - `usePomodoroSettings` - 설정 조회
 - `useUpdatePomodoroSettings` - 설정 수정
 
 ### 클라이언트 상태 (Zustand)
 - `timerStore` - 타이머 상태 관리
-  - 필드: `todoId`, `mode`, `phase`, `status`, `endAt`, `remainingMs`, `elapsedMs`, `cycleCount`
-  - actions: `startPomodoro`, `startStopwatch`, `pause`, `resume`, `stop`, `tick`, `completePhase`, `skipToBreak`, `skipToFlow`
+  - 필드: `todoId`, `mode`, `phase`, `status`, `endAt`, `remainingMs`, `elapsedMs`, `cycleCount`, `settingsSnapshot`
+  - actions: `startPomodoro`, `startStopwatch`, `pause`, `resume`, `stop`, `tick`, `completePhase`, `skipToPrev`, `skipToNext`, `resetTimer`, `canSkipToPrev`, `canSkipToNext`
   - sessionStorage에 상태 저장/복구
+  - 정지 후 재개 가능 (pause 상태 유지)
 
 ---
 
@@ -115,12 +117,22 @@ src/
 - 일별 통계 뱃지 (미완료/완료/세션)
 
 ### 타이머
-- 뽀모도로 (카운트다운)
-- 일반 타이머 (스톱워치)
-- Flow → 휴식 자동 전환 (설정 가능)
-- 타이머 완료 시 알림음
-- 정지(■): 기록 + 종료
-- 완료(✓): 기록 + 태스크 완료 + 종료
+- **뽀모도로** (카운트다운)
+  - Flow → Short Break → Flow → ... → Long Break
+  - 세션 기반 양방향 네비게이션 (←/→)
+  - 리셋 버튼으로 첫 Flow로 복귀
+  - Flow 완료 시에만 세션 카운트 증가
+  - Break에서 완료 버튼 비활성화
+- **일반 타이머** (스톱워치)
+  - 00:00:00부터 카운트업
+  - 시간만 기록 (세션 횟수 증가 X)
+- **공통 기능**
+  - 정지(■): 기록 + pause 상태 유지 + 닫기
+  - 완료(✓): 기록 + 태스크 완료 + 닫기
+  - 재오픈 시 이전 상태에서 이어서 진행 가능
+  - Flow → 휴식 자동 전환 (설정 가능)
+  - 타이머 완료 시 알림음
+  - Phase별 배경색 (Flow: 검정, Break: 에메랄드)
 
 ---
 

@@ -28,6 +28,8 @@ com.example.flowtodo
       TodoResponse.java
       PomodoroCompleteRequest.java
       PomodoroCompleteResponse.java
+      FocusAddRequest.java
+      FocusAddResponse.java
     repo/
       TodoRepository.java
     service/
@@ -94,8 +96,12 @@ com.example.flowtodo
 - update(userId, id, dto)
 - delete(userId, id)
 - completePomodoro(userId, id, durationSec)
+  - pomodoroDone += 1, focusSeconds += durationSec
   - durationSec validation
   - (선택) optimistic locking: version 컬럼
+- addFocus(userId, id, durationSec)
+  - focusSeconds += durationSec (pomodoroDone 증가 없음)
+  - 일반 타이머 전용
 
 ### 6.2 PomodoroSettingsService
 - get(userId)
@@ -111,6 +117,7 @@ com.example.flowtodo
 - PATCH /api/todos/{id}
 - DELETE /api/todos/{id}
 - POST /api/todos/{id}/pomodoro/complete
+- POST /api/todos/{id}/focus/add
 - GET /api/settings/pomodoro
 - PUT /api/settings/pomodoro
 
