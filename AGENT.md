@@ -130,6 +130,216 @@
 
 ---
 
+## 📖 API 문서 관리 전략
+
+### 개인/MVP 단계 (현재) ✅
+```
+api.md (단일 진실 공급원)
+   ↓
+Frontend: MSW 모킹
+Backend: API 구현
+```
+
+**현재 방식:**
+- `docs/plan/api.md`: 모든 API 명세 문서화
+- Frontend: api.md 보고 MSW 핸들러 작성
+- Backend: api.md 보고 Controller 구현
+
+---
+
+### 팀 프로젝트 전환 시 🔄
+
+#### Phase 1: 기획 단계 (Backend 개발 전)
+```
+PM/기획자 + Frontend + Backend
+         ↓
+    api.md 작성
+         ↓
+    리뷰 & 합의
+```
+
+**api.md 내용 (Why, 개념):**
+- API 목적 및 호출 시점
+- 비즈니스 규칙 및 제약사항
+- 에러 처리 전략
+- 기본 Request/Response 구조
+
+**이 단계에서 합의:**
+- ✅ 어떤 API가 필요한가?
+- ✅ 언제 호출하나?
+- ✅ 어떤 데이터를 주고받나?
+- ✅ 비즈니스 규칙은?
+
+---
+
+#### Phase 2: 개발 시작 (Backend 구현)
+
+**Backend에 추가:**
+```gradle
+// build.gradle
+dependencies {
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
+}
+```
+
+**자동 생성:**
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+**Controller 예시:**
+```java
+@RestController
+@RequestMapping("/api/todos")
+@Tag(name = "Todo", description = "Todo CRUD API")
+public class TodoController {
+    
+    @PostMapping
+    @Operation(summary = "할 일 생성", description = "새로운 할 일을 등록합니다")
+    public ResponseEntity<Todo> createTodo(
+        @Valid @RequestBody TodoCreateRequest request
+    ) {
+        // 구현...
+    }
+}
+```
+
+---
+
+#### Phase 3: 병행 사용 (역할 분담)
+
+**api.md 역할 (Why, 개념):**
+- API 설계 의도 및 목적
+- 비즈니스 규칙 상세 설명
+- 호출 시점 및 에러 처리
+- 팀 합의 및 의사결정 기록
+
+**Swagger UI 역할 (What, 정확한 스펙):**
+- 실시간 API 명세 (코드와 100% 동기화)
+- 정확한 Request/Response 타입
+- "Try it out" 즉시 테스트
+- 자동 업데이트 (코드 변경 시)
+
+---
+
+### 팀원별 사용 패턴
+
+#### Frontend 개발자
+```
+1. 기획: api.md로 API 이해
+2. 개발: Swagger UI로 정확한 스펙 확인
+3. 테스트: "Try it out"으로 직접 테스트
+4. 의문:
+   - "왜?" → api.md
+   - "정확한 타입?" → Swagger
+```
+
+#### Backend 개발자
+```
+1. 기획: api.md로 요구사항 이해
+2. 개발: Controller 구현 + @Operation 추가
+3. 공유: Swagger URL을 팀에 공유
+4. 문서화: api.md에 비즈니스 로직 추가
+```
+
+#### QA/테스터
+```
+1. 테스트: Swagger "Try it out"
+2. 리포트: Swagger 링크 첨부
+3. 검증: api.md로 의도 확인
+```
+
+#### PM/기획자
+```
+1. 기획: api.md 작성 및 리뷰
+2. 검증: Swagger로 구현 확인
+3. 의사결정: "의도대로 구현됐나?"
+```
+
+---
+
+### 두 문서의 역할 비교
+
+| 항목          | api.md          | Swagger UI        |
+| ------------- | --------------- | ----------------- |
+| **작성 시점** | 기획 단계       | 개발 중 (자동)    |
+| **작성자**    | PM + 개발자     | Backend (자동)    |
+| **내용**      | Why, 개념, 규칙 | What, 정확한 스펙 |
+| **업데이트**  | 수동 (필요 시)  | 자동 (실시간)     |
+| **사용 시점** | 기획, 리뷰      | 개발, 테스트      |
+| **신뢰도**    | 개념 이해용     | 100% 정확 (코드)  |
+
+---
+
+### 고급 기능 (팀 확장 시)
+
+#### 1. OpenAPI JSON Export
+```bash
+# Backend 실행 후
+curl http://localhost:8080/v3/api-docs > openapi.json
+git add openapi.json
+```
+
+**효과:**
+- ✅ Backend 실행 없이 명세 확인
+- ✅ Git diff로 API 변경 추적
+- ✅ 팀원 즉시 확인 가능
+
+---
+
+#### 2. Frontend 타입 자동 생성
+```bash
+# openapi-generator
+npx @openapitools/openapi-generator-cli generate \
+  -i openapi.json \
+  -g typescript-axios \
+  -o frontend/src/api/generated
+
+# 또는 orval (추천)
+npx orval --input openapi.json --output frontend/src/api
+```
+
+**효과:**
+- ✅ 타입 안정성 100%
+- ✅ API 변경 즉시 반영
+- ✅ 런타임 에러 방지
+
+---
+
+#### 3. 문서 호스팅 (선택)
+
+**GitHub Pages:**
+```yaml
+# .github/workflows/docs.yml
+- Swagger UI 정적 배포
+- openapi.json 자동 업데이트
+```
+→ `https://yourteam.github.io/todo-flow/api-docs`
+
+**Swagger Hub / Postman:**
+- 팀 워크스페이스
+- 버전 관리
+- Mock Server
+
+---
+
+### 중요 원칙
+
+1. **"전환"이 아니라 "추가 + 역할 분담"**
+   - api.md 삭제하지 않음
+   - Swagger는 보조 도구
+   - 둘 다 유지하며 역할 분담
+
+2. **개인 프로젝트: api.md만으로 충분**
+   - Backend 시작할 때 Swagger 추가
+   - 추가 설정 최소화
+
+3. **팀 프로젝트: 단계적 확장**
+   - 2-3명: + openapi.json (Git)
+   - 5명+: + 타입 자동 생성
+   - 10명+: + 문서 호스팅
+
+---
+
 ## 🛠️ 기술 스택
 
 ### Frontend
