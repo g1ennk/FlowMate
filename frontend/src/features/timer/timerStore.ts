@@ -6,8 +6,8 @@ type TimerPhase = 'flow' | 'short' | 'long'
 type TimerStatus = 'idle' | 'running' | 'paused' | 'waiting'
 type TimerMode = 'pomodoro' | 'stopwatch' // 뽀모도로 or 일반 타이머
 
-type TimerState = {
-  todoId: string | null
+// 개별 타이머 상태
+type SingleTimerState = {
   mode: TimerMode
   phase: TimerPhase
   status: TimerStatus
@@ -20,31 +20,36 @@ type TimerState = {
   settingsSnapshot: PomodoroSettings | null
 }
 
+// 전체 타이머 상태 (여러 타이머 관리)
+type TimerState = {
+  timers: Record<string, SingleTimerState> // todoId -> SingleTimerState
+}
+
 type TimerActions = {
   startPomodoro: (todoId: string, settings: PomodoroSettings) => void
   startStopwatch: (todoId: string, initialElapsedMs?: number) => void
-  pause: () => void
-  resume: () => void
-  stop: () => void
-  reset: () => void // 🔄 전체 리셋 (첫 Flow로, cycleCount=0)
-  updateInitialFocusMs: (newInitialFocusMs: number) => void // initialFocusMs와 elapsedMs 업데이트
+  pause: (todoId: string) => void
+  resume: (todoId: string) => void
+  stop: (todoId: string) => void
+  reset: (todoId: string) => void // 🔄 전체 리셋 (첫 Flow로, cycleCount=0)
+  updateInitialFocusMs: (todoId: string, newInitialFocusMs: number) => void // initialFocusMs와 elapsedMs 업데이트
   tick: () => void
-  completePhase: () => void
-  skipToPrev: () => void // ← 이전 세션으로
-  skipToNext: () => void // → 다음 세션으로
-  canSkipToPrev: () => boolean // ← 활성화 여부
-  canSkipToNext: () => boolean // → 활성화 여부
+  completePhase: (todoId: string) => void
+  skipToPrev: (todoId: string) => void // ← 이전 세션으로
+  skipToNext: (todoId: string) => void // → 다음 세션으로
+  canSkipToPrev: (todoId: string) => boolean // ← 활성화 여부
+  canSkipToNext: (todoId: string) => boolean // → 활성화 여부
+  getTimer: (todoId: string) => SingleTimerState | undefined
   restore: () => void
   syncWithNow: () => void
 }
 
 type TimerStore = TimerState & TimerActions
 
-const STORAGE_KEY = 'todo-flow/timer'
+const STORAGE_KEY_PREFIX = 'todo-flow/timer/'
 const MINUTE = 60_000
 
-export const initialTimerState: TimerState = {
-  todoId: null,
+export const initialSingleTimerState: SingleTimerState = {
   mode: 'pomodoro',
   phase: 'flow',
   status: 'idle',
@@ -58,94 +63,151 @@ export const initialTimerState: TimerState = {
 }
 
 type Persisted = Pick<
-  TimerState,
-  'todoId' | 'mode' | 'phase' | 'status' | 'endAt' | 'remainingMs' | 'elapsedMs' | 'initialFocusMs' | 'startedAt' | 'cycleCount' | 'settingsSnapshot'
+  SingleTimerState,
+  'mode' | 'phase' | 'status' | 'endAt' | 'remainingMs' | 'elapsedMs' | 'initialFocusMs' | 'startedAt' | 'cycleCount' | 'settingsSnapshot'
 >
 
-const loadPersisted = (): Persisted | null => {
-  if (typeof window === 'undefined') return null
+const loadAllPersisted = (): Record<string, SingleTimerState> => {
+  if (typeof window === 'undefined') return {}
+  
+  const timers: Record<string, SingleTimerState> = {}
+  
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as Persisted) : null
+    // sessionStorage에서 모든 타이머 키 찾기
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i)
+      if (key?.startsWith(STORAGE_KEY_PREFIX)) {
+        const todoId = key.replace(STORAGE_KEY_PREFIX, '')
+        const raw = sessionStorage.getItem(key)
+        if (raw) {
+          const persisted = JSON.parse(raw) as Persisted
+          timers[todoId] = hydrateState(persisted)
+        }
+      }
+    }
   } catch {
-    return null
+    return {}
   }
+  
+  return timers
 }
 
-const savePersisted = (state: Persisted) => {
+const savePersisted = (todoId: string, state: SingleTimerState) => {
   if (typeof window === 'undefined') return
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    // ignore
+  
+  if (state.status === 'idle') {
+    // idle 상태면 저장 삭제
+    sessionStorage.removeItem(STORAGE_KEY_PREFIX + todoId)
+    return
   }
+  
+  const persisted: Persisted = {
+    mode: state.mode,
+    phase: state.phase,
+    status: state.status,
+    endAt: state.endAt,
+    remainingMs: state.remainingMs,
+    elapsedMs: state.elapsedMs,
+    initialFocusMs: state.initialFocusMs,
+    startedAt: state.startedAt,
+    cycleCount: state.cycleCount,
+    settingsSnapshot: state.settingsSnapshot,
+  }
+  
+  sessionStorage.setItem(STORAGE_KEY_PREFIX + todoId, JSON.stringify(persisted))
 }
 
-const hydrateState = (persisted: Persisted | null): TimerState => {
-  if (!persisted) return initialTimerState
+function hydrateState(persisted: Persisted): SingleTimerState {
   const now = Date.now()
   let endAt = persisted.endAt
   let remainingMs = persisted.remainingMs
   let elapsedMs = persisted.elapsedMs ?? 0
   const status: TimerStatus = persisted.status
 
-  // Pomodoro 모드
-  if (persisted.mode === 'pomodoro') {
-    if (persisted.status === 'running' && endAt) {
-      const left = endAt - now
-      if (left <= 0) {
-        return initialTimerState
-      }
-      remainingMs = left
+  // Pomodoro: endAt 기반 계산
+  if (persisted.mode === 'pomodoro' && persisted.status === 'running' && endAt) {
+    const left = endAt - now
+    if (left <= 0) {
+      // 타이머 완료됨 -> idle로
+      return initialSingleTimerState
     }
-
-    if (persisted.status === 'paused' && endAt) {
-      remainingMs = Math.max(0, endAt - now)
-      endAt = null
-    }
+    remainingMs = left
   }
-  
-  // Stopwatch 모드
-  if (persisted.mode === 'stopwatch') {
-    if (persisted.status === 'running' && persisted.startedAt) {
-      elapsedMs = (persisted.elapsedMs ?? 0) + (now - persisted.startedAt)
-    }
+
+  if (persisted.status === 'paused' && endAt) {
+    remainingMs = Math.max(0, endAt - now)
+    endAt = null
+  }
+
+  // Stopwatch: startedAt 기반 경과 시간 누적
+  if (persisted.mode === 'stopwatch' && persisted.status === 'running' && persisted.startedAt) {
+    const delta = now - persisted.startedAt
+    elapsedMs = persisted.elapsedMs + delta
   }
 
   return {
-    ...initialTimerState,
-    ...persisted,
+    mode: persisted.mode,
+    phase: persisted.phase,
+    settingsSnapshot: persisted.settingsSnapshot,
+    cycleCount: persisted.cycleCount,
+    startedAt: persisted.startedAt,
     status,
     endAt,
     remainingMs,
     elapsedMs,
+    initialFocusMs: persisted.initialFocusMs,
   }
 }
 
 const computeEndAt = (minutes: number) => Date.now() + minutes * MINUTE
 
 export const useTimerStore = create<TimerStore>((set, get) => ({
-  ...hydrateState(loadPersisted()),
+  timers: loadAllPersisted(),
+
+  getTimer: (todoId) => {
+    return get().timers[todoId]
+  },
 
   startPomodoro: (todoId, settings) => {
-    set({
-      todoId,
+    const existingTimer = get().timers[todoId]
+    
+    // 이미 다른 모드의 타이머가 실행 중이면 막기
+    if (existingTimer && existingTimer.status !== 'idle' && existingTimer.mode === 'stopwatch') {
+      console.warn('이미 일반 타이머가 실행 중입니다. 먼저 정지하세요.')
+      return
+    }
+    
+    const endAt = computeEndAt(settings.flowMin)
+    const newTimer: SingleTimerState = {
       mode: 'pomodoro',
       settingsSnapshot: settings,
       phase: 'flow',
       status: 'running',
-      endAt: computeEndAt(settings.flowMin),
-      remainingMs: null,
+      endAt,
+      remainingMs: null, // 실시간 계산 사용 (딜레이 방지)
       elapsedMs: 0,
       initialFocusMs: 0,
       startedAt: null,
       cycleCount: 0,
-    })
+    }
+    
+    set((state) => ({
+      timers: { ...state.timers, [todoId]: newTimer }
+    }))
+    
+    savePersisted(todoId, newTimer)
   },
 
   startStopwatch: (todoId, initialElapsedMs = 0) => {
-    set({
-      todoId,
+    const existingTimer = get().timers[todoId]
+    
+    // 이미 다른 모드의 타이머가 실행 중이면 막기
+    if (existingTimer && existingTimer.status !== 'idle' && existingTimer.mode === 'pomodoro') {
+      console.warn('이미 뽀모도로 타이머가 실행 중입니다. 먼저 정지하세요.')
+      return
+    }
+    
+    const newTimer: SingleTimerState = {
       mode: 'stopwatch',
       settingsSnapshot: null,
       phase: 'flow',
@@ -156,312 +218,414 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       initialFocusMs: initialElapsedMs, // 초기값 저장 (중복 기록 방지)
       startedAt: Date.now(),
       cycleCount: 0,
-    })
+    }
+    
+    set((state) => ({
+      timers: { ...state.timers, [todoId]: newTimer }
+    }))
+    
+    savePersisted(todoId, newTimer)
   },
 
-  pause: () => {
-    const { status, endAt, mode, startedAt, elapsedMs } = get()
-    if (status !== 'running') return
+  pause: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer) return
     
-    if (mode === 'pomodoro' && endAt) {
-      const remaining = Math.max(0, endAt - Date.now())
-      set({ status: 'paused', remainingMs: remaining, endAt: null })
-    } else if (mode === 'stopwatch' && startedAt) {
+    if (timer.mode === 'pomodoro' && timer.endAt) {
+      const remaining = Math.max(0, timer.endAt - Date.now())
+      const updated = { ...timer, status: 'paused' as TimerStatus, remainingMs: remaining, endAt: null }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
+    } else if (timer.mode === 'stopwatch' && timer.startedAt) {
       // 현재 시간을 정확히 계산 (syncWithNow 이후라도 다시 계산)
-      const currentElapsed = elapsedMs + (Date.now() - startedAt)
-      set({ status: 'paused', elapsedMs: currentElapsed, startedAt: null })
+      const delta = Date.now() - timer.startedAt
+      const newElapsed = timer.elapsedMs + delta
+      const updated = { ...timer, status: 'paused' as TimerStatus, elapsedMs: newElapsed, startedAt: null }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
     }
   },
 
-  resume: () => {
-    const { status, remainingMs, settingsSnapshot, mode } = get()
+  resume: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer) return
     
     // Stopwatch 모드
-    if (mode === 'stopwatch') {
-      if (status === 'paused') {
-        set({ status: 'running', startedAt: Date.now() })
+    if (timer.mode === 'stopwatch') {
+      if (timer.status === 'paused') {
+        const updated = { ...timer, status: 'running' as TimerStatus, startedAt: Date.now() }
+        set((state) => ({
+          timers: { ...state.timers, [todoId]: updated }
+        }))
+        savePersisted(todoId, updated)
       }
       return
     }
     
     // Pomodoro 모드
-    if (!settingsSnapshot) return
-    
     // waiting 상태에서 resume하면 현재 phase 시작
-    if (status === 'waiting') {
-      if (!remainingMs) return
+    if (timer.status === 'waiting') {
+      if (!timer.remainingMs) return
       // 현재 phase(flow 또는 break)를 그대로 시작
-      set({
-        status: 'running',
-        endAt: Date.now() + remainingMs,
-        remainingMs: null,
-      })
+      const updated = {
+        ...timer,
+        status: 'running' as TimerStatus,
+        endAt: Date.now() + timer.remainingMs,
+        remainingMs: null, // 실시간 계산 사용
+      }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
       return
     }
     
-    if (status !== 'paused' || !remainingMs) return
-    set({ status: 'running', endAt: Date.now() + remainingMs, remainingMs: null })
+    if (timer.status !== 'paused' || !timer.remainingMs) return
+    const updated = {
+      ...timer,
+      status: 'running' as TimerStatus,
+      endAt: Date.now() + timer.remainingMs,
+      remainingMs: null, // 실시간 계산 사용
+    }
+    set((state) => ({
+      timers: { ...state.timers, [todoId]: updated }
+    }))
+    savePersisted(todoId, updated)
   },
 
-  stop: () => {
-    // idle 상태로 설정하면 subscribe에서 자동으로 sessionStorage 삭제
-    set({ ...initialTimerState, status: 'idle' })
-  },
-
-  // 전체 리셋: 첫 Flow로 돌아가고 cycleCount=0
-  reset: () => {
-    const { todoId, mode, settingsSnapshot } = get()
-    if (!todoId) return
+  stop: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer) return
     
-    if (mode === 'stopwatch') {
-      // 일반 타이머는 0으로 초기화 (paused 상태, 버튼을 누르면 시작)
-      set({
-        todoId,
-        mode: 'stopwatch',
-        settingsSnapshot: null,
-        phase: 'flow',
+    const updated = { ...timer, status: 'idle' as TimerStatus }
+    set((state) => ({
+      timers: { ...state.timers, [todoId]: updated }
+    }))
+    
+    // idle 상태는 sessionStorage에서 제거
+    savePersisted(todoId, updated)
+  },
+
+  reset: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer) return
+    
+    if (timer.mode === 'stopwatch') {
+      const updated: SingleTimerState = {
+        ...timer,
         status: 'paused',
-        endAt: null,
-        remainingMs: null,
         elapsedMs: 0,
         initialFocusMs: 0,
         startedAt: null,
-        cycleCount: 0,
-      })
-    } else if (mode === 'pomodoro' && settingsSnapshot) {
-      // 뽀모도로는 첫 Flow로 리셋 (paused 상태, 버튼을 누르면 시작)
-      set({
-        todoId,
-        mode: 'pomodoro',
-        settingsSnapshot,
+      }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
+    } else {
+      // Pomodoro
+      const settings = timer.settingsSnapshot
+      if (!settings) return
+      
+      const updated: SingleTimerState = {
+        ...timer,
         phase: 'flow',
         status: 'paused',
         endAt: null,
-        remainingMs: settingsSnapshot.flowMin * MINUTE,
+        remainingMs: settings.flowMin * MINUTE,
         elapsedMs: 0,
         initialFocusMs: 0,
-        startedAt: null,
         cycleCount: 0,
-      })
+      }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
     }
   },
 
-  // initialFocusMs와 elapsedMs를 동기화 (완료 후 시간 업데이트용)
-  updateInitialFocusMs: (newInitialFocusMs: number) => {
-    const { mode, status } = get()
-    // stopwatch 모드이고 paused 상태일 때만 업데이트
-    if (mode === 'stopwatch' && status === 'paused') {
-      set({
-        elapsedMs: newInitialFocusMs,
-        initialFocusMs: newInitialFocusMs,
-      })
+  updateInitialFocusMs: (todoId, newInitialFocusMs) => {
+    const timer = get().timers[todoId]
+    if (!timer) return
+    
+    const updated = {
+      ...timer,
+      elapsedMs: newInitialFocusMs,
+      initialFocusMs: newInitialFocusMs,
     }
+    set((state) => ({
+      timers: { ...state.timers, [todoId]: updated }
+    }))
+    savePersisted(todoId, updated)
   },
 
   tick: () => {
-    const { status, endAt, mode, startedAt } = get()
-    if (status !== 'running') return
+    const timers = get().timers
+    const updates: Record<string, SingleTimerState> = {}
     
-    if (mode === 'stopwatch' && startedAt) {
-      const newElapsed = get().elapsedMs + (Date.now() - startedAt)
-      set({ elapsedMs: newElapsed, startedAt: Date.now() })
-      return
-    }
-    
-    if (mode === 'pomodoro' && endAt) {
-      const remaining = endAt - Date.now()
-      if (remaining <= 0) {
-        playNotificationSound() // 알림음 재생
-        get().completePhase()
-        return
+    Object.entries(timers).forEach(([todoId, timer]) => {
+      if (timer.status !== 'running') return
+      
+      if (timer.mode === 'stopwatch' && timer.startedAt) {
+        const newElapsed = timer.elapsedMs + (Date.now() - timer.startedAt)
+        updates[todoId] = { ...timer, elapsedMs: newElapsed, startedAt: Date.now() }
       }
-      set({ remainingMs: remaining })
+      
+      if (timer.mode === 'pomodoro' && timer.endAt) {
+        const remaining = timer.endAt - Date.now()
+        if (remaining <= 0) {
+          playNotificationSound() // 알림음 재생
+          get().completePhase(todoId)
+        } else {
+          // remainingMs 업데이트 (리렌더링 트리거용, UI는 endAt 기준으로 실시간 계산)
+          updates[todoId] = { ...timer, remainingMs: remaining }
+        }
+      }
+    })
+    
+    if (Object.keys(updates).length > 0) {
+      set((state) => ({
+        timers: { ...state.timers, ...updates }
+      }))
+      
+      // 각 타이머 저장
+      Object.entries(updates).forEach(([todoId, timer]) => {
+        savePersisted(todoId, timer)
+      })
     }
   },
 
-  completePhase: () => {
-    const { phase, cycleCount, settingsSnapshot, todoId } = get()
-    if (!settingsSnapshot || !todoId) {
-      set(initialTimerState)
-      return
-    }
-
+  completePhase: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer || timer.mode !== 'pomodoro') return
+    
+    const { phase, cycleCount, settingsSnapshot } = timer
+    if (!settingsSnapshot) return
+    
+    const { cycleEvery, breakMin, longBreakMin, flowMin, autoStartBreak, autoStartSession } = settingsSnapshot
+    
     if (phase === 'flow') {
+      // Flow → Break
       const nextCycle = cycleCount + 1
-      const isLong = nextCycle % settingsSnapshot.cycleEvery === 0
-      const nextPhase: TimerPhase = isLong ? 'long' : 'short'
-      const nextDuration = isLong ? settingsSnapshot.longBreakMin : settingsSnapshot.breakMin
+      const isLongBreak = nextCycle % cycleEvery === 0
+      const breakDuration = isLongBreak ? longBreakMin : breakMin
+      const nextPhase = isLongBreak ? 'long' : 'short'
       
-      // autoStartBreak 체크
-      if (settingsSnapshot.autoStartBreak) {
-        set({
-          phase: nextPhase,
-          status: 'running',
-          endAt: computeEndAt(nextDuration),
-          remainingMs: null,
+      if (autoStartBreak) {
+        const updated = {
+          ...timer,
+          phase: nextPhase as TimerPhase,
+          status: 'running' as TimerStatus,
+          endAt: computeEndAt(breakDuration),
+          remainingMs: null, // 실시간 계산 사용
           cycleCount: nextCycle,
-        })
+        }
+        set((state) => ({
+          timers: { ...state.timers, [todoId]: updated }
+        }))
+        savePersisted(todoId, updated)
       } else {
-        // 대기 상태로 전환 (사용자가 수동 시작)
-        set({
-          phase: nextPhase,
-          status: 'waiting',
+        const updated = {
+          ...timer,
+          phase: nextPhase as TimerPhase,
+          status: 'waiting' as TimerStatus,
           endAt: null,
-          remainingMs: nextDuration * MINUTE,
+          remainingMs: breakDuration * MINUTE,
           cycleCount: nextCycle,
-        })
+        }
+        set((state) => ({
+          timers: { ...state.timers, [todoId]: updated }
+        }))
+        savePersisted(todoId, updated)
       }
-      return
-    }
-
-    // Break 종료 후 Flow 전환
-    if (settingsSnapshot.autoStartSession) {
-      set({
-        phase: 'flow',
-        status: 'running',
-        endAt: computeEndAt(settingsSnapshot.flowMin),
-        remainingMs: null,
-      })
     } else {
-      // 대기 상태로 전환
-      set({
-        phase: 'flow',
-        status: 'waiting',
+      // Break → Flow
+      if (autoStartSession) {
+        const updated = {
+          ...timer,
+          phase: 'flow' as TimerPhase,
+          status: 'running' as TimerStatus,
+          endAt: computeEndAt(flowMin),
+          remainingMs: null, // 실시간 계산 사용
+        }
+        set((state) => ({
+          timers: { ...state.timers, [todoId]: updated }
+        }))
+        savePersisted(todoId, updated)
+      } else {
+        const updated = {
+          ...timer,
+          phase: 'flow' as TimerPhase,
+          status: 'waiting' as TimerStatus,
+          endAt: null,
+          remainingMs: flowMin * MINUTE,
+        }
+        set((state) => ({
+          timers: { ...state.timers, [todoId]: updated }
+        }))
+        savePersisted(todoId, updated)
+      }
+    }
+  },
+
+  skipToPrev: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer || timer.mode !== 'pomodoro') return
+    
+    const { phase, cycleCount, settingsSnapshot } = timer
+    if (!settingsSnapshot) return
+    
+    const { breakMin, longBreakMin, flowMin, cycleEvery } = settingsSnapshot
+    
+    if (phase === 'flow') {
+      if (cycleCount === 0) return // 첫 Flow는 이전 없음
+      
+      // Flow → 이전 Break (waiting 상태로 시작)
+      const isLongBreak = cycleCount % cycleEvery === 0
+      const prevBreakDuration = isLongBreak ? longBreakMin : breakMin
+      const prevPhase = isLongBreak ? 'long' : 'short'
+      
+      const updated = {
+        ...timer,
+        phase: prevPhase as TimerPhase,
+        status: 'waiting' as TimerStatus,
         endAt: null,
-        remainingMs: settingsSnapshot.flowMin * MINUTE,
-      })
-    }
-  },
-
-  // ← 이전 세션으로 (타임라인 기준)
-  skipToPrev: () => {
-    const { settingsSnapshot, todoId, phase, cycleCount } = get()
-    if (!settingsSnapshot || !todoId) return
-    
-    if (phase === 'flow') {
-      // Flow → 이전 Break로 (cycleCount가 0이면 불가)
-      if (cycleCount === 0) return
-      
-      const isLong = cycleCount % settingsSnapshot.cycleEvery === 0
-      const prevPhase: TimerPhase = isLong ? 'long' : 'short'
-      const prevDuration = isLong ? settingsSnapshot.longBreakMin : settingsSnapshot.breakMin
-      
-      set({
-        phase: prevPhase,
-        status: 'running',
-        endAt: computeEndAt(prevDuration),
-        remainingMs: null,
+        remainingMs: prevBreakDuration * MINUTE,
         // cycleCount 유지 (이전 break는 현재 사이클의 일부)
-      })
+      }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
     } else {
-      // Break → 이전 Flow로 (cycleCount - 1)
-      set({
-        phase: 'flow',
-        status: 'running',
-        endAt: computeEndAt(settingsSnapshot.flowMin),
-        remainingMs: null,
+      // Break → 이전 Flow (waiting 상태로 시작)
+      const updated = {
+        ...timer,
+        phase: 'flow' as TimerPhase,
+        status: 'waiting' as TimerStatus,
+        endAt: null,
+        remainingMs: flowMin * MINUTE,
         cycleCount: Math.max(0, cycleCount - 1),
-      })
+      }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
     }
   },
 
-  // → 다음 세션으로 (타임라인 기준)
-  skipToNext: () => {
-    const { settingsSnapshot, todoId, phase, cycleCount } = get()
-    if (!settingsSnapshot || !todoId) return
+  skipToNext: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer || timer.mode !== 'pomodoro') return
+    
+    const { phase, cycleCount, settingsSnapshot } = timer
+    if (!settingsSnapshot) return
+    
+    const { breakMin, longBreakMin, flowMin, cycleEvery } = settingsSnapshot
     
     if (phase === 'flow') {
-      // Flow → 다음 Break로 (cycleCount + 1)
+      // Flow → 다음 Break (waiting 상태로 시작)
       const nextCycle = cycleCount + 1
-      const isLong = nextCycle % settingsSnapshot.cycleEvery === 0
-      const nextPhase: TimerPhase = isLong ? 'long' : 'short'
-      const nextDuration = isLong ? settingsSnapshot.longBreakMin : settingsSnapshot.breakMin
+      const isLongBreak = nextCycle % cycleEvery === 0
+      const nextBreakDuration = isLongBreak ? longBreakMin : breakMin
+      const nextPhase = isLongBreak ? 'long' : 'short'
       
-      set({
-        phase: nextPhase,
-        status: 'running',
-        endAt: computeEndAt(nextDuration),
-        remainingMs: null,
+      const updated = {
+        ...timer,
+        phase: nextPhase as TimerPhase,
+        status: 'waiting' as TimerStatus,
+        endAt: null,
+        remainingMs: nextBreakDuration * MINUTE,
         cycleCount: nextCycle,
-      })
+      }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
     } else {
-      // Break → 다음 Flow로
-      set({
-        phase: 'flow',
-        status: 'running',
-        endAt: computeEndAt(settingsSnapshot.flowMin),
-        remainingMs: null,
+      // Break → 다음 Flow (waiting 상태로 시작)
+      const updated = {
+        ...timer,
+        phase: 'flow' as TimerPhase,
+        status: 'waiting' as TimerStatus,
+        endAt: null,
+        remainingMs: flowMin * MINUTE,
         // cycleCount 유지
-      })
+      }
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: updated }
+      }))
+      savePersisted(todoId, updated)
     }
   },
 
-  // ← 이전으로 갈 수 있는지
-  canSkipToPrev: () => {
-    const { phase, cycleCount, mode } = get()
-    if (mode !== 'pomodoro') return false
-    // 첫 Flow에서는 이전 불가
-    if (phase === 'flow' && cycleCount === 0) return false
+  canSkipToPrev: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer || timer.mode !== 'pomodoro') return false
+    
+    // Flow의 첫 사이클(cycleCount=0)이면 이전 세션 없음
+    if (timer.phase === 'flow' && timer.cycleCount === 0) return false
     return true
   },
 
-  // → 다음으로 갈 수 있는지
-  canSkipToNext: () => {
-    const { mode } = get()
-    if (mode !== 'pomodoro') return false
-    // 항상 다음으로 스킵 가능
+  canSkipToNext: (todoId) => {
+    const timer = get().timers[todoId]
+    if (!timer || timer.mode !== 'pomodoro') return false
     return true
   },
 
   restore: () => {
-    set(hydrateState(loadPersisted()))
+    const timers = loadAllPersisted()
+    set({ timers })
   },
 
   syncWithNow: () => {
-    const { status, endAt, mode, startedAt } = get()
-    if (status !== 'running') return
+    const timers = get().timers
+    const updates: Record<string, SingleTimerState> = {}
     
-    if (mode === 'stopwatch' && startedAt) {
-      const newElapsed = get().elapsedMs + (Date.now() - startedAt)
-      set({ elapsedMs: newElapsed, startedAt: Date.now() })
-      return
-    }
-    
-    if (mode === 'pomodoro' && endAt) {
-      const remaining = endAt - Date.now()
-      if (remaining <= 0) {
-        get().completePhase()
-      } else {
-        set({ remainingMs: remaining })
+    Object.entries(timers).forEach(([todoId, timer]) => {
+      if (timer.mode === 'stopwatch' && timer.status === 'running' && timer.startedAt) {
+        const delta = Date.now() - timer.startedAt
+        updates[todoId] = {
+          ...timer,
+          elapsedMs: timer.elapsedMs + delta,
+          startedAt: Date.now(),
+        }
       }
+      
+      if (timer.mode === 'pomodoro' && timer.status === 'running' && timer.endAt) {
+        const remaining = timer.endAt - Date.now()
+        if (remaining <= 0) {
+          playNotificationSound()
+          get().completePhase(todoId)
+        } else {
+          // remainingMs 업데이트 (리렌더링 트리거용, UI는 endAt 기준으로 실시간 계산)
+          updates[todoId] = { ...timer, remainingMs: remaining }
+        }
+      }
+    })
+    
+    if (Object.keys(updates).length > 0) {
+      set((state) => ({
+        timers: { ...state.timers, ...updates }
+      }))
     }
   },
 }))
 
-useTimerStore.subscribe((state) => {
-  // idle 상태면 sessionStorage 삭제
-  if (state.status === 'idle') {
-    if (typeof window !== 'undefined') {
-      try {
-        sessionStorage.removeItem(STORAGE_KEY)
-      } catch {
-        // ignore
-      }
-    }
-  } else {
-    // 그 외 상태는 저장
-    savePersisted({
-      todoId: state.todoId,
-      mode: state.mode,
-      phase: state.phase,
-      status: state.status,
-      endAt: state.endAt,
-      remainingMs: state.remainingMs,
-      elapsedMs: state.elapsedMs,
-      initialFocusMs: state.initialFocusMs,
-      startedAt: state.startedAt,
-      cycleCount: state.cycleCount,
-      settingsSnapshot: state.settingsSnapshot,
-    })
-  }
-})
+// 개별 타이머 상태를 가져오는 헬퍼 훅
+export function useTimer(todoId: string | null) {
+  return useTimerStore((state) => todoId ? state.timers[todoId] : undefined)
+}
+
+// 개별 타이머의 특정 필드만 구독하는 헬퍼 훅
+export function useTimerField<K extends keyof SingleTimerState>(
+  todoId: string | null,
+  field: K
+): SingleTimerState[K] | undefined {
+  return useTimerStore((state) => todoId ? state.timers[todoId]?.[field] : undefined)
+}

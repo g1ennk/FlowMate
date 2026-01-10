@@ -260,19 +260,21 @@ function TodosPage() {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActiveDragEnd}>
               <SortableContext items={activeTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {activeTodos.map((todo) => {
-                  // 실시간 타이머 정보 계산
-                  const isActiveTimer = (store.status === 'running' || store.status === 'paused') && store.todoId === todo.id
+                  // 실시간 타이머 정보 계산 (각 todo의 개별 타이머 조회)
+                  const timer = store.getTimer(todo.id)
+                  const isActiveTimer = timer && (timer.status === 'running' || timer.status === 'paused')
                   let activeTimerElapsedMs: number | undefined = undefined
                   let activeTimerRemainingMs: number | undefined = undefined
+                  let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
                   
-                  if (isActiveTimer) {
-                    if (store.mode === 'stopwatch') {
-                      // 일반 타이머: elapsedMs 그대로 사용
-                      activeTimerElapsedMs = store.elapsedMs
-                    } else if (store.mode === 'pomodoro' && store.phase === 'flow') {
-                      // 뽀모도로 Flow: 남은 시간 전달 (카운트다운용)
-                      const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
-                      activeTimerRemainingMs = remaining
+                  if (isActiveTimer && timer) {
+                    if (timer.mode === 'stopwatch') {
+                      // 일반 타이머: 카운트업 (실시간 계산)
+                      activeTimerElapsedMs = timer.elapsedMs
+                    } else if (timer.mode === 'pomodoro') {
+                      // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
+                      activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
+                      activeTimerPhase = timer.phase
                     }
                   }
                   
@@ -295,10 +297,11 @@ function TodosPage() {
                       onCancelEdit={actions.handleCancelEdit}
                       onDelete={() => actions.handleDelete(todo.id)}
                       onOpenMenu={() => actions.setSelectedTodo(todo)}
-                      onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || store.mode)}
+                      onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode)}
                       isActiveTimer={isActiveTimer}
                       activeTimerElapsedMs={activeTimerElapsedMs}
                       activeTimerRemainingMs={activeTimerRemainingMs}
+                      activeTimerPhase={activeTimerPhase}
                     />
                   )
                 })}
@@ -316,19 +319,21 @@ function TodosPage() {
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDoneDragEnd}>
                   <SortableContext items={doneTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                     {doneTodos.map((todo) => {
-                      // 실시간 타이머 정보 계산
-                      const isActiveTimer = (store.status === 'running' || store.status === 'paused') && store.todoId === todo.id
+                      // 실시간 타이머 정보 계산 (각 todo의 개별 타이머 조회)
+                      const timer = store.getTimer(todo.id)
+                      const isActiveTimer = timer && (timer.status === 'running' || timer.status === 'paused')
                       let activeTimerElapsedMs: number | undefined = undefined
                       let activeTimerRemainingMs: number | undefined = undefined
+                      let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
                       
-                      if (isActiveTimer) {
-                        if (store.mode === 'stopwatch') {
-                          // 일반 타이머: elapsedMs 그대로 사용
-                          activeTimerElapsedMs = store.elapsedMs
-                        } else if (store.mode === 'pomodoro' && store.phase === 'flow') {
-                          // 뽀모도로 Flow: 남은 시간 전달 (카운트다운용)
-                          const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
-                          activeTimerRemainingMs = remaining
+                      if (isActiveTimer && timer) {
+                        if (timer.mode === 'stopwatch') {
+                          // 일반 타이머: 카운트업 (실시간 계산)
+                          activeTimerElapsedMs = timer.elapsedMs
+                        } else if (timer.mode === 'pomodoro') {
+                          // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
+                          activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
+                          activeTimerPhase = timer.phase
                         }
                       }
                       
@@ -351,10 +356,11 @@ function TodosPage() {
                           onCancelEdit={actions.handleCancelEdit}
                           onDelete={() => actions.handleDelete(todo.id)}
                           onOpenMenu={() => actions.setSelectedTodo(todo)}
-                          onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || store.mode)}
+                          onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode)}
                           isActiveTimer={isActiveTimer}
                           activeTimerElapsedMs={activeTimerElapsedMs}
                           activeTimerRemainingMs={activeTimerRemainingMs}
+                          activeTimerPhase={activeTimerPhase}
                         />
                       )
                     })}

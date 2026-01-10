@@ -1,21 +1,17 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PHASE_LABELS } from '../../lib/constants'
-import { formatMs, MINUTE_MS } from '../../lib/time'
+import { MINUTE_MS } from '../../lib/time'
 import { usePomodoroSettings } from '../settings/hooks'
 import { useAddFocus, useCompleteTodo, useResetTimer, useUpdateTodo } from '../todos/hooks'
 import { toast } from 'react-hot-toast'
 import {
   ChevronLeftIcon,
-  PlayIcon,
-  PauseIcon,
-  StopIcon,
-  CheckIcon,
   ChevronRightIcon,
-  ClockIcon,
+  PlayIcon,
   ArrowPathIcon,
 } from '../../ui/Icons'
-import { useTimerStore } from './timerStore'
+import { useTimer, useTimerStore } from './timerStore'
 import { useTimerTicker } from './useTimerTicker'
 
 type TimerFullScreenProps = {
@@ -51,7 +47,9 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
   const addFocus = useAddFocus() // 일반 타이머용 (시간만)
   const updateTodo = useUpdateTodo()
   const resetTimer = useResetTimer() // 타이머 리셋용 (기록 삭제)
+  
   const store = useTimerStore()
+  const timer = useTimer(todoId)
   const { startPomodoro, startStopwatch, pause, resume, stop, reset, updateInitialFocusMs, skipToPrev, skipToNext, canSkipToPrev, canSkipToNext } = store
 
   useTimerTicker()
@@ -60,18 +58,27 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
   useEffect(() => {
     if (isOpen) {
       // 이미 타이머가 진행 중이면 해당 모드로
-      if (store.status !== 'idle' && store.todoId === todoId) {
-        setSelectedMode(store.mode)
+      if (timer && timer.status !== 'idle') {
+        setSelectedMode(timer.mode)
       } else if (initialMode) {
         // initialMode가 지정되면 해당 모드로 바로 시작 (paused 상태)
+        // 단, 이미 다른 모드의 타이머가 실행 중이면 막기
+        if (timer && timer.status !== 'idle' && timer.mode !== initialMode) {
+          const modeText = initialMode === 'stopwatch' ? '일반 타이머' : '뽀모도로 타이머'
+          const existingModeText = timer.mode === 'stopwatch' ? '일반 타이머' : '뽀모도로 타이머'
+          toast.error(`이미 ${existingModeText}가 실행 중입니다`)
+          onClose()
+          return
+        }
+        
         setSelectedMode(initialMode)
         if (initialMode === 'stopwatch') {
           // 항상 focusSeconds부터 시작 (완료/미완료 무관)
           startStopwatch(todoId, focusSeconds * 1000)
-          pause()
+          pause(todoId)
         } else if (settings) {
           startPomodoro(todoId, settings)
-          pause()
+          pause(todoId)
         }
       }
       setMounted(true)
@@ -82,26 +89,27 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
       })
     } else {
       setVisible(false)
-      const timer = setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         setMounted(false)
-        setSelectedMode(null)
+        // selectedMode는 mounted가 false가 된 후에만 초기화
+        setTimeout(() => setSelectedMode(null), 0)
       }, 300)
-      return () => clearTimeout(timer)
+      return () => clearTimeout(timeoutId)
     }
-  }, [isOpen, store.status, store.todoId, store.mode, todoId, initialMode, focusSeconds, settings, startStopwatch, startPomodoro, pause])
+  }, [isOpen, timer, todoId, initialMode, focusSeconds, settings, startStopwatch, startPomodoro, pause])
 
   // 닫을 때 타이머 처리
   const handleClose = async () => {
-    if (store.status !== 'idle' && store.todoId === todoId) {
+    if (timer && timer.status !== 'idle') {
       // Waiting 상태는 확인 없이 바로 닫기
-      if (store.status === 'waiting') {
-        stop()
+      if (timer.status === 'waiting') {
+        stop(todoId)
         onClose()
         return
       }
       
       // Paused 상태는 그대로 닫기 (기록 X)
-      if (store.status === 'paused') {
+      if (timer.status === 'paused') {
         onClose()
         return
       }
@@ -115,6 +123,12 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
   }
 
   const handleStartStopwatch = () => {
+    // 이미 다른 모드의 타이머가 실행 중이면 막기
+    if (timer && timer.status !== 'idle' && timer.mode === 'pomodoro') {
+      toast.error('이미 뽀모도로 타이머가 실행 중입니다')
+      return
+    }
+    
     setSelectedMode('stopwatch')
     // 항상 focusSeconds부터 시작 (완료/미완료 무관)
     startStopwatch(todoId, focusSeconds * 1000)
@@ -125,36 +139,43 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
       toast.error('설정을 불러오는 중...')
       return
     }
+    
+    // 이미 다른 모드의 타이머가 실행 중이면 막기
+    if (timer && timer.status !== 'idle' && timer.mode === 'stopwatch') {
+      toast.error('이미 일반 타이머가 실행 중입니다')
+      return
+    }
+    
     setSelectedMode('pomodoro')
     startPomodoro(todoId, settings)
   }
 
   // 현재 phase의 계획된 시간(ms) 계산
   const getPlannedMs = () => {
-    const snapshot = store.settingsSnapshot ?? settings
+    const snapshot = timer?.settingsSnapshot ?? settings
     if (!snapshot) return 25 * MINUTE_MS
     
-    if (store.phase === 'flow') return snapshot.flowMin * MINUTE_MS
-    if (store.phase === 'long') return snapshot.longBreakMin * MINUTE_MS
+    if (timer?.phase === 'flow') return snapshot.flowMin * MINUTE_MS
+    if (timer?.phase === 'long') return snapshot.longBreakMin * MINUTE_MS
     return snapshot.breakMin * MINUTE_MS // 'short'
   }
 
   // 뽀모도로 정지 (■) - 시간만 기록 + pause 상태로 저장 후 닫기
   const handlePomodoroStop = async () => {
-    if (!store.todoId) return
+    if (!timer) return
     // Flow phase에서만 시간 기록 (횟수 증가 X)
-    if (store.phase === 'flow') {
+    if (timer.phase === 'flow') {
       const plannedMs = getPlannedMs()
-      const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
+      const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
       const elapsedSec = Math.round((plannedMs - remaining) / 1000)
       if (elapsedSec > 0) {
-        await addFocus.mutateAsync({ id: store.todoId, body: { durationSec: elapsedSec } })
+        await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
         toast.success('기록됨')
       }
-      pause() // pause 상태로 변경 (sessionStorage에 저장됨)
+      pause(todoId) // pause 상태로 변경 (sessionStorage에 저장됨)
     } else {
       // Break에서는 기록 없이 pause
-      pause() // pause 상태로 변경
+      pause(todoId) // pause 상태로 변경
       toast.success('타이머 종료')
     }
     onClose() // 타이머 닫기
@@ -162,48 +183,50 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
 
   // 뽀모도로 완료 (✓) - 기록 + 태스크 완료 (타이머 상태 유지)
   const handlePomodoroComplete = async () => {
-    if (!store.todoId) return
+    if (!timer) return
     
     // Flow가 아니면 완료 불가
-    if (store.phase !== 'flow') {
+    if (timer.phase !== 'flow') {
       toast.error('Flow 중에만 태스크를 완료할 수 있습니다')
       return
     }
     
     // 타이머 일시정지 (상태 유지)
-    if (store.status === 'running') {
-      pause()
+    if (timer.status === 'running') {
+      pause(todoId)
     }
     
     // Flow phase에서 시간 기록
     const plannedMs = getPlannedMs()
-    const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
+    const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
     const elapsedSec = Math.round((plannedMs - remaining) / 1000)
     
     if (elapsedSec > 0) {
       // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
       if (remaining < 5000) {
-        await completeTodo.mutateAsync({ id: store.todoId, body: { durationSec: elapsedSec } })
+        await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
       } else {
         // 중간에 완료하면 시간만 기록
-        await addFocus.mutateAsync({ id: store.todoId, body: { durationSec: elapsedSec } })
+        await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
       }
     }
     
-    await updateTodo.mutateAsync({ id: store.todoId, patch: { isDone: true } })
+    await updateTodo.mutateAsync({ id: todoId, patch: { isDone: true } })
     toast.success('태스크 완료! 🎉')
     onClose()
   }
 
   // 일반 타이머 정지 (■) - 시간 기록 + 타이머 일시정지 유지
   const handleStopwatchStop = async () => {
+    if (!timer) return
+    
     // pause 먼저 호출 (정확한 elapsedMs 계산)
-    if (store.status === 'running') {
-      pause()
+    if (timer.status === 'running') {
+      pause(todoId)
     }
     
     // 추가된 시간만 계산 (현재 시간 - 초기 시간)
-    const additionalMs = store.elapsedMs - store.initialFocusMs
+    const additionalMs = timer.elapsedMs - timer.initialFocusMs
     const additionalSec = Math.round(additionalMs / 1000)
     
     if (additionalSec > 0) {
@@ -211,7 +234,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
       
       // initialFocusMs와 elapsedMs 업데이트 (기록된 시간으로 동기화)
       const newFocusMs = response.focusSeconds * 1000
-      updateInitialFocusMs(newFocusMs)
+      updateInitialFocusMs(todoId, newFocusMs)
       
       toast.success('기록됨')
     }
@@ -221,20 +244,22 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
 
   // 일반 타이머 완료 (✓) - 추가 시간 기록 + 태스크 완료 (타이머 상태 유지, 횟수 증가 X)
   const handleStopwatchComplete = async () => {
+    if (!timer) return
+    
     // pause 먼저 호출 (정확한 elapsedMs 계산)
-    if (store.status === 'running') {
-      pause()
+    if (timer.status === 'running') {
+      pause(todoId)
     }
     
     // 추가된 시간만 계산
-    const additionalMs = store.elapsedMs - store.initialFocusMs
+    const additionalMs = timer.elapsedMs - timer.initialFocusMs
     const additionalSec = Math.round(additionalMs / 1000)
     
     if (additionalSec > 0) {
       const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: additionalSec } })
       // initialFocusMs와 elapsedMs 업데이트 (기록된 시간으로 동기화)
       const newFocusMs = response.focusSeconds * 1000
-      updateInitialFocusMs(newFocusMs)
+      updateInitialFocusMs(todoId, newFocusMs)
     }
     
     await updateTodo.mutateAsync({ id: todoId, patch: { isDone: true } })
@@ -244,24 +269,33 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
 
   if (!mounted) return null
 
-  const isRunning = store.status === 'running'
-  const isPaused = store.status === 'paused'
-  const isWaiting = store.status === 'waiting'
-  const isActive = store.status !== 'idle' && store.todoId === todoId
+  const isRunning = timer?.status === 'running'
+  const isPaused = timer?.status === 'paused'
+  const isWaiting = timer?.status === 'waiting'
+  const isActive = timer && timer.status !== 'idle'
 
   // 타이머 값 계산
-  const remainingMs =
-    store.remainingMs ??
-    (store.endAt ? Math.max(0, store.endAt - Date.now()) : (settings?.flowMin ?? 25) * MINUTE_MS)
-  const cycleEvery = store.settingsSnapshot?.cycleEvery ?? settings?.cycleEvery ?? 4
-  const currentCycle = store.cycleCount % cycleEvery
-  const isFlow = store.phase === 'flow'
+  const remainingMs = timer?.endAt 
+    ? Math.max(0, timer.endAt - Date.now())  // running: 실시간 계산
+    : (timer?.remainingMs ?? (settings?.flowMin ?? 25) * MINUTE_MS)  // paused/waiting: 저장된 값
+  const cycleEvery = timer?.settingsSnapshot?.cycleEvery ?? settings?.cycleEvery ?? 4
+  const currentCycle = (timer?.cycleCount ?? 0) % cycleEvery
+  const isFlow = timer?.phase === 'flow'
+
+  // 카운트다운 표시에 맞춘 포맷터 (초 단위는 올림 처리해 홈 리스트와 일치)
+  const formatCountdown = (ms: number): string => {
+    const clamped = Math.max(0, ms)
+    const totalSeconds = Math.ceil(clamped / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
 
   // Phase별 배경색
   const getBackgroundColor = () => {
-    if (selectedMode === 'stopwatch' || store.mode === 'stopwatch') return 'bg-black'
-    if (selectedMode === 'pomodoro' || store.mode === 'pomodoro') {
-      if (store.phase === 'flow' || !isActive) return 'bg-black' // Flow 또는 시작 전: 블랙
+    if (selectedMode === 'stopwatch' || timer?.mode === 'stopwatch') return 'bg-black'
+    if (selectedMode === 'pomodoro' || timer?.mode === 'pomodoro') {
+      if (timer?.phase === 'flow' || !isActive) return 'bg-black' // Flow 또는 시작 전: 블랙
       return 'bg-emerald-600' // Break: 홈 버튼 색
     }
     return 'bg-black'
@@ -281,7 +315,9 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
-        <h1 className="text-base font-medium text-white">타이머</h1>
+        <h1 className="text-base font-medium text-white">
+          {selectedMode === 'pomodoro' || (isActive && timer?.mode === 'pomodoro') ? '뽀모도로 타이머' : '타이머'}
+        </h1>
         {/* 리셋 버튼 (타이머 활성화 시에만 표시) */}
         {(selectedMode || isActive) ? (
           <button
@@ -305,20 +341,28 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
         <div className="mb-4 h-px w-48 bg-gray-700" />
 
         {/* 타이머 표시 */}
-        {selectedMode === 'stopwatch' || (isActive && store.mode === 'stopwatch') ? (
+        {selectedMode === 'stopwatch' || (isActive && timer?.mode === 'stopwatch') ? (
           // 일반 타이머 (Count-up)
           <>
-            {/* 타이머 숫자 */}
-            <p className="mb-12 text-center text-6xl font-light tabular-nums tracking-tight text-gray-400">
-              {formatStopwatch(store.elapsedMs)}
+            {/* Flow 라벨 */}
+            <p className="mb-4 text-center text-base font-medium text-emerald-400">
+              Flow
             </p>
+
+            {/* 타이머 숫자 */}
+            <p className="mb-4 text-center text-6xl font-light tabular-nums tracking-tight text-gray-400">
+              {formatStopwatch(timer?.elapsedMs ?? 0)}
+            </p>
+
+            {/* 구분선 */}
+            <div className="mb-8 h-px w-48 bg-gray-700" />
 
             {/* 컨트롤 */}
             <div className="flex items-center justify-center gap-3">
               {isRunning || isPaused ? (
                 <>
                   <button
-                    onClick={isRunning ? pause : resume}
+                    onClick={isRunning ? () => pause(todoId) : () => resume(todoId)}
                     className="rounded-full bg-gray-700 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-600"
                   >
                     {isRunning ? '일시정지' : '이어하기'}
@@ -352,25 +396,25 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
             {/* Phase 라벨 */}
             <p
               className={`mb-4 text-center text-base font-medium transition-colors ${
-                store.phase === 'flow' ? 'text-emerald-400' : 'text-white'
+                timer?.phase === 'flow' ? 'text-emerald-400' : 'text-white'
               }`}
             >
-              {PHASE_LABELS[store.phase] ?? 'Flow'}
+              {timer?.phase ? PHASE_LABELS[timer.phase] : 'Flow'}
             </p>
 
             {/* 타이머 숫자 */}
             <p
               className={`mb-4 text-center text-6xl font-light tabular-nums tracking-tight transition-colors ${
-                store.phase === 'flow' ? 'text-gray-400' : 'text-white'
+                timer?.phase === 'flow' ? 'text-gray-400' : 'text-white'
               }`}
             >
-              {formatMs(remainingMs)}
+              {formatCountdown(remainingMs)}
             </p>
 
             {/* 구분선 */}
             <div
               className={`mb-6 h-px w-48 transition-colors ${
-                store.phase === 'flow' ? 'bg-gray-700' : 'bg-emerald-300'
+                timer?.phase === 'flow' ? 'bg-gray-700' : 'bg-emerald-300'
               }`}
             />
 
@@ -378,10 +422,10 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
             <div className="mb-8 flex items-center justify-center gap-3">
               {/* ← 이전 세션으로 */}
               <button
-                onClick={skipToPrev}
-                disabled={!canSkipToPrev()}
+                onClick={() => skipToPrev(todoId)}
+                disabled={!canSkipToPrev(todoId)}
                 className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                  canSkipToPrev()
+                  canSkipToPrev(todoId)
                     ? isFlow
                       ? 'text-gray-400 hover:bg-gray-800'
                       : 'text-white hover:bg-emerald-700'
@@ -418,10 +462,10 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
 
               {/* → 다음 세션으로 */}
               <button
-                onClick={skipToNext}
-                disabled={!canSkipToNext()}
+                onClick={() => skipToNext(todoId)}
+                disabled={!canSkipToNext(todoId)}
                 className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                  canSkipToNext()
+                  canSkipToNext(todoId)
                     ? isFlow
                       ? 'text-gray-400 hover:bg-gray-800'
                       : 'text-white hover:bg-emerald-700'
@@ -436,7 +480,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
             {/* 컨트롤 */}
             <div className="flex items-center justify-center gap-3">
               <button
-                onClick={isRunning ? pause : resume}
+                onClick={isRunning ? () => pause(todoId) : () => resume(todoId)}
                 className={`rounded-full px-6 py-3 text-sm font-medium text-white transition-colors ${
                   isFlow
                     ? 'bg-gray-700 hover:bg-gray-600'
@@ -492,7 +536,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
               <button
                 onClick={() => {
                   setShowCompleteModal(false)
-                  if (store.mode === 'stopwatch') {
+                  if (timer?.mode === 'stopwatch') {
                     handleStopwatchComplete()
                   } else {
                     handlePomodoroComplete()
@@ -528,7 +572,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
                 onClick={async () => {
                   setShowResetModal(false)
                   // 타이머 즉시 리셋 (store 초기화, store.initialFocusMs도 0으로 초기화됨)
-                  reset()
+                  reset(todoId)
                   // DB에서 기록 삭제 (focusSeconds, pomodoroDone, timerMode 초기화)
                   await resetTimer.mutateAsync(todoId)
                   toast.success('기록이 초기화되었습니다')

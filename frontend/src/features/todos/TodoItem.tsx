@@ -1,6 +1,7 @@
 import {
   CheckIcon,
   ClockIcon,
+  StopIcon,
   MoreVerticalIcon,
 } from '../../ui/Icons'
 
@@ -25,6 +26,7 @@ export type TodoItemProps = {
   isActiveTimer?: boolean
   activeTimerElapsedMs?: number
   activeTimerRemainingMs?: number // 뽀모도로용 (카운트다운)
+  activeTimerPhase?: 'flow' | 'short' | 'long' // 뽀모도로 phase
 }
 
 export function TodoItem({
@@ -45,13 +47,14 @@ export function TodoItem({
   isActiveTimer,
   activeTimerElapsedMs,
   activeTimerRemainingMs,
+  activeTimerPhase,
 }: TodoItemProps) {
   // 실시간 타이머가 실행 중일 때
   let displayTimeSeconds: number
   let isCountdown = false
   
   if (isActiveTimer) {
-    if (timerMode === 'pomodoro' && activeTimerRemainingMs !== undefined) {
+    if (activeTimerRemainingMs !== undefined) {
       // 뽀모도로: 카운트다운 (남은 시간 표시)
       displayTimeSeconds = Math.ceil(activeTimerRemainingMs / 1000)
       isCountdown = true
@@ -131,26 +134,33 @@ export function TodoItem({
             {title}
           </p>
           {/* 누적 통계 표시 - 타이머 버튼 */}
-          {(pomodoroDone > 0 || totalFocusSeconds > 0) && (
+          {(pomodoroDone > 0 || totalFocusSeconds > 0 || isActiveTimer) && (
             <button
               onClick={onOpenTimer}
               className="mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors hover:bg-gray-50"
             >
-              <ClockIcon 
-                className={`h-3.5 w-3.5 shrink-0 ${
-                  // 뽀모도로 타이머가 활성화되어 있고 카운트다운 중이면 빨간색
-                  isActiveTimer && isCountdown
-                    ? 'text-red-500'
-                    : timerMode === 'pomodoro'
-                      ? isDone 
-                        ? 'text-red-400' 
-                        : 'text-red-500' // 뽀모도로: 빨간색
-                      : isDone 
-                        ? 'text-emerald-400' 
-                        : 'text-emerald-500' // 일반 또는 미선택: 초록색
-                }`} 
-              />
-              {totalFocusSeconds > 0 && (
+              {/* 휴식 상태일 때 Stop 아이콘, 그 외에는 Clock 아이콘 */}
+              {isActiveTimer && (activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
+                <StopIcon 
+                  className="h-3.5 w-3.5 shrink-0 text-red-500" 
+                />
+              ) : (
+                <ClockIcon 
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    // 뽀모도로 타이머가 활성화되어 있고 카운트다운 중이면 빨간색
+                    isActiveTimer && isCountdown
+                      ? 'text-red-500'
+                      : timerMode === 'pomodoro'
+                        ? isDone 
+                          ? 'text-red-400' 
+                          : 'text-red-500' // 뽀모도로: 빨간색
+                        : isDone 
+                          ? 'text-emerald-400' 
+                          : 'text-emerald-500' // 일반 또는 미선택: 초록색
+                  }`} 
+                />
+              )}
+              {(totalFocusSeconds > 0 || isActiveTimer) && (
                 <span className={`text-xs font-medium tabular-nums ${
                   // 뽀모도로 타이머가 활성화되어 있고 카운트다운 중이면 빨간색
                   isActiveTimer && isCountdown
@@ -162,7 +172,7 @@ export function TodoItem({
                   {focusTimeDisplay}
                 </span>
               )}
-              {pomodoroDone > 0 && totalFocusSeconds > 0 && (
+              {pomodoroDone > 0 && (totalFocusSeconds > 0 || isActiveTimer) && (
                 <span className="text-xs text-gray-300">·</span>
               )}
               {pomodoroDone > 0 && (
