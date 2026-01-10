@@ -4,6 +4,7 @@ import {
   FocusAddResponseSchema,
   PomodoroCompleteRequestSchema,
   PomodoroCompleteResponseSchema,
+  TimerResetResponseSchema,
   TodoCreateSchema,
   TodoListSchema,
   TodoPatchSchema,
@@ -12,6 +13,7 @@ import {
   type FocusAddResponse,
   type PomodoroCompleteRequest,
   type PomodoroCompleteResponse,
+  type TimerResetResponse,
   type Todo,
   type TodoCreateInput,
   type TodoList,
@@ -38,6 +40,9 @@ export const todoApi = {
       FocusAddRequestSchema.parse(body),
       FocusAddResponseSchema,
     ),
+  // 타이머 리셋 (focusSeconds와 pomodoroDone 초기화)
+  resetTimer: (id: string): Promise<TimerResetResponse> =>
+    api.post(`/todos/${id}/reset`, {}, TimerResetResponseSchema),
   createShape: TodoCreateSchema,
   patchShape: TodoPatchSchema,
 }

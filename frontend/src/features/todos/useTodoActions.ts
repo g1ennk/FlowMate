@@ -40,6 +40,7 @@ export function useTodoActions(selectedDateKey: string) {
 
   // 타이머 풀스크린 상태
   const [timerTodo, setTimerTodo] = useState<Todo | null>(null)
+  const [timerMode, setTimerMode] = useState<'stopwatch' | 'pomodoro' | null>(null)
 
   // === Flow 자동 완료 감지 ===
   useEffect(() => {
@@ -77,9 +78,8 @@ export function useTodoActions(selectedDateKey: string) {
   }
 
   const handleDelete = (id: string) => {
-    if (!confirm('정말 삭제하시겠습니까?')) return
     deleteTodo.mutate(id)
-    toast.success('삭제됨')
+    toast.error('삭제됨')
     setSelectedTodo(null)
   }
 
@@ -123,13 +123,21 @@ export function useTodoActions(selectedDateKey: string) {
   }
 
   // === 타이머 ===
-  const handleOpenTimer = (todo: Todo) => {
-    setTimerTodo(todo)
-    setSelectedTodo(null)
+  const handleOpenTimer = (todo: Todo, currentMode: 'stopwatch' | 'pomodoro' | null) => {
+    // 현재 타이머가 진행 중이면 해당 모드로 열기
+    if (currentMode) {
+      setTimerTodo(todo)
+      setTimerMode(currentMode)
+      setSelectedTodo(null)
+    } else {
+      // 타이머가 진행 중이지 않으면 더보기 메뉴 열기
+      setSelectedTodo(todo)
+    }
   }
 
   const handleCloseTimer = () => {
     setTimerTodo(null)
+    setTimerMode(null)
   }
 
   // 현재 phase의 계획된 시간(ms) 계산
@@ -146,27 +154,49 @@ export function useTodoActions(selectedDateKey: string) {
   const calcElapsedSec = () => {
     const plannedMs = getPlannedMs()
     const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
-    return Math.max(1, Math.round((plannedMs - remaining) / 1000))
+    return Math.round((plannedMs - remaining) / 1000)
   }
 
-  // 타이머 정지 (■) - 시간만 기록 + 타이머 종료 (태스크 미완료, 횟수 X)
+  // 타이머 정지 (■) - 시간 기록 + 타이머 리셋 (태스크 미완료, 횟수 X)
   const handleStopTimer = async () => {
     if (!store.todoId) return
     const todoId = store.todoId
-    // Flow phase에서만 시간 기록 (횟수 증가 X)
-    if (store.phase === 'flow') {
-      const elapsedSec = calcElapsedSec()
-      await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-      store.stop()
-      toast.success('기록됨')
+    
+    // pause 먼저 호출 (정확한 시간 계산)
+    store.pause()
+    
+    if (store.mode === 'stopwatch') {
+      // 일반 타이머: 전체 시간 기록
+      const elapsedSec = Math.round(store.elapsedMs / 1000)
+      
+      if (elapsedSec > 0) {
+        const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+        
+        // 기록된 누적 시간으로 타이머 리셋 (pause 상태 유지)
+        const newFocusMs = response.focusSeconds * 1000
+        store.startStopwatch(todoId, newFocusMs)
+        store.pause()
+        
+        toast.success('기록됨')
+      }
     } else {
-      // Break에서는 기록 없이 종료
+      // Pomodoro: Flow phase에서만 시간 기록 (횟수 증가 X)
+      if (store.phase === 'flow') {
+        const elapsedSec = calcElapsedSec()
+        if (elapsedSec > 0) {
+          await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+          toast.success('기록됨')
+        }
+      } else {
+        // Break에서는 기록 없이 종료
+        toast.success('타이머 종료')
+      }
+      // 뽀모도로는 완전 종료
       store.stop()
-      toast.success('타이머 종료')
     }
   }
 
-  // 태스크 완료 (✓) - 시간 기록 + 태스크 완료 + 타이머 종료
+  // 태스크 완료 (✓) - 추가 시간만 기록 + 태스크 완료 + 타이머 종료
   const handleCompleteTask = async () => {
     if (!store.todoId) return
     const todoId = store.todoId
@@ -177,19 +207,31 @@ export function useTodoActions(selectedDateKey: string) {
       return
     }
     
-    // Flow phase에서만 시간 기록
-    if (store.phase === 'flow') {
-      const elapsedSec = calcElapsedSec()
-      const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
+    if (store.mode === 'stopwatch') {
+      // 일반 타이머: 전체 시간 기록
+      const elapsedSec = Math.round(store.elapsedMs / 1000)
       
-      // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
-      if (remaining < 5000) {
-        await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-      } else {
-        // 중간에 완료하면 시간만 기록
+      if (elapsedSec > 0) {
         await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
       }
+    } else {
+      // Pomodoro: Flow phase에서만 시간 기록
+      if (store.phase === 'flow') {
+        const elapsedSec = calcElapsedSec()
+        const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
+        
+        if (elapsedSec > 0) {
+          // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
+          if (remaining < 5000) {
+            await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+          } else {
+            // 중간에 완료하면 시간만 기록
+            await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+          }
+        }
+      }
     }
+    
     await updateTodo.mutateAsync({ id: todoId, patch: { isDone: true } })
     store.stop()
     toast.success('태스크 완료! 🎉')
@@ -214,6 +256,7 @@ export function useTodoActions(selectedDateKey: string) {
 
     // 타이머 상태
     timerTodo,
+    timerMode,
 
     // 핸들러
     handleCreate,

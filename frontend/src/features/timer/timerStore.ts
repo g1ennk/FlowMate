@@ -13,7 +13,8 @@ type TimerState = {
   status: TimerStatus
   endAt: number | null
   remainingMs: number | null
-  elapsedMs: number // stopwatch용
+  elapsedMs: number // stopwatch용 (항상 focusSeconds * 1000부터 시작)
+  initialFocusMs: number // stopwatch 시작 시 초기 focusSeconds (중복 기록 방지)
   startedAt: number | null // stopwatch 시작 시간
   cycleCount: number
   settingsSnapshot: PomodoroSettings | null
@@ -21,11 +22,12 @@ type TimerState = {
 
 type TimerActions = {
   startPomodoro: (todoId: string, settings: PomodoroSettings) => void
-  startStopwatch: (todoId: string) => void
+  startStopwatch: (todoId: string, initialElapsedMs?: number) => void
   pause: () => void
   resume: () => void
   stop: () => void
   reset: () => void // 🔄 전체 리셋 (첫 Flow로, cycleCount=0)
+  updateInitialFocusMs: (newInitialFocusMs: number) => void // initialFocusMs와 elapsedMs 업데이트
   tick: () => void
   completePhase: () => void
   skipToPrev: () => void // ← 이전 세션으로
@@ -49,6 +51,7 @@ export const initialTimerState: TimerState = {
   endAt: null,
   remainingMs: null,
   elapsedMs: 0,
+  initialFocusMs: 0,
   startedAt: null,
   cycleCount: 0,
   settingsSnapshot: null,
@@ -56,7 +59,7 @@ export const initialTimerState: TimerState = {
 
 type Persisted = Pick<
   TimerState,
-  'todoId' | 'mode' | 'phase' | 'status' | 'endAt' | 'remainingMs' | 'elapsedMs' | 'startedAt' | 'cycleCount' | 'settingsSnapshot'
+  'todoId' | 'mode' | 'phase' | 'status' | 'endAt' | 'remainingMs' | 'elapsedMs' | 'initialFocusMs' | 'startedAt' | 'cycleCount' | 'settingsSnapshot'
 >
 
 const loadPersisted = (): Persisted | null => {
@@ -84,7 +87,7 @@ const hydrateState = (persisted: Persisted | null): TimerState => {
   let endAt = persisted.endAt
   let remainingMs = persisted.remainingMs
   let elapsedMs = persisted.elapsedMs ?? 0
-  let status: TimerStatus = persisted.status
+  const status: TimerStatus = persisted.status
 
   // Pomodoro 모드
   if (persisted.mode === 'pomodoro') {
@@ -134,12 +137,13 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       endAt: computeEndAt(settings.flowMin),
       remainingMs: null,
       elapsedMs: 0,
+      initialFocusMs: 0,
       startedAt: null,
       cycleCount: 0,
     })
   },
 
-  startStopwatch: (todoId) => {
+  startStopwatch: (todoId, initialElapsedMs = 0) => {
     set({
       todoId,
       mode: 'stopwatch',
@@ -148,7 +152,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       status: 'running',
       endAt: null,
       remainingMs: null,
-      elapsedMs: 0,
+      elapsedMs: initialElapsedMs, // focusSeconds * 1000으로 시작
+      initialFocusMs: initialElapsedMs, // 초기값 저장 (중복 기록 방지)
       startedAt: Date.now(),
       cycleCount: 0,
     })
@@ -162,8 +167,9 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       const remaining = Math.max(0, endAt - Date.now())
       set({ status: 'paused', remainingMs: remaining, endAt: null })
     } else if (mode === 'stopwatch' && startedAt) {
-      const newElapsed = elapsedMs + (Date.now() - startedAt)
-      set({ status: 'paused', elapsedMs: newElapsed, startedAt: null })
+      // 현재 시간을 정확히 계산 (syncWithNow 이후라도 다시 계산)
+      const currentElapsed = elapsedMs + (Date.now() - startedAt)
+      set({ status: 'paused', elapsedMs: currentElapsed, startedAt: null })
     }
   },
 
@@ -197,7 +203,10 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     set({ status: 'running', endAt: Date.now() + remainingMs, remainingMs: null })
   },
 
-  stop: () => set({ ...initialTimerState, status: 'idle' }),
+  stop: () => {
+    // idle 상태로 설정하면 subscribe에서 자동으로 sessionStorage 삭제
+    set({ ...initialTimerState, status: 'idle' })
+  },
 
   // 전체 리셋: 첫 Flow로 돌아가고 cycleCount=0
   reset: () => {
@@ -205,32 +214,46 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     if (!todoId) return
     
     if (mode === 'stopwatch') {
-      // 일반 타이머는 0으로 초기화하고 시작
+      // 일반 타이머는 0으로 초기화 (paused 상태, 버튼을 누르면 시작)
       set({
         todoId,
         mode: 'stopwatch',
         settingsSnapshot: null,
         phase: 'flow',
-        status: 'running',
+        status: 'paused',
         endAt: null,
         remainingMs: null,
         elapsedMs: 0,
-        startedAt: Date.now(),
+        initialFocusMs: 0,
+        startedAt: null,
         cycleCount: 0,
       })
     } else if (mode === 'pomodoro' && settingsSnapshot) {
-      // 뽀모도로는 첫 Flow로 리셋
+      // 뽀모도로는 첫 Flow로 리셋 (paused 상태, 버튼을 누르면 시작)
       set({
         todoId,
         mode: 'pomodoro',
         settingsSnapshot,
         phase: 'flow',
-        status: 'running',
-        endAt: computeEndAt(settingsSnapshot.flowMin),
-        remainingMs: null,
+        status: 'paused',
+        endAt: null,
+        remainingMs: settingsSnapshot.flowMin * MINUTE,
         elapsedMs: 0,
+        initialFocusMs: 0,
         startedAt: null,
         cycleCount: 0,
+      })
+    }
+  },
+
+  // initialFocusMs와 elapsedMs를 동기화 (완료 후 시간 업데이트용)
+  updateInitialFocusMs: (newInitialFocusMs: number) => {
+    const { mode, status } = get()
+    // stopwatch 모드이고 paused 상태일 때만 업데이트
+    if (mode === 'stopwatch' && status === 'paused') {
+      set({
+        elapsedMs: newInitialFocusMs,
+        initialFocusMs: newInitialFocusMs,
       })
     }
   },
@@ -415,17 +438,30 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   },
 }))
 
-useTimerStore.subscribe((state) =>
-  savePersisted({
-    todoId: state.todoId,
-    mode: state.mode,
-    phase: state.phase,
-    status: state.status,
-    endAt: state.endAt,
-    remainingMs: state.remainingMs,
-    elapsedMs: state.elapsedMs,
-    startedAt: state.startedAt,
-    cycleCount: state.cycleCount,
-    settingsSnapshot: state.settingsSnapshot,
-  }),
-)
+useTimerStore.subscribe((state) => {
+  // idle 상태면 sessionStorage 삭제
+  if (state.status === 'idle') {
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem(STORAGE_KEY)
+      } catch {
+        // ignore
+      }
+    }
+  } else {
+    // 그 외 상태는 저장
+    savePersisted({
+      todoId: state.todoId,
+      mode: state.mode,
+      phase: state.phase,
+      status: state.status,
+      endAt: state.endAt,
+      remainingMs: state.remainingMs,
+      elapsedMs: state.elapsedMs,
+      initialFocusMs: state.initialFocusMs,
+      startedAt: state.startedAt,
+      cycleCount: state.cycleCount,
+      settingsSnapshot: state.settingsSnapshot,
+    })
+  }
+})

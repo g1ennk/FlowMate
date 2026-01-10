@@ -1,7 +1,7 @@
 import {
   CheckIcon,
+  ClockIcon,
   MoreVerticalIcon,
-  PlayIcon,
 } from '../../ui/Icons'
 
 export type TodoItemProps = {
@@ -12,6 +12,7 @@ export type TodoItemProps = {
   isDone: boolean
   isEditing: boolean
   editingTitle: string
+  timerMode?: 'stopwatch' | 'pomodoro' | null
   onEditingTitleChange: (value: string) => void
   onToggle: () => void
   onEdit: () => void
@@ -20,6 +21,10 @@ export type TodoItemProps = {
   onDelete: () => void
   onOpenMenu?: () => void
   onOpenTimer?: () => void
+  // 실시간 타이머 정보
+  isActiveTimer?: boolean
+  activeTimerElapsedMs?: number
+  activeTimerRemainingMs?: number // 뽀모도로용 (카운트다운)
 }
 
 export function TodoItem({
@@ -30,14 +35,43 @@ export function TodoItem({
   isDone,
   isEditing,
   editingTitle,
+  timerMode,
   onEditingTitleChange,
   onToggle,
   onSaveEdit,
   onCancelEdit,
   onOpenMenu,
   onOpenTimer,
+  isActiveTimer,
+  activeTimerElapsedMs,
+  activeTimerRemainingMs,
 }: TodoItemProps) {
-  const focusMin = Math.round(focusSeconds / 60)
+  // 실시간 타이머가 실행 중일 때
+  let displayTimeSeconds: number
+  let isCountdown = false
+  
+  if (isActiveTimer) {
+    if (timerMode === 'pomodoro' && activeTimerRemainingMs !== undefined) {
+      // 뽀모도로: 카운트다운 (남은 시간 표시)
+      displayTimeSeconds = Math.ceil(activeTimerRemainingMs / 1000)
+      isCountdown = true
+    } else if (activeTimerElapsedMs !== undefined) {
+      // 일반 타이머: 카운트업 (elapsedMs는 이미 focusSeconds를 포함)
+      displayTimeSeconds = Math.floor(activeTimerElapsedMs / 1000)
+      isCountdown = false
+    } else {
+      displayTimeSeconds = focusSeconds
+    }
+  } else {
+    displayTimeSeconds = focusSeconds
+  }
+  
+  const totalFocusSeconds = displayTimeSeconds
+  
+  // 분:초 형태로 포맷
+  const focusMin = Math.floor(totalFocusSeconds / 60)
+  const focusSec = totalFocusSeconds % 60
+  const focusTimeDisplay = `${focusMin}:${String(focusSec).padStart(2, '0')}`
 
   // 편집 모드
   if (isEditing) {
@@ -87,39 +121,58 @@ export function TodoItem({
         </button>
 
         {/* 내용 */}
-        <div
-          className="min-w-0 flex-1 cursor-pointer"
-          onClick={onOpenMenu}
-        >
+        <div className="min-w-0 flex-1">
           <p
-            className={`truncate text-sm ${
+            className={`truncate text-sm cursor-pointer ${
               isDone ? 'text-gray-400 line-through' : 'text-gray-900'
             }`}
+            onClick={onOpenMenu}
           >
             {title}
           </p>
-          {/* 누적 통계 표시 */}
-          {(pomodoroDone > 0 || focusMin > 0) && (
-            <div className="mt-0.5 flex items-center gap-1.5">
+          {/* 누적 통계 표시 - 타이머 버튼 */}
+          {(pomodoroDone > 0 || totalFocusSeconds > 0) && (
+            <button
+              onClick={onOpenTimer}
+              className="mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors hover:bg-gray-50"
+            >
+              <ClockIcon 
+                className={`h-3.5 w-3.5 shrink-0 ${
+                  // 뽀모도로 타이머가 활성화되어 있고 카운트다운 중이면 빨간색
+                  isActiveTimer && isCountdown
+                    ? 'text-red-500'
+                    : timerMode === 'pomodoro'
+                      ? isDone 
+                        ? 'text-red-400' 
+                        : 'text-red-500' // 뽀모도로: 빨간색
+                      : isDone 
+                        ? 'text-emerald-400' 
+                        : 'text-emerald-500' // 일반 또는 미선택: 초록색
+                }`} 
+              />
+              {totalFocusSeconds > 0 && (
+                <span className={`text-xs font-medium tabular-nums ${
+                  // 뽀모도로 타이머가 활성화되어 있고 카운트다운 중이면 빨간색
+                  isActiveTimer && isCountdown
+                    ? 'text-red-500'
+                    : isDone 
+                      ? 'text-emerald-400' 
+                      : 'text-emerald-600'
+                }`}>
+                  {focusTimeDisplay}
+                </span>
+              )}
+              {pomodoroDone > 0 && totalFocusSeconds > 0 && (
+                <span className="text-xs text-gray-300">·</span>
+              )}
               {pomodoroDone > 0 && (
-                <span className={`text-xs ${isDone ? 'text-emerald-600' : 'text-blue-500'}`}>{pomodoroDone}회</span>
+                <span className={`text-xs font-medium ${isDone ? 'text-blue-400' : 'text-blue-500'}`}>
+                  {pomodoroDone}회
+                </span>
               )}
-              {focusMin > 0 && (
-                <span className="text-xs text-gray-400">{focusMin}분</span>
-              )}
-            </div>
+            </button>
           )}
         </div>
-
-        {/* 시작 버튼 */}
-        {!isDone && (
-          <button
-            onClick={onOpenTimer}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-500 transition-colors hover:bg-emerald-50"
-          >
-            <PlayIcon className="h-3.5 w-3.5 translate-x-0.5" />
-          </button>
-        )}
 
         {/* 더보기 버튼 */}
         <button
@@ -132,8 +185,8 @@ export function TodoItem({
 
       {/* 메모 표시 */}
       {note && (
-        <div className="ml-8 mt-1">
-          <p className="text-xs text-gray-400 line-clamp-2">{note}</p>
+        <div className="ml-8 mt-2">
+          <p className="text-xs text-gray-400 leading-relaxed line-clamp-2">{note}</p>
         </div>
       )}
     </div>

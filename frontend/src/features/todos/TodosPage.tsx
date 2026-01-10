@@ -233,7 +233,6 @@ function TodosPage() {
             </button>
           </form>
         )}
-        {errors.title && <p className="mb-2 text-xs text-red-500">{errors.title.message}</p>}
 
         {/* 로딩 */}
         {isLoading && <div className="py-8 text-center text-sm text-gray-400">불러오는 중...</div>}
@@ -261,6 +260,22 @@ function TodosPage() {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActiveDragEnd}>
               <SortableContext items={activeTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {activeTodos.map((todo) => {
+                  // 실시간 타이머 정보 계산
+                  const isActiveTimer = (store.status === 'running' || store.status === 'paused') && store.todoId === todo.id
+                  let activeTimerElapsedMs: number | undefined = undefined
+                  let activeTimerRemainingMs: number | undefined = undefined
+                  
+                  if (isActiveTimer) {
+                    if (store.mode === 'stopwatch') {
+                      // 일반 타이머: elapsedMs 그대로 사용
+                      activeTimerElapsedMs = store.elapsedMs
+                    } else if (store.mode === 'pomodoro' && store.phase === 'flow') {
+                      // 뽀모도로 Flow: 남은 시간 전달 (카운트다운용)
+                      const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
+                      activeTimerRemainingMs = remaining
+                    }
+                  }
+                  
                   return (
                     <SortableTodoItem
                       key={todo.id}
@@ -270,6 +285,7 @@ function TodosPage() {
                       pomodoroDone={todo.pomodoroDone}
                       focusSeconds={todo.focusSeconds}
                       isDone={todo.isDone}
+                      timerMode={todo.timerMode}
                       isEditing={actions.editingId === todo.id}
                       editingTitle={actions.editingTitle}
                       onEditingTitleChange={actions.setEditingTitle}
@@ -279,7 +295,10 @@ function TodosPage() {
                       onCancelEdit={actions.handleCancelEdit}
                       onDelete={() => actions.handleDelete(todo.id)}
                       onOpenMenu={() => actions.setSelectedTodo(todo)}
-                      onOpenTimer={() => actions.handleOpenTimer(todo)}
+                      onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || store.mode)}
+                      isActiveTimer={isActiveTimer}
+                      activeTimerElapsedMs={activeTimerElapsedMs}
+                      activeTimerRemainingMs={activeTimerRemainingMs}
                     />
                   )
                 })}
@@ -296,27 +315,49 @@ function TodosPage() {
                 )}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDoneDragEnd}>
                   <SortableContext items={doneTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-                    {doneTodos.map((todo) => (
-                      <SortableTodoItem
-                        key={todo.id}
-                        id={todo.id}
-                        title={todo.title}
-                        note={todo.note}
-                        pomodoroDone={todo.pomodoroDone}
-                        focusSeconds={todo.focusSeconds}
-                        isDone={todo.isDone}
-                        isEditing={actions.editingId === todo.id}
-                        editingTitle={actions.editingTitle}
-                        onEditingTitleChange={actions.setEditingTitle}
-                        onToggle={() => actions.handleToggleDone(todo.id, !todo.isDone)}
-                        onEdit={() => actions.handleEdit(todo.id, todo.title)}
-                        onSaveEdit={actions.handleSaveEdit}
-                        onCancelEdit={actions.handleCancelEdit}
-                        onDelete={() => actions.handleDelete(todo.id)}
-                        onOpenMenu={() => actions.setSelectedTodo(todo)}
-                        onOpenTimer={() => actions.handleOpenTimer(todo)}
-                      />
-                    ))}
+                    {doneTodos.map((todo) => {
+                      // 실시간 타이머 정보 계산
+                      const isActiveTimer = (store.status === 'running' || store.status === 'paused') && store.todoId === todo.id
+                      let activeTimerElapsedMs: number | undefined = undefined
+                      let activeTimerRemainingMs: number | undefined = undefined
+                      
+                      if (isActiveTimer) {
+                        if (store.mode === 'stopwatch') {
+                          // 일반 타이머: elapsedMs 그대로 사용
+                          activeTimerElapsedMs = store.elapsedMs
+                        } else if (store.mode === 'pomodoro' && store.phase === 'flow') {
+                          // 뽀모도로 Flow: 남은 시간 전달 (카운트다운용)
+                          const remaining = store.remainingMs ?? (store.endAt ? Math.max(0, store.endAt - Date.now()) : 0)
+                          activeTimerRemainingMs = remaining
+                        }
+                      }
+                      
+                      return (
+                        <SortableTodoItem
+                          key={todo.id}
+                          id={todo.id}
+                          title={todo.title}
+                          note={todo.note}
+                          pomodoroDone={todo.pomodoroDone}
+                          focusSeconds={todo.focusSeconds}
+                          isDone={todo.isDone}
+                          timerMode={todo.timerMode}
+                          isEditing={actions.editingId === todo.id}
+                          editingTitle={actions.editingTitle}
+                          onEditingTitleChange={actions.setEditingTitle}
+                          onToggle={() => actions.handleToggleDone(todo.id, !todo.isDone)}
+                          onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                          onSaveEdit={actions.handleSaveEdit}
+                          onCancelEdit={actions.handleCancelEdit}
+                          onDelete={() => actions.handleDelete(todo.id)}
+                          onOpenMenu={() => actions.setSelectedTodo(todo)}
+                          onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || store.mode)}
+                          isActiveTimer={isActiveTimer}
+                          activeTimerElapsedMs={activeTimerElapsedMs}
+                          activeTimerRemainingMs={activeTimerRemainingMs}
+                        />
+                      )
+                    })}
                   </SortableContext>
                 </DndContext>
               </>
@@ -350,12 +391,25 @@ function TodosPage() {
             label="메모"
             onClick={() => actions.selectedTodo && actions.handleOpenNote(actions.selectedTodo)}
           />
-          {actions.selectedTodo && !actions.selectedTodo.isDone && (
-            <BottomSheetItem
-              icon={<ClockIcon className="h-5 w-5 text-red-500" />}
-              label="타이머 열기"
-              onClick={() => actions.selectedTodo && actions.handleOpenTimer(actions.selectedTodo)}
-            />
+          {actions.selectedTodo && (
+            <>
+              {/* 타이머 모드가 없거나 일반 타이머로 선택된 경우 */}
+              {(!actions.selectedTodo.timerMode || actions.selectedTodo.timerMode === 'stopwatch') && (
+                <BottomSheetItem
+                  icon={<ClockIcon className="h-5 w-5 text-emerald-500" />}
+                  label="일반 타이머"
+                  onClick={() => actions.selectedTodo && actions.handleOpenTimer(actions.selectedTodo, 'stopwatch')}
+                />
+              )}
+              {/* 타이머 모드가 없거나 뽀모도로로 선택된 경우 */}
+              {(!actions.selectedTodo.timerMode || actions.selectedTodo.timerMode === 'pomodoro') && (
+                <BottomSheetItem
+                  icon={<ClockIcon className="h-5 w-5 text-red-500" />}
+                  label="뽀모도로 타이머"
+                  onClick={() => actions.selectedTodo && actions.handleOpenTimer(actions.selectedTodo, 'pomodoro')}
+                />
+              )}
+            </>
           )}
         </div>
       </BottomSheet>
@@ -385,6 +439,8 @@ function TodosPage() {
         todoTitle={actions.timerTodo?.title ?? ''}
         pomodoroDone={actions.timerTodo?.pomodoroDone ?? 0}
         focusSeconds={actions.timerTodo?.focusSeconds ?? 0}
+        initialMode={actions.timerMode ?? undefined}
+        isDone={actions.timerTodo?.isDone ?? false}
       />
     </div>
   )

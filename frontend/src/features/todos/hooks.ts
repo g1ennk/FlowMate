@@ -5,6 +5,7 @@ import {
   type FocusAddResponse,
   type PomodoroCompleteRequest,
   type PomodoroCompleteResponse,
+  type TimerResetResponse,
   type Todo,
   type TodoCreateInput,
   type TodoList,
@@ -65,6 +66,20 @@ export function useAddFocus() {
     {
       mutationFn: ({ id, body }) => todoApi.addFocus(id, body),
       onSuccess: (_, { id }) => {
+        qc.invalidateQueries({ queryKey: queryKeys.todos() })
+        qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
+      },
+    },
+  )
+}
+
+// 타이머 리셋 (focusSeconds와 pomodoroDone 초기화)
+export function useResetTimer() {
+  const qc = useQueryClient()
+  return useMutation<TimerResetResponse, unknown, string>(
+    {
+      mutationFn: (id: string) => todoApi.resetTimer(id),
+      onSuccess: (_, id) => {
         qc.invalidateQueries({ queryKey: queryKeys.todos() })
         qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
       },

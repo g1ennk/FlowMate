@@ -92,6 +92,7 @@ export const handlers = [
       isDone: false,
       pomodoroDone: 0,
       focusSeconds: 0,
+      timerMode: null, // 아직 타이머 타입 선택 안함
       createdAt: now(),
       updatedAt: now(),
     }
@@ -154,6 +155,7 @@ export const handlers = [
       ...existing,
       pomodoroDone: existing.pomodoroDone + 1,
       focusSeconds: existing.focusSeconds + body.durationSec,
+      timerMode: 'pomodoro', // 뽀모도로 타이머로 설정
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
@@ -186,6 +188,7 @@ export const handlers = [
       ...existing,
       // pomodoroDone은 증가시키지 않음
       focusSeconds: existing.focusSeconds + body.durationSec,
+      timerMode: 'stopwatch', // 일반 타이머로 설정
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
@@ -193,6 +196,32 @@ export const handlers = [
     return HttpResponse.json({
       id,
       focusSeconds: updated.focusSeconds,
+      updatedAt: updated.updatedAt,
+    })
+  }),
+
+  // 타이머 리셋 (focusSeconds와 pomodoroDone 초기화)
+  http.post('/api/todos/:id/reset', async ({ params }) => {
+    await delay(latency)
+    const id = params.id as string
+    todos = loadTodos()
+    const existing = todos.find((t) => t.id === id)
+    if (!existing) {
+      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
+    }
+    const updated: Todo = {
+      ...existing,
+      focusSeconds: 0,
+      pomodoroDone: 0,
+      timerMode: null, // 타이머 모드도 초기화
+      updatedAt: now(),
+    }
+    todos = todos.map((t) => (t.id === id ? updated : t))
+    saveTodos(todos)
+    return HttpResponse.json({
+      id,
+      focusSeconds: 0,
+      pomodoroDone: 0,
       updatedAt: updated.updatedAt,
     })
   }),

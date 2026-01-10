@@ -8,6 +8,7 @@ export const TodoSchema = z.object({
   isDone: z.boolean(),
   pomodoroDone: z.number().int(),
   focusSeconds: z.number().int(),
+  timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(), // 선택된 타이머 타입
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -59,6 +60,14 @@ export const FocusAddResponseSchema = z.object({
   updatedAt: z.string(),
 })
 
+// 타이머 리셋용 (focusSeconds와 pomodoroDone 초기화)
+export const TimerResetResponseSchema = z.object({
+  id: z.string().uuid(),
+  focusSeconds: z.number().int(),
+  pomodoroDone: z.number().int(),
+  updatedAt: z.string(),
+})
+
 export type Todo = z.infer<typeof TodoSchema>
 export type TodoList = z.infer<typeof TodoListSchema>
 export type TodoCreateInput = z.infer<typeof TodoCreateSchema>
@@ -69,3 +78,4 @@ export type PomodoroCompleteRequest = z.infer<typeof PomodoroCompleteRequestSche
 export type PomodoroCompleteResponse = z.infer<typeof PomodoroCompleteResponseSchema>
 export type FocusAddRequest = z.infer<typeof FocusAddRequestSchema>
 export type FocusAddResponse = z.infer<typeof FocusAddResponseSchema>
+export type TimerResetResponse = z.infer<typeof TimerResetResponseSchema>

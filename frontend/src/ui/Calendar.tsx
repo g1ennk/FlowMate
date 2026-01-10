@@ -212,33 +212,53 @@ export function Calendar({
           const dayOfWeek = date.getDay()
           const isSaturday = dayOfWeek === 6
           const isSunday = dayOfWeek === 0
+          
+          // 배경색 결정
+          let bgColor = ''
+          if (mark && mark.total > 0) {
+            if (mark.done === mark.total) {
+              // 완료: 초록색
+              bgColor = 'bg-emerald-100'
+            } else {
+              // 미완료 (부분 완료 포함): 노란색
+              bgColor = 'bg-yellow-50'
+            }
+          }
+          
+          // 텍스트 색상 결정
+          let textColor = ''
+          if (isSelected) {
+            textColor = 'text-gray-900 font-semibold'
+          } else if (isSaturday) {
+            textColor = 'text-blue-500'
+          } else if (isSunday) {
+            textColor = 'text-red-500'
+          } else {
+            textColor = 'text-gray-700'
+          }
 
           return (
             <button
               key={dateKey}
               onClick={() => onSelectDate(date)}
-              className={`relative flex aspect-square flex-col items-center justify-center rounded-xl text-sm transition-colors ${
-                isSelected
-                  ? 'bg-emerald-500 text-white'
-                  : isTodayDate
-                    ? 'bg-emerald-50 text-emerald-600 font-medium'
-                    : isSaturday
-                      ? 'text-blue-500 hover:bg-gray-50'
-                      : isSunday
-                        ? 'text-red-500 hover:bg-gray-50'
-                        : 'text-gray-700 hover:bg-gray-50'
+              className={`relative flex aspect-square flex-col items-center justify-center rounded-xl text-sm transition-colors ${bgColor} ${textColor} ${
+                isSelected ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-gray-200'
               }`}
             >
-              <span>{date.getDate()}</span>
+              {/* 오늘 표시 */}
+              {isTodayDate && (
+                <span className="absolute top-0.5 text-[9px] font-semibold text-emerald-600">
+                  오늘
+                </span>
+              )}
+              <span className={isTodayDate ? 'mt-2' : ''}>{date.getDate()}</span>
               {/* 진행도 표시: 남은 개수 또는 완료 체크 */}
               {mark && mark.total > 0 && (
                 <span
                   className={`mt-0.5 text-[10px] font-medium leading-none ${
-                    isSelected
-                      ? 'text-white/80'
-                      : mark.done === mark.total
-                        ? 'text-emerald-500'
-                        : 'text-gray-400'
+                    mark.done === mark.total
+                      ? 'text-emerald-600'
+                      : 'text-gray-500'
                   }`}
                 >
                   {mark.done === mark.total ? '✓' : mark.total - mark.done}
