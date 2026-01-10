@@ -46,7 +46,7 @@ type TimerActions = {
 
 type TimerStore = TimerState & TimerActions
 
-const STORAGE_KEY_PREFIX = 'todo-flow/timer/'
+const STORAGE_KEY_PREFIX = 'todo-flow/timer/v2/'
 const MINUTE = 60_000
 
 export const initialSingleTimerState: SingleTimerState = {
@@ -305,9 +305,10 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const timer = get().timers[todoId]
       if (!timer) return
       
+      // 리셋 시 타이머를 완전히 종료 (idle 상태로 변경)
       if (timer.mode === 'stopwatch') {
         updateTimer(todoId, {
-          status: 'paused',
+          status: 'idle',
           elapsedMs: 0,
           initialFocusMs: 0,
           startedAt: null,
@@ -318,7 +319,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         
         updateTimer(todoId, {
           phase: 'flow',
-          status: 'paused',
+          status: 'idle',
           endAt: null,
           remainingMs: settings.flowMin * MINUTE,
           elapsedMs: 0,

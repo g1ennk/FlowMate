@@ -143,38 +143,43 @@ export function Calendar({
       onTouchEnd={handleTouchEnd}
     >
       {/* 헤더 */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold text-gray-900">
-            {year}년 {month + 1}월
-          </h2>
-          {/* 오늘 버튼 */}
-          <button
-            onClick={goToToday}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-              isToday(selectedDate)
-                ? 'bg-emerald-500 text-white'
-                : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-            }`}
-          >
-            오늘
-          </button>
+      <div className="mb-4 grid grid-cols-7 gap-1">
+        {/* 왼쪽 영역 (년월, 오늘, 화살표) - 6칸 차지 */}
+        <div className="col-span-6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-gray-900">
+              {year}년 {month + 1}월
+            </h2>
+            {/* 오늘 버튼 */}
+            <button
+              onClick={goToToday}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                isToday(selectedDate)
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+              }`}
+            >
+              오늘
+            </button>
+          </div>
+          <div className="flex items-center gap-1">
+            {/* 화살표 */}
+            <button
+              onClick={goToPrev}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+            >
+              <ChevronLeftIcon className="h-5 w-5" />
+            </button>
+            <button
+              onClick={goToNext}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+            >
+              <ChevronRightIcon className="h-5 w-5" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          {/* 화살표 */}
-          <button
-            onClick={goToPrev}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
-          >
-            <ChevronLeftIcon className="h-5 w-5" />
-          </button>
-          <button
-            onClick={goToNext}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
-          >
-            <ChevronRightIcon className="h-5 w-5" />
-          </button>
-          {/* 뷰 모드 토글 */}
+        {/* 오른쪽 영역 (월/주 버튼) - 일요일 열에 맞춤 */}
+        <div className="flex items-center justify-center">
           <button
             onClick={() => setViewMode(viewMode === 'month' ? 'week' : 'month')}
             className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"

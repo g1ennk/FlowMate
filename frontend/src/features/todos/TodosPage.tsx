@@ -83,12 +83,18 @@ function TodosPage() {
     return (data?.items ?? [])
       .filter((t) => t.date === selectedDateKey)
       .sort((a, b) => {
-        if (a.id === store.todoId && store.status !== 'idle') return -1
-        if (b.id === store.todoId && store.status !== 'idle') return 1
+        // 실행 중인 타이머가 있는 태스크를 최상단으로
+        const timerA = store.getTimer(a.id)
+        const timerB = store.getTimer(b.id)
+        const isActiveA = timerA && timerA.status !== 'idle'
+        const isActiveB = timerB && timerB.status !== 'idle'
+        
+        if (isActiveA && !isActiveB) return -1
+        if (!isActiveA && isActiveB) return 1
         if (a.isDone !== b.isDone) return a.isDone ? 1 : -1
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       })
-  }, [data?.items, selectedDateKey, store.todoId, store.status])
+  }, [data?.items, selectedDateKey, store.timers, store.getTimer])
 
   const markedDates = useMemo(() => {
     const marks: Record<string, { done: number; total: number }> = {}
@@ -173,7 +179,6 @@ function TodosPage() {
   }
 
   // 현재 날짜 통계
-  const currentMark = markedDates[selectedDateKey]
   const currentStats = dailyStats[selectedDateKey]
 
   return (
@@ -195,8 +200,6 @@ function TodosPage() {
               {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
             </h2>
             <DailyStatsBadges
-              remaining={(currentMark?.total ?? 0) - (currentMark?.done ?? 0)}
-              done={currentMark?.done ?? 0}
               sessionCount={currentStats?.count ?? 0}
               sessionMinutes={currentStats?.minutes ?? 0}
             />
@@ -297,7 +300,7 @@ function TodosPage() {
                       onCancelEdit={actions.handleCancelEdit}
                       onDelete={() => actions.handleDelete(todo.id)}
                       onOpenMenu={() => actions.setSelectedTodo(todo)}
-                      onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode)}
+                      onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
                       isActiveTimer={isActiveTimer}
                       activeTimerElapsedMs={activeTimerElapsedMs}
                       activeTimerRemainingMs={activeTimerRemainingMs}
@@ -356,7 +359,7 @@ function TodosPage() {
                           onCancelEdit={actions.handleCancelEdit}
                           onDelete={() => actions.handleDelete(todo.id)}
                           onOpenMenu={() => actions.setSelectedTodo(todo)}
-                          onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode)}
+                          onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
                           isActiveTimer={isActiveTimer}
                           activeTimerElapsedMs={activeTimerElapsedMs}
                           activeTimerRemainingMs={activeTimerRemainingMs}
@@ -375,7 +378,10 @@ function TodosPage() {
       {/* Todo 액션 바텀시트 */}
       <BottomSheet
         isOpen={!!actions.selectedTodo && !actions.showNoteModal}
-        onClose={() => actions.setSelectedTodo(null)}
+        onClose={() => {
+          actions.setSelectedTodo(null)
+          actions.setTimerErrorMessage(null)
+        }}
         title={actions.selectedTodo?.title}
       >
         <BottomSheetActions>
@@ -397,26 +403,46 @@ function TodosPage() {
             label="메모"
             onClick={() => actions.selectedTodo && actions.handleOpenNote(actions.selectedTodo)}
           />
-          {actions.selectedTodo && (
-            <>
-              {/* 타이머 모드가 없거나 일반 타이머로 선택된 경우 */}
-              {(!actions.selectedTodo.timerMode || actions.selectedTodo.timerMode === 'stopwatch') && (
+          {actions.selectedTodo && (() => {
+            // 전체 타이머 중에서 실행 중인 타이머 찾기 (running만)
+            const allTimers = Object.values(store.timers)
+            const runningTimer = allTimers.find(t => t.status === 'running')
+            const activeMode = runningTimer ? runningTimer.mode : null
+            
+            return (
+              <>
+                {/* 일반 타이머 */}
                 <BottomSheetItem
                   icon={<ClockIcon className="h-5 w-5 text-emerald-500" />}
                   label="일반 타이머"
-                  onClick={() => actions.selectedTodo && actions.handleOpenTimer(actions.selectedTodo, 'stopwatch')}
+                  onClick={() => {
+                    if (!actions.selectedTodo) return
+                    if (activeMode === 'pomodoro') {
+                      actions.setTimerErrorMessage('이미 뽀모도로 타이머가 실행 중입니다')
+                      return
+                    }
+                    actions.handleOpenTimer(actions.selectedTodo, 'stopwatch')
+                  }}
+                  disabled={activeMode === 'pomodoro'}
                 />
-              )}
-              {/* 타이머 모드가 없거나 뽀모도로로 선택된 경우 */}
-              {(!actions.selectedTodo.timerMode || actions.selectedTodo.timerMode === 'pomodoro') && (
+                
+                {/* 뽀모도로 타이머 */}
                 <BottomSheetItem
                   icon={<ClockIcon className="h-5 w-5 text-red-500" />}
                   label="뽀모도로 타이머"
-                  onClick={() => actions.selectedTodo && actions.handleOpenTimer(actions.selectedTodo, 'pomodoro')}
+                  onClick={() => {
+                    if (!actions.selectedTodo) return
+                    if (activeMode === 'stopwatch') {
+                      actions.setTimerErrorMessage('이미 일반 타이머가 실행 중입니다')
+                      return
+                    }
+                    actions.handleOpenTimer(actions.selectedTodo, 'pomodoro')
+                  }}
+                  disabled={activeMode === 'stopwatch'}
                 />
-              )}
-            </>
-          )}
+              </>
+            )
+          })()}
         </div>
       </BottomSheet>
 
@@ -448,6 +474,17 @@ function TodosPage() {
         initialMode={actions.timerMode ?? undefined}
         isDone={actions.timerTodo?.isDone ?? false}
       />
+
+      {/* 타이머 에러 메시지 (하단 중앙 floating) */}
+      {actions.timerErrorMessage && (
+        <div className="fixed bottom-20 left-0 right-0 z-[10000] flex justify-center px-6 pointer-events-none">
+          <div className="animate-fade-in rounded-2xl bg-gray-900 px-6 py-4 shadow-2xl pointer-events-auto">
+            <p className="text-sm text-white font-medium">
+              {actions.timerErrorMessage}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

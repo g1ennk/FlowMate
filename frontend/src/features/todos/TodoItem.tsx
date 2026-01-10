@@ -134,7 +134,7 @@ export function TodoItem({
             {title}
           </p>
           {/* 누적 통계 표시 - 타이머 버튼 */}
-          {(pomodoroDone > 0 || totalFocusSeconds > 0 || isActiveTimer) && (
+          {(pomodoroDone > 0 || totalFocusSeconds > 0) && (
             <button
               onClick={onOpenTimer}
               className="mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors hover:bg-gray-50"
@@ -160,7 +160,7 @@ export function TodoItem({
                   }`} 
                 />
               )}
-              {(totalFocusSeconds > 0 || isActiveTimer) && (
+              {totalFocusSeconds > 0 && (
                 <span className={`text-xs font-medium tabular-nums ${
                   // 뽀모도로 타이머가 활성화되어 있고 카운트다운 중이면 빨간색
                   isActiveTimer && isCountdown
@@ -172,7 +172,7 @@ export function TodoItem({
                   {focusTimeDisplay}
                 </span>
               )}
-              {pomodoroDone > 0 && (totalFocusSeconds > 0 || isActiveTimer) && (
+              {pomodoroDone > 0 && totalFocusSeconds > 0 && (
                 <span className="text-xs text-gray-300">·</span>
               )}
               {pomodoroDone > 0 && (

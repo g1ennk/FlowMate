@@ -89,6 +89,8 @@ type BottomSheetItemProps = {
   label: string
   onClick: () => void
   variant?: 'default' | 'danger'
+  disabled?: boolean
+  className?: string
 }
 
 export function BottomSheetItem({
@@ -96,15 +98,19 @@ export function BottomSheetItem({
   label,
   onClick,
   variant = 'default',
+  disabled = false,
+  className = '',
 }: BottomSheetItemProps) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-colors ${
-        variant === 'danger'
-          ? 'text-red-500 hover:bg-red-50'
-          : 'text-gray-700 hover:bg-gray-50'
-      }`}
+      className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-all ${
+        disabled
+          ? 'cursor-not-allowed opacity-40'
+          : variant === 'danger'
+            ? 'text-red-500 hover:bg-red-50'
+            : 'text-gray-700 hover:bg-gray-50'
+      } ${className}`}
     >
       {icon && <span className="flex h-6 w-6 items-center justify-center">{icon}</span>}
       <span className="text-sm font-medium">{label}</span>
