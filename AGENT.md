@@ -42,7 +42,7 @@
     - [x] 세션 기반 양방향 네비게이션 (skipToPrev/skipToNext)
     - [x] 리셋 기능
     - [x] Flow 완료 시에만 세션 카운트 증가
-    - [x] 자동 완료 감지 및 기록
+    - [x] 자동 완료 감지 및 기록 (autoCompletedTodos Set)
   - [x] 타이머 UI/UX 개선 — `feat: 타이머 UI/UX 전면 개선 - 배경색, 정지 재개, 모드 선택`
     - [x] Phase별 배경색 (Flow: 검정, Break: 에메랄드)
     - [x] 정지 후 pause 상태 유지 및 재개 기능
@@ -50,6 +50,13 @@
     - [x] Break 중 완료 버튼 비활성화
   - [x] 타이머 완료 알림음 (Web Audio API)
   - [x] 자동 시작 설정 (autoStartBreak, autoStartSession)
+  - [x] 코드 리팩토링 — `refactor: 타이머 로직 분리 및 구조 개선`
+    - [x] timerStore.ts 간소화 (767줄 → 500줄)
+    - [x] useTimerActions.ts 분리 (액션 핸들러)
+    - [x] useTimerInfo.ts 분리 (타이머 정보 계산)
+    - [x] timerFormat.ts 생성 (시간 포맷 함수)
+    - [x] updateInitialFocusMs 추가 (일반 타이머 기록 동기화)
+    - [x] useResetTimer 즉시 캐시 업데이트 (UX 개선)
 
 - [x] **테스트**
   - [x] 타이머 전이/remaining 계산 테스트

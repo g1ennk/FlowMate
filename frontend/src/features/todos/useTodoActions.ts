@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
 import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
@@ -24,11 +24,6 @@ export function useTodoActions(selectedDateKey: string) {
   const addFocus = useAddFocus() // 일반 타이머용 (시간만)
   const store = useTimerStore()
 
-  // Phase 변화 감지를 위한 ref
-  const prevPhaseRef = useRef(store.phase)
-  const prevCycleRef = useRef(store.cycleCount)
-  const prevTodoIdRef = useRef(store.todoId)
-
   // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
@@ -42,35 +37,12 @@ export function useTodoActions(selectedDateKey: string) {
   const [timerTodo, setTimerTodo] = useState<Todo | null>(null)
   const [timerMode, setTimerMode] = useState<'stopwatch' | 'pomodoro' | null>(null)
 
-  // === Flow 자동 완료 감지 ===
-  useEffect(() => {
-    const prevPhase = prevPhaseRef.current
-    const prevTodoId = prevTodoIdRef.current
-    
-    // Flow 완료 감지: flow -> short/long 전환 + cycleCount 증가
-    if (
-      store.mode === 'pomodoro' &&
-      prevPhase === 'flow' &&
-      (store.phase === 'short' || store.phase === 'long') &&
-      store.todoId &&
-      store.todoId === prevTodoId && // 같은 todo에서 전환된 경우만
-      store.settingsSnapshot
-    ) {
-      // Flow가 자동으로 완료됨 -> 시간과 횟수 기록
-      const durationSec = store.settingsSnapshot.flowMin * 60
-      completeTodo.mutate({ id: store.todoId, body: { durationSec } })
-    }
-
-    // ref 업데이트
-    prevPhaseRef.current = store.phase
-    prevCycleRef.current = store.cycleCount
-    prevTodoIdRef.current = store.todoId
-  }, [store.phase, store.cycleCount, store.todoId, store.mode, store.settingsSnapshot, completeTodo])
+  // 타이머 에러 메시지 (BottomSheet 내부에 표시)
+  const [timerErrorMessage, setTimerErrorMessage] = useState<string | null>(null)
 
   // === Todo CRUD ===
   const handleCreate = async (title: string) => {
     await createTodo.mutateAsync({ title, note: null, date: selectedDateKey })
-    toast.success('추가됨')
   }
 
   const handleToggleDone = (id: string, next: boolean) => {
@@ -79,7 +51,6 @@ export function useTodoActions(selectedDateKey: string) {
 
   const handleDelete = (id: string) => {
     deleteTodo.mutate(id)
-    toast.error('삭제됨')
     setSelectedTodo(null)
   }
 
@@ -237,6 +208,16 @@ export function useTodoActions(selectedDateKey: string) {
     toast.success('태스크 완료! 🎉')
   }
 
+  // 타이머 에러 메시지 자동 숨김 (3초 후)
+  useEffect(() => {
+    if (timerErrorMessage) {
+      const timer = setTimeout(() => {
+        setTimerErrorMessage(null)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [timerErrorMessage])
+
   return {
     // 뮤테이션 상태
     isCreating: createTodo.isPending,
@@ -257,6 +238,8 @@ export function useTodoActions(selectedDateKey: string) {
     // 타이머 상태
     timerTodo,
     timerMode,
+    timerErrorMessage,
+    setTimerErrorMessage,
 
     // 핸들러
     handleCreate,

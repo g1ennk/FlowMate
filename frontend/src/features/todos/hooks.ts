@@ -79,7 +79,19 @@ export function useResetTimer() {
   return useMutation<TimerResetResponse, unknown, string>(
     {
       mutationFn: (id: string) => todoApi.resetTimer(id),
-      onSuccess: (_, id) => {
+      onSuccess: (data, id) => {
+        // 즉시 캐시 업데이트 (UI 갱신)
+        qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+          if (!old) return old
+          return {
+            items: old.items.map((todo) =>
+              todo.id === id
+                ? { ...todo, focusSeconds: 0, pomodoroDone: 0, timerMode: null }
+                : todo
+            ),
+          }
+        })
+        // 안전을 위한 재검증
         qc.invalidateQueries({ queryKey: queryKeys.todos() })
         qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
       },

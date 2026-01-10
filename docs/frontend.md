@@ -44,8 +44,10 @@ src/
 │   │       └── DailyStatsBadges.tsx
 │   ├── timer/             # 타이머 기능
 │   │   ├── TimerFullScreen.tsx
-│   │   ├── timerStore.ts  # Zustand 스토어
-│   │   └── useTimerTicker.ts
+│   │   ├── timerStore.ts      # Zustand 스토어
+│   │   ├── useTimerTicker.ts  # Ticker 훅
+│   │   ├── useTimerActions.ts # 액션 핸들러
+│   │   └── useTimerInfo.ts    # 타이머 정보 계산
 │   └── settings/          # 설정
 │       ├── PomodoroSettingsPage.tsx
 │       └── hooks.ts
@@ -59,6 +61,7 @@ src/
 ├── lib/                    # 유틸리티
 │   ├── constants.ts
 │   ├── time.ts
+│   ├── timerFormat.ts     # 시간 포맷 함수들
 │   ├── sound.ts
 │   └── queryKeys.ts
 ├── mocks/                  # MSW 핸들러
@@ -95,9 +98,15 @@ src/
 
 ### 클라이언트 상태 (Zustand)
 - `timerStore` - 타이머 상태 관리
-  - 필드: `todoId`, `mode`, `phase`, `status`, `endAt`, `remainingMs`, `elapsedMs`, `cycleCount`, `settingsSnapshot`
-  - actions: `startPomodoro`, `startStopwatch`, `pause`, `resume`, `stop`, `tick`, `completePhase`, `skipToPrev`, `skipToNext`, `resetTimer`, `canSkipToPrev`, `canSkipToNext`
-  - sessionStorage에 상태 저장/복구
+  - 필드: 
+    - `timers`: 각 Todo별 타이머 상태 (Map 구조)
+      - `todoId`, `mode`, `phase`, `status`, `endAt`, `remainingMs`, `elapsedMs`, `cycleCount`, `settingsSnapshot`, `initialFocusMs`
+    - `autoCompletedTodos`: 자연 완료된 Flow 추적용 Set
+  - actions: 
+    - 기본: `startPomodoro`, `startStopwatch`, `pause`, `resume`, `stop`, `reset`
+    - Phase 전환: `completePhase`, `skipToPrev`, `skipToNext`
+    - 헬퍼: `canSkipToPrev`, `canSkipToNext`, `updateInitialFocusMs`, `clearAutoCompleted`
+  - sessionStorage에 상태 저장/복구 (페이지 새로고침 대응)
   - 정지 후 재개 가능 (pause 상태 유지)
 
 ---
