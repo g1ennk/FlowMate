@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
-import { useTimerStore } from '../timer/timerStore'
 import {
   useCreateTodo,
   useDeleteTodo,
@@ -15,7 +14,6 @@ export function useTodoActions(selectedDateKey: string) {
   const createTodo = useCreateTodo()
   const updateTodo = useUpdateTodo()
   const deleteTodo = useDeleteTodo()
-  const store = useTimerStore()
 
   // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)

@@ -4,6 +4,7 @@ import {
   StopIcon,
   MoreVerticalIcon,
 } from '../../ui/Icons'
+import { usePomodoroSettings } from '../settings/hooks'
 
 export type TodoItemProps = {
   title: string
@@ -27,6 +28,7 @@ export type TodoItemProps = {
   activeTimerElapsedMs?: number
   activeTimerRemainingMs?: number // 뽀모도로용 (카운트다운)
   activeTimerPhase?: 'flow' | 'short' | 'long' // 뽀모도로 phase
+  activeTimerCycleCount?: number // 뽀모도로 현재 사이클
 }
 
 export function TodoItem({
@@ -48,7 +50,19 @@ export function TodoItem({
   activeTimerElapsedMs,
   activeTimerRemainingMs,
   activeTimerPhase,
+  activeTimerCycleCount,
 }: TodoItemProps) {
+  const { data: settings } = usePomodoroSettings()
+  const cycleEvery = settings?.cycleEvery ?? 4
+  
+  // 현재 사이클 내 위치 계산 (1-based)
+  // 타이머가 실행 중이면 타이머의 cycleCount 사용, 아니면 pomodoroDone 기반 계산
+  const currentCycle = isActiveTimer && activeTimerCycleCount !== undefined
+    ? (activeTimerCycleCount % cycleEvery) + 1
+    : pomodoroDone > 0 
+      ? ((pomodoroDone - 1) % cycleEvery) + 1 
+      : 0
+  
   // 실시간 타이머가 실행 중일 때
   let displayTimeSeconds: number
   let isCountdown = false
@@ -162,9 +176,11 @@ export function TodoItem({
               )}
               {totalFocusSeconds > 0 && (
                 <span className={`text-xs font-medium tabular-nums ${
-                  // 뽀모도로 타이머가 활성화되어 있고 카운트다운 중이면 빨간색
-                  isActiveTimer && isCountdown
-                    ? 'text-red-500'
+                  // 뽀모도로 타이머는 빨간색, 일반 타이머는 초록색
+                  timerMode === 'pomodoro'
+                    ? isDone 
+                      ? 'text-red-400' 
+                      : 'text-red-500'
                     : isDone 
                       ? 'text-emerald-400' 
                       : 'text-emerald-600'
@@ -172,12 +188,12 @@ export function TodoItem({
                   {focusTimeDisplay}
                 </span>
               )}
-              {pomodoroDone > 0 && totalFocusSeconds > 0 && (
+              {isActiveTimer && timerMode === 'pomodoro' && totalFocusSeconds > 0 && (
                 <span className="text-xs text-gray-300">·</span>
               )}
-              {pomodoroDone > 0 && (
-                <span className={`text-xs font-medium ${isDone ? 'text-blue-400' : 'text-blue-500'}`}>
-                  {pomodoroDone}회
+              {isActiveTimer && timerMode === 'pomodoro' && (
+                <span className={`text-xs font-medium ${isDone ? 'text-red-400' : 'text-red-500'}`}>
+                  {currentCycle}/{cycleEvery}회
                 </span>
               )}
             </button>

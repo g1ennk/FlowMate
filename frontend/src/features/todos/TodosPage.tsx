@@ -19,7 +19,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { useTimerStore } from '../timer/timerStore'
-import { useTimerTicker } from '../timer/useTimerTicker'
 import { Calendar, formatDateKey } from '../../ui/Calendar'
 import {
   BottomSheet,
@@ -52,7 +51,7 @@ function TodosPage() {
   const { data, isLoading } = useTodos()
   const store = useTimerStore()
 
-  useTimerTicker()
+  // Global ticker is installed in AppProviders
 
   // 캘린더 상태
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -72,7 +71,6 @@ function TodosPage() {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
   } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
     defaultValues: { title: '' },
@@ -269,6 +267,7 @@ function TodosPage() {
                   let activeTimerElapsedMs: number | undefined = undefined
                   let activeTimerRemainingMs: number | undefined = undefined
                   let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
+                  let activeTimerCycleCount: number | undefined = undefined
                   
                   if (isActiveTimer && timer) {
                     if (timer.mode === 'stopwatch') {
@@ -278,6 +277,7 @@ function TodosPage() {
                       // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
                       activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
                       activeTimerPhase = timer.phase
+                      activeTimerCycleCount = timer.cycleCount
                     }
                   }
                   
@@ -305,6 +305,7 @@ function TodosPage() {
                       activeTimerElapsedMs={activeTimerElapsedMs}
                       activeTimerRemainingMs={activeTimerRemainingMs}
                       activeTimerPhase={activeTimerPhase}
+                      activeTimerCycleCount={activeTimerCycleCount}
                     />
                   )
                 })}
@@ -328,6 +329,7 @@ function TodosPage() {
                       let activeTimerElapsedMs: number | undefined = undefined
                       let activeTimerRemainingMs: number | undefined = undefined
                       let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
+                      let activeTimerCycleCount: number | undefined = undefined
                       
                       if (isActiveTimer && timer) {
                         if (timer.mode === 'stopwatch') {
@@ -337,6 +339,7 @@ function TodosPage() {
                           // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
                           activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
                           activeTimerPhase = timer.phase
+                          activeTimerCycleCount = timer.cycleCount
                         }
                       }
                       
@@ -364,6 +367,7 @@ function TodosPage() {
                           activeTimerElapsedMs={activeTimerElapsedMs}
                           activeTimerRemainingMs={activeTimerRemainingMs}
                           activeTimerPhase={activeTimerPhase}
+                          activeTimerCycleCount={activeTimerCycleCount}
                         />
                       )
                     })}

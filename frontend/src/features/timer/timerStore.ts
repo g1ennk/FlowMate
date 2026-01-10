@@ -363,16 +363,17 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         set((state) => ({
           timers: { ...state.timers, ...updates }
         }))
-        
-        Object.entries(updates).forEach(([todoId, timer]) => {
-          savePersisted(todoId, timer)
-        })
       }
     },
 
     completePhase: (todoId) => {
       const timer = get().timers[todoId]
       if (!timer || timer.mode !== 'pomodoro' || !timer.settingsSnapshot) return
+      // Guard against duplicate/early calls: only when current phase actually ended
+      if (timer.status !== 'running') return
+      const remaining = timer.endAt ? (timer.endAt - Date.now()) : null
+      if (remaining !== null && remaining > 0) return
+      if (remaining === null && (timer.remainingMs ?? 0) > 0) return
       
       const { phase, cycleCount, settingsSnapshot } = timer
       const { cycleEvery, breakMin, longBreakMin, flowMin, autoStartBreak, autoStartSession } = settingsSnapshot
@@ -440,7 +441,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     canSkipToNext: (todoId) => {
       const timer = get().timers[todoId]
-      return timer?.mode === 'pomodoro' ?? false
+      return !!timer && timer.mode === 'pomodoro'
     },
 
     restore: () => {

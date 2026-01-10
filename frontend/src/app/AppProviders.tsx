@@ -5,12 +5,15 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Toaster } from 'react-hot-toast'
 import { queryClient } from './queryClient'
 import { startMockWorker } from '../mocks/browser'
+import { useTimerTicker } from '../features/timer/useTimerTicker'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
 
 export function AppProviders({ children }: PropsWithChildren) {
   const [mockReady, setMockReady] = useState(!mockEnabled)
+  // Install a single global timer ticker
+  useTimerTicker()
 
   useEffect(() => {
     if (!mockEnabled) return

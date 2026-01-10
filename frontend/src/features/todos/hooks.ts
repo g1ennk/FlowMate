@@ -79,7 +79,7 @@ export function useResetTimer() {
   return useMutation<TimerResetResponse, unknown, string>(
     {
       mutationFn: (id: string) => todoApi.resetTimer(id),
-      onSuccess: (data, id) => {
+      onSuccess: (_data, id) => {
         // 즉시 캐시 업데이트 (UI 갱신)
         qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
           if (!old) return old

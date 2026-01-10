@@ -14,7 +14,6 @@ import {
   ArrowPathIcon,
 } from '../../ui/Icons'
 import { useTimer, useTimerStore } from './timerStore'
-import { useTimerTicker } from './useTimerTicker'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -36,8 +35,8 @@ function formatStopwatch(ms: number): string {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDone, focusSeconds, initialMode, isDone = false }: TimerFullScreenProps) {
-  const focusMin = Math.round(focusSeconds / 60)
+export function TimerFullScreen(props: TimerFullScreenProps) {
+  const { isOpen, onClose, todoId, todoTitle, focusSeconds, initialMode, isDone = false } = props
   const [mounted, setMounted] = useState(false)
   const [visible, setVisible] = useState(false)
   const [selectedMode, setSelectedMode] = useState<'stopwatch' | 'pomodoro' | null>(null)
@@ -65,7 +64,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
   const getTimer = useTimerStore((s) => s.getTimer)
   const clearAutoCompleted = useTimerStore((s) => s.clearAutoCompleted)
 
-  useTimerTicker()
+  // Global ticker is installed in AppProviders
 
   // 열릴 때 상태 초기화
   // 타이머 초기화 (isOpen이 true로 변경될 때만)
@@ -156,14 +155,18 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
       
       // Paused 상태: 새로운 기록이 없으면 stop, 있으면 그대로 유지
       if (timer.status === 'paused') {
-        // 뽀모도로는 항상 유지 (remainingMs 기반이므로 elapsedMs로 판단 불가)
+        let hasNewRecord = false
+        
         if (timer.mode === 'pomodoro') {
-          onClose()
-          return
+          // 뽀모도로: 계획된 시간보다 줄어들었으면 새로운 기록
+          const plannedMs = getPlannedMs()
+          const currentRemainingMs = timer.remainingMs ?? plannedMs
+          hasNewRecord = currentRemainingMs < plannedMs
+        } else {
+          // 일반 타이머: 초기 시간보다 늘어났으면 새로운 기록
+          hasNewRecord = (timer.elapsedMs ?? 0) > (timer.initialFocusMs ?? 0)
         }
         
-        // 일반 타이머: 새로운 기록이 없으면 stop
-        const hasNewRecord = (timer.elapsedMs ?? 0) > (timer.initialFocusMs ?? 0)
         if (!hasNewRecord) {
           stop(todoId)
         }
@@ -191,21 +194,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
     startStopwatch(todoId, focusSeconds * 1000)
   }
 
-  const handleStartPomodoro = () => {
-    if (!settings) {
-      toast.error('설정을 불러오는 중...')
-      return
-    }
-    
-    // 이미 다른 모드의 타이머가 실행 중이면 막기
-    if (timer && timer.status !== 'idle' && timer.mode === 'stopwatch') {
-      toast.error('이미 일반 타이머가 실행 중입니다')
-      return
-    }
-    
-    setSelectedMode('pomodoro')
-    startPomodoro(todoId, settings)
-  }
+  // Note: Pomodoro start is triggered via selectedMode UI elsewhere
 
   // 현재 phase의 계획된 시간(ms) 계산
   const getPlannedMs = () => {
@@ -218,25 +207,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
   }
 
   // 뽀모도로 정지 (■) - 시간만 기록 + pause 상태로 저장 후 닫기
-  const handlePomodoroStop = async () => {
-    if (!timer) return
-    // Flow phase에서만 시간 기록 (횟수 증가 X)
-    if (timer.phase === 'flow') {
-      const plannedMs = getPlannedMs()
-      const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-      const elapsedSec = Math.round((plannedMs - remaining) / 1000)
-      if (elapsedSec > 0) {
-        await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-        toast.success('기록됨')
-      }
-      pause(todoId) // pause 상태로 변경 (sessionStorage에 저장됨)
-    } else {
-      // Break에서는 기록 없이 pause
-      pause(todoId) // pause 상태로 변경
-      toast.success('타이머 종료')
-    }
-    onClose() // 타이머 닫기
-  }
+  // Note: Explicit Pomodoro stop is not used in UI controls
 
   // 뽀모도로 완료 (✓) - 기록 + 태스크 완료 (타이머 상태 유지)
   const handlePomodoroComplete = async () => {
@@ -271,30 +242,7 @@ export function TimerFullScreen({ isOpen, onClose, todoId, todoTitle, pomodoroDo
   }
 
   // 일반 타이머 정지 (■) - 시간 기록 + 타이머 일시정지 유지
-  const handleStopwatchStop = async () => {
-    if (!timer) return
-    
-    // pause 먼저 호출 (정확한 elapsedMs 계산)
-    if (timer.status === 'running') {
-      pause(todoId)
-    }
-    
-    // 추가된 시간만 계산 (현재 시간 - 초기 시간)
-    const additionalMs = timer.elapsedMs - timer.initialFocusMs
-    const additionalSec = Math.round(additionalMs / 1000)
-    
-    if (additionalSec > 0) {
-      const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: additionalSec } })
-      
-      // initialFocusMs와 elapsedMs 업데이트 (기록된 시간으로 동기화)
-      const newFocusMs = response.focusSeconds * 1000
-      updateInitialFocusMs(todoId, newFocusMs)
-      
-      toast.success('기록됨')
-    }
-    
-    onClose() // 타이머 닫기
-  }
+  // Note: Explicit Stopwatch stop is not used in UI controls
 
   // 일반 타이머 완료 (✓) - 추가 시간 기록 + 태스크 완료 (타이머 상태 유지, 횟수 증가 X)
   const handleStopwatchComplete = async () => {
