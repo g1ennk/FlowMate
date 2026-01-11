@@ -103,7 +103,7 @@ export function TodoItem({
             if (e.key === 'Escape') onCancelEdit()
           }}
           autoFocus
-          className="flex-1 bg-transparent px-2 py-1 text-sm text-gray-900 outline-none"
+          className="flex-1 bg-transparent px-2 py-1 text-base text-gray-900 outline-none"
         />
         <button
           onClick={onCancelEdit}

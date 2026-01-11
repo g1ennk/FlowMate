@@ -223,7 +223,7 @@ function TodosPage() {
               }}
               placeholder="할 일을 입력하세요 (Enter로 추가)"
               autoFocus
-              className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-emerald-500 placeholder:text-gray-400"
+              className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-base text-gray-900 outline-none transition-colors focus:border-emerald-500 placeholder:text-gray-400"
             />
             <button
               type="submit"
