@@ -1,0 +1,52 @@
+{
+  "name": "Flow Mate",
+  "short_name": "FlowMate",
+  "description": "할 일 관리와 뽀모도로 타이머를 결합한 생산성 앱",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#10b981",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "할 일 목록",
+      "short_name": "Todos",
+      "description": "할 일 목록 보기",
+      "url": "/todos",
+      "icons": []
+    },
+    {
+      "name": "설정",
+      "short_name": "Settings",
+      "description": "뽀모도로 설정",
+      "url": "/settings",
+      "icons": []
+    }
+  ]
+}
