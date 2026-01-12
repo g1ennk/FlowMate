@@ -158,13 +158,13 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         let hasNewRecord = false
         
         if (timer.mode === 'pomodoro') {
-          // 뽀모도로: 계획된 시간보다 줄어들었으면 새로운 기록
+          // 뽀모도로: 계획된 시간보다 2초 이상 줄어들었으면 새로운 기록 (시작한 것으로 간주)
           const plannedMs = getPlannedMs()
           const currentRemainingMs = timer.remainingMs ?? plannedMs
-          hasNewRecord = currentRemainingMs < plannedMs
+          hasNewRecord = currentRemainingMs < plannedMs - 2000
         } else {
-          // 일반 타이머: 초기 시간보다 늘어났으면 새로운 기록
-          hasNewRecord = (timer.elapsedMs ?? 0) > (timer.initialFocusMs ?? 0)
+          // 일반 타이머: 초기 시간보다 2초 이상 늘어났으면 새로운 기록
+          hasNewRecord = (timer.elapsedMs ?? 0) > (timer.initialFocusMs ?? 0) + 2000
         }
         
         if (!hasNewRecord) {
@@ -237,6 +237,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     // Break 중이면 시간 기록 없이 태스크만 완료
     
     await updateTodo.mutateAsync({ id: todoId, patch: { isDone: true } })
+    // 타이머 정리 (완료 후에는 타이머 상태를 idle로 변경)
+    stop(todoId)
     toast.success('태스크 완료! 🎉')
     onClose()
   }
@@ -265,6 +267,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     }
     
     await updateTodo.mutateAsync({ id: todoId, patch: { isDone: true } })
+    // 타이머 정리 (완료 후에는 타이머 상태를 idle로 변경)
+    stop(todoId)
     toast.success('태스크 완료! 🎉')
     onClose()
   }

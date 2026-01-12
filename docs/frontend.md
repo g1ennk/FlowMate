@@ -2,20 +2,20 @@
 
 ## 1. 스택/의존성
 
-| 분류 | 라이브러리 |
-|------|-----------|
-| 빌드 | Vite + pnpm |
-| UI | React 18 + TypeScript |
-| 라우팅 | React Router |
-| 서버 상태 | TanStack Query |
-| 클라이언트 상태 | Zustand (타이머) |
-| 스타일 | Tailwind CSS 4.x |
-| 폼 | react-hook-form + zod |
-| 유틸 | date-fns, clsx |
-| 알림 | react-hot-toast |
-| DnD | @dnd-kit/core, @dnd-kit/sortable |
-| 모킹 | MSW (Mock Service Worker) |
-| 테스트 | Vitest + @testing-library/react |
+| 분류            | 라이브러리                       |
+| --------------- | -------------------------------- |
+| 빌드            | Vite + pnpm                      |
+| UI              | React 18 + TypeScript            |
+| 라우팅          | React Router                     |
+| 서버 상태       | TanStack Query                   |
+| 클라이언트 상태 | Zustand (타이머)                 |
+| 스타일          | Tailwind CSS 4.x                 |
+| 폼              | react-hook-form + zod            |
+| 유틸            | date-fns, clsx                   |
+| 알림            | react-hot-toast                  |
+| DnD             | @dnd-kit/core, @dnd-kit/sortable |
+| 모킹            | MSW (Mock Service Worker)        |
+| 테스트          | Vitest + @testing-library/react  |
 
 ---
 
@@ -75,10 +75,10 @@ src/
 
 ## 3. 라우팅
 
-| 경로 | 페이지 | 설명 |
-|------|--------|------|
-| `/todos` | TodosPage | 캘린더 + Todo 목록 |
-| `/settings/pomodoro` | PomodoroSettingsPage | 타이머 설정 |
+| 경로                 | 페이지               | 설명               |
+| -------------------- | -------------------- | ------------------ |
+| `/todos`             | TodosPage            | 캘린더 + Todo 목록 |
+| `/settings/pomodoro` | PomodoroSettingsPage | 타이머 설정        |
 
 - 타이머는 풀스크린 오버레이 (`TimerFullScreen`)로 구현
 
@@ -136,7 +136,8 @@ src/
   - 00:00:00부터 카운트업
   - 시간만 기록 (세션 횟수 증가 X)
 - **공통 기능**
-  - 정지(■): 기록 + pause 상태 유지 + 닫기
+  - 일시정지(⏸): 현재 상태에서 pause, 기록은 유지됨
+  - 시작(▶): 일시정지 상태 해제, 이어서 진행
   - 완료(✓): 기록 + 태스크 완료 + 닫기
   - 재오픈 시 이전 상태에서 이어서 진행 가능
   - Flow → 휴식 자동 전환 (설정 가능)
@@ -192,10 +193,10 @@ VITE_USE_MOCK=1
 
 ## 9. 테스트
 
-| 파일 | 내용 |
-|------|------|
+| 파일                 | 내용                                    |
+| -------------------- | --------------------------------------- |
 | `timerStore.test.ts` | 타이머 phase 전환, pause/resume/restore |
-| `api.test.ts` | Todo CRUD, Settings API (MSW) |
+| `api.test.ts`        | Todo CRUD, Settings API (MSW)           |
 
 ```bash
 pnpm test      # 전체 테스트
