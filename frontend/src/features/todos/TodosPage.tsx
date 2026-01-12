@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { toast } from 'react-hot-toast'
@@ -33,6 +33,7 @@ import {
   TrashIcon,
   ClockIcon,
   DocumentIcon,
+  MoreVerticalIcon,
 } from '../../ui/Icons'
 import { SortableTodoItem } from './SortableTodoItem'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
@@ -65,34 +66,54 @@ function TodosPage() {
   const [activeOrder, setActiveOrder] = useState<string[]>([])
   const [doneOrder, setDoneOrder] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const isSubmittingRef = useRef(false)
+  const memoTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   // 폼
   const {
     register,
-    handleSubmit,
     reset,
+    getValues,
   } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
     defaultValues: { title: '' },
   })
+
+  // === Helper 함수 ===
+  // 타이머 정보 계산 로직 (중복 제거)
+  const calculateTimerInfo = (todoId: string) => {
+    const timer = store.getTimer(todoId)
+    const isActiveTimer = timer && (timer.status === 'running' || timer.status === 'paused')
+    let activeTimerElapsedMs: number | undefined = undefined
+    let activeTimerRemainingMs: number | undefined = undefined
+    let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
+    
+    if (isActiveTimer && timer) {
+      if (timer.mode === 'stopwatch') {
+        // 일반 타이머: 카운트업 (실시간 계산)
+        activeTimerElapsedMs = timer.elapsedMs
+      } else if (timer.mode === 'pomodoro') {
+        // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
+        // Date.now()는 실시간 타이머 업데이트를 위해 의도적으로 render 중 호출됨
+        activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
+        activeTimerPhase = timer.phase
+      }
+    }
+    
+    return { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase }
+  }
 
   // === Memoized 데이터 ===
   const todosForSelectedDate = useMemo(() => {
     return (data?.items ?? [])
       .filter((t) => t.date === selectedDateKey)
       .sort((a, b) => {
-        // 실행 중인 타이머가 있는 태스크를 최상단으로
-        const timerA = store.getTimer(a.id)
-        const timerB = store.getTimer(b.id)
-        const isActiveA = timerA && timerA.status !== 'idle'
-        const isActiveB = timerB && timerB.status !== 'idle'
-        
-        if (isActiveA && !isActiveB) return -1
-        if (!isActiveA && isActiveB) return 1
+        // 완료 여부로 정렬 (미완료 > 완료)
         if (a.isDone !== b.isDone) return a.isDone ? 1 : -1
+        // 생성 시간 순으로 정렬
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       })
-  }, [data?.items, selectedDateKey, store.timers, store.getTimer])
+  }, [data?.items, selectedDateKey])
 
   const markedDates = useMemo(() => {
     const marks: Record<string, { done: number; total: number }> = {}
@@ -138,17 +159,23 @@ function TodosPage() {
   }, [doneTodosRaw, doneOrder])
 
   // 타이머 상태
-  // === 핸들러 ===
-  const onSubmit = handleSubmit(async (values) => {
-    try {
-      await actions.handleCreate(values.title)
-      reset()
-      inputRef.current?.focus()
-    } catch (err) {
-      toast.error('추가 실패')
-      console.error(err)
+  // === Effects ===
+  // 메모 편집 모드로 전환 시 자동 포커스
+  useEffect(() => {
+    if (actions.noteEditMode && memoTextareaRef.current) {
+      // 약간의 딜레이를 주어 DOM 업데이트 후 포커스
+      setTimeout(() => {
+        if (memoTextareaRef.current) {
+          memoTextareaRef.current.focus()
+          // 커서를 텍스트 끝으로 이동
+          const length = memoTextareaRef.current.value.length
+          memoTextareaRef.current.setSelectionRange(length, length)
+        }
+      }, 0)
     }
-  })
+  }, [actions.noteEditMode])
+
+  // === 핸들러 ===
 
   // DnD
   const sensors = useSensors(
@@ -204,82 +231,39 @@ function TodosPage() {
           </div>
           <button
             onClick={() => setShowInput((v) => !v)}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-              showInput ? 'bg-gray-200 text-gray-600' : 'bg-emerald-500 text-white'
-            }`}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors"
           >
-            <PlusIcon className={`h-4 w-4 transition-transform ${showInput ? 'rotate-45' : ''}`} />
+            <PlusIcon className="h-4 w-4" />
           </button>
         </div>
-
-        {/* 입력 폼 */}
-        {showInput && (
-          <form onSubmit={onSubmit} className="mb-4 flex items-center gap-2">
-            <input
-              {...register('title')}
-              ref={(e) => {
-                register('title').ref(e)
-                inputRef.current = e
-              }}
-              placeholder="할 일을 입력하세요 (Enter로 추가)"
-              autoFocus
-              className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-base text-gray-900 outline-none transition-colors focus:border-emerald-500 placeholder:text-gray-400"
-            />
-            <button
-              type="submit"
-              disabled={actions.isCreating}
-              className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600 disabled:opacity-50"
-            >
-              추가
-            </button>
-          </form>
-        )}
 
         {/* 로딩 */}
         {isLoading && <div className="py-8 text-center text-sm text-gray-400">불러오는 중...</div>}
 
-        {/* 빈 상태 */}
-        {!isLoading && todosForSelectedDate.length === 0 ? (
+        {/* 빈 상태 또는 리스트 */}
+        {!isLoading && todosForSelectedDate.length === 0 && !showInput ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
               <CheckCircleIcon className="h-8 w-8 text-emerald-300" />
             </div>
             <p className="mb-1 text-sm font-medium text-gray-600">할 일이 없어요</p>
             <p className="mb-4 text-xs text-gray-400">+ 버튼을 눌러 오늘의 첫 할 일을 추가해보세요</p>
-            {!showInput && (
-              <button
-                onClick={() => setShowInput(true)}
-                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
-              >
-                + 할 일 추가하기
-              </button>
-            )}
+            <button
+              onClick={() => setShowInput(true)}
+              className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
+            >
+              + 할 일 추가하기
+            </button>
           </div>
-        ) : (
+        ) : (!isLoading && (todosForSelectedDate.length > 0 || showInput)) ? (
           <div className="space-y-1">
             {/* 미완료 Todo (드래그 가능) */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActiveDragEnd}>
               <SortableContext items={activeTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {activeTodos.map((todo) => {
-                  // 실시간 타이머 정보 계산 (각 todo의 개별 타이머 조회)
+                  // 실시간 타이머 정보 계산 (헬퍼 함수 사용)
                   const timer = store.getTimer(todo.id)
-                  const isActiveTimer = timer && (timer.status === 'running' || timer.status === 'paused')
-                  let activeTimerElapsedMs: number | undefined = undefined
-                  let activeTimerRemainingMs: number | undefined = undefined
-                  let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
-                  let activeTimerCycleCount: number | undefined = undefined
-                  
-                  if (isActiveTimer && timer) {
-                    if (timer.mode === 'stopwatch') {
-                      // 일반 타이머: 카운트업 (실시간 계산)
-                      activeTimerElapsedMs = timer.elapsedMs
-                    } else if (timer.mode === 'pomodoro') {
-                      // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
-                      activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
-                      activeTimerPhase = timer.phase
-                      activeTimerCycleCount = timer.cycleCount
-                    }
-                  }
+                  const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase } = calculateTimerInfo(todo.id)
                   
                   return (
                     <SortableTodoItem
@@ -290,7 +274,6 @@ function TodosPage() {
                       pomodoroDone={todo.pomodoroDone}
                       focusSeconds={todo.focusSeconds}
                       isDone={todo.isDone}
-                      timerMode={todo.timerMode}
                       isEditing={actions.editingId === todo.id}
                       editingTitle={actions.editingTitle}
                       onEditingTitleChange={actions.setEditingTitle}
@@ -301,16 +284,77 @@ function TodosPage() {
                       onDelete={() => actions.handleDelete(todo.id)}
                       onOpenMenu={() => actions.setSelectedTodo(todo)}
                       onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
+                      onOpenNote={() => actions.handleOpenNote(todo)}
                       isActiveTimer={isActiveTimer}
                       activeTimerElapsedMs={activeTimerElapsedMs}
                       activeTimerRemainingMs={activeTimerRemainingMs}
                       activeTimerPhase={activeTimerPhase}
-                      activeTimerCycleCount={activeTimerCycleCount}
                     />
                   )
                 })}
               </SortableContext>
             </DndContext>
+
+            {/* 새 할 일 추가 - TodoItem 형태 (미완료 태스크 맨 아래) */}
+            {showInput && (
+              <div className="rounded-xl p-2">
+                <div className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+                  {/* 체크박스 (비활성) */}
+                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50" />
+                  
+                  {/* 입력 필드 */}
+                  <input
+                    {...register('title')}
+                    ref={(e) => {
+                      register('title').ref(e)
+                      inputRef.current = e
+                    }}
+                    placeholder="할 일 입력"
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        if (isSubmittingRef.current) return
+                        
+                        const title = getValues('title')
+                        if (title?.trim()) {
+                          isSubmittingRef.current = true
+                          try {
+                            await actions.handleCreate(title)
+                            reset()
+                            // Enter 시에는 입력 필드 유지 (연속 입력 가능)
+                            // setShowInput(false) 제거
+                            // 입력 필드에 다시 포커스
+                            setTimeout(() => {
+                              inputRef.current?.focus()
+                            }, 0)
+                          } catch (err) {
+                            toast.error('추가 실패')
+                            console.error(err)
+                          } finally {
+                            isSubmittingRef.current = false
+                          }
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      // 제출 중이면 blur 무시
+                      if (isSubmittingRef.current) return
+                      
+                      if (!getValues('title')) {
+                        setShowInput(false)
+                      }
+                    }}
+                    className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                  />
+                  
+                  {/* 더보기 버튼 (비활성) */}
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-300 opacity-50">
+                    <MoreVerticalIcon className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 완료된 Todo (드래그 가능) */}
             {doneTodos.length > 0 && (
@@ -323,25 +367,9 @@ function TodosPage() {
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDoneDragEnd}>
                   <SortableContext items={doneTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                     {doneTodos.map((todo) => {
-                      // 실시간 타이머 정보 계산 (각 todo의 개별 타이머 조회)
+                      // 실시간 타이머 정보 계산 (헬퍼 함수 사용)
                       const timer = store.getTimer(todo.id)
-                      const isActiveTimer = timer && (timer.status === 'running' || timer.status === 'paused')
-                      let activeTimerElapsedMs: number | undefined = undefined
-                      let activeTimerRemainingMs: number | undefined = undefined
-                      let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
-                      let activeTimerCycleCount: number | undefined = undefined
-                      
-                      if (isActiveTimer && timer) {
-                        if (timer.mode === 'stopwatch') {
-                          // 일반 타이머: 카운트업 (실시간 계산)
-                          activeTimerElapsedMs = timer.elapsedMs
-                        } else if (timer.mode === 'pomodoro') {
-                          // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
-                          activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
-                          activeTimerPhase = timer.phase
-                          activeTimerCycleCount = timer.cycleCount
-                        }
-                      }
+                      const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase } = calculateTimerInfo(todo.id)
                       
                       return (
                         <SortableTodoItem
@@ -352,7 +380,6 @@ function TodosPage() {
                           pomodoroDone={todo.pomodoroDone}
                           focusSeconds={todo.focusSeconds}
                           isDone={todo.isDone}
-                          timerMode={todo.timerMode}
                           isEditing={actions.editingId === todo.id}
                           editingTitle={actions.editingTitle}
                           onEditingTitleChange={actions.setEditingTitle}
@@ -363,11 +390,11 @@ function TodosPage() {
                           onDelete={() => actions.handleDelete(todo.id)}
                           onOpenMenu={() => actions.setSelectedTodo(todo)}
                           onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
+                          onOpenNote={() => actions.handleOpenNote(todo)}
                           isActiveTimer={isActiveTimer}
                           activeTimerElapsedMs={activeTimerElapsedMs}
                           activeTimerRemainingMs={activeTimerRemainingMs}
                           activeTimerPhase={activeTimerPhase}
-                          activeTimerCycleCount={activeTimerCycleCount}
                         />
                       )
                     })}
@@ -376,7 +403,7 @@ function TodosPage() {
               </>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Todo 액션 바텀시트 */}
@@ -390,12 +417,12 @@ function TodosPage() {
       >
         <BottomSheetActions>
           <BottomSheetActionButton
-            icon={<EditIcon className="h-5 w-5" />}
+            icon={<EditIcon className="h-6 w-6" />}
             label="수정하기"
             onClick={() => actions.selectedTodo && actions.handleEdit(actions.selectedTodo.id, actions.selectedTodo.title)}
           />
           <BottomSheetActionButton
-            icon={<TrashIcon className="h-5 w-5" />}
+            icon={<TrashIcon className="h-6 w-6" />}
             label="삭제하기"
             onClick={() => actions.selectedTodo && actions.handleDelete(actions.selectedTodo.id)}
             variant="danger"
@@ -403,7 +430,7 @@ function TodosPage() {
         </BottomSheetActions>
         <div className="space-y-1">
           <BottomSheetItem
-            icon={<DocumentIcon className="h-5 w-5 text-amber-500" />}
+            icon={<DocumentIcon className="h-5 w-5 text-yellow-400" />}
             label="메모"
             onClick={() => actions.selectedTodo && actions.handleOpenNote(actions.selectedTodo)}
           />
@@ -451,20 +478,55 @@ function TodosPage() {
       </BottomSheet>
 
       {/* 메모 바텀시트 */}
-      <BottomSheet isOpen={actions.showNoteModal} onClose={actions.handleCloseNote} title="메모">
+      <BottomSheet 
+        isOpen={actions.showNoteModal} 
+        onClose={actions.handleCloseNote}
+      >
+        {/* 커스텀 헤더 */}
+        <div className="mb-4 -mt-2">
+          <div className="flex items-center justify-between">
+            {actions.noteEditMode ? (
+              <>
+                <button
+                  onClick={actions.handleDeleteNote}
+                  className="text-sm font-medium text-red-600 transition-colors hover:text-red-700"
+                >
+                  삭제
+                </button>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {actions.noteTodo?.title || '메모'}
+                </h3>
+                <button
+                  onClick={actions.handleSaveNote}
+                  className="text-sm font-medium text-gray-900 transition-colors hover:text-gray-700"
+                >
+                  완료
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-8"></div>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {actions.noteTodo?.title || '메모'}
+                </h3>
+                <div className="w-8"></div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 단일 textarea - 읽기/편집 모드 전환 */}
         <textarea
+          ref={memoTextareaRef}
           value={actions.noteText}
           onChange={(e) => actions.setNoteText(e.target.value)}
+          onClick={!actions.noteEditMode ? actions.handleEditNote : undefined}
+          readOnly={!actions.noteEditMode}
           placeholder="메모를 입력하세요..."
-          className="mb-4 h-32 w-full resize-none rounded-xl border border-gray-200 p-3 text-sm text-gray-900 outline-none focus:border-emerald-500 placeholder:text-gray-400"
-          autoFocus
+          className={`mb-4 h-40 w-full resize-none rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 ${
+            !actions.noteEditMode ? 'cursor-pointer' : ''
+          }`}
         />
-        <button
-          onClick={actions.handleSaveNote}
-          className="w-full rounded-xl bg-emerald-500 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-600"
-        >
-          저장
-        </button>
       </BottomSheet>
 
       {/* 타이머 풀스크린 */}
