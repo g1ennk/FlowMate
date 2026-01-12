@@ -146,13 +146,15 @@ export function BottomSheetActionButton({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-1.5 rounded-xl py-4 transition-colors ${
-        variant === 'danger'
-          ? 'bg-red-50 text-red-500 hover:bg-red-100'
-          : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-      }`}
+      className="flex flex-col items-center justify-center gap-1.5 rounded-xl py-4 bg-gray-50 text-gray-900 transition-colors hover:bg-gray-100"
     >
-      {icon && <span className="flex h-6 w-6 items-center justify-center">{icon}</span>}
+      {icon && (
+        <span className={`flex h-6 w-6 items-center justify-center ${
+          variant === 'danger' ? 'text-red-500' : 'text-blue-500'
+        }`}>
+          {icon}
+        </span>
+      )}
       <span className="text-xs font-medium">{label}</span>
     </button>
   )
