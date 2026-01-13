@@ -37,7 +37,6 @@ import {
 } from '../../ui/Icons'
 import { SortableTodoItem } from './SortableTodoItem'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
-import { DailyStatsBadges } from './components/DailyStatsBadges'
 import { useTodoActions } from './useTodoActions'
 import { useTodos } from './hooks'
 import { getTimerInfo } from '../timer/useTimerInfo'
@@ -102,16 +101,6 @@ function TodosPage() {
       if (todo.isDone) marks[todo.date].done++
     }
     return marks
-  }, [data?.items])
-
-  const dailyStats = useMemo(() => {
-    const stats: Record<string, { count: number; minutes: number }> = {}
-    for (const todo of data?.items ?? []) {
-      if (!stats[todo.date]) stats[todo.date] = { count: 0, minutes: 0 }
-      stats[todo.date].count += todo.pomodoroDone
-      stats[todo.date].minutes += Math.floor(todo.focusSeconds / 60)
-    }
-    return stats
   }, [data?.items])
 
   const activeTodosRaw = todosForSelectedDate.filter((t) => !t.isDone)
@@ -182,9 +171,6 @@ function TodosPage() {
     }
   }
 
-  // 현재 날짜 통계
-  const currentStats = dailyStats[selectedDateKey]
-
   return (
     <div className="space-y-4">
       {/* 캘린더 */}
@@ -199,15 +185,9 @@ function TodosPage() {
       <div className="rounded-2xl bg-white p-4 shadow-sm">
         {/* 헤더 */}
         <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-gray-900">
-              {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
-            </h2>
-            <DailyStatsBadges
-              sessionCount={currentStats?.count ?? 0}
-              sessionMinutes={currentStats?.minutes ?? 0}
-            />
-          </div>
+          <h2 className="text-base font-semibold text-gray-900">
+            {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
+          </h2>
           <button
             onClick={() => setShowInput((v) => !v)}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors"

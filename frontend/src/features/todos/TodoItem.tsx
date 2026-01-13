@@ -178,9 +178,9 @@ export function TodoItem({
               )}
               {totalFocusSeconds > 0 && (
                 <span className={`text-xs font-medium tabular-nums ${
-                  // 완료: 진한 초록색
+                    // 완료: 진한 초록색
                   isDone 
-                    ? 'text-emerald-600'
+                      ? 'text-emerald-600'
                   // 진행 중/휴식 중: 모드에 따라 색 구분
                   : isActiveTimer && activeTimerMode === 'pomodoro'
                     ? 'text-red-500'        // 뽀모도로: 빨간색
