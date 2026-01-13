@@ -337,11 +337,26 @@ function TodosPage() {
                         }
                       }
                     }}
-                    onBlur={() => {
+                    onBlur={async () => {
                       // 제출 중이면 blur 무시
                       if (isSubmittingRef.current) return
                       
-                      if (!getValues('title')) {
+                      const title = getValues('title')
+                      if (title?.trim()) {
+                        // 입력 값이 있으면 자동으로 추가
+                        isSubmittingRef.current = true
+                        try {
+                          await actions.handleCreate(title)
+                          reset()
+                          setShowInput(false) // blur 시에는 입력 필드 닫기
+                        } catch (err) {
+                          toast.error('추가 실패')
+                          console.error(err)
+                        } finally {
+                          isSubmittingRef.current = false
+                        }
+                      } else {
+                        // 입력 값이 없으면 입력 필드만 닫기
                         setShowInput(false)
                       }
                     }}
