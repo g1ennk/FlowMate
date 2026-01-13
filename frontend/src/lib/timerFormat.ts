@@ -32,6 +32,6 @@ export function formatMinutesSeconds(seconds: number): string {
  * 분 단위 포맷 (n분)
  */
 export function formatMinutes(seconds: number): string {
-  const mins = Math.round(seconds / 60)
+  const mins = Math.floor(seconds / 60)
   return `${mins}분`
 }

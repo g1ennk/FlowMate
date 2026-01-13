@@ -302,3 +302,68 @@ export function ArrowPathIcon({ size, className, ...props }: IconProps) {
     </svg>
   )
 }
+
+// 옵션 1: 간단한 "휴식" 텍스트 아이콘
+export function BreakIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      {...props}
+    >
+      <text
+        x="50%"
+        y="50%"
+        dominantBaseline="central"
+        textAnchor="middle"
+        fontSize="10"
+        fontWeight="600"
+        fill="currentColor"
+      >
+        휴식
+      </text>
+    </svg>
+  )
+}
+
+// 옵션 2: 달 아이콘 (휴식/쉼)
+export function MoonIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"
+      />
+    </svg>
+  )
+}
+
+// 옵션 3: 커피 아이콘 (더 단순화)
+export function CoffeeIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8 14v.01M12 14v.01M16 14v.01M21 12c0 .55-.45 1-1 1h-2c0 2.76-2.24 5-5 5s-5-2.24-5-5H6c-.55 0-1-.45-1-1V7c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v5z"
+      />
+    </svg>
+  )
+}

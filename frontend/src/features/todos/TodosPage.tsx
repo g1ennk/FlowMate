@@ -40,6 +40,7 @@ import { TimerFullScreen } from '../timer/TimerFullScreen'
 import { DailyStatsBadges } from './components/DailyStatsBadges'
 import { useTodoActions } from './useTodoActions'
 import { useTodos } from './hooks'
+import { getTimerInfo } from '../timer/useTimerInfo'
 
 // === 스키마 ===
 const createSchema = z.object({
@@ -79,29 +80,7 @@ function TodosPage() {
     defaultValues: { title: '' },
   })
 
-  // === Helper 함수 ===
-  // 타이머 정보 계산 로직 (중복 제거)
-  const calculateTimerInfo = (todoId: string) => {
-    const timer = store.getTimer(todoId)
-    const isActiveTimer = timer && (timer.status === 'running' || timer.status === 'paused')
-    let activeTimerElapsedMs: number | undefined = undefined
-    let activeTimerRemainingMs: number | undefined = undefined
-    let activeTimerPhase: 'flow' | 'short' | 'long' | undefined = undefined
-    
-    if (isActiveTimer && timer) {
-      if (timer.mode === 'stopwatch') {
-        // 일반 타이머: 카운트업 (실시간 계산)
-        activeTimerElapsedMs = timer.elapsedMs
-      } else if (timer.mode === 'pomodoro') {
-        // 뽀모도로: 카운트다운 (실시간 계산, endAt 기준)
-        // Date.now()는 실시간 타이머 업데이트를 위해 의도적으로 render 중 호출됨
-        activeTimerRemainingMs = timer.endAt ? Math.max(0, timer.endAt - Date.now()) : (timer.remainingMs ?? 0)
-        activeTimerPhase = timer.phase
-      }
-    }
-    
-    return { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase }
-  }
+  // === Helper 함수는 제거되고 useTimerInfo 사용 ===
 
   // === Memoized 데이터 ===
   const todosForSelectedDate = useMemo(() => {
@@ -130,7 +109,7 @@ function TodosPage() {
     for (const todo of data?.items ?? []) {
       if (!stats[todo.date]) stats[todo.date] = { count: 0, minutes: 0 }
       stats[todo.date].count += todo.pomodoroDone
-      stats[todo.date].minutes += Math.round(todo.focusSeconds / 60)
+      stats[todo.date].minutes += Math.floor(todo.focusSeconds / 60)
     }
     return stats
   }, [data?.items])
@@ -261,9 +240,9 @@ function TodosPage() {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActiveDragEnd}>
               <SortableContext items={activeTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {activeTodos.map((todo) => {
-                  // 실시간 타이머 정보 계산 (헬퍼 함수 사용)
+                  // 실시간 타이머 정보 계산
                   const timer = store.getTimer(todo.id)
-                  const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase } = calculateTimerInfo(todo.id)
+                  const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase, breakElapsedMs, isBreakPhase } = getTimerInfo(timer)
                   
                   return (
                     <SortableTodoItem
@@ -286,9 +265,12 @@ function TodosPage() {
                       onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
                       onOpenNote={() => actions.handleOpenNote(todo)}
                       isActiveTimer={isActiveTimer}
+                      activeTimerMode={timer?.mode}
                       activeTimerElapsedMs={activeTimerElapsedMs}
                       activeTimerRemainingMs={activeTimerRemainingMs}
                       activeTimerPhase={activeTimerPhase}
+                      breakElapsedMs={breakElapsedMs}
+                      isBreakPhase={isBreakPhase}
                     />
                   )
                 })}
@@ -329,7 +311,7 @@ function TodosPage() {
                               inputRef.current?.focus()
                             }, 0)
                           } catch (err) {
-                            toast.error('추가 실패')
+                            toast.error('추가 실패', { id: 'todo-create-failed' })
                             console.error(err)
                           } finally {
                             isSubmittingRef.current = false
@@ -350,7 +332,7 @@ function TodosPage() {
                           reset()
                           setShowInput(false) // blur 시에는 입력 필드 닫기
                         } catch (err) {
-                          toast.error('추가 실패')
+                          toast.error('추가 실패', { id: 'todo-create-failed' })
                           console.error(err)
                         } finally {
                           isSubmittingRef.current = false
@@ -382,9 +364,9 @@ function TodosPage() {
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDoneDragEnd}>
                   <SortableContext items={doneTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                     {doneTodos.map((todo) => {
-                      // 실시간 타이머 정보 계산 (헬퍼 함수 사용)
+                      // 실시간 타이머 정보 계산
                       const timer = store.getTimer(todo.id)
-                      const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase } = calculateTimerInfo(todo.id)
+                      const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase } = getTimerInfo(timer)
                       
                       return (
                         <SortableTodoItem
@@ -407,6 +389,7 @@ function TodosPage() {
                           onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
                           onOpenNote={() => actions.handleOpenNote(todo)}
                           isActiveTimer={isActiveTimer}
+                          activeTimerMode={timer?.mode}
                           activeTimerElapsedMs={activeTimerElapsedMs}
                           activeTimerRemainingMs={activeTimerRemainingMs}
                           activeTimerPhase={activeTimerPhase}
@@ -450,10 +433,35 @@ function TodosPage() {
             onClick={() => actions.selectedTodo && actions.handleOpenNote(actions.selectedTodo)}
           />
           {actions.selectedTodo && (() => {
-            // 전체 타이머 중에서 실행 중인 타이머 찾기 (running만)
-            const allTimers = Object.values(store.timers)
-            const runningTimer = allTimers.find(t => t.status === 'running')
-            const activeMode = runningTimer ? runningTimer.mode : null
+            // 현재 선택된 태스크의 타이머 상태
+            const currentTimer = store.getTimer(actions.selectedTodo.id)
+            const currentTimerRunning = currentTimer?.status === 'running'
+            
+            // 다른 태스크에서 실행 중인 타이머 찾기
+            const allTimerEntries = Object.entries(store.timers)
+            const otherRunningTimer = allTimerEntries.find(
+              ([todoId, timer]) => timer.status === 'running' && todoId !== actions.selectedTodo.id
+            )
+            
+            const isCompleted = actions.selectedTodo.isDone
+            
+            // 일반 타이머 비활성화 조건
+            // 1. 완료된 태스크
+            // 2. 다른 태스크에서 타이머 실행 중
+            // 3. 같은 태스크에서 뽀모도로 실행 중
+            const disableStopwatch = 
+              isCompleted || 
+              !!otherRunningTimer || 
+              (currentTimerRunning && currentTimer.mode === 'pomodoro')
+            
+            // 뽀모도로 타이머 비활성화 조건
+            // 1. 완료된 태스크
+            // 2. 다른 태스크에서 타이머 실행 중
+            // 3. 같은 태스크에서 일반 타이머 실행 중
+            const disablePomodoro = 
+              isCompleted || 
+              !!otherRunningTimer || 
+              (currentTimerRunning && currentTimer.mode === 'stopwatch')
             
             return (
               <>
@@ -463,13 +471,21 @@ function TodosPage() {
                   label="일반 타이머"
                   onClick={() => {
                     if (!actions.selectedTodo) return
-                    if (activeMode === 'pomodoro') {
-                      actions.setTimerErrorMessage('이미 뽀모도로 타이머가 실행 중입니다')
+                    if (isCompleted) {
+                      actions.setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
+                      return
+                    }
+                    if (otherRunningTimer) {
+                      actions.setTimerErrorMessage('다른 타이머가 실행 중입니다')
+                      return
+                    }
+                    if (currentTimerRunning && currentTimer.mode === 'pomodoro') {
+                      actions.setTimerErrorMessage('뽀모도로 타이머가 실행 중입니다')
                       return
                     }
                     actions.handleOpenTimer(actions.selectedTodo, 'stopwatch')
                   }}
-                  disabled={activeMode === 'pomodoro'}
+                  disabled={disableStopwatch}
                 />
                 
                 {/* 뽀모도로 타이머 */}
@@ -478,13 +494,21 @@ function TodosPage() {
                   label="뽀모도로 타이머"
                   onClick={() => {
                     if (!actions.selectedTodo) return
-                    if (activeMode === 'stopwatch') {
-                      actions.setTimerErrorMessage('이미 일반 타이머가 실행 중입니다')
+                    if (isCompleted) {
+                      actions.setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
+                      return
+                    }
+                    if (otherRunningTimer) {
+                      actions.setTimerErrorMessage('다른 타이머가 실행 중입니다')
+                      return
+                    }
+                    if (currentTimerRunning && currentTimer.mode === 'stopwatch') {
+                      actions.setTimerErrorMessage('일반 타이머가 실행 중입니다')
                       return
                     }
                     actions.handleOpenTimer(actions.selectedTodo, 'pomodoro')
                   }}
-                  disabled={activeMode === 'stopwatch'}
+                  disabled={disablePomodoro}
                 />
               </>
             )

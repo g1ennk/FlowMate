@@ -51,7 +51,7 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
       {/* 배경 */}
       <div
         className={`absolute inset-0 bg-black transition-opacity duration-300 ${
-          visible ? 'opacity-40' : 'opacity-0'
+          visible ? 'opacity-60' : 'opacity-0'
         }`}
         onClick={onClose}
       />

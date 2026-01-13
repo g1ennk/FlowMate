@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import type { PomodoroSettings } from '../../api/types'
 import { playNotificationSound } from '../../lib/sound'
+import { checkTimerConflict, getTimerConflictMessage } from './timerHelpers'
 
-type TimerPhase = 'flow' | 'short' | 'long'
-type TimerStatus = 'idle' | 'running' | 'paused' | 'waiting'
-type TimerMode = 'pomodoro' | 'stopwatch'
+export type TimerPhase = 'flow' | 'short' | 'long'
+export type TimerStatus = 'idle' | 'running' | 'paused' | 'waiting'
+export type TimerMode = 'pomodoro' | 'stopwatch'
+export type FlexiblePhase = 'focus' | 'break_suggested' | 'break_free'
 
 export type SingleTimerState = {
   mode: TimerMode
@@ -17,6 +19,15 @@ export type SingleTimerState = {
   startedAt: number | null
   cycleCount: number
   settingsSnapshot: PomodoroSettings | null
+  
+  // Flexible timer (stopwatch) 전용 필드
+  flexiblePhase: FlexiblePhase | null
+  focusElapsedMs: number      // 집중 시간 (카운트업)
+  breakElapsedMs: number      // 휴식 시간 (카운트업)
+  breakTargetMs: number | null  // 휴식 목표 (null = 자유 휴식)
+  breakCompleted: boolean     // 목표 도달 여부
+  focusStartedAt: number | null  // 집중 시작 시간
+  breakStartedAt: number | null  // 휴식 시작 시간
 }
 
 type TimerState = {
@@ -34,14 +45,15 @@ type TimerActions = {
   updateInitialFocusMs: (todoId: string, newInitialFocusMs: number) => void
   tick: () => void
   completePhase: (todoId: string) => void
-  skipToPrev: (todoId: string) => void
   skipToNext: (todoId: string) => void
-  canSkipToPrev: (todoId: string) => boolean
-  canSkipToNext: (todoId: string) => boolean
   getTimer: (todoId: string) => SingleTimerState | undefined
   clearAutoCompleted: (todoId: string) => void
   restore: () => void
   syncWithNow: () => void
+  // Flexible timer 액션
+  startBreak: (todoId: string, targetMs: number | null) => void
+  resumeFocus: (todoId: string) => void
+  calculateBreakSuggestion: (focusMs: number) => { targetMs: number; targetMinutes: number; message: string }
 }
 
 type TimerStore = TimerState & TimerActions
@@ -60,6 +72,14 @@ export const initialSingleTimerState: SingleTimerState = {
   startedAt: null,
   cycleCount: 0,
   settingsSnapshot: null,
+  // Flexible timer 기본값
+  flexiblePhase: null,
+  focusElapsedMs: 0,
+  breakElapsedMs: 0,
+  breakTargetMs: null,
+  breakCompleted: false,
+  focusStartedAt: null,
+  breakStartedAt: null,
 }
 
 type Persisted = Omit<SingleTimerState, never>
@@ -118,6 +138,12 @@ function hydrateState(persisted: Persisted): SingleTimerState {
   let remainingMs = persisted.remainingMs
   let elapsedMs = persisted.elapsedMs ?? 0
   const status: TimerStatus = persisted.status
+  
+  // Flexible timer 상태 복원
+  let focusElapsedMs = persisted.focusElapsedMs ?? 0
+  let breakElapsedMs = persisted.breakElapsedMs ?? 0
+  let focusStartedAt = persisted.focusStartedAt ?? null
+  let breakStartedAt = persisted.breakStartedAt ?? null
 
   if (persisted.mode === 'pomodoro' && persisted.status === 'running' && endAt) {
     const left = endAt - now
@@ -132,9 +158,24 @@ function hydrateState(persisted: Persisted): SingleTimerState {
     endAt = null
   }
 
-  if (persisted.mode === 'stopwatch' && persisted.status === 'running' && persisted.startedAt) {
-    const delta = now - persisted.startedAt
-    elapsedMs = persisted.elapsedMs + delta
+  if (persisted.mode === 'stopwatch' && persisted.status === 'running') {
+    const phase = persisted.flexiblePhase
+    
+    if (phase === 'focus' && focusStartedAt) {
+      // 집중 중이었으면 focusElapsedMs 업데이트
+      const delta = now - focusStartedAt
+      focusElapsedMs = persisted.focusElapsedMs + delta
+      focusStartedAt = now
+    } else if ((phase === 'break_suggested' || phase === 'break_free') && breakStartedAt) {
+      // 휴식 중이었으면 breakElapsedMs 업데이트
+      const delta = now - breakStartedAt
+      breakElapsedMs = persisted.breakElapsedMs + delta
+      breakStartedAt = now
+    } else if (persisted.startedAt) {
+      // 기존 stopwatch (phase 없음)
+      const delta = now - persisted.startedAt
+      elapsedMs = persisted.elapsedMs + delta
+    }
   }
 
   return {
@@ -143,6 +184,14 @@ function hydrateState(persisted: Persisted): SingleTimerState {
     endAt,
     remainingMs,
     elapsedMs,
+    focusElapsedMs,
+    breakElapsedMs,
+    focusStartedAt,
+    breakStartedAt,
+    // 기본값 보장
+    flexiblePhase: persisted.flexiblePhase ?? null,
+    breakTargetMs: persisted.breakTargetMs ?? null,
+    breakCompleted: persisted.breakCompleted ?? false,
   }
 }
 
@@ -200,6 +249,13 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     getTimer: (todoId) => get().timers[todoId],
 
     startPomodoro: (todoId, settings) => {
+      // 전역 타이머 충돌 체크
+      const [hasConflict, conflictMode] = checkTimerConflict(get().timers, todoId)
+      if (hasConflict && conflictMode) {
+        console.warn(getTimerConflictMessage(conflictMode))
+        return
+      }
+      
       const existingTimer = get().timers[todoId]
       
       if (existingTimer && existingTimer.status !== 'idle' && existingTimer.mode === 'stopwatch') {
@@ -219,6 +275,14 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         initialFocusMs: 0,
         startedAt: null,
         cycleCount: 0,
+        // Flexible timer 필드 (pomodoro에서는 사용하지 않음)
+        flexiblePhase: null,
+        focusElapsedMs: 0,
+        breakElapsedMs: 0,
+        breakTargetMs: null,
+        breakCompleted: false,
+        focusStartedAt: null,
+        breakStartedAt: null,
       }
       
       set((state) => ({
@@ -228,6 +292,13 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     },
 
     startStopwatch: (todoId, initialElapsedMs = 0) => {
+      // 전역 타이머 충돌 체크
+      const [hasConflict, conflictMode] = checkTimerConflict(get().timers, todoId)
+      if (hasConflict && conflictMode) {
+        console.warn(getTimerConflictMessage(conflictMode))
+        return
+      }
+      
       const existingTimer = get().timers[todoId]
       
       if (existingTimer && existingTimer.status !== 'idle' && existingTimer.mode === 'pomodoro') {
@@ -244,8 +315,16 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         remainingMs: null,
         elapsedMs: initialElapsedMs,
         initialFocusMs: initialElapsedMs,
-        startedAt: Date.now(),
+        startedAt: null,  // 기존 호환성 유지
         cycleCount: 0,
+        // Flexible timer: 집중 모드로 시작
+        flexiblePhase: 'focus',
+        focusElapsedMs: initialElapsedMs,
+        breakElapsedMs: 0,
+        breakTargetMs: null,
+        breakCompleted: false,
+        focusStartedAt: Date.now(),
+        breakStartedAt: null,
       }
       
       set((state) => ({
@@ -261,10 +340,25 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       if (timer.mode === 'pomodoro' && timer.endAt) {
         const remaining = Math.max(0, timer.endAt - Date.now())
         updateTimer(todoId, { status: 'paused', remainingMs: remaining, endAt: null })
-      } else if (timer.mode === 'stopwatch' && timer.startedAt) {
-        const delta = Date.now() - timer.startedAt
-        const newElapsed = timer.elapsedMs + delta
-        updateTimer(todoId, { status: 'paused', elapsedMs: newElapsed, startedAt: null })
+      } else if (timer.mode === 'stopwatch') {
+        const updates: Partial<SingleTimerState> = { status: 'paused' }
+        
+        if (timer.flexiblePhase === 'focus' && timer.focusStartedAt) {
+          const delta = Date.now() - timer.focusStartedAt
+          updates.focusElapsedMs = timer.focusElapsedMs + delta
+          updates.focusStartedAt = null
+        } else if ((timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') && timer.breakStartedAt) {
+          const delta = Date.now() - timer.breakStartedAt
+          updates.breakElapsedMs = timer.breakElapsedMs + delta
+          updates.breakStartedAt = null
+        } else if (timer.startedAt) {
+          // 기존 stopwatch 호환성
+          const delta = Date.now() - timer.startedAt
+          updates.elapsedMs = timer.elapsedMs + delta
+          updates.startedAt = null
+        }
+        
+        updateTimer(todoId, updates)
       }
     },
 
@@ -274,7 +368,18 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       
       if (timer.mode === 'stopwatch') {
         if (timer.status === 'paused') {
-          updateTimer(todoId, { status: 'running', startedAt: Date.now() })
+          const updates: Partial<SingleTimerState> = { status: 'running' }
+          
+          if (timer.flexiblePhase === 'focus') {
+            updates.focusStartedAt = Date.now()
+          } else if (timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') {
+            updates.breakStartedAt = Date.now()
+          } else {
+            // 기존 stopwatch 호환성
+            updates.startedAt = Date.now()
+          }
+          
+          updateTimer(todoId, updates)
         }
         return
       }
@@ -283,7 +388,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         updateTimer(todoId, {
           status: 'running',
           endAt: Date.now() + timer.remainingMs,
-          remainingMs: Date.now() + timer.remainingMs - Date.now(),
+          remainingMs: timer.remainingMs,
         })
         return
       }
@@ -292,7 +397,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         updateTimer(todoId, {
           status: 'running',
           endAt: Date.now() + timer.remainingMs,
-          remainingMs: Date.now() + timer.remainingMs - Date.now(),
+          remainingMs: timer.remainingMs,
         })
       }
     },
@@ -312,6 +417,14 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           elapsedMs: 0,
           initialFocusMs: 0,
           startedAt: null,
+          // Flexible 필드 초기화
+          flexiblePhase: null,
+          focusElapsedMs: 0,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: null,
+          breakStartedAt: null,
         })
       } else {
         const settings = timer.settingsSnapshot
@@ -333,6 +446,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       updateTimer(todoId, {
         elapsedMs: newInitialFocusMs,
         initialFocusMs: newInitialFocusMs,
+        focusElapsedMs: newInitialFocusMs,  // Flexible 타이머도 업데이트
       })
     },
 
@@ -343,9 +457,30 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       Object.entries(timers).forEach(([todoId, timer]) => {
         if (timer.status !== 'running') return
         
-        if (timer.mode === 'stopwatch' && timer.startedAt) {
-          const newElapsed = timer.elapsedMs + (Date.now() - timer.startedAt)
-          updates[todoId] = { ...timer, elapsedMs: newElapsed, startedAt: Date.now() }
+        if (timer.mode === 'stopwatch') {
+          if (timer.flexiblePhase === 'focus' && timer.focusStartedAt) {
+            // 집중 시간 카운트업
+            const newFocusElapsed = timer.focusElapsedMs + (Date.now() - timer.focusStartedAt)
+            updates[todoId] = { ...timer, focusElapsedMs: newFocusElapsed, focusStartedAt: Date.now() }
+          } else if ((timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') && timer.breakStartedAt) {
+            // 휴식 시간 카운트업
+            const newBreakElapsed = timer.breakElapsedMs + (Date.now() - timer.breakStartedAt)
+            const updated: SingleTimerState = { ...timer, breakElapsedMs: newBreakElapsed, breakStartedAt: Date.now() }
+            
+            // 휴식 목표 도달 감지 (추천 휴식만)
+            if (timer.flexiblePhase === 'break_suggested' && timer.breakTargetMs && !timer.breakCompleted) {
+              if (newBreakElapsed >= timer.breakTargetMs) {
+                playNotificationSound()
+                updated.breakCompleted = true
+              }
+            }
+            
+            updates[todoId] = updated
+          } else if (timer.startedAt) {
+            // 기존 stopwatch 호환성
+            const newElapsed = timer.elapsedMs + (Date.now() - timer.startedAt)
+            updates[todoId] = { ...timer, elapsedMs: newElapsed, startedAt: Date.now() }
+          }
         }
         
         if (timer.mode === 'pomodoro' && timer.endAt) {
@@ -395,25 +530,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       }
     },
 
-    skipToPrev: (todoId) => {
-      const timer = get().timers[todoId]
-      if (!timer || timer.mode !== 'pomodoro' || !timer.settingsSnapshot) return
-      
-      const { phase, cycleCount, settingsSnapshot } = timer
-      const { breakMin, longBreakMin, flowMin, cycleEvery } = settingsSnapshot
-      
-      if (phase === 'flow') {
-        if (cycleCount === 0) return
-        
-        const breakType = getBreakType(cycleCount, cycleEvery)
-        const prevBreakDuration = breakType.isLong ? longBreakMin : breakMin
-        
-        transitionPhase(todoId, breakType.phase, prevBreakDuration, false, 0)
-      } else {
-        transitionPhase(todoId, 'flow', flowMin, false, -1)
-      }
-    },
-
     skipToNext: (todoId) => {
       const timer = get().timers[todoId]
       if (!timer || timer.mode !== 'pomodoro' || !timer.settingsSnapshot) return
@@ -432,18 +548,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       }
     },
 
-    canSkipToPrev: (todoId) => {
-      const timer = get().timers[todoId]
-      if (!timer || timer.mode !== 'pomodoro') return false
-      if (timer.phase === 'flow' && timer.cycleCount === 0) return false
-      return true
-    },
-
-    canSkipToNext: (todoId) => {
-      const timer = get().timers[todoId]
-      return !!timer && timer.mode === 'pomodoro'
-    },
-
     restore: () => {
       const timers = loadAllPersisted()
       set({ timers })
@@ -454,12 +558,31 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const updates: Record<string, SingleTimerState> = {}
       
       Object.entries(timers).forEach(([todoId, timer]) => {
-        if (timer.mode === 'stopwatch' && timer.status === 'running' && timer.startedAt) {
-          const delta = Date.now() - timer.startedAt
-          updates[todoId] = {
-            ...timer,
-            elapsedMs: timer.elapsedMs + delta,
-            startedAt: Date.now(),
+        if (timer.mode === 'stopwatch' && timer.status === 'running') {
+          if (timer.flexiblePhase === 'focus' && timer.focusStartedAt) {
+            // 집중 중
+            const delta = Date.now() - timer.focusStartedAt
+            updates[todoId] = {
+              ...timer,
+              focusElapsedMs: timer.focusElapsedMs + delta,
+              focusStartedAt: Date.now(),
+            }
+          } else if ((timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') && timer.breakStartedAt) {
+            // 휴식 중
+            const delta = Date.now() - timer.breakStartedAt
+            updates[todoId] = {
+              ...timer,
+              breakElapsedMs: timer.breakElapsedMs + delta,
+              breakStartedAt: Date.now(),
+            }
+          } else if (timer.startedAt) {
+            // 기존 stopwatch 호환성
+            const delta = Date.now() - timer.startedAt
+            updates[todoId] = {
+              ...timer,
+              elapsedMs: timer.elapsedMs + delta,
+              startedAt: Date.now(),
+            }
           }
         }
         
@@ -487,6 +610,80 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         newSet.delete(todoId)
         return { autoCompletedTodos: newSet }
       })
+    },
+
+    // === Flexible Timer 액션 ===
+
+    startBreak: (todoId, targetMs) => {
+      const timer = get().timers[todoId]
+      if (!timer || timer.mode !== 'stopwatch') return
+      
+      // 집중 중이 아니면 무시
+      if (timer.flexiblePhase !== 'focus') return
+      
+      let newFocusElapsed = timer.focusElapsedMs
+      
+      // 실행 중이면 집중 시간 계산
+      if (timer.status === 'running' && timer.focusStartedAt) {
+        const delta = Date.now() - timer.focusStartedAt
+        newFocusElapsed = timer.focusElapsedMs + delta
+      }
+      
+      // 휴식 시작 (running 또는 paused 모두 처리)
+      updateTimer(todoId, {
+        flexiblePhase: targetMs ? 'break_suggested' : 'break_free',
+        focusElapsedMs: newFocusElapsed,
+        focusStartedAt: null,
+        breakElapsedMs: 0,
+        breakStartedAt: Date.now(),
+        breakTargetMs: targetMs,
+        breakCompleted: false,
+        status: 'running',
+      })
+    },
+
+    resumeFocus: (todoId) => {
+      const timer = get().timers[todoId]
+      if (!timer || timer.mode !== 'stopwatch') return
+      
+      // 휴식 중이 아니면 무시
+      if (timer.flexiblePhase !== 'break_suggested' && timer.flexiblePhase !== 'break_free') return
+      
+      let newBreakElapsed = timer.breakElapsedMs
+      
+      // 실행 중이면 휴식 시간 계산
+      if (timer.breakStartedAt) {
+        const delta = Date.now() - timer.breakStartedAt
+        newBreakElapsed = timer.breakElapsedMs + delta
+      }
+      
+      // 집중 재개 (running 또는 paused 모두 처리)
+      updateTimer(todoId, {
+        flexiblePhase: 'focus',
+        breakElapsedMs: newBreakElapsed,
+        breakStartedAt: null,
+        focusStartedAt: Date.now(),
+        breakTargetMs: null,
+        breakCompleted: false,
+        status: 'running',
+      })
+    },
+
+    calculateBreakSuggestion: (focusMs) => {
+      const focusMin = Math.floor(focusMs / 60000)
+      const ratio = 0.2 // 20% (설정에서 변경 가능하도록 추후 확장)
+      
+      // 추천 시간 계산
+      const suggestedMin = Math.round(focusMin * ratio)
+      
+      // 최소 5분, 최대 30분
+      const clampedMin = Math.max(5, Math.min(30, suggestedMin))
+      
+      return {
+        targetMs: clampedMin * 60000,
+        targetMinutes: clampedMin,
+        message: `${focusMin}분 집중 → ${clampedMin}분 휴식 추천`
+      }
     },
   }
 })

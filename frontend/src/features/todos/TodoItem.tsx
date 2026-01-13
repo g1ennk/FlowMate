@@ -24,9 +24,12 @@ export type TodoItemProps = {
   onOpenNote?: () => void
   // 실시간 타이머 정보
   isActiveTimer?: boolean
+  activeTimerMode?: 'stopwatch' | 'pomodoro' // 타이머 모드
   activeTimerElapsedMs?: number
   activeTimerRemainingMs?: number // 뽀모도로용 (카운트다운)
   activeTimerPhase?: 'flow' | 'short' | 'long' // 뽀모도로 phase
+  breakElapsedMs?: number // Flexible 타이머 휴식 시간
+  isBreakPhase?: boolean // 휴식 중인지 여부
 }
 
 export function TodoItem({
@@ -45,22 +48,30 @@ export function TodoItem({
   onOpenTimer,
   onOpenNote,
   isActiveTimer,
+  activeTimerMode,
   activeTimerElapsedMs,
   activeTimerRemainingMs,
   activeTimerPhase,
+  breakElapsedMs,
+  isBreakPhase,
 }: TodoItemProps) {
   // 실시간 타이머가 실행 중일 때
   let displayTimeSeconds: number
+  let isShowingBreak = false
   
   // 완료된 태스크는 항상 저장된 focusSeconds 표시
   if (isDone) {
     displayTimeSeconds = focusSeconds
+  } else if (isActiveTimer && isBreakPhase && breakElapsedMs !== undefined) {
+    // 휴식 중: 휴식 시간 표시
+    displayTimeSeconds = Math.floor(breakElapsedMs / 1000)
+    isShowingBreak = true
   } else if (isActiveTimer) {
     if (activeTimerRemainingMs !== undefined) {
       // 뽀모도로: 카운트다운 (남은 시간 표시)
       displayTimeSeconds = Math.ceil(activeTimerRemainingMs / 1000)
     } else if (activeTimerElapsedMs !== undefined) {
-      // 일반 타이머: 카운트업 (elapsedMs는 이미 focusSeconds를 포함)
+      // 일반 타이머 집중 중: 카운트업 (elapsedMs는 이미 focusSeconds를 포함)
       displayTimeSeconds = Math.floor(activeTimerElapsedMs / 1000)
     } else {
       displayTimeSeconds = focusSeconds
@@ -76,7 +87,7 @@ export function TodoItem({
   const focusSec = totalFocusSeconds % 60
   const focusTimeDisplay = isDone 
     ? `${focusMin}분`  // 완료: "3분"
-    : `${focusMin}:${String(focusSec).padStart(2, '0')}`  // 미완료: "3:45"
+    : `${focusMin}:${String(focusSec).padStart(2, '0')}`  // 미완료/휴식: "3:45"
 
   // 편집 모드
   if (isEditing) {
@@ -141,12 +152,16 @@ export function TodoItem({
           {(pomodoroDone > 0 || totalFocusSeconds > 0) && (
             <button
               onClick={onOpenTimer}
-              className="mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors hover:bg-gray-50"
+              className={`mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors ${
+                isDone ? 'cursor-default' : 'hover:bg-gray-50 cursor-pointer'
+              }`}
             >
-              {/* 휴식 상태일 때 Stop 아이콘, 그 외에는 Clock 아이콘 */}
-              {isActiveTimer && (activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
+              {/* 아이콘: 휴식=Stop, 집중=Clock | 색깔: 뽀모=빨강, 일반=초록 */}
+              {isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
                 <StopIcon 
-                  className="h-3.5 w-3.5 shrink-0 text-red-500" 
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    activeTimerMode === 'pomodoro' ? 'text-red-500' : 'text-emerald-400'
+                  }`}
                 />
               ) : (
                 <ClockIcon 
@@ -154,21 +169,22 @@ export function TodoItem({
                     // 완료: 진한 초록색
                     isDone 
                       ? 'text-emerald-600'
-                    // 진행 중 또는 미완료: 연한 초록색
-                      : 'text-emerald-400'
+                    // 진행 중: 모드에 따라 색 구분
+                    : isActiveTimer && activeTimerMode === 'pomodoro'
+                      ? 'text-red-500'        // 뽀모도로: 빨간색
+                      : 'text-emerald-400'    // 일반: 초록색
                   }`} 
                 />
               )}
               {totalFocusSeconds > 0 && (
                 <span className={`text-xs font-medium tabular-nums ${
-                  // 뽀모도로 휴식 중: 빨간색
-                  isActiveTimer && (activeTimerPhase === 'short' || activeTimerPhase === 'long')
-                    ? 'text-red-500'
-                    // 완료: 진한 초록색
-                    : isDone 
-                      ? 'text-emerald-600'
-                    // 진행 중 또는 미완료: 연한 초록색
-                      : 'text-emerald-400'
+                  // 완료: 진한 초록색
+                  isDone 
+                    ? 'text-emerald-600'
+                  // 진행 중/휴식 중: 모드에 따라 색 구분
+                  : isActiveTimer && activeTimerMode === 'pomodoro'
+                    ? 'text-red-500'        // 뽀모도로: 빨간색
+                    : 'text-emerald-400'    // 일반: 초록색
                 }`}>
                   {focusTimeDisplay}
                 </span>
