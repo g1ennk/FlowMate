@@ -27,13 +27,12 @@ type TimerFullScreenProps = {
   isDone?: boolean
 }
 
-// 시간 포맷 (00:00:00)
+// 시간 포맷 (00:00)
 function formatStopwatch(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000)
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
 export function TimerFullScreen(props: TimerFullScreenProps) {
@@ -57,6 +56,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const pause = useTimerStore((s) => s.pause)
   const resume = useTimerStore((s) => s.resume)
   const stop = useTimerStore((s) => s.stop)
+  const reset = useTimerStore((s) => s.reset)
   const updateInitialFocusMs = useTimerStore((s) => s.updateInitialFocusMs)
   const skipToNext = useTimerStore((s) => s.skipToNext)
   const autoCompletedTodos = useTimerStore((s) => s.autoCompletedTodos)
@@ -98,7 +98,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       setMounted(true)
     } else if (!isOpen) {
       hasInitializedRef.current = false
-      setMounted(false)
+        setMounted(false)
       setSelectedMode(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,11 +190,12 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     
     setSelectedMode('stopwatch')
     // 항상 focusSeconds부터 시작 (완료/미완료 무관)
-    startStopwatch(todoId, focusSeconds * 1000)
+    // 설정을 전달하여 자동화 옵션 사용
+    startStopwatch(todoId, focusSeconds * 1000, settings)
   }
 
   // Note: Pomodoro start is triggered via selectedMode UI elsewhere
-  
+
   // 현재 phase의 계획된 시간(ms) 계산
   const getPlannedMs = () => getPlannedMsUtil(timer, settings)
 
@@ -212,19 +213,19 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     
     // Flow phase에서만 시간 기록
     if (timer.phase === 'flow') {
-      const plannedMs = getPlannedMs()
-      const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-      const elapsedSec = Math.round((plannedMs - remaining) / 1000)
-      
-      if (elapsedSec > 0) {
-        // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
-        if (remaining < 5000) {
-          await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-        } else {
-          // 중간에 완료하면 시간만 기록
-          await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-        }
+    const plannedMs = getPlannedMs()
+    const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
+    const elapsedSec = Math.round((plannedMs - remaining) / 1000)
+    
+    if (elapsedSec > 0) {
+      // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
+      if (remaining < 5000) {
+        await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+      } else {
+        // 중간에 완료하면 시간만 기록
+        await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
       }
+    }
     }
     // Break 중이면 시간 기록 없이 태스크만 완료
     
@@ -262,9 +263,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       } 
       // 5분 미만 → Flow 인정 X (addFocus: 시간만 기록)
       else {
-        const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: additionalSec } })
-        const newFocusMs = response.focusSeconds * 1000
-        updateInitialFocusMs(todoId, newFocusMs)
+      const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: additionalSec } })
+      const newFocusMs = response.focusSeconds * 1000
+      updateInitialFocusMs(todoId, newFocusMs)
       }
     }
     
@@ -305,10 +306,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       } 
       // 5분 미만 → Flow 인정 X (addFocus: 시간만 기록)
       else {
-        const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: additionalSec } })
-        const newFocusMs = response.focusSeconds * 1000
-        updateInitialFocusMs(todoId, newFocusMs)
-      }
+      const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: additionalSec } })
+      const newFocusMs = response.focusSeconds * 1000
+      updateInitialFocusMs(todoId, newFocusMs)
+    }
     }
   }
 
@@ -390,99 +391,115 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           // Flexible 타이머 (Count-up)
           timer?.flexiblePhase === 'focus' || !timer?.flexiblePhase ? (
             // 집중 모드
-            <>
-              {/* Flow 라벨 */}
+          <>
+            {/* Flow 라벨 */}
               <p className="mb-4 text-center text-base font-semibold text-emerald-400">
-                Flow
-              </p>
+              Flow
+            </p>
 
-              {/* 타이머 숫자 */}
+            {/* 타이머 숫자 */}
               <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-gray-300">
                 {formatStopwatch(timer?.focusElapsedMs ?? 0)}
               </p>
 
-              {/* 세션 dots - 일반: 5분 이상 집중 시 진행 중 표시 */}
-              <div className="mb-8 flex items-center justify-center gap-2">
+              {/* 세션 dots - 일반: pomodoroDone 기반 (뽀모도로와 동일 UI) */}
+              <div className="mb-8 flex items-center justify-center gap-2.5">
                 {(() => {
-                  const currentFocusMs = timer?.focusElapsedMs ?? 0
-                  const additionalMs = currentFocusMs - (timer?.initialFocusMs ?? 0)
-                  const isEligibleForFlow = additionalMs >= MIN_FLOW_MS
+                  const sessionHistory = timer?.sessionHistory ?? []
                   
-                  // 5분 이상이면 진행 중 Dot 표시, 아니면 완료된 것만
-                  const totalDots = isEligibleForFlow ? pomodoroDone + 1 : pomodoroDone
+                  // 진행률 계산 (MIN_FLOW_MS 기준, 최대 100%)
+                  const progress = Math.min(100, ((timer?.focusElapsedMs ?? 0) / MIN_FLOW_MS) * 100)
+                  // 실제로 시작했는지 (running 상태이거나, paused 상태에서 시간이 진행된 경우)
+                  const hasStarted = timer?.status === 'running' || (timer?.status === 'paused' && (timer?.focusElapsedMs ?? 0) > 0)
+                  // 현재 진행 중이면 +1 (타이머가 실제로 활성화되었을 때만)
+                  const totalDots = pomodoroDone + (timer?.flexiblePhase === 'focus' && hasStarted ? 1 : 0)
+                  
+                  // 도트가 없으면 빈 공간
+                  if (totalDots === 0) {
+                    return <div className="h-2"></div>
+                  }
                   
                   return Array.from({ length: totalDots }).map((_, i) => {
-                    const isCompleted = i < pomodoroDone
-                    const isCurrent = i === pomodoroDone && isRunning && isEligibleForFlow
+                    const isActuallyCompleted = i < pomodoroDone  // 실제로 완료된 Flow
+                    const isSkipped = i < sessionHistory.length && !isActuallyCompleted  // 스킵된 세션
+                    const isCurrent = i === pomodoroDone && timer?.flexiblePhase === 'focus'  // 현재 진행 중
                     
                     return (
                       <span
                         key={i}
-                        className={`h-2 rounded-full transition-all duration-300 ${
-                          isCompleted
-                            ? 'w-2 bg-emerald-500'
-                            : isCurrent
-                              ? 'w-6 animate-pulse bg-emerald-400'
-                              : 'w-2 bg-gray-700'
+                        className={`relative overflow-hidden rounded-full transition-all duration-500 ease-out ${
+                          isActuallyCompleted || isSkipped
+                            ? 'h-2.5 w-2.5 bg-emerald-400 shadow-sm'  // 완료된 Flow 또는 스킵된 세션: 모두 초록색 (Flow 화면)
+                            : isCurrent && hasStarted
+                                ? 'h-3 w-10 bg-gray-700/80 shadow-md animate-pulse'  // 진행 중: 긴 도트, 회색 배경, 깜빡임
+                                : 'h-2.5 w-2.5 bg-gray-700/50'  // 시작 전 또는 예정: 동일한 회색
                         }`}
-                      />
+                      >
+                        {/* 진행 중일 때만 프로그레스 표시 */}
+                        {isCurrent && hasStarted && (
+                          <span
+                            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-emerald-500/50 shadow-sm transition-all duration-300"
+                            style={{ width: `${progress}%` }}
+                          />
+                        )}
+                      </span>
                     )
                   })
                 })()}
               </div>
 
-              {/* 컨트롤 */}
+            {/* 컨트롤 */}
               <div className="flex items-center justify-center gap-6">
-                {isRunning || isPaused ? (
-                  <>
-                    {/* 일시정지/재개 버튼 */}
-                    <button
-                      onClick={isRunning ? () => pause(todoId) : () => resume(todoId)}
-                      className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
-                    >
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
-                        {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
-                      </div>
-                      <span className="text-xs font-medium text-gray-300">{isRunning ? '일시정지' : '재개'}</span>
-                    </button>
-
-                    {/* 휴식 버튼 */}
-                    <button
-                      onClick={() => setShowBreakSelection(true)}
-                      className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
-                    >
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
-                        <StopIcon className="h-6 w-6" />
-                      </div>
-                      <span className="text-xs font-medium text-gray-300">휴식</span>
-                    </button>
-
-                    {/* 완료 버튼 - 완료된 할일에서는 숨김 */}
-                    {!isDone && (
-                      <button
-                        onClick={() => setShowCompleteModal(true)}
-                        disabled={addFocus.isPending || updateTodo.isPending}
-                        className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white">
-                          <CheckIcon className="h-6 w-6" />
-                        </div>
-                        <span className="text-xs font-medium text-gray-300">완료</span>
-                      </button>
-                    )}
-                  </>
-                ) : (
+              {isRunning || isPaused ? (
+                <>
+                      {/* 일시정지/재개 버튼 */}
                   <button
-                    onClick={handleStartStopwatch}
-                    className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
-                  >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-emerald-400">
-                      <PlayIcon className="h-6 w-6" />
-                    </div>
-                    <span className="text-xs font-medium text-gray-300">시작</span>
+                    onClick={isRunning ? () => pause(todoId) : () => resume(todoId)}
+                        className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
+                      >
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                          {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
+                        </div>
+                        <span className="text-xs font-medium text-gray-300">{isRunning ? '일시정지' : '재개'}</span>
+                      </button>
+
+                      {/* 휴식 버튼 */}
+                      <button
+                        onClick={() => setShowBreakSelection(true)}
+                        className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
+                      >
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                          <StopIcon className="h-6 w-6" />
+                        </div>
+                        <span className="text-xs font-medium text-gray-300">휴식</span>
                   </button>
-                )}
-              </div>
+
+                      {/* 완료 버튼 - 완료된 할일에서는 숨김 */}
+                  {!isDone && (
+                    <button
+                      onClick={() => setShowCompleteModal(true)}
+                      disabled={addFocus.isPending || updateTodo.isPending}
+                          className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white">
+                            <CheckIcon className="h-6 w-6" />
+                          </div>
+                          <span className="text-xs font-medium text-gray-300">완료</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  onClick={handleStartStopwatch}
+                      className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
+                    >
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-emerald-400">
+                        <PlayIcon className="h-6 w-6" />
+                      </div>
+                      <span className="text-xs font-medium text-gray-300">시작</span>
+                    </button>
+                  )}
+                </div>
             </>
           ) : (
             // 휴식 모드
@@ -492,46 +509,36 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 {timer.flexiblePhase === 'break_suggested' ? '추천 휴식' : '자유 휴식'}
               </p>
 
-              {/* 타이머 숫자 */}
+              {/* 타이머 숫자 - 추천 휴식은 카운트다운, 자유 휴식은 카운트업 */}
               <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
-                {formatStopwatch(timer.breakElapsedMs)}
+                {timer.flexiblePhase === 'break_suggested' && timer.breakTargetMs
+                  ? formatCountdown(Math.max(0, timer.breakTargetMs - timer.breakElapsedMs))
+                  : formatStopwatch(timer.breakElapsedMs)
+                }
               </p>
 
-              {/* 세션 dots - 일반: 진행 중만 표시 (휴식 중에는 진행 중 dot 없음) */}
-              <div className="mb-4 flex items-center justify-center gap-2">
-                {Array.from({ length: pomodoroDone }).map((_, i) => (
-                  <span
-                    key={i}
-                    className="h-2 w-2 rounded-full bg-white transition-all duration-300"
-                  />
-                ))}
+              {/* 세션 dots - 일반: 휴식 중에도 전체 세션 표시 */}
+              <div className="mb-8 flex items-center justify-center gap-2.5">
+                {(() => {
+                  const totalDots = Math.max(pomodoroDone + 1, 1) // 최소 1개 이상
+                  const isInBreak = timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free'
+                  
+                  return Array.from({ length: totalDots }).map((_, i) => {
+                    const isCompleted = i < pomodoroDone
+                    
+                    return (
+                      <span
+                        key={i}
+                        className={`h-2.5 w-2.5 rounded-full transition-all duration-500 ease-out shadow-sm ${
+                          isCompleted ? (isInBreak ? 'bg-white/90' : 'bg-emerald-400') : 'bg-gray-700/60'
+                        }`}
+                      />
+                    )
+                  })
+                })()}
               </div>
 
-              {/* 진행바 (추천 휴식만) */}
-              {timer.flexiblePhase === 'break_suggested' && timer.breakTargetMs && (
-                <div className="mb-6 w-full max-w-xs">
-                  <div className="h-2 w-full rounded-full bg-emerald-800">
-                    <div
-                      className="h-2 rounded-full bg-white transition-all duration-300"
-                      style={{
-                        width: `${Math.min(100, (timer.breakElapsedMs / timer.breakTargetMs) * 100)}%`
-                      }}
-                    />
-                  </div>
-                  {timer.breakCompleted && (
-                    <p className="mt-2 text-center text-sm font-medium text-white">
-                      ✨ 휴식 완료! 다시 집중할 준비됐나요?
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* 집중 시간 표시 */}
-              <p className="mb-6 text-center text-sm font-medium text-white/90">
-                Flow: {formatStopwatch(timer.focusElapsedMs)} 
-              </p>
-
-              {/* 컨트롤 */}
+              {/* 컨트롤 (뽀모도로와 동일) */}
               <div className="flex items-center justify-center gap-6">
                 {/* 일시정지/재개 버튼 */}
                 <button
@@ -544,20 +551,34 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   <span className="text-xs font-medium text-white">{isRunning ? '일시정지' : '재개'}</span>
                 </button>
 
-                {/* 집중 재개 버튼 */}
+                {/* 집중 시작 버튼 */}
                 <button
                   onClick={() => {
                     resumeFocus(todoId)
                   }}
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-emerald-600">
-                    <CheckIcon className="h-6 w-6" />
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                    <StopIcon className="h-6 w-6" />
                   </div>
-                  <span className="text-xs font-medium text-white">집중 재개</span>
+                  <span className="text-xs font-medium text-white">집중 시작</span>
                 </button>
-              </div>
-            </>
+
+                {/* 완료 버튼 - 완료된 할일에서는 숨김 */}
+                {!isDone && (
+                  <button
+                    onClick={() => setShowCompleteModal(true)}
+                    disabled={addFocus.isPending || updateTodo.isPending}
+                    className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-emerald-600">
+                      <CheckIcon className="h-6 w-6" />
+                    </div>
+                    <span className="text-xs font-medium text-white">완료</span>
+                </button>
+              )}
+            </div>
+          </>
           )
         ) : (
           // 뽀모도로 타이머 (Count-down)
@@ -581,32 +602,46 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             </p>
 
             {/* 세션 dots - 뽀모: cycleCount 기반 (스킵 포함) */}
-            <div className="mb-8 flex items-center justify-center gap-2">
-              {Array.from({ length: Math.max(settings?.cycleEvery ?? 4, (timer?.cycleCount ?? 0) + (isRunning && timer?.phase === 'flow' ? 1 : 0)) }).map((_, i) => {
+            <div className="mb-8 flex items-center justify-center gap-2.5">
+              {(() => {
                 const currentCycle = timer?.cycleCount ?? 0
+                // 진행률 계산 (뽀모도로: plannedMs 기준)
+                const plannedMs = getPlannedMs()
+                const elapsedMs = plannedMs - remainingMs
+                const progress = Math.min(100, Math.max(0, (elapsedMs / plannedMs) * 100))
+                // 실제로 시작했는지 (running 상태이거나, paused 상태에서 시간이 진행된 경우)
+                const hasStarted = timer?.status === 'running' || (timer?.status === 'paused' && elapsedMs > 0)
+                // 시작 전에는 현재 도트를 추가하지 않음
+                const totalDots = Math.max(settings?.cycleEvery ?? 4, currentCycle + (timer?.phase === 'flow' && hasStarted ? 1 : 0))
+                
+                return Array.from({ length: totalDots }).map((_, i) => {
                 const isActuallyCompleted = i < pomodoroDone  // 실제로 완료된 Flow
                 const isSkipped = i < currentCycle && !isActuallyCompleted  // 스킵된 사이클
-                const isCurrent = i === currentCycle && timer?.phase === 'flow' && isRunning  // 현재 진행 중
-                const isFlowPhase = timer?.phase === 'flow'
+                const isCurrent = i === currentCycle && timer?.phase === 'flow' && hasStarted  // 현재 진행 중 (시작 후에만)
                 
-                return (
-                  <span
-                    key={i}
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      isActuallyCompleted
-                        ? 'w-2 bg-emerald-500'  // 완료된 Flow: 초록색
-                        : isSkipped
-                          ? 'w-2 bg-gray-600'  // 스킵된 사이클: 회색
-                          : isCurrent
-                            ? 'w-6 animate-pulse bg-emerald-400'  // 현재 진행 중: 애니메이션
-                            : isFlowPhase
-                              ? 'w-2 bg-gray-700'  // 예정된 사이클 (Flow 중): 어두운 회색
-                              : 'w-2 bg-emerald-200'  // 예정된 사이클 (Break 중): 연한 초록
-                    }`}
-                  />
-                )
-              })}
-            </div>
+                  return (
+                    <span
+                      key={i}
+                      className={`relative overflow-hidden rounded-full transition-all duration-500 ease-out ${
+                      isActuallyCompleted || isSkipped
+                        ? `h-2.5 w-2.5 shadow-sm ${isFlow ? 'bg-emerald-400' : 'bg-white/90'}`  // 완료/스킵된 세션: Flow 중 초록색, Break 중 흰색
+                        : isCurrent
+                            ? 'h-3 w-10 bg-gray-700/80 shadow-md'  // 현재 진행 중: 긴 도트, 회색 배경 (시작 후)
+                            : 'h-2.5 w-2.5 bg-gray-700/50'  // 시작 전 또는 예정: 동일한 회색
+                      }`}
+                    >
+                      {/* 진행 중일 때만 프로그레스 표시 */}
+                      {isCurrent && (
+                        <span
+                          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-emerald-500/50 shadow-sm transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      )}
+                    </span>
+                  )
+                })
+              })()}
+              </div>
 
             {/* 컨트롤 */}
             <div className="flex items-center justify-center gap-6">
@@ -667,15 +702,47 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       </div>
 
       {/* 완료 확인 모달 */}
-      {showCompleteModal && (
+      {showCompleteModal && (() => {
+        // 일반 타이머: 총계 계산
+        const sessionHistory = timer?.sessionHistory ?? []
+        const currentFocusMs = timer?.focusElapsedMs ?? 0
+        const initialMs = timer?.initialFocusMs ?? 0
+        const additionalMs = currentFocusMs - initialMs
+        const isCurrentSessionValid = additionalMs >= MIN_FLOW_MS
+        
+        // 총 세션 수 (히스토리 + 현재 세션)
+        const totalSessions = sessionHistory.length + (isCurrentSessionValid ? 1 : 0)
+        
+        // 총 집중 시간 (ms)
+        const totalFocusMs = sessionHistory.reduce((sum, session) => sum + session.focusMs, 0) + 
+                            (isCurrentSessionValid ? additionalMs : 0)
+        
+        const totalFocusMinutes = Math.floor(totalFocusMs / 60000)
+        
+        return (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
           <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
             <h3 className="mb-2 text-center text-lg font-semibold text-white">
               타이머를 완료하시겠습니까?
             </h3>
-            <p className="mb-6 text-center text-sm text-gray-400">
+              <p className="mb-4 text-center text-sm text-gray-400">
               현재 진행 상황이 저장됩니다.
             </p>
+              
+              {/* 일반 타이머: 총계 표시 */}
+              {timer?.mode === 'stopwatch' && totalSessions > 0 && (
+                <div className="mb-6 rounded-lg bg-gray-700/50 p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-300">총 세션 (Flow)</span>
+                    <span className="text-lg font-semibold text-emerald-400">{totalSessions}개</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-300">총 집중 시간</span>
+                    <span className="text-lg font-semibold text-emerald-400">{totalFocusMinutes}분</span>
+                  </div>
+                </div>
+              )}
+              
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCompleteModal(false)}
@@ -699,7 +766,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* 리셋 확인 모달 */}
       {showResetModal && (
@@ -723,11 +791,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   setShowResetModal(false)
                   // DB에서 기록 삭제 (focusSeconds, pomodoroDone, timerMode 초기화)
                   await resetTimer.mutateAsync(todoId)
-                  // 타이머 완전히 종료 (store에서 idle 상태로 변경)
-                  stop(todoId)
+                  // 타이머 완전히 초기화 (store에서 cycleCount 등 모두 초기화)
+                  reset(todoId)
+                  // 타이머 모드 선택 초기화 (초기 화면으로 돌아가기)
+                  setSelectedMode(null)
                   toast.success('기록이 초기화되었습니다', { id: 'timer-reset' })
-                  // 타이머 화면 닫기 (홈에서 업데이트된 값 확인)
-                  onClose()
                 }}
                 disabled={resetTimer.isPending}
                 className="flex-1 rounded-full bg-red-600 py-3 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
