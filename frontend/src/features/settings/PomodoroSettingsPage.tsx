@@ -68,7 +68,7 @@ function PomodoroSettingsPage() {
 
   const onSubmit = handleSubmit(async (formValues) => {
     await updateSettings.mutateAsync(formValues)
-    toast.success('저장됨')
+    toast.success('저장됨', { id: 'settings-saved' })
   })
 
   const handleNumberFieldSave = () => {
