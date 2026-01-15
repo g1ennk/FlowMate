@@ -185,9 +185,9 @@ function TodosPage() {
       <div className="rounded-2xl bg-white p-4 shadow-sm">
         {/* 헤더 */}
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900">
-            {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
-          </h2>
+            <h2 className="text-base font-semibold text-gray-900">
+              {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
+            </h2>
           <button
             onClick={() => setShowInput((v) => !v)}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors"
@@ -222,7 +222,9 @@ function TodosPage() {
                 {activeTodos.map((todo) => {
                   // 실시간 타이머 정보 계산
                   const timer = store.getTimer(todo.id)
-                  const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase, breakElapsedMs, isBreakPhase } = getTimerInfo(timer)
+                  const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase, breakElapsedMs, breakTargetMs, isBreakPhase, flexiblePhase } = getTimerInfo(timer)
+                  const sessionHistory = timer?.sessionHistory ?? []
+                  const initialFocusMs = timer?.initialFocusMs ?? 0
                   
                   return (
                     <SortableTodoItem
@@ -242,7 +244,11 @@ function TodosPage() {
                       onCancelEdit={actions.handleCancelEdit}
                       onDelete={() => actions.handleDelete(todo.id)}
                       onOpenMenu={() => actions.setSelectedTodo(todo)}
-                      onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
+                      onOpenTimer={() => {
+                        // 우선순위: 현재 실행 중인 타이머 모드 > todo.timerMode > null
+                        const modeToUse = timer?.mode || todo.timerMode || null
+                        actions.handleOpenTimer(todo, modeToUse)
+                      }}
                       onOpenNote={() => actions.handleOpenNote(todo)}
                       isActiveTimer={isActiveTimer}
                       activeTimerMode={timer?.mode}
@@ -250,7 +256,11 @@ function TodosPage() {
                       activeTimerRemainingMs={activeTimerRemainingMs}
                       activeTimerPhase={activeTimerPhase}
                       breakElapsedMs={breakElapsedMs}
+                      breakTargetMs={breakTargetMs}
                       isBreakPhase={isBreakPhase}
+                      flexiblePhase={flexiblePhase}
+                      sessionHistory={sessionHistory}
+                      initialFocusMs={initialFocusMs}
                     />
                   )
                 })}
@@ -347,6 +357,8 @@ function TodosPage() {
                       // 실시간 타이머 정보 계산
                       const timer = store.getTimer(todo.id)
                       const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase } = getTimerInfo(timer)
+                      const sessionHistory = timer?.sessionHistory ?? []
+                      const initialFocusMs = timer?.initialFocusMs ?? 0
                       
                       return (
                         <SortableTodoItem
@@ -366,13 +378,19 @@ function TodosPage() {
                           onCancelEdit={actions.handleCancelEdit}
                           onDelete={() => actions.handleDelete(todo.id)}
                           onOpenMenu={() => actions.setSelectedTodo(todo)}
-                          onOpenTimer={() => actions.handleOpenTimer(todo, todo.timerMode || timer?.mode || null)}
+                          onOpenTimer={() => {
+                        // 우선순위: 현재 실행 중인 타이머 모드 > todo.timerMode > null
+                        const modeToUse = timer?.mode || todo.timerMode || null
+                        actions.handleOpenTimer(todo, modeToUse)
+                      }}
                           onOpenNote={() => actions.handleOpenNote(todo)}
                           isActiveTimer={isActiveTimer}
                           activeTimerMode={timer?.mode}
                           activeTimerElapsedMs={activeTimerElapsedMs}
                           activeTimerRemainingMs={activeTimerRemainingMs}
                           activeTimerPhase={activeTimerPhase}
+                          sessionHistory={sessionHistory}
+                          initialFocusMs={initialFocusMs}
                         />
                       )
                     })}

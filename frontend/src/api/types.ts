@@ -27,6 +27,8 @@ export const TodoPatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   note: z.string().nullable().optional(),
   isDone: z.boolean().optional(),
+  timerMode: z.enum(['stopwatch', 'pomodoro']).nullable().optional(),
+  pomodoroDone: z.number().int().optional(),
 })
 
 export const PomodoroSettingsSchema = z.object({
