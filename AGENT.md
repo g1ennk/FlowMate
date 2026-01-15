@@ -32,7 +32,7 @@
   - [x] 캘린더 기반 UI (월간/주간 뷰, 날짜별 Todo 필터링)
   - [x] Todo CRUD + 드래그로 순서 변경 (@dnd-kit)
   - [x] 메모 기능
-  - [x] 일별 통계 뱃지 (미완료/완료/세션)
+  - [x] 일별 통계 뱃지 (미완료/완료/세션) → 제거됨 (추후 통계 페이지에서 별도 구현)
 
 - [x] **타이머 시스템**
   - [x] 뽀모도로 타이머 (Flow → Break 자동 전환)
@@ -52,11 +52,27 @@
   - [x] 자동 시작 설정 (autoStartBreak, autoStartSession)
   - [x] 코드 리팩토링 — `refactor: 타이머 로직 분리 및 구조 개선`
     - [x] timerStore.ts 간소화 (767줄 → 500줄)
-    - [x] useTimerActions.ts 분리 (액션 핸들러)
+    - [x] useTimerActions.ts 분리 (액션 핸들러) → 제거됨 (timerHelpers.ts로 통합)
     - [x] useTimerInfo.ts 분리 (타이머 정보 계산)
     - [x] timerFormat.ts 생성 (시간 포맷 함수)
     - [x] updateInitialFocusMs 추가 (일반 타이머 기록 동기화)
     - [x] useResetTimer 즉시 캐시 업데이트 (UX 개선)
+  - [x] 타이머 UI/UX 추가 개선 — `feat: 타이머 UI/UX 개선 및 사이클 관리 기능 추가`
+    - [x] 도트 디자인 개선 (프로그레스바, 색상, 그림자, 애니메이션)
+    - [x] Flow/Break 색상 구분 (Flow: 초록, Break: 흰색)
+    - [x] 일반 타이머 진행 중 깜빡임 애니메이션
+    - [x] 초기 상태 도트 표시 개선 (시작 전 짧은 도트, 시작 후 긴 도트)
+    - [x] 리셋 기능 개선 (타이머 초기 화면으로 이동)
+    - [x] 사이클 관리 개선 (긴 휴식 후 자동 초기화)
+    - [x] 일반 타이머 자동화 설정 적용
+    - [x] 일반 타이머 포맷 변경 (`MM:SS`)
+    - [x] 도트 위치 통일 (시간 아래)
+  - [x] 세션 히스토리 추가 (`sessionHistory`)
+  - [x] 추천 휴식 카운트다운 구현
+  - [x] 통계 페이지 추가 (`/stats`)
+  - [x] timerMode 영구 저장
+  - [x] 홈 화면 시간 표시 개선 (추천 휴식 카운트다운, 자유 휴식 카운트업)
+  - [x] Flow 카운트 중복 방지 (handleStopwatchComplete에서 현재 세션만 처리)
 
 - [x] **테스트**
   - [x] 타이머 전이/remaining 계산 테스트
@@ -384,6 +400,7 @@ npx orval --input openapi.json --output frontend/src/api
   isDone: boolean      // 완료 여부
   pomodoroDone: number // 뽀모도로 세션 횟수
   focusSeconds: number // 총 집중 시간 (초)
+  timerMode: "stopwatch" | "pomodoro" | null // 선택된 타이머 타입
   createdAt: string    // ISO 8601
   updatedAt: string    // ISO 8601
 }
@@ -410,8 +427,17 @@ npx orval --input openapi.json --output frontend/src/api
 ### 타이머 관리
 - **클라이언트 우선**: 타이머는 클라이언트에서 관리 (`endAt` 기준)
 - **서버 역할**: 완료 시 누적 데이터만 기록
-- **단일 활성**: 멀티 탭 동시 실행 차단/경고 권장
+- **단일 활성**: 멀티 탭 동시 실행 차단/경고 권장 (모든 태스크에 적용)
 - **정확도 보정**: `visibilitychange` 시 남은 시간 재계산
+- **Flow 개념**: 
+  - 뽀모도로: 자동 완료 시에만 Flow 카운트 증가
+  - 일반 타이머: 3분 이상 집중 + 명시적 행동(휴식/완료) 시 Flow 카운트 증가
+- **세션 히스토리**: 일반 타이머는 각 세션의 집중/휴식 시간을 `sessionHistory`에 저장
+  - `startBreak`에서 MIN_FLOW_MS 이상인 세션을 히스토리에 추가
+  - `handleStopwatchComplete`에서 현재 세션만 처리 (중복 카운트 방지)
+  - 완료된 태스크의 `sessionHistory`는 `pause` 상태로 유지 (통계 페이지에서 표시)
+- **자동화 설정**: 뽀모도로 설정의 `autoStartBreak`, `autoStartSession`이 일반 타이머에도 적용
+- **timerMode 저장**: 완료 시 `timerMode`를 DB에 저장하여 이후 올바른 모드 표시
 
 ### 설정 관리
 - **스냅샷 적용**: 타이머 시작 시 현재 설정 저장
@@ -488,8 +514,12 @@ npx orval --input openapi.json --output frontend/src/api
 ### 타이머 로직 수정 시
 - `endAt` 계산 로직 검토
 - 설정 스냅샷 적용 확인
-- 단일 활성 타이머 보장
+- 단일 활성 타이머 보장 (모든 태스크에 적용)
 - 보정 로직 (`visibilitychange`) 테스트
+- Flow 개념 확인 (뽀모도로: 자동 완료, 일반: 3분 이상 + 명시적 행동)
+- 세션 히스토리 관리 (`sessionHistory` 업데이트)
+- 사이클 초기화 로직 (긴 휴식 후 `cycleCount = 0`)
+- 리셋 기능 (타이머 초기 화면으로 이동)
 
 ### Backend 작업 시
 - Flyway 마이그레이션: MySQL 기준 (UTF8MB4, InnoDB)
@@ -580,7 +610,10 @@ chore: add build/deploy pipeline
 
 ### 데이터 일관성
 - `focusSeconds`는 일반 타이머 + 뽀모도로 시간 합산
-- `pomodoroDone`는 뽀모도로 세션만 카운트
+- `pomodoroDone`는 완료된 Flow만 카운트 (뽀모도로: 자동 완료, 일반: 3분 이상 + 명시적 행동)
+- 일반 타이머의 `sessionHistory`는 클라이언트에서만 관리 (sessionStorage 저장, 서버 저장 예정)
+- `timerMode`는 DB에 저장되어 완료 후에도 올바른 모드 표시
+- `handleStopwatchComplete`에서 현재 세션만 처리하여 중복 카운트 방지
 
 ### 멀티 탭
 - 현재: 경고 없음 (단일 활성 권장)
@@ -599,5 +632,5 @@ chore: add build/deploy pipeline
 
 ---
 
-**최종 업데이트**: 2026-01-09  
-**현재 단계**: Frontend MVP 완료 → Backend 작업 준비 중 ✅
+**최종 업데이트**: 2026-01-13  
+**현재 단계**: Frontend MVP 완료 (통계 페이지, sessionHistory, timerMode 저장 완료) → Backend 작업 준비 중 ✅

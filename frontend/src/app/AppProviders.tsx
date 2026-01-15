@@ -35,7 +35,24 @@ export function AppProviders({ children }: PropsWithChildren) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      <Toaster position="top-center" />
+      <Toaster 
+        position="top-center"
+        containerStyle={{
+          zIndex: 9999,
+        }}
+        toastOptions={{
+          duration: 2000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            whiteSpace: 'nowrap',
+            maxWidth: 'none',
+            width: 'auto',
+          },
+        }}
+      />
       {import.meta.env.DEV ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
     </QueryClientProvider>
   )

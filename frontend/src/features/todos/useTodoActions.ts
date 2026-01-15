@@ -8,9 +8,10 @@ import {
   useCompleteTodo,
 } from './hooks'
 import type { Todo } from '../../api/types'
-import { useTimerStore } from '../timer/timerStore'
+import { useTimerStore, type TimerMode } from '../timer/timerStore'
 import { MINUTE_MS } from '../../lib/time'
 import { usePomodoroSettings } from '../settings/hooks'
+import { checkTimerConflict, getTimerConflictMessage, getPlannedMs } from '../timer/timerHelpers'
 
 /**
  * Todo CRUD 및 타이머 관련 핸들러를 제공하는 커스텀 훅
@@ -27,7 +28,9 @@ export function useTodoActions(selectedDateKey: string) {
   // 타이머 store
   const stop = useTimerStore((s) => s.stop)
   const pause = useTimerStore((s) => s.pause)
+  const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
+  const timers = useTimerStore((s) => s.timers)
 
   // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -42,7 +45,7 @@ export function useTodoActions(selectedDateKey: string) {
 
   // 타이머 풀스크린 상태
   const [timerTodo, setTimerTodo] = useState<Todo | null>(null)
-  const [timerMode, setTimerMode] = useState<'stopwatch' | 'pomodoro' | null>(null)
+  const [timerMode, setTimerMode] = useState<TimerMode | null>(null)
 
   // 타이머 에러 메시지 (BottomSheet 내부에 표시)
   const [timerErrorMessage, setTimerErrorMessage] = useState<string | null>(null)
@@ -55,17 +58,22 @@ export function useTodoActions(selectedDateKey: string) {
   const handleToggleDone = async (id: string, next: boolean) => {
     // 완료로 변경하는 경우, 타이머가 실행 중이면 시간 저장
     if (next) {
-      const timer = getTimer(id)
+      let timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
         // 타이머 일시정지
         if (timer.status === 'running') {
           pause(id)
+          // pause 후 업데이트된 타이머 값 다시 가져오기 (Zustand는 동기적으로 업데이트됨)
+          const pausedTimer = getTimer(id)
+          if (!pausedTimer) return // 방어 코드: pause 실패 시
+          timer = pausedTimer
         }
         
         // 시간 기록
         if (timer.mode === 'stopwatch') {
-          // 일반 타이머: 추가된 시간만 계산
-          const additionalMs = timer.elapsedMs - timer.initialFocusMs
+          // 일반 타이머: focusElapsedMs 사용 (추가된 시간만 계산)
+          const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
+          const additionalMs = currentFocusMs - (timer.initialFocusMs ?? 0)
           const additionalSec = Math.round(additionalMs / 1000)
           
           if (additionalSec > 0) {
@@ -74,9 +82,9 @@ export function useTodoActions(selectedDateKey: string) {
         } else if (timer.mode === 'pomodoro') {
           // 뽀모도로: Flow phase에서만 시간 기록
           if (timer.phase === 'flow') {
-            const snapshot = timer.settingsSnapshot ?? settings
-            const plannedMs = snapshot ? snapshot.flowMin * MINUTE_MS : 25 * MINUTE_MS
-            const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
+            const plannedMs = getPlannedMs(timer, settings)
+            // pause된 상태이므로 remainingMs 사용
+            const remaining = timer.remainingMs ?? plannedMs
             const elapsedSec = Math.round((plannedMs - remaining) / 1000)
             
             if (elapsedSec > 0) {
@@ -91,10 +99,28 @@ export function useTodoActions(selectedDateKey: string) {
           }
         }
         
-        // 타이머 정리
-        stop(id)
-        toast.success('타이머 저장 완료!')
+        // timerMode 저장 (완료 전에 저장하여 이후 올바른 모드 표시)
+        if (timer.mode) {
+          await updateTodo.mutateAsync({ id, patch: { timerMode: timer.mode } })
+        }
+        
+        // 타이머 정리 (sessionHistory 유지를 위해 stop 대신 pause만)
+        // stop을 호출하면 status가 'idle'이 되지만 sessionHistory는 유지됨
+        // 완료된 태스크의 sessionHistory를 보존하기 위해 stop 대신 pause 사용
+        if (timer.status === 'running') {
+          pause(id)
+        }
+        toast.success('타이머 저장 완료!', { id: 'timer-saved' })
       }
+    } else {
+      // 미완료로 변경하는 경우, 타이머 상태는 유지 (일시정지 상태로)
+      // reset을 호출하지 않아서 이전 기록(sessionHistory, timerMode 등)이 유지됨
+      const timer = getTimer(id)
+      if (timer && timer.status === 'running') {
+        // 실행 중이면 일시정지만
+        pause(id)
+      }
+      // 타이머 상태는 유지 (다시 열 때 이전 기록이 보임)
     }
     
     // 완료 상태 변경
@@ -121,7 +147,7 @@ export function useTodoActions(selectedDateKey: string) {
     await updateTodo.mutateAsync({ id: editingId, patch: { title: editingTitle.trim() } })
     setEditingId(null)
     setEditingTitle('')
-    toast.success('수정됨')
+    toast.success('수정됨', { id: 'todo-updated' })
   }
 
   const handleCancelEdit = () => {
@@ -148,7 +174,7 @@ export function useTodoActions(selectedDateKey: string) {
     setShowNoteModal(false)
     setNoteTodo(null)
     setNoteEditMode(false)
-    toast.success('메모 저장됨')
+    toast.success('메모 저장됨', { id: 'note-saved' })
   }
 
   const handleDeleteNote = async () => {
@@ -157,7 +183,7 @@ export function useTodoActions(selectedDateKey: string) {
     setShowNoteModal(false)
     setNoteTodo(null)
     setNoteEditMode(false)
-    toast.success('메모 삭제됨')
+    toast.success('메모 삭제됨', { id: 'note-deleted' })
   }
 
   const handleCloseNote = () => {
@@ -167,11 +193,30 @@ export function useTodoActions(selectedDateKey: string) {
   }
 
   // === 타이머 ===
-  const handleOpenTimer = (todo: Todo, currentMode: 'stopwatch' | 'pomodoro' | null) => {
-    // 현재 타이머가 진행 중이면 해당 모드로 열기
-    if (currentMode) {
+  const handleOpenTimer = (todo: Todo, currentMode: TimerMode | null) => {
+    // 완료된 태스크는 타이머를 열 수 없음
+    if (todo.isDone) {
+      toast.error('완료된 태스크는 타이머를 시작할 수 없습니다', { id: 'completed-task-timer' })
+      return
+    }
+    
+    // 다른 태스크에서 실행 중인 타이머가 있는지 체크
+    const [hasConflict, conflictMode] = checkTimerConflict(timers, todo.id)
+    if (hasConflict && conflictMode) {
+      toast.error(getTimerConflictMessage(conflictMode), { id: 'timer-already-running' })
+      return
+    }
+    
+    // 우선순위: 현재 실행 중인 타이머 모드 > todo.timerMode > currentMode > null
+    // reset 후에는 timer가 없으므로 todo.timerMode를 우선 사용 (미완료 처리 후 유지)
+    const timer = getTimer(todo.id)
+    // timer가 있으면 timer.mode 우선, 없으면 todo.timerMode 우선 (DB에 저장된 값)
+    const modeToUse = timer?.mode || todo.timerMode || currentMode || null
+    
+    // 모드가 있으면 타이머 화면 열기
+    if (modeToUse) {
       setTimerTodo(todo)
-      setTimerMode(currentMode)
+      setTimerMode(modeToUse)
       setSelectedTodo(null)
     } else {
       // 타이머가 진행 중이지 않으면 더보기 메뉴 열기

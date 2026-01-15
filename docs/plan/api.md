@@ -18,6 +18,7 @@ Content-Type: `application/json`
   "isDone": false,
   "pomodoroDone": 2,
   "focusSeconds": 3000,
+  "timerMode": "stopwatch",
   "createdAt": "2026-01-09T12:00:00Z",
   "updatedAt": "2026-01-09T12:10:00Z"
 }
@@ -56,7 +57,7 @@ Content-Type: `application/json`
 - `PATCH /api/todos/{id}`
 - Body: 위 필드 중 일부(any subset)
 ```json
-{ "title": "string", "note": "string|null", "isDone": true, "date": "2026-01-09" }
+{ "title": "string", "note": "string|null", "isDone": true, "date": "2026-01-09", "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
 ```
 - Response 200: `Todo`
 - Errors: 404 Not Found, 400 Validation Error
@@ -148,8 +149,13 @@ Content-Type: `application/json`
 
 ## 6. 변경 이력
 
-| 날짜       | 변경 내용                                                    |
-| ---------- | ------------------------------------------------------------ |
-| 2026-01-09 | Todo에 `date` 필드 추가 (날짜별 관리)                        |
-| 2026-01-09 | PomodoroSettings에 `autoStartBreak`, `autoStartSession` 추가 |
-| 2026-01-09 | `POST /api/todos/{id}/focus/add` API 추가 (일반 타이머 전용) |
+| 날짜       | 변경 내용                                                         |
+| ---------- | ----------------------------------------------------------------- |
+| 2026-01-09 | Todo에 `date` 필드 추가 (날짜별 관리)                             |
+| 2026-01-09 | PomodoroSettings에 `autoStartBreak`, `autoStartSession` 추가      |
+| 2026-01-09 | `POST /api/todos/{id}/focus/add` API 추가 (일반 타이머 전용)      |
+| 2026-01-13 | 일반 타이머 세션 히스토리 추가 (`sessionHistory`)                 |
+| 2026-01-13 | Flow 개념 도입 (3분 이상 집중 + 명시적 행동)                      |
+| 2026-01-13 | Todo에 `timerMode` 필드 추가 (타이머 모드 영구 저장)              |
+| 2026-01-13 | 통계 페이지 추가 (`/stats`)                                       |
+| 2026-01-13 | 홈 화면 시간 표시 개선 (추천 휴식 카운트다운, 자유 휴식 카운트업) |
