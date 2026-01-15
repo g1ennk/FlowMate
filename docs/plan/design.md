@@ -20,9 +20,16 @@
 
 ## 4. Frontend Design (요약)
 - Stack: Vite + pnpm, React 18 + TS, React Router, TanStack Query, Zustand(타이머), Tailwind, react-hook-form + zod
-- Timer 상태: `phase`, `endAt`, `todoId`, `cycleCount`, `settingsSnapshot`, `status`; sessionStorage에 스냅샷 저장/복구
+- Timer 상태:
+  - **뽀모도로**: `phase`, `endAt`, `todoId`, `cycleCount`, `settingsSnapshot`, `status`
+  - **일반 타이머**: `flexiblePhase`, `focusElapsedMs`, `breakElapsedMs`, `focusStartedAt`, `breakStartedAt`, `breakTargetMs`, `breakCompleted`, `sessionHistory` (SessionRecord[])
+  - sessionStorage에 스냅샷 저장/복구
 - 모킹: 개발 시 MSW 선택적 사용(`USE_MOCK` 플래그)
 - API 클라이언트: baseURL 래퍼 + zod 응답 검증, 단순 에러 토스트
+- UI/UX:
+  - 타이머 도트 디자인: 진행 중인 도트에 프로그레스바, Flow/Break 색상 구분
+  - 리셋 기능: 타이머 초기 화면으로 이동
+  - 사이클 관리: 긴 휴식 후 자동 초기화
 
 ## 5. Backend Design (요약)
 - Stack: Spring Boot, Web, Data JPA, Flyway, MySQL(H2 dev)
@@ -35,8 +42,9 @@
 - 에러: 단순 JSON `{message, code?}` 형태(400/404/500)
 
 ## 6. Data Model (공유 개념)
-- Todo: id(UUID), userId("local"), title, note?, isDone, pomodoroDone, focusSeconds, createdAt, updatedAt
-- PomodoroSettings: userId(PK, "local"), flowMin, breakMin, longBreakMin, cycleEvery
+- Todo: id(UUID), userId("local"), title, note?, isDone, pomodoroDone, focusSeconds, timerMode?, createdAt, updatedAt
+- PomodoroSettings: userId(PK, "local"), flowMin, breakMin, longBreakMin, cycleEvery, autoStartBreak?, autoStartSession?
+- SessionRecord (클라이언트만): { focusMs: number, breakMs: number } - 일반 타이머 세션 히스토리
 
 ## 7. 환경 변수
 - Frontend: `VITE_API_BASE_URL`, `USE_MOCK`
