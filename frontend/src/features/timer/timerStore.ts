@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { PomodoroSettings } from '../../api/types'
+import { MIN_FLOW_MS } from '../../lib/constants'
 import { playNotificationSound } from '../../lib/sound'
 import { checkTimerConflict, getTimerConflictMessage } from './timerHelpers'
 
@@ -314,6 +315,26 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         return
       }
       
+      // 기존 타이머가 있고 idle 상태면 업데이트, 없으면 새로 생성
+      if (existingTimer && existingTimer.mode === 'stopwatch' && existingTimer.status === 'idle') {
+        // idle 상태의 기존 타이머 업데이트 (항상 sessionHistory 초기화)
+        updateTimer(todoId, {
+          settingsSnapshot: settings ?? existingTimer.settingsSnapshot,  // 설정이 제공되면 업데이트, 없으면 기존 설정 유지
+          status: 'running',
+          elapsedMs: initialElapsedMs,
+          initialFocusMs: initialElapsedMs,
+          flexiblePhase: 'focus',
+          focusElapsedMs: initialElapsedMs,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: Date.now(),
+          breakStartedAt: null,
+          sessionHistory: [],  // 항상 초기화 (이전 세션 히스토리 제거)
+        })
+        return
+      }
+      
       const newTimer: SingleTimerState = {
         mode: 'stopwatch',
         settingsSnapshot: settings ?? null,  // 뽀모도로 설정 저장 (자동화 옵션 사용)
@@ -376,7 +397,8 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       if (!timer) return
       
       if (timer.mode === 'stopwatch') {
-        if (timer.status === 'paused') {
+        // 일반 타이머: paused 또는 waiting 상태에서 재개
+        if (timer.status === 'paused' || timer.status === 'waiting') {
           const updates: Partial<SingleTimerState> = { status: 'running' }
           
           if (timer.flexiblePhase === 'focus') {
@@ -389,10 +411,35 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           }
           
           updateTimer(todoId, updates)
+        } else if (timer.status === 'idle') {
+          // idle 상태에서 재개 = 새로 시작 (focus phase로)
+          updateTimer(todoId, {
+            flexiblePhase: 'focus',
+            status: 'running',
+            focusElapsedMs: 0,
+            focusStartedAt: Date.now(),
+            breakElapsedMs: 0,
+            breakStartedAt: null,
+            breakTargetMs: null,
+            breakCompleted: false,
+          })
         }
         return
       }
       
+      // 뽀모도로 타이머: idle 상태에서 재개 = 새로 시작
+      if (timer.status === 'idle' && timer.settingsSnapshot) {
+        const settings = timer.settingsSnapshot
+        const endAt = computeEndAt(settings.flowMin)
+        updateTimer(todoId, {
+          status: 'running',
+          endAt,
+          remainingMs: null,
+        })
+        return
+      }
+      
+      // 뽀모도로 타이머: waiting 상태에서 재개
       if (timer.status === 'waiting' && timer.remainingMs) {
         updateTimer(todoId, {
           status: 'running',
@@ -402,6 +449,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         return
       }
       
+      // 뽀모도로 타이머: paused 상태에서 재개
       if (timer.status === 'paused' && timer.remainingMs) {
         updateTimer(todoId, {
           status: 'running',
@@ -419,36 +467,15 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const timer = get().timers[todoId]
       if (!timer) return
       
-      // 리셋 시 타이머를 완전히 종료 (idle 상태로 변경)
-      if (timer.mode === 'stopwatch') {
-        updateTimer(todoId, {
-          status: 'idle',
-          elapsedMs: 0,
-          initialFocusMs: 0,
-          startedAt: null,
-          // Flexible 필드 초기화
-          flexiblePhase: null,
-          focusElapsedMs: 0,
-          breakElapsedMs: 0,
-          breakTargetMs: null,
-          breakCompleted: false,
-          focusStartedAt: null,
-          breakStartedAt: null,
-          sessionHistory: [],  // 세션 히스토리 초기화
-        })
-      } else {
-        const settings = timer.settingsSnapshot
-        if (!settings) return
-        
-        updateTimer(todoId, {
-          phase: 'flow',
-          status: 'idle',
-          endAt: null,
-          remainingMs: settings.flowMin * MINUTE,
-          elapsedMs: 0,
-          initialFocusMs: 0,
-          cycleCount: 0,
-        })
+      // 리셋 시 타이머를 완전히 제거 (초기화)
+      const timers = { ...get().timers }
+      delete timers[todoId]
+      
+      set({ timers })
+      
+      // sessionStorage에서도 제거
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(STORAGE_KEY_PREFIX + todoId)
       }
     },
 
@@ -470,8 +497,14 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         if (timer.mode === 'stopwatch') {
           if (timer.flexiblePhase === 'focus' && timer.focusStartedAt) {
             // 집중 시간 카운트업
-            const newFocusElapsed = timer.focusElapsedMs + (Date.now() - timer.focusStartedAt)
-            updates[todoId] = { ...timer, focusElapsedMs: newFocusElapsed, focusStartedAt: Date.now() }
+            const now = Date.now()
+            const delta = now - timer.focusStartedAt
+            // resumeFocus에서 초기값으로 100ms를 설정했을 수 있으므로, delta를 더할 때 이를 고려
+            // initialFocusMs를 기준으로 계산해야 정확함
+            const initialMs = timer.initialFocusMs ?? 0
+            const baseElapsed = timer.focusElapsedMs - initialMs
+            const newFocusElapsed = initialMs + baseElapsed + delta
+            updates[todoId] = { ...timer, focusElapsedMs: newFocusElapsed, focusStartedAt: now }
           } else if ((timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') && timer.breakStartedAt) {
             // 휴식 시간 카운트업
             const newBreakElapsed = timer.breakElapsedMs + (Date.now() - timer.breakStartedAt)
@@ -585,7 +618,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       if (!timer || timer.mode !== 'pomodoro' || !timer.settingsSnapshot) return
       
       const { phase, settingsSnapshot } = timer
-      const { breakMin, longBreakMin, flowMin, cycleEvery } = settingsSnapshot
+      const { breakMin, longBreakMin, flowMin, cycleEvery, autoStartBreak, autoStartSession } = settingsSnapshot
       
       if (phase === 'flow') {
         // Flow → Break 수동 스킵: cycleCount +1
@@ -593,12 +626,12 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const breakType = getBreakType(nextCycle, cycleEvery)
         const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
         
-        transitionPhase(todoId, breakType.phase, nextBreakDuration, false, 1)
+        transitionPhase(todoId, breakType.phase, nextBreakDuration, autoStartBreak ?? false, 1)
       } else {
         // Break → Flow 수동 스킵
         // 긴 휴식 후에는 cycleCount를 0으로 초기화
         const cycleCountDelta = phase === 'long' ? -timer.cycleCount : 0
-        transitionPhase(todoId, 'flow', flowMin, false, cycleCountDelta)
+        transitionPhase(todoId, 'flow', flowMin, autoStartSession ?? false, cycleCountDelta)
       }
     },
 
@@ -683,22 +716,32 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         newFocusElapsed = timer.focusElapsedMs + delta
       }
       
-      // 현재 세션을 히스토리에 추가 (breakMs는 아직 0)
-      const newSessionHistory = [
-        ...timer.sessionHistory,
-        { focusMs: newFocusElapsed, breakMs: 0 }
-      ]
+      // 현재 세션의 실제 집중 시간 계산 (initialFocusMs 제외)
+      const initialMs = timer.initialFocusMs ?? 0
+      const currentSessionMs = newFocusElapsed - initialMs
       
-      // 휴식 시작 (running 또는 paused 모두 처리)
+      // MIN_FLOW_MS 이상인 세션만 히스토리에 추가 (Flow로 인정되는 세션만)
+      const newSessionHistory = [...timer.sessionHistory]
+      if (currentSessionMs >= MIN_FLOW_MS) {
+        newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
+      }
+      
+      // 자동화 설정 확인
+      const autoStartBreak = timer.settingsSnapshot?.autoStartBreak ?? false
+      
+      // 휴식 시작
+      // 중요: initialFocusMs를 newFocusElapsed로 업데이트하여 다음 세션의 시작점을 설정
+      // 이렇게 하면 resumeFocus에서 새 세션을 시작할 때 올바른 기준점을 가짐
       updateTimer(todoId, {
         flexiblePhase: targetMs ? 'break_suggested' : 'break_free',
         focusElapsedMs: newFocusElapsed,
+        initialFocusMs: newFocusElapsed,  // 다음 세션의 시작점으로 설정
         focusStartedAt: null,
         breakElapsedMs: 0,
-        breakStartedAt: Date.now(),
+        breakStartedAt: autoStartBreak ? Date.now() : null,  // autoStartBreak가 true면 즉시 시작, false면 대기
         breakTargetMs: targetMs,
         breakCompleted: false,
-        status: 'running',
+        status: autoStartBreak ? 'running' : 'waiting',  // autoStartBreak에 따라 상태 결정
         sessionHistory: newSessionHistory,
       })
     },
@@ -727,16 +770,35 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         }
       }
       
+      // 자동화 설정 확인
+      const autoStartSession = timer.settingsSnapshot?.autoStartSession ?? false
+      
       // 집중 재개 (새 세션 시작 = 0부터 카운트업)
+      const now = Date.now()
+      const focusStartedAt = autoStartSession ? now : null
+      
+      // autoStartSession이 true이고 running 상태면, 즉시 focusElapsedMs를 약간 증가시켜서
+      // 프로그레스바가 바로 표시되도록 함 (tick 함수가 실행되기 전까지의 딜레이 방지)
+      // MIN_FLOW_MS가 1분(60000ms)이므로, 프로그레스바가 보이도록 최소 100ms 정도는 설정
+      const initialFocusElapsed = autoStartSession && timer.status === 'running' ? 100 : 0
+      
+      // 새 세션 시작
+      // startBreak에서 이미 initialFocusMs를 newFocusElapsed로 설정했으므로,
+      // 여기서는 현재 focusElapsedMs(누적값)를 기준으로 새 세션의 시작점을 설정
+      // 하지만 focusElapsedMs는 새 세션 시작이므로 initialFocusMs부터 시작해야 함
+      const currentInitialMs = timer.initialFocusMs ?? 0
+      const newInitialFocusMs = currentInitialMs + initialFocusElapsed
+      
       updateTimer(todoId, {
         flexiblePhase: 'focus',
         breakElapsedMs: 0,
         breakStartedAt: null,
-        focusElapsedMs: 0,  // 새 세션 시작
-        focusStartedAt: Date.now(),
+        focusElapsedMs: newInitialFocusMs,  // 새 세션 시작 (누적값 기준으로 시작점 설정)
+        initialFocusMs: newInitialFocusMs,  // 새 세션의 시작점
+        focusStartedAt,  // autoStartSession이 true면 즉시 시작, false면 대기
         breakTargetMs: null,
         breakCompleted: false,
-        status: 'running',
+        status: autoStartSession ? 'running' : 'waiting',  // autoStartSession에 따라 상태 결정
         sessionHistory: newSessionHistory,
       })
     },
