@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { CheckCircleIcon, SettingsIcon } from '../ui/Icons'
+import { CheckCircleIcon, SettingsIcon, ChartBarIcon } from '../ui/Icons'
 
 const tabs = [
   {
@@ -7,6 +7,13 @@ const tabs = [
     label: 'Todo',
     icon: (active: boolean) => (
       <CheckCircleIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
+    ),
+  },
+  {
+    to: '/stats',
+    label: '통계',
+    icon: (active: boolean) => (
+      <ChartBarIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
     ),
   },
   {

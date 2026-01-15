@@ -2,6 +2,7 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 import AppLayout from './App'
 import NotFoundPage from './NotFoundPage'
 import TodosPage from '../features/todos/TodosPage'
+import { StatsPage } from '../features/todos/StatsPage'
 import PomodoroSettingsPage from '../features/settings/PomodoroSettingsPage'
 
 export const router = createBrowserRouter([
@@ -11,6 +12,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/todos" replace /> },
       { path: 'todos', element: <TodosPage /> },
+      { path: 'stats', element: <StatsPage /> },
       { path: 'settings/pomodoro', element: <PomodoroSettingsPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
