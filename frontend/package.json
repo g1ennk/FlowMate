@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "VITE_USE_MOCK=1 vite",
+    "dev:port": "vite --port",
+    "dev:mock:port": "VITE_USE_MOCK=1 vite --port",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
