@@ -132,7 +132,7 @@ function PomodoroSettingsPage() {
           <div className="px-4 py-3.5">
             <Switch
               label="세션 자동 시작"
-              description="휴식 종료 후 자동으로 Flow 시작"
+              description="휴식 종료 후 자동으로 집중 시작"
               checked={values.autoStartSession}
               onChange={() => handleToggle('autoStartSession')}
               disabled={isLoading}
