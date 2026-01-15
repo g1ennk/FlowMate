@@ -471,7 +471,7 @@ export function StatsPage() {
                   {task.sessionDetails && task.sessionDetails.length > 0 && (
                     <div className="col-span-2 mt-2 space-y-1 rounded bg-gray-50 p-2">
                       <p className="text-xs font-medium text-gray-600">세션 상세:</p>
-                      {task.sessionDetails.map((session, idx) => (
+                      {task.sessionDetails.map((session: { flowNumber: number; focusMs: number; breakMs: number; focusTime: string; breakTime: string }, idx: number) => (
                         <div key={idx} className="text-xs text-gray-600">
                           <span className="font-medium">Flow {session.flowNumber}:</span>
                           <span className="ml-1 text-purple-600">{session.focusTime}</span>

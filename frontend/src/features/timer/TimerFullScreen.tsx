@@ -13,8 +13,8 @@ import {
   ArrowPathIcon,
   StopIcon,
 } from '../../ui/Icons'
-import { useTimer, useTimerStore, type TimerStore } from './timerStore'
-import { checkTimerConflict, getTimerConflictMessage, getPlannedMs as getPlannedMsUtil } from './timerHelpers'
+import { useTimer, useTimerStore } from './timerStore'
+import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -70,7 +70,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const resetTimer = useResetTimer() // 타이머 리셋용 (기록 삭제)
   
   const timer = useTimer(todoId)
-  const timers = useTimerStore((s) => s.timers)
   const startPomodoro = useTimerStore((s) => s.startPomodoro)
   const startStopwatch = useTimerStore((s) => s.startStopwatch)
   const pause = useTimerStore((s) => s.pause)
@@ -232,28 +231,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     onClose()
   }
 
-  const handleStartStopwatch = async () => {
-    // 전역 타이머 충돌 체크
-    const [hasConflict, conflictMode] = checkTimerConflict(timers, todoId)
-    if (hasConflict && conflictMode) {
-      toast.error(getTimerConflictMessage(conflictMode), { id: 'timer-already-running' })
-      return
-    }
-    
-    // 같은 태스크에서 다른 모드의 타이머가 실행 중이면 막기
-    if (timer && timer.status !== 'idle' && timer.mode === 'pomodoro') {
-      toast.error('이미 뽀모도로 타이머가 실행 중입니다', { id: 'pomodoro-running' })
-      return
-    }
-    
-    // 태스크의 timerMode 업데이트
-    await updateTodo.mutateAsync({ id: todoId, patch: { timerMode: 'stopwatch' } })
-    
-    setSelectedMode('stopwatch')
-    // 항상 focusSeconds부터 시작 (완료/미완료 무관)
-    // 설정을 전달하여 자동화 옵션 사용
-    startStopwatch(todoId, focusSeconds * 1000, settings)
-  }
+  // Note: handleStartStopwatch is not used - removed to fix build error
 
   // Note: Pomodoro start is triggered via selectedMode UI elsewhere
 
@@ -471,8 +449,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   }
 
   const isRunning = timer?.status === 'running'
-  const isPaused = timer?.status === 'paused'
-  const isWaiting = timer?.status === 'waiting'
   const isActive = timer && timer.status !== 'idle'
 
   if (!mounted) return null

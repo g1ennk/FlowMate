@@ -6,7 +6,6 @@ import {
   type PomodoroCompleteRequest,
   type PomodoroCompleteResponse,
   type TimerResetResponse,
-  type Todo,
   type TodoCreateInput,
   type TodoList,
   type TodoPatchInput,
@@ -97,9 +96,4 @@ export function useResetTimer() {
       },
     },
   )
-}
-
-export function findTodoById(list: TodoList | undefined, id: string | undefined): Todo | undefined {
-  if (!list || !id) return undefined
-  return list.items.find((item) => item.id === id)
 }

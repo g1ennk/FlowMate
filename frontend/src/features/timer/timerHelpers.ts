@@ -1,4 +1,4 @@
-import type { SingleTimerState, PomodoroSettings } from './timerStore'
+import type { SingleTimerState } from './timerStore'
 import type { PomodoroSettings as SettingsType } from '../../api/types'
 import { MINUTE_MS } from '../../lib/time'
 

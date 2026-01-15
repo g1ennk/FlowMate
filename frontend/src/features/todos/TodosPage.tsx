@@ -438,7 +438,7 @@ function TodosPage() {
             // 다른 태스크에서 실행 중인 타이머 찾기
             const allTimerEntries = Object.entries(store.timers)
             const otherRunningTimer = allTimerEntries.find(
-              ([todoId, timer]) => timer.status === 'running' && todoId !== actions.selectedTodo.id
+              ([todoId, timer]) => timer.status === 'running' && todoId !== actions.selectedTodo?.id
             )
             
             const isCompleted = actions.selectedTodo.isDone

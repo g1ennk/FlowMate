@@ -9,7 +9,6 @@ import {
 } from './hooks'
 import type { Todo } from '../../api/types'
 import { useTimerStore, type TimerMode } from '../timer/timerStore'
-import { MINUTE_MS } from '../../lib/time'
 import { usePomodoroSettings } from '../settings/hooks'
 import { checkTimerConflict, getTimerConflictMessage, getPlannedMs } from '../timer/timerHelpers'
 
@@ -28,7 +27,6 @@ export function useTodoActions(selectedDateKey: string) {
   // 타이머 store
   const stop = useTimerStore((s) => s.stop)
   const pause = useTimerStore((s) => s.pause)
-  const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
   const timers = useTimerStore((s) => s.timers)
 
