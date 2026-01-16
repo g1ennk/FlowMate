@@ -909,19 +909,45 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       {showCompleteModal && (() => {
         // 일반 타이머: 총계 계산
         const sessionHistory = timer?.sessionHistory ?? []
-        const currentFocusMs = timer?.focusElapsedMs ?? 0
-        const initialMs = timer?.initialFocusMs ?? 0
-        const currentSessionMs = currentFocusMs - initialMs
-        const isCurrentSessionValid = currentSessionMs >= MIN_FLOW_MS
+        let totalSessions = 0
+        let totalFocusMs = 0
+        let totalFocusTime = ''
         
-        // 총 세션 수 (히스토리에는 이미 MIN_FLOW_MS 이상인 세션만 포함됨 + 현재 세션)
-        const totalSessions = sessionHistory.length + (isCurrentSessionValid ? 1 : 0)
-        
-        // 총 집중 시간 (ms) - 히스토리의 모든 세션 + 현재 세션 (유효한 경우만)
-        const totalFocusMs = sessionHistory.reduce((sum, session) => sum + session.focusMs, 0) + 
-                            (isCurrentSessionValid ? currentSessionMs : 0)
-        
-        const totalFocusTime = formatMs(totalFocusMs)
+        if (timer?.mode === 'stopwatch') {
+          const currentFocusMs = timer?.focusElapsedMs ?? 0
+          const initialMs = timer?.initialFocusMs ?? 0
+          const currentSessionMs = currentFocusMs - initialMs
+          const isCurrentSessionValid = currentSessionMs >= MIN_FLOW_MS
+          
+          // 총 세션 수 (히스토리에는 이미 MIN_FLOW_MS 이상인 세션만 포함됨 + 현재 세션)
+          totalSessions = sessionHistory.length + (isCurrentSessionValid ? 1 : 0)
+          
+          // 총 집중 시간 (ms) - 히스토리의 모든 세션 + 현재 세션 (유효한 경우만)
+          totalFocusMs = sessionHistory.reduce((sum, session) => sum + session.focusMs, 0) + 
+                        (isCurrentSessionValid ? currentSessionMs : 0)
+          
+          totalFocusTime = formatMs(totalFocusMs)
+        } else if (timer?.mode === 'pomodoro') {
+          // 뽀모도로: 총계 계산
+          // 현재 Flow가 진행 중이면 포함 (Break 중이면 이미 sessionHistory에 포함됨)
+          const isFlowInProgress = timer.phase === 'flow' && timer.status !== 'idle'
+          let currentFlowMs = 0
+          
+          if (isFlowInProgress) {
+            // 현재 Flow의 실제 경과 시간 계산
+            const plannedMs = getPlannedMs()
+            const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : plannedMs)
+            currentFlowMs = Math.max(0, plannedMs - remaining)
+          }
+          
+          // 총 세션 수 (히스토리 + 현재 Flow 진행 중이면 1)
+          totalSessions = sessionHistory.length + (isFlowInProgress ? 1 : 0)
+          
+          // 총 집중 시간 (ms) - 히스토리의 모든 세션 + 현재 Flow (있는 경우)
+          totalFocusMs = sessionHistory.reduce((sum, session) => sum + session.focusMs, 0) + currentFlowMs
+          
+          totalFocusTime = formatMs(totalFocusMs)
+        }
         
         return (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
@@ -933,8 +959,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               현재 진행 상황이 저장됩니다.
             </p>
               
-              {/* 일반 타이머: 총계 표시 */}
-              {timer?.mode === 'stopwatch' && totalSessions > 0 && (
+              {/* 총계 표시 (일반 타이머 및 뽀모도로) */}
+              {totalSessions > 0 && (
                 <div className="mb-6 rounded-lg bg-gray-700/50 p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-300">총 세션 (Flow)</span>

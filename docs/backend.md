@@ -69,6 +69,7 @@ com.example.flowtodo
 - isDone: boolean
 - pomodoroDone: int (default 0)
 - focusSeconds: int (default 0)
+- timerMode: String? ('stopwatch' | 'pomodoro' | null)
 - createdAt, updatedAt (auditing 추천)
 
 ### 4.2 PomodoroSettings Entity
@@ -77,6 +78,18 @@ com.example.flowtodo
 - breakMin: int default 5
 - longBreakMin: int default 15
 - cycleEvery: int default 4
+- autoStartBreak: boolean default false
+- autoStartSession: boolean default false
+
+### 4.3 TodoSession Entity (V2 마이그레이션)
+- id: UUID (PK)
+- todoId: UUID (FK, indexed)
+- userId: String (indexed)
+- focusSeconds: int (집중 시간, 초)
+- breakSeconds: int (휴식 시간, 초)
+- sessionOrder: int (세션 순서: 1, 2, 3...)
+- createdAt, updatedAt (auditing)
+- 참고: `docs/plan/session-history.md` 참조
 
 ---
 
@@ -85,6 +98,10 @@ com.example.flowtodo
   - todos 테이블 (MySQL 기준 타입, UTF8MB4, InnoDB)
   - pomodoro_settings 테이블
   - 인덱스: todos(user_id, created_at)
+- `db/migration/V2__add_session_history.sql` (추후)
+  - todo_sessions 테이블
+  - 인덱스: todo_sessions(todo_id, user_id)
+  - 참고: `docs/plan/session-history.md` 참조
 
 ---
 

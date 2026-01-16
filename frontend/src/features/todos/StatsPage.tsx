@@ -77,11 +77,11 @@ export function StatsPage() {
       const timer = timers[todo.id]
       const sessionHistory = timer?.sessionHistory ?? []
       if (sessionHistory.length > 0) {
-        // 일반 타이머: sessionHistory 기반
+        // 일반 타이머 및 뽀모도로: sessionHistory 기반
         const totalSessionFocusMs = sessionHistory.reduce((s, session) => s + session.focusMs, 0)
         return sum + Math.floor(totalSessionFocusMs / 1000)
       } else {
-        // 뽀모도로 또는 sessionHistory 없는 경우: DB 값 사용
+        // sessionHistory 없는 경우: DB 값 사용
         return sum + todo.focusSeconds
       }
     }, 0)
@@ -141,6 +141,7 @@ export function StatsPage() {
       const sessionHistory = timer?.sessionHistory ?? []
       
       // 집중 시간: sessionHistory가 있으면 sessionHistory 기반, 없으면 DB 값 사용
+      // 일반 타이머 및 뽀모도로 모두 sessionHistory 사용
       const effectiveFocusSeconds = sessionHistory.length > 0
         ? Math.floor(sessionHistory.reduce((s, session) => s + session.focusMs, 0) / 1000)
         : todo.focusSeconds
@@ -202,7 +203,7 @@ export function StatsPage() {
         const totalBreakTime = formatMs(totalSessionBreakMs)
 
         // 집중 시간: sessionHistory가 있으면 sessionHistory 기반, 없으면 DB 값 사용
-        // 일반 타이머는 sessionHistory를 사용, 뽀모도로는 DB 값 사용
+        // 일반 타이머 및 뽀모도로 모두 sessionHistory 사용
         const effectiveFocusSeconds = sessionHistory.length > 0 
           ? Math.floor(totalSessionFocusMs / 1000)
           : todo.focusSeconds

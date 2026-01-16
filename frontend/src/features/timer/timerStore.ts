@@ -224,12 +224,19 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     phase: TimerPhase,
     duration: number,
     autoStart: boolean,
-    cycleCountDelta: number = 0
+    cycleCountDelta: number = 0,
+    sessionHistoryUpdate?: (currentHistory: SessionRecord[]) => SessionRecord[]
   ) => {
     const timer = get().timers[todoId]
     if (!timer) return
 
     const newCycleCount = timer.cycleCount + cycleCountDelta
+    
+    // sessionHistory 업데이트 (뽀모도로 타이머용)
+    let newSessionHistory = timer.sessionHistory
+    if (sessionHistoryUpdate) {
+      newSessionHistory = sessionHistoryUpdate(timer.sessionHistory)
+    }
 
     if (autoStart) {
       updateTimer(todoId, {
@@ -238,6 +245,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         endAt: computeEndAt(duration),
         remainingMs: null,
         cycleCount: newCycleCount,
+        sessionHistory: newSessionHistory,
       })
     } else {
       updateTimer(todoId, {
@@ -246,6 +254,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         endAt: null,
         remainingMs: duration * MINUTE,
         cycleCount: newCycleCount,
+        sessionHistory: newSessionHistory,
       })
     }
   }
@@ -604,12 +613,42 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const breakType = getBreakType(nextCycle, cycleEvery)
         const breakDuration = breakType.isLong ? longBreakMin : breakMin
         
-        transitionPhase(todoId, breakType.phase, breakDuration, autoStartBreak ?? false, 1)
+        // Flow 완료 시 sessionHistory에 추가 (실제 경과 시간 계산)
+        const plannedMs = flowMin * MINUTE
+        const actualElapsedMs = timer.endAt 
+          ? Math.max(0, plannedMs - Math.max(0, timer.endAt - Date.now()))
+          : plannedMs
+        const flowMs = Math.max(0, actualElapsedMs)
+        
+        transitionPhase(
+          todoId, 
+          breakType.phase, 
+          breakDuration, 
+          autoStartBreak ?? false, 
+          1,
+          (currentHistory) => [...currentHistory, { focusMs: flowMs, breakMs: 0 }]
+        )
       } else {
         // Break → Flow 자동 전환
-        // 긴 휴식 후에는 cycleCount를 0으로 초기화
+        // Break 완료 시 마지막 세션의 breakMs 업데이트
+        const breakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
         const cycleCountDelta = phase === 'long' ? -cycleCount : 0
-        transitionPhase(todoId, 'flow', flowMin, autoStartSession ?? false, cycleCountDelta)
+        transitionPhase(
+          todoId, 
+          'flow', 
+          flowMin, 
+          autoStartSession ?? false, 
+          cycleCountDelta,
+          (currentHistory) => {
+            if (currentHistory.length === 0) return currentHistory
+            const updated = [...currentHistory]
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              breakMs: breakMs
+            }
+            return updated
+          }
+        )
       }
     },
 
@@ -626,12 +665,40 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const breakType = getBreakType(nextCycle, cycleEvery)
         const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
         
-        transitionPhase(todoId, breakType.phase, nextBreakDuration, autoStartBreak ?? false, 1)
+        // Flow 스킵 시에도 sessionHistory에 추가 (실제 집중 시간 계산)
+        const plannedMs = flowMin * MINUTE
+        const elapsedMs = timer.endAt ? Math.max(0, plannedMs - (timer.endAt - Date.now())) : plannedMs
+        const flowMs = Math.max(0, elapsedMs)
+        
+        transitionPhase(
+          todoId, 
+          breakType.phase, 
+          nextBreakDuration, 
+          autoStartBreak ?? false, 
+          1,
+          (currentHistory) => [...currentHistory, { focusMs: flowMs, breakMs: 0 }]
+        )
       } else {
         // Break → Flow 수동 스킵
-        // 긴 휴식 후에는 cycleCount를 0으로 초기화
+        // Break 스킵 시 마지막 세션의 breakMs 업데이트
+        const breakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
         const cycleCountDelta = phase === 'long' ? -timer.cycleCount : 0
-        transitionPhase(todoId, 'flow', flowMin, autoStartSession ?? false, cycleCountDelta)
+        transitionPhase(
+          todoId, 
+          'flow', 
+          flowMin, 
+          autoStartSession ?? false, 
+          cycleCountDelta,
+          (currentHistory) => {
+            if (currentHistory.length === 0) return currentHistory
+            const updated = [...currentHistory]
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              breakMs: breakMs
+            }
+            return updated
+          }
+        )
       }
     },
 

@@ -19,10 +19,16 @@ Content-Type: `application/json`
   "pomodoroDone": 2,
   "focusSeconds": 3000,
   "timerMode": "stopwatch",
+  "sessionHistory": [
+    { "focusMs": 1500000, "breakMs": 300000 },
+    { "focusMs": 1500000, "breakMs": 0 }
+  ],
   "createdAt": "2026-01-09T12:00:00Z",
   "updatedAt": "2026-01-09T12:10:00Z"
 }
 ```
+
+**참고**: `sessionHistory`는 V2 마이그레이션 후 추가됩니다. 현재는 클라이언트 `sessionStorage`에만 저장됩니다.
 
 ### PomodoroSettings
 ```json
@@ -159,3 +165,5 @@ Content-Type: `application/json`
 | 2026-01-13 | Todo에 `timerMode` 필드 추가 (타이머 모드 영구 저장)              |
 | 2026-01-13 | 통계 페이지 추가 (`/stats`)                                       |
 | 2026-01-13 | 홈 화면 시간 표시 개선 (추천 휴식 카운트다운, 자유 휴식 카운트업) |
+| 2026-01-13 | 뽀모도로 타이머에도 `sessionHistory` 추가                        |
+| 2026-01-13 | `sessionHistory` DB 저장 설계 (`docs/plan/session-history.md`) |
