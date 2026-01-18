@@ -1041,43 +1041,54 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       )}
 
       {/* 휴식 선택 바텀시트 */}
-      {showBreakSelection && timer && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
-          <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
-            {/* 헤더 */}
-            <div className="mb-6 text-center">
-              <h3 className="text-2xl font-bold text-white">
-                {Math.floor((timer.focusElapsedMs ?? 0) / 60000)}분
-              </h3>
-              <p className="mt-1 text-sm text-gray-400">
-                집중 완료
-              </p>
-            </div>
+      {showBreakSelection && timer && (() => {
+        // 현재 세션의 집중 시간 계산 (전체 누적이 아닌 현재 Flow만)
+        let currentSessionMs = timer.focusElapsedMs ?? 0
+        if (timer.status === 'running' && timer.focusStartedAt) {
+          // running 상태일 때는 실시간 delta 추가
+          const delta = Date.now() - timer.focusStartedAt
+          currentSessionMs = currentSessionMs + delta
+        }
+        const initialMs = timer.initialFocusMs ?? 0
+        const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs) // 현재 세션의 집중 시간만
+        
+        return (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
+            <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
+              {/* 헤더 */}
+              <div className="mb-6 text-center">
+                <h3 className="text-2xl font-bold text-white">
+                  {Math.floor(currentSessionFocusMs / 60000)}분
+                </h3>
+                <p className="mt-1 text-sm text-gray-400">
+                  집중 완료
+                </p>
+              </div>
 
-            {/* 버튼 그룹 */}
-            <div className="space-y-3">
-              {/* 추천 휴식 */}
-              <button
-                onClick={() => {
-                  const suggestion = calculateBreakSuggestion(timer.focusElapsedMs ?? 0)
-                  handleStartBreak(suggestion.targetMs)
-                }}
-                className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-left transition-colors hover:bg-emerald-500"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-base font-semibold text-white">
-                      추천 휴식
+              {/* 버튼 그룹 */}
+              <div className="space-y-3">
+                {/* 추천 휴식 */}
+                <button
+                  onClick={() => {
+                    const suggestion = calculateBreakSuggestion(currentSessionFocusMs)
+                    handleStartBreak(suggestion.targetMs)
+                  }}
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-left transition-colors hover:bg-emerald-500"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-white">
+                        추천 휴식
+                      </div>
+                      <div className="mt-0.5 text-sm text-emerald-100">
+                        집중의 20%
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-sm text-emerald-100">
-                      집중의 20%
+                    <div className="text-2xl font-bold text-white">
+                      {calculateBreakSuggestion(currentSessionFocusMs).targetMinutes}'
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-white">
-                    {calculateBreakSuggestion(timer.focusElapsedMs ?? 0).targetMinutes}'
-                  </div>
-                </div>
-              </button>
+                </button>
 
               {/* 자유 휴식 */}
               <button
@@ -1101,17 +1112,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 </div>
               </button>
 
-              {/* 취소 */}
-              <button
-                onClick={() => setShowBreakSelection(false)}
-                className="w-full rounded-xl bg-transparent py-3 text-sm font-medium text-gray-400 transition-colors hover:text-gray-300"
-              >
-                취소
-              </button>
+                {/* 취소 */}
+                <button
+                  onClick={() => setShowBreakSelection(false)}
+                  className="w-full rounded-xl bg-transparent py-3 text-sm font-medium text-gray-400 transition-colors hover:text-gray-300"
+                >
+                  취소
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>,
     document.body,
   )
