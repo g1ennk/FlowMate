@@ -874,16 +874,13 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const focusMin = Math.floor(focusMs / 60000)
       const ratio = 0.2 // 20% (설정에서 변경 가능하도록 추후 확장)
       
-      // 추천 시간 계산
+      // 추천 시간 계산 (최소/최대 제한 없음)
       const suggestedMin = Math.round(focusMin * ratio)
       
-      // 최소 5분, 최대 30분
-      const clampedMin = Math.max(5, Math.min(30, suggestedMin))
-      
       return {
-        targetMs: clampedMin * 60000,
-        targetMinutes: clampedMin,
-        message: `${focusMin}분 집중 → ${clampedMin}분 휴식 추천`
+        targetMs: suggestedMin * 60000,
+        targetMinutes: suggestedMin,
+        message: `${focusMin}분 집중 → ${suggestedMin}분 휴식 추천`
       }
     },
   }
