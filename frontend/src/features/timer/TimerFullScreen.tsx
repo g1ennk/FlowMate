@@ -248,23 +248,63 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     // 타이머 일시정지 (상태 유지)
     if (timer.status === 'running') {
       pause(todoId)
+      // pause 후 업데이트된 타이머 값 다시 가져오기
+      const pausedTimer = getTimer(todoId)
+      if (!pausedTimer) return
+      // timer를 업데이트된 값으로 교체
+      Object.assign(timer, pausedTimer)
     }
     
-    // Flow phase에서만 시간 기록
+    // Flow phase에서만 시간 기록 및 sessionHistory 업데이트
     if (timer.phase === 'flow') {
-    const plannedMs = getPlannedMs()
-    const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-    const elapsedSec = Math.round((plannedMs - remaining) / 1000)
-    
-    if (elapsedSec > 0) {
-      // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
-      if (remaining < 5000) {
-        await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-      } else {
-        // 중간에 완료하면 시간만 기록
-        await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+      const plannedMs = getPlannedMs()
+      const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
+      const elapsedMs = plannedMs - remaining
+      const elapsedSec = Math.round(elapsedMs / 1000)
+      
+      // sessionHistory 업데이트: MIN_FLOW_MS 이상이면 Flow로 인정하여 세션 추가
+      const newSessionHistory = [...timer.sessionHistory]
+      
+      if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
+        // Flow로 인정: sessionHistory에 세션 추가 (휴식 없이 완료해도 Flow로 인정)
+        newSessionHistory.push({ focusMs: elapsedMs, breakMs: 0 })
+        
+        // sessionHistory 업데이트 - timerStore에 반영
+        const store = useTimerStore.getState()
+        const currentTimer = store.timers[todoId]
+        if (currentTimer) {
+          // Zustand store 직접 업데이트
+          useTimerStore.setState((state) => ({
+            timers: {
+              ...state.timers,
+              [todoId]: {
+                ...currentTimer,
+                sessionHistory: newSessionHistory
+              }
+            }
+          }))
+          // sessionStorage에도 저장
+          if (typeof window !== 'undefined') {
+            const STORAGE_KEY_PREFIX = 'todo-flow/timer/v2/'
+            const key = STORAGE_KEY_PREFIX + todoId
+            const persisted = {
+              ...currentTimer,
+              sessionHistory: newSessionHistory
+            }
+            sessionStorage.setItem(key, JSON.stringify(persisted))
+          }
+        }
       }
-    }
+      
+      if (elapsedSec > 0) {
+        // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
+        if (remaining < 5000) {
+          await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+        } else {
+          // 중간에 완료하면 시간만 기록
+          await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
+        }
+      }
     }
     // Break 중이면 시간 기록 없이 태스크만 완료
     
@@ -310,15 +350,22 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     // 현재 세션이 MIN_FLOW_MS 이상이면 Flow로 인정하여 sessionHistory에 추가
     if (currentSessionMs >= MIN_FLOW_MS) {
       // 현재 세션이 집중 중이면 추가, 휴식 중이면 마지막 세션의 breakMs만 업데이트
-      if (timer.flexiblePhase === 'focus' || !timer.flexiblePhase) {
-        // 집중 중: 새 세션 추가
+      const isInFocus = timer.flexiblePhase === 'focus' || !timer.flexiblePhase
+      const isInBreak = timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
+      
+      if (isInFocus) {
+        // 집중 중: 새 세션 추가 (휴식 없이 완료해도 Flow로 인정)
         newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
-      } else if (newSessionHistory.length > 0) {
+      } else if (isInBreak && newSessionHistory.length > 0) {
         // 휴식 중: 마지막 세션의 breakMs 업데이트 (currentBreakMs가 0이어도 업데이트)
         newSessionHistory[newSessionHistory.length - 1] = {
           ...newSessionHistory[newSessionHistory.length - 1],
           breakMs: currentBreakMs
         }
+      } else {
+        // flexiblePhase가 예상치 못한 값이거나 null인 경우에도 세션 추가
+        // (안전장치: MIN_FLOW_MS 이상이면 항상 Flow로 인정)
+        newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
       }
     } else if (newSessionHistory.length > 0) {
       // 현재 세션이 MIN_FLOW_MS 미만이지만, 마지막 세션의 breakMs는 업데이트
@@ -375,8 +422,13 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     }
     
     // sessionHistory 업데이트 (breakMs 포함) - timerStore에 반영
-    // newSessionHistory가 변경되었으면 항상 저장 (currentBreakMs가 0이어도)
-    if (newSessionHistory.length > 0) {
+    // newSessionHistory가 변경되었으면 항상 저장 (새 세션이 추가되었거나 breakMs가 업데이트된 경우)
+    const hasNewSession = newSessionHistory.length > timer.sessionHistory.length
+    const hasBreakUpdate = newSessionHistory.length > 0 && 
+      newSessionHistory.length === timer.sessionHistory.length &&
+      newSessionHistory[newSessionHistory.length - 1]?.breakMs !== timer.sessionHistory[timer.sessionHistory.length - 1]?.breakMs
+    
+    if (hasNewSession || hasBreakUpdate || newSessionHistory.length > 0) {
       // timerStore의 내부 updateTimer 함수는 접근 불가
       // 대신 set을 통해 직접 업데이트
       const store = useTimerStore.getState()
@@ -1041,43 +1093,54 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       )}
 
       {/* 휴식 선택 바텀시트 */}
-      {showBreakSelection && timer && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
-          <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
-            {/* 헤더 */}
-            <div className="mb-6 text-center">
-              <h3 className="text-2xl font-bold text-white">
-                {Math.floor((timer.focusElapsedMs ?? 0) / 60000)}분
-              </h3>
-              <p className="mt-1 text-sm text-gray-400">
-                집중 완료
-              </p>
-            </div>
+      {showBreakSelection && timer && (() => {
+        // 현재 세션의 집중 시간 계산 (전체 누적이 아닌 현재 Flow만)
+        let currentSessionMs = timer.focusElapsedMs ?? 0
+        if (timer.status === 'running' && timer.focusStartedAt) {
+          // running 상태일 때는 실시간 delta 추가
+          const delta = Date.now() - timer.focusStartedAt
+          currentSessionMs = currentSessionMs + delta
+        }
+        const initialMs = timer.initialFocusMs ?? 0
+        const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs) // 현재 세션의 집중 시간만
+        
+        return (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
+            <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
+              {/* 헤더 */}
+              <div className="mb-6 text-center">
+                <h3 className="text-2xl font-bold text-white">
+                  {Math.floor(currentSessionFocusMs / 60000)}분
+                </h3>
+                <p className="mt-1 text-sm text-gray-400">
+                  집중 완료
+                </p>
+              </div>
 
-            {/* 버튼 그룹 */}
-            <div className="space-y-3">
-              {/* 추천 휴식 */}
-              <button
-                onClick={() => {
-                  const suggestion = calculateBreakSuggestion(timer.focusElapsedMs ?? 0)
-                  handleStartBreak(suggestion.targetMs)
-                }}
-                className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-left transition-colors hover:bg-emerald-500"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-base font-semibold text-white">
-                      추천 휴식
+              {/* 버튼 그룹 */}
+              <div className="space-y-3">
+                {/* 추천 휴식 */}
+                <button
+                  onClick={() => {
+                    const suggestion = calculateBreakSuggestion(currentSessionFocusMs)
+                    handleStartBreak(suggestion.targetMs)
+                  }}
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-left transition-colors hover:bg-emerald-500"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-white">
+                        추천 휴식
+                      </div>
+                      <div className="mt-0.5 text-sm text-emerald-100">
+                        집중의 20%
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-sm text-emerald-100">
-                      집중의 20%
+                    <div className="text-2xl font-bold text-white">
+                      {calculateBreakSuggestion(currentSessionFocusMs).targetMinutes}'
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-white">
-                    {calculateBreakSuggestion(timer.focusElapsedMs ?? 0).targetMinutes}'
-                  </div>
-                </div>
-              </button>
+                </button>
 
               {/* 자유 휴식 */}
               <button
@@ -1101,17 +1164,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 </div>
               </button>
 
-              {/* 취소 */}
-              <button
-                onClick={() => setShowBreakSelection(false)}
-                className="w-full rounded-xl bg-transparent py-3 text-sm font-medium text-gray-400 transition-colors hover:text-gray-300"
-              >
-                취소
-              </button>
+                {/* 취소 */}
+                <button
+                  onClick={() => setShowBreakSelection(false)}
+                  className="w-full rounded-xl bg-transparent py-3 text-sm font-medium text-gray-400 transition-colors hover:text-gray-300"
+                >
+                  취소
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>,
     document.body,
   )
