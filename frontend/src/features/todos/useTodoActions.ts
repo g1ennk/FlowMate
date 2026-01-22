@@ -25,7 +25,6 @@ export function useTodoActions(selectedDateKey: string) {
   const { data: settings } = usePomodoroSettings()
   
   // 타이머 store
-  const stop = useTimerStore((s) => s.stop)
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)

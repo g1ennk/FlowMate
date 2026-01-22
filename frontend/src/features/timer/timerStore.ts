@@ -179,10 +179,7 @@ const loadAllPersisted = (): Record<string, SingleTimerState> => {
         if (raw) {
           const persisted = JSON.parse(raw) as PersistedTimerState
           // sessionHistory를 localStorage에서 로드하여 병합
-          timers[todoId] = hydrateState({
-            ...persisted,
-            sessionHistory: sessionHistories[todoId] ?? []
-          })
+          timers[todoId] = hydrateState(persisted, sessionHistories[todoId] ?? [])
         }
       }
     }
@@ -227,7 +224,7 @@ const savePersisted = (todoId: string, state: SingleTimerState) => {
   saveSessionHistory(todoId, sessionHistory)
 }
 
-function hydrateState(persisted: Persisted): SingleTimerState {
+function hydrateState(persisted: Persisted, sessionHistory: SessionRecord[] = []): SingleTimerState {
   const now = Date.now()
   let endAt = persisted.endAt
   let remainingMs = persisted.remainingMs
@@ -243,7 +240,7 @@ function hydrateState(persisted: Persisted): SingleTimerState {
   if (persisted.mode === 'pomodoro' && persisted.status === 'running' && endAt) {
     const left = endAt - now
     if (left <= 0) {
-      return initialSingleTimerState
+      return { ...initialSingleTimerState, sessionHistory }
     }
     remainingMs = left
   }
@@ -287,6 +284,7 @@ function hydrateState(persisted: Persisted): SingleTimerState {
     flexiblePhase: persisted.flexiblePhase ?? null,
     breakTargetMs: persisted.breakTargetMs ?? null,
     breakCompleted: persisted.breakCompleted ?? false,
+    sessionHistory,
   }
 }
 
