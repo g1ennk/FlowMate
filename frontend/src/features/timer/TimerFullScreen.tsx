@@ -84,6 +84,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const startBreak = useTimerStore((s) => s.startBreak)
   const resumeFocus = useTimerStore((s) => s.resumeFocus)
   const calculateBreakSuggestion = useTimerStore((s) => s.calculateBreakSuggestion)
+  const updateSessionHistory = useTimerStore((s) => s.updateSessionHistory)
 
   // Global ticker is installed in AppProviders
 
@@ -105,7 +106,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       } else {
         // 타이머가 없거나 idle 상태인 경우에만 새로 시작
         // initialMode는 handleOpenTimer에서 이미 todo.timerMode를 고려하여 설정됨
-        const modeToUse = initialMode
+        // idle 상태의 타이머는 loadAllPersisted에서 잘못된 mode('pomodoro')로 생성될 수 있으므로
+        // initialMode(todo.timerMode)를 우선 사용
+        const modeToUse = initialMode || null
         
         if (modeToUse) {
           // 모드가 지정되면 해당 모드로 바로 시작 (paused 상태)
@@ -269,31 +272,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         // Flow로 인정: sessionHistory에 세션 추가 (휴식 없이 완료해도 Flow로 인정)
         newSessionHistory.push({ focusMs: elapsedMs, breakMs: 0 })
         
-        // sessionHistory 업데이트 - timerStore에 반영
-        const store = useTimerStore.getState()
-        const currentTimer = store.timers[todoId]
-        if (currentTimer) {
-          // Zustand store 직접 업데이트
-          useTimerStore.setState((state) => ({
-            timers: {
-              ...state.timers,
-              [todoId]: {
-                ...currentTimer,
-                sessionHistory: newSessionHistory
-              }
-            }
-          }))
-          // sessionStorage에도 저장
-          if (typeof window !== 'undefined') {
-            const STORAGE_KEY_PREFIX = 'todo-flow/timer/v2/'
-            const key = STORAGE_KEY_PREFIX + todoId
-            const persisted = {
-              ...currentTimer,
-              sessionHistory: newSessionHistory
-            }
-            sessionStorage.setItem(key, JSON.stringify(persisted))
-          }
-        }
+        // sessionHistory 업데이트 (관심사 분리: timerStore 메서드 사용)
+        updateSessionHistory(todoId, newSessionHistory)
       }
       
       if (elapsedSec > 0) {
@@ -429,32 +409,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       newSessionHistory[newSessionHistory.length - 1]?.breakMs !== timer.sessionHistory[timer.sessionHistory.length - 1]?.breakMs
     
     if (hasNewSession || hasBreakUpdate || newSessionHistory.length > 0) {
-      // timerStore의 내부 updateTimer 함수는 접근 불가
-      // 대신 set을 통해 직접 업데이트
-      const store = useTimerStore.getState()
-      const currentTimer = store.timers[todoId]
-      if (currentTimer) {
-        // Zustand store 직접 업데이트
-        useTimerStore.setState((state) => ({
-          timers: {
-            ...state.timers,
-            [todoId]: {
-              ...currentTimer,
-              sessionHistory: newSessionHistory
-            }
-          }
-        }))
-        // sessionStorage에도 저장
-        if (typeof window !== 'undefined') {
-          const STORAGE_KEY_PREFIX = 'todo-flow/timer/v2/'
-          const key = STORAGE_KEY_PREFIX + todoId
-          const persisted = {
-            ...currentTimer,
-            sessionHistory: newSessionHistory
-          }
-          sessionStorage.setItem(key, JSON.stringify(persisted))
-        }
-      }
+      // sessionHistory 업데이트 (관심사 분리: timerStore 메서드 사용)
+      updateSessionHistory(todoId, newSessionHistory)
     }
     
     // timerMode 저장 (완료 후에도 올바른 모드 표시를 위해)

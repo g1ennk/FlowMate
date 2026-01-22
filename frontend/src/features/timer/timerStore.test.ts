@@ -20,6 +20,26 @@ beforeEach(() => {
   useTimerStore.setState({ timers: {}, autoCompletedTodos: new Set() })
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-01-09T00:00:00Z'))
+  
+  // localStorage와 sessionStorage 모킹
+  const localStorageMock = {
+    getItem: vi.fn(() => null),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+    key: vi.fn(),
+    length: 0,
+  }
+  const sessionStorageMock = {
+    getItem: vi.fn(() => null),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+    key: vi.fn(),
+    length: 0,
+  }
+  Object.defineProperty(window, 'localStorage', { value: localStorageMock, writable: true })
+  Object.defineProperty(window, 'sessionStorage', { value: sessionStorageMock, writable: true })
 })
 
 describe('timerStore', () => {
