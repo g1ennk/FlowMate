@@ -665,23 +665,18 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const breakType = getBreakType(nextCycle, cycleEvery)
         const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
         
-        // Flow 스킵 시에도 sessionHistory에 추가 (실제 집중 시간 계산)
-        const plannedMs = flowMin * MINUTE
-        const elapsedMs = timer.endAt ? Math.max(0, plannedMs - (timer.endAt - Date.now())) : plannedMs
-        const flowMs = Math.max(0, elapsedMs)
-        
+        // Flow 스킵 시 sessionHistory에 기록하지 않음 (완료가 아니므로)
         transitionPhase(
           todoId, 
           breakType.phase, 
           nextBreakDuration, 
           autoStartBreak ?? false, 
           1,
-          (currentHistory) => [...currentHistory, { focusMs: flowMs, breakMs: 0 }]
+          (currentHistory) => currentHistory // 스킵은 기록하지 않음
         )
       } else {
         // Break → Flow 수동 스킵
-        // Break 스킵 시 마지막 세션의 breakMs 업데이트
-        const breakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
+        // Break 스킵 시 sessionHistory에 기록하지 않음 (완료가 아니므로)
         const cycleCountDelta = phase === 'long' ? -timer.cycleCount : 0
         transitionPhase(
           todoId, 
@@ -689,15 +684,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           flowMin, 
           autoStartSession ?? false, 
           cycleCountDelta,
-          (currentHistory) => {
-            if (currentHistory.length === 0) return currentHistory
-            const updated = [...currentHistory]
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              breakMs: breakMs
-            }
-            return updated
-          }
+          (currentHistory) => currentHistory // 스킵은 기록하지 않음
         )
       }
     },
