@@ -65,7 +65,7 @@ function TodosPage() {
   const [showInput, setShowInput] = useState(false)
   const [activeOrder, setActiveOrder] = useState<string[]>([])
   const [doneOrder, setDoneOrder] = useState<string[]>([])
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const isSubmittingRef = useRef(false)
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -270,21 +270,26 @@ function TodosPage() {
             {/* 새 할 일 추가 - TodoItem 형태 (미완료 태스크 맨 아래) */}
             {showInput && (
               <div className="rounded-xl p-2">
-                <div className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+                <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
                   {/* 체크박스 (비활성) */}
-                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50" />
+                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
                   
                   {/* 입력 필드 */}
-                  <input
+                  <textarea
                     {...register('title')}
                     ref={(e) => {
                       register('title').ref(e)
                       inputRef.current = e
+                      // 높이 자동 조정
+                      if (e) {
+                        e.style.height = 'auto'
+                        e.style.height = `${e.scrollHeight}px`
+                      }
                     }}
                     placeholder="할 일 입력"
                     autoFocus
                     onKeyDown={async (e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault()
                         if (isSubmittingRef.current) return
                         
@@ -295,10 +300,12 @@ function TodosPage() {
                             await actions.handleCreate(title)
                             reset()
                             // Enter 시에는 입력 필드 유지 (연속 입력 가능)
-                            // setShowInput(false) 제거
-                            // 입력 필드에 다시 포커스
                             setTimeout(() => {
-                              inputRef.current?.focus()
+                              if (inputRef.current) {
+                                inputRef.current.focus()
+                                inputRef.current.style.height = 'auto'
+                                inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
+                              }
                             }, 0)
                           } catch (err) {
                             toast.error('추가 실패', { id: 'todo-create-failed' })
@@ -308,6 +315,12 @@ function TodosPage() {
                           }
                         }
                       }
+                    }}
+                    onChange={(e) => {
+                      register('title').onChange(e)
+                      // 높이 자동 조정
+                      e.target.style.height = 'auto'
+                      e.target.style.height = `${e.target.scrollHeight}px`
                     }}
                     onBlur={async () => {
                       // 제출 중이면 blur 무시
@@ -332,7 +345,8 @@ function TodosPage() {
                         setShowInput(false)
                       }
                     }}
-                    className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                    className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]"
+                    rows={1}
                   />
                   
                   {/* 더보기 버튼 (비활성) */}

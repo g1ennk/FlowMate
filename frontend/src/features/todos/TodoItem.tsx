@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import {
   CheckIcon,
   ClockIcon,
@@ -134,24 +135,52 @@ export function TodoItem({
 
   // 편집 모드
   if (isEditing) {
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
+    
+    // 자동 높이 조정
+    useEffect(() => {
+      const textarea = textareaRef.current
+      if (textarea) {
+        textarea.style.height = 'auto'
+        textarea.style.height = `${textarea.scrollHeight}px`
+      }
+    }, [editingTitle])
+    
+    // 포커스 시 커서를 끝으로 이동
+    useEffect(() => {
+      const textarea = textareaRef.current
+      if (textarea && isEditing) {
+        textarea.focus()
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+      }
+    }, [isEditing])
+    
     return (
       <div className="rounded-xl p-2">
-        <div className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+        <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
           {/* 체크박스 (비활성) */}
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50" />
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
           
           {/* 입력 필드 */}
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
             value={editingTitle}
-            onChange={(e) => onEditingTitleChange(e.target.value)}
+            onChange={(e) => {
+              onEditingTitleChange(e.target.value)
+              // 높이 자동 조정
+              e.target.style.height = 'auto'
+              e.target.style.height = `${e.target.scrollHeight}px`
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') onSaveEdit()
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                onSaveEdit()
+              }
               if (e.key === 'Escape') onCancelEdit()
             }}
             onBlur={onSaveEdit}
-            autoFocus
-            className="flex-1 bg-transparent text-sm text-gray-900 outline-none"
+            className="flex-1 bg-transparent text-sm text-gray-900 outline-none resize-none overflow-hidden min-h-[20px]"
+            rows={1}
           />
           
           {/* 더보기 버튼 (비활성) */}
@@ -184,7 +213,7 @@ export function TodoItem({
         {/* 내용 */}
         <div className="min-w-0 flex-1">
           <p
-            className={`truncate text-sm cursor-pointer ${
+            className={`text-sm cursor-pointer break-words whitespace-pre-wrap ${
               isDone ? 'text-gray-400 line-through' : 'text-gray-900'
             }`}
             onClick={onOpenMenu}
