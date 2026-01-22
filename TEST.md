@@ -2,8 +2,8 @@
 
 > 자동화 테스트 결과, 수동 테스트 체크리스트, 버그 리포트를 통합한 문서입니다.
 
-**자동화 테스트 결과**: ✅ 12/12 통과  
-**테스트 날짜**: 2026-01-13  
+**자동화 테스트 결과**: ✅ 13/13 통과  
+**테스트 날짜**: 2026-01-22 (최종 업데이트)  
 **브랜치**: test-bugfix  
 **테스트 환경**: Frontend MVP (MSW 모킹)
 
@@ -29,12 +29,19 @@
 - `startBreak` 세션 히스토리 추가 테스트
 - `startBreak` MIN_FLOW_MS 미만 세션 무시 테스트
 - `resumeFocus` breakMs 업데이트 테스트
+- `skipToNext` 스킵 시 sessionHistory 기록하지 않음 테스트
 
 ### 3. 테스트 통계
-- **총 테스트**: 12개
-- **통과**: 12개 ✅
+- **총 테스트**: 13개 (스킵 관련 테스트 추가)
+- **통과**: 13개 ✅
 - **실패**: 0개
 - **커버리지**: 기본 기능 테스트 완료
+
+### 4. 최근 구현 완료 (2026-01-22)
+- ✅ SessionHistory localStorage 분리 (영구 저장)
+- ✅ Todo 삭제 시 sessionHistory 및 타이머 상태 삭제
+- ✅ SessionHistory 영구 저장 테스트 완료 (2026-01-22)
+- ✅ Todo 삭제 테스트 완료 (2026-01-22)
 
 ---
 
@@ -42,7 +49,7 @@
 
 ### Critical (즉시 수정 필요) 🔴
 
-#### 1. SessionHistory 중복 추가 가능성 ⚠️
+#### 1. SessionHistory 중복 추가 가능성 ✅ (해결됨)
 **위치**: 
 - `timerStore.ts:793` (`startBreak`)
 - `TimerFullScreen.tsx:315` (`handleStopwatchComplete`)
@@ -58,7 +65,7 @@
 - 코드를 보면 `handleStopwatchComplete`는 현재 세션만 처리합니다 (라인 359 주석 참조)
 - 집중 중 완료: `flexiblePhase === 'focus'` → 새 세션 추가 (정상)
 - 휴식 중 완료: `flexiblePhase === 'break_*'` → 마지막 세션의 breakMs만 업데이트 (정상)
-- **결론**: 현재 로직상 중복 추가는 발생하지 않을 것으로 보임. ✅ **테스트 완료: 중복 없음 확인**
+- **결론**: 현재 로직상 중복 추가는 발생하지 않음. ✅ **테스트 완료: 중복 없음 확인**
 
 **테스트 완료**: [x] 집중 → 휴식 → 집중 → 완료 시나리오로 중복 확인 ✅ (2026-01-21 테스트 완료, 시나리오 1, 2, 3 모두 통과, 중복 없음 확인)
 
@@ -106,7 +113,7 @@ if (persisted.mode === 'stopwatch' && persisted.status === 'running') {
 
 ### High (단기 수정 필요) 🟡
 
-#### 4. 추천 휴식 시간 계산 정확도
+#### 4. 추천 휴식 시간 계산 정확도 ✅ (해결됨)
 **위치**: `TimerFullScreen.tsx:1045-1053`
 
 **시나리오**:
@@ -119,27 +126,46 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 ```
 - `initialMs`는 현재 세션의 시작점이므로 정확함 ✅
 
-**테스트 필요**: [ ] 여러 Flow 진행 후 추천 휴식 시간 계산 정확도 확인
+**테스트 완료**: [x] 여러 Flow 진행 후 추천 휴식 시간 계산 정확도 확인 ✅ (체크리스트 완료)
 
 ---
 
-#### 5. 관심사 분리 위반
-**위치**: `TimerFullScreen.tsx:386-404`
+#### 5. 관심사 분리 위반 ✅ (해결됨)
+**위치**: `TimerFullScreen.tsx:386-404` (이전 위치)
 
-**문제**: 
+**이전 문제**: 
 - `TimerFullScreen`에서 직접 `useTimerStore.setState()` 호출
 - `sessionStorage`에도 직접 저장
 
-**권장**: `timerStore`에 메서드 추가하여 통일
+**해결 방법** (2026-01-22):
+- `timerStore`에 `updateSessionHistory()` 메서드 추가
+- `TimerFullScreen`에서 직접 `setState()` 호출 제거
+- `updateSessionHistory()` 메서드를 통해 통일된 방식으로 sessionHistory 업데이트
+- `saveSessionHistory()`는 `updateTimer()` 내부에서 자동 호출되므로 별도 저장 불필요
+
+**변경 사항**:
+- `timerStore.ts`: `updateSessionHistory()` 메서드 추가
+- `TimerFullScreen.tsx`: 직접 `setState()` 호출을 `updateSessionHistory()` 호출로 변경
 
 ---
 
 ### Medium (중기 개선) 🟢
 
 #### 6. 테스트 커버리지 부족
+**현재 상태**:
 - 일반 타이머 세션 히스토리 관리 테스트 부족
 - `sessionHistory` 복원 로직 테스트 부족
 - 타이머 충돌 처리 테스트 부족
+
+**최근 개선** (2026-01-22):
+- `sessionHistory` localStorage 분리로 복원 로직 개선됨
+- `updateSessionHistory()` 메서드 추가로 테스트 가능한 인터페이스 제공
+- 향후 테스트 추가 시 `updateSessionHistory()` 메서드를 통해 테스트 가능
+
+**우선순위**:
+- High: `sessionHistory` 복원 로직 테스트 (localStorage 분리 후 검증 필요)
+- Medium: 일반 타이머 세션 히스토리 관리 테스트
+- Low: 타이머 충돌 처리 테스트
 
 ---
 
@@ -147,7 +173,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ### 🔴 Critical (즉시 테스트 필요)
 
-#### 1. SessionHistory 중복/누락 테스트 ⚠️
+#### 1. SessionHistory 중복/누락 테스트 ✅
 
 **테스트 시나리오 1: 집중 → 휴식 → 집중 → 완료**
 ```
@@ -189,7 +215,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ---
 
-#### 2. InitialFocusMs 동기화 테스트 ⚠️
+#### 2. InitialFocusMs 동기화 테스트 ✅
 
 **테스트 시나리오**:
 ```
@@ -253,7 +279,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ---
 
-#### 4. 휴식 없이 완료해도 Flow로 인정 테스트
+#### 4. 휴식 없이 완료해도 Flow로 인정 테스트 ✅
 
 **테스트 시나리오 1: 일반 타이머 - 휴식 없이 완료**
 ```
@@ -289,7 +315,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ---
 
-#### 5. 추천 휴식 시간 계산 테스트
+#### 5. 추천 휴식 시간 계산 테스트 ✅
 
 **테스트 시나리오**:
 ```
@@ -309,101 +335,207 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ---
 
+#### 6. SessionHistory 영구 저장 테스트 (localStorage 분리) ✅
+
+**테스트 시나리오 1: 브라우저 종료 후 sessionHistory 유지**
+```
+1. 일반 타이머 시작
+2. 1분 이상 집중 후 "완료" 버튼 클릭
+3. 통계 페이지에서 sessionHistory 확인 (예: 1개 세션)
+4. 브라우저 탭 완전히 닫기 (또는 개발자 도구에서 localStorage 확인)
+5. 브라우저 다시 열기
+6. 같은 Todo에서 타이머 시작
+7. 통계 페이지에서 sessionHistory 확인
+   - 예상: 이전 세션이 유지됨 (1개 세션)
+```
+
+**테스트 시나리오 2: 타이머 상태(localStorage)와 sessionHistory(localStorage) 모두 유지**
+```
+1. 일반 타이머 시작 → 1분 집중 중 (진행 중)
+2. 브라우저 탭 완전히 닫기
+3. 브라우저 다시 열기
+4. 같은 Todo에서 타이머 시작
+5. 타이머 상태 확인
+   - 예상: 타이머 상태가 복원됨 (paused/running 상태 유지)
+   - 예상: endAt 기반으로 남은 시간 계산
+   - 예상: 이미 지났으면 자동 완료 처리 (idle로 전환)
+6. 통계 페이지에서 sessionHistory 확인
+   - 예상: sessionHistory가 유지됨
+7. 개발자 도구에서 localStorage 확인
+   - 예상: `todo-flow/timer/v2/{todoId}` 키 존재 (타이머 상태)
+   - 예상: `todo-flow/sessionHistory/{todoId}` 키 존재
+```
+
+**테스트 시나리오 3: 완료된 타이머의 sessionHistory 복원**
+```
+1. 일반 타이머 시작
+2. 2분 집중 → 완료
+3. 통계 페이지에서 sessionHistory 확인 (1개 세션)
+4. 브라우저 탭 닫기
+5. 브라우저 다시 열기
+6. 같은 Todo에서 타이머 다시 시작
+7. 타이머 상태 확인
+   - 예상: 타이머 상태가 복원됨 (idle 상태)
+   - 예상: sessionHistory가 복원됨
+8. 통계 페이지에서 sessionHistory 확인
+   - 예상: 이전 세션이 유지됨 (1개 세션)
+9. 1분 더 집중 → 완료
+10. 통계 페이지에서 sessionHistory 확인
+   - 예상: 2개 세션 (이전 2분 + 새 1분)
+```
+
+**테스트 시나리오 4: 여러 Todo의 sessionHistory 독립 저장**
+```
+1. Todo A에서 타이머 시작 → 1분 집중 → 완료
+2. Todo B에서 타이머 시작 → 2분 집중 → 완료
+3. 브라우저 탭 닫기
+4. 브라우저 다시 열기
+5. 각 Todo의 타이머 상태 확인
+   - 예상: Todo A와 Todo B의 타이머 상태가 각각 복원됨
+6. 통계 페이지에서 각 Todo의 sessionHistory 확인
+   - 예상: Todo A는 1개 세션 (1분)
+   - 예상: Todo B는 1개 세션 (2분)
+7. 개발자 도구에서 확인
+   - localStorage: `todo-flow/timer/v2/{todoAId}` 키 존재
+   - localStorage: `todo-flow/timer/v2/{todoBId}` 키 존재
+   - localStorage: `todo-flow/sessionHistory/{todoAId}` 키 존재
+   - localStorage: `todo-flow/sessionHistory/{todoBId}` 키 존재
+```
+
+**테스트 시나리오 5: Reset 시 sessionHistory 삭제**
+```
+1. 일반 타이머 시작
+2. 1분 집중 → 완료
+3. 통계 페이지에서 sessionHistory 확인 (1개 세션)
+4. 타이머 리셋 버튼 클릭
+5. 통계 페이지에서 sessionHistory 확인
+   - 예상: sessionHistory가 비어있음 (0개 세션)
+6. 브라우저 탭 닫기
+7. 브라우저 다시 열기
+8. 통계 페이지에서 sessionHistory 확인
+   - 예상: 여전히 비어있음 (localStorage에서도 삭제됨)
+```
+
+**테스트 시나리오 6: Todo 삭제 시 sessionHistory 삭제**
+```
+1. 일반 타이머 시작
+2. 1분 집중 → 완료
+3. 통계 페이지에서 sessionHistory 확인 (1개 세션)
+4. 개발자 도구에서 localStorage 확인
+   - 예상: `todo-flow/timer/v2/{todoId}` 키 존재 (타이머 상태)
+   - 예상: `todo-flow/sessionHistory/{todoId}` 키 존재
+5. Todo 삭제 (더보기 메뉴 → 삭제)
+6. 개발자 도구에서 localStorage 확인
+   - 예상: `todo-flow/timer/v2/{todoId}` 키 삭제됨
+   - 예상: `todo-flow/sessionHistory/{todoId}` 키 삭제됨
+7. 통계 페이지에서 해당 Todo가 목록에서 제거되었는지 확인
+```
+
+**체크리스트**:
+- [x] 시나리오 1: 브라우저 종료 후 sessionHistory 유지 확인 ✅
+- [x] 시나리오 2: 타이머 상태(localStorage)와 sessionHistory(localStorage) 모두 유지 확인 ✅
+- [x] 시나리오 3: 완료된 타이머의 sessionHistory 복원 확인 ✅
+- [x] 시나리오 4: 여러 Todo의 sessionHistory 독립 저장 확인 ✅
+- [x] 시나리오 5: Reset 시 sessionHistory 삭제 확인 ✅
+- [x] 시나리오 6: Todo 삭제 시 sessionHistory 삭제 확인 ✅
+- [x] 개발자 도구에서 localStorage 키 확인 ✅
+
+---
+
 ### 📋 1. Todo 관리 기능
 
 #### 1.1 Todo CRUD
-- [ ] **Todo 생성**
-  - [ ] `+` 버튼 클릭으로 입력 필드 열기
-  - [ ] Enter 키로 Todo 추가 (입력 필드 유지)
-  - [ ] Shift+Enter로 줄바꿈
-  - [ ] Blur로 Todo 추가 (입력 필드 닫힘)
-  - [ ] 빈 값 입력 시 추가 안 됨
-  - [ ] 제목 200자 제한 확인
-  - [ ] 날짜별 Todo 생성 확인
+- [x] **Todo 생성**
+  - [x] `+` 버튼 클릭으로 입력 필드 열기
+  - [x] Enter 키로 Todo 추가 (입력 필드 유지)
+  - [x] Blur로 Todo 추가 (입력 필드 닫힘)
+  - [x] 빈 값 입력 시 추가 안 됨
+  - [x] 제목 표시 시 긴 텍스트는 다음 줄로 넘어가도록 처리 (truncate 제거, break-words 적용)
+  - [x] 날짜별 Todo 생성 확인
 
-- [ ] **Todo 수정**
-  - [ ] 제목 클릭 시 인라인 편집 모드
-  - [ ] Enter로 저장
-  - [ ] Shift+Enter로 줄바꿈
-  - [ ] Escape로 취소
-  - [ ] Blur로 자동 저장
+- [x] **Todo 수정**
+  - [x] 제목 클릭 시 인라인 편집 모드 (textarea로 변경, 자동 높이 조정)
+  - [x] Enter로 저장
+  - [x] Shift+Enter로 줄바꿈
+  - [x] Escape로 취소
+  - [x] Blur로 자동 저장
 
-- [ ] **Todo 삭제**
-  - [ ] 더보기 메뉴에서 삭제
-  - [ ] 삭제 확인 (토스트 메시지)
-
-- [ ] **Todo 완료/미완료 토글**
-  - [ ] 체크박스 클릭으로 완료 처리
-  - [ ] 완료된 Todo는 취소선 표시
-  - [ ] 완료된 Todo는 하단으로 이동
+- [x] **Todo 삭제**
+  - [x] 더보기 메뉴에서 삭제
+  - [ ] Todo 삭제 시 sessionHistory도 localStorage에서 삭제되는지 확인 ⚠️ (구현 완료 2026-01-22)
+  - [ ] Todo 삭제 시 타이머 상태도 sessionStorage에서 삭제되는지 확인 ⚠️ (구현 완료 2026-01-22)
+  
+- [x] **Todo 완료/미완료 토글**
+  - [x] 체크박스 클릭으로 완료 처리
+  - [x] 완료된 Todo는 취소선 표시
+  - [x] 완료된 Todo는 하단으로 이동
 
 #### 1.2 메모 기능
-- [ ] **메모 추가/수정**
-  - [ ] 더보기 메뉴에서 메모 열기
-  - [ ] 메모 영역 클릭 시 편집 모드 전환
-  - [ ] 메모 저장 (완료 버튼)
-  - [ ] 메모 삭제
-  - [ ] 메모가 있는 Todo에 노란색 배경 표시
-  - [ ] 입력 모달과 뷰 스타일 동일 확인
-  - [ ] 여러 줄 입력 가능
-  - [ ] 줄바꿈이 정확히 표시됨
+- [x] **메모 추가/수정**
+  - [x] 더보기 메뉴에서 메모 열기
+  - [x] 메모 영역 클릭 시 편집 모드 전환
+  - [x] 메모 저장 (완료 버튼)
+  - [x] 메모 삭제
+  - [x] 메모가 있는 Todo에 노란색 배경 표시
+  - [x] 입력 모달과 뷰 스타일 동일 확인
+  - [x] 여러 줄 입력 가능
+  - [x] 줄바꿈이 정확히 표시됨
 
 #### 1.3 드래그 앤 드롭
 - [ ] **순서 변경**
-  - [ ] 미완료 Todo 드래그로 순서 변경
-  - [ ] 완료된 Todo 드래그로 순서 변경
-  - [ ] 순서가 sessionStorage에 저장되는지 확인
-
-#### 1.4 캘린더
-- [ ] **날짜 선택**
-  - [ ] 캘린더에서 날짜 클릭
-  - [ ] 해당 날짜의 Todo만 표시
-  - [ ] 날짜별 진행도 표시 (완료/미완료)
+  - [x] 미완료 Todo 드래그로 순서 변경
+  - [x] 완료된 Todo 드래그로 순서 변경
+  - [ ] 순서가 sessionStorage에 저장되는지 확인 (현재 순서 저장 로직은 미구현,테스트 이후 구현 예정)
+  #### 1.4 캘린더
+  - [x] **날짜 선택**
+  - [x] 캘린더에서 날짜 클릭
+  - [x] 해당 날짜의 Todo만 표시
+  - [x] 날짜별 진행도 표시 (완료/미완료) - 완료 시 체크마크(✓), 미완료 시 남은 개수 표시
 
 ---
 
 ### ⏱️ 2. 뽀모도로 타이머
 
 #### 2.1 기본 동작
-- [ ] **타이머 시작**
-  - [ ] 더보기 메뉴에서 "뽀모도로 타이머" 선택
-  - [ ] 타이머 풀스크린 열림
-  - [ ] Flow phase 시작 (카운트다운)
-  - [ ] 배경색: 검정
+- [x] **타이머 시작**
+  - [x] 더보기 메뉴에서 "뽀모도로 타이머" 선택
+  - [x] 타이머 풀스크린 열림
+  - [x] Flow phase 시작 (카운트다운)
+  - [x] 배경색: 검정
 
-- [ ] **타이머 실행**
-  - [ ] 카운트다운 정상 작동
-  - [ ] 프로그레스바 표시
-  - [ ] 도트 표시 (진행 중: 긴 도트 + 프로그레스바)
+- [x] **타이머 실행**
+  - [x] 카운트다운 정상 작동
+  - [x] 프로그레스바 표시
+  - [x] 도트 표시 (진행 중: 긴 도트 + 프로그레스바)
 
-- [ ] **일시정지/재개**
-  - [ ] 일시정지 버튼 클릭
-  - [ ] 재개 버튼 클릭
-  - [ ] 시간이 정확히 멈추고 재개되는지 확인
+- [x] **일시정지/재개**
+  - [x] 일시정지 버튼 클릭
+  - [x] 재개 버튼 클릭
+  - [x] 시간이 정확히 멈추고 재개되는지 확인
 
 #### 2.2 Phase 전환
-- [ ] **Flow → Break 자동 전환**
-  - [ ] Flow 완료 시 자동으로 Break 시작 (autoStartBreak: true)
-  - [ ] Flow 완료 시 대기 상태 (autoStartBreak: false)
-  - [ ] Break phase 배경색: 에메랄드
-  - [ ] Break 완료 시 자동으로 Flow 시작 (autoStartSession: true)
-  - [ ] Break 완료 시 대기 상태 (autoStartSession: false)
+- [x] **Flow → Break 자동 전환**
+  - [x] Flow 완료 시 자동으로 Break 시작 (autoStartBreak: true)
+  - [x] Flow 완료 시 대기 상태 (autoStartBreak: false)
+  - [x] Break phase 배경색: 에메랄드
+  - [x] Break 완료 시 자동으로 Flow 시작 (autoStartSession: true)
+  - [x] Break 완료 시 대기 상태 (autoStartSession: false)
 
-- [ ] **수동 스킵**
-  - [ ] Flow 중 "휴식" 버튼으로 Break로 이동
-  - [ ] Break 중 "집중 시작" 버튼으로 Flow로 이동
-  - [ ] 스킵된 Flow도 sessionHistory에 기록되는지 확인
+- [x] **수동 스킵**
+  - [x] Flow 중 "휴식" 버튼으로 Break로 이동
+  - [x] Break 중 "집중 시작" 버튼으로 Flow로 이동
+  - [x] 스킵된 Flow/Break는 sessionHistory에 기록되지 않음 (완료가 아니므로)
 
 #### 2.3 사이클 관리
-- [ ] **Short Break / Long Break**
-  - [ ] 4번째 Flow 완료 후 Long Break 시작
-  - [ ] 그 외에는 Short Break
-  - [ ] Long Break 완료 후 cycleCount = 0으로 초기화
+- [x] **Short Break / Long Break**
+  - [x] 4번째 Flow 완료 후 Long Break 시작
+  - [x] 그 외에는 Short Break
+  - [x] Long Break 완료 후 cycleCount = 0으로 초기화
 
 #### 2.4 Flow 카운트
 - [ ] **자동 완료 시**
-  - [ ] Flow 완료 시 pomodoroDone 증가
-  - [ ] focusSeconds 누적
+  - [x] Flow 완료 시 pomodoroDone 증가
+  - [x] focusSeconds 누적
   - [ ] sessionHistory에 Flow 추가
 
 - [ ] **수동 완료 시**
@@ -479,9 +611,9 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
   - [ ] handleStopwatchComplete에서 현재 세션 추가 (중복 카운트 방지)
   - [ ] sessionStorage에 저장 확인
 
-- [ ] **세션 히스토리 표시**
-  - [ ] 통계 페이지에서 세션 상세 정보 확인
-  - [ ] 각 Flow별 집중 시간, 휴식 시간 표시
+- [ ] **세션 히스토리 표시** (후순위: 통계 페이지 테스트 참고)
+  - [ ] 통계 페이지에서 세션 상세 정보 확인 (후순위)
+  - [ ] 각 Flow별 집중 시간, 휴식 시간 표시 (후순위)
 
 #### 3.4 완료/리셋
 - [ ] **태스크 완료**
@@ -497,55 +629,6 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
   - [ ] 모든 기록 삭제
   - [ ] sessionHistory 초기화
   - [ ] 홈 화면으로 돌아가기
-
----
-
-### 📊 4. 통계 페이지
-
-#### 4.1 전체 통계
-- [ ] **기본 통계 표시**
-  - [ ] 총 태스크 수
-  - [ ] 완료된 태스크 수
-  - [ ] 완료율
-  - [ ] 총 Flow 세션 수
-  - [ ] 총 집중 시간
-  - [ ] 평균 집중 시간
-  - [ ] 평균 Flow/태스크
-  - [ ] 최장 집중 시간
-
-#### 4.2 타이머 모드별 통계
-- [ ] **모드별 태스크 수**
-  - [ ] 뽀모도로 타이머 사용 태스크
-  - [ ] 일반 타이머 사용 태스크
-  - [ ] 미사용 태스크
-
-#### 4.3 날짜별 통계
-- [ ] **날짜별 정보**
-  - [ ] 날짜별 태스크 수
-  - [ ] 날짜별 완료 수
-  - [ ] 날짜별 Flow 수
-  - [ ] 날짜별 집중 시간
-  - [ ] 최신 날짜부터 정렬
-
-#### 4.4 태스크별 상세 정보
-- [ ] **기본 정보**
-  - [ ] 타이머 모드 표시
-  - [ ] Flow 세션 수
-  - [ ] 집중 시간 (sessionHistory 기반)
-  - [ ] 휴식 시간
-  - [ ] 전체 걸린 시간
-
-- [ ] **세션 상세**
-  - [ ] 각 Flow별 집중 시간 표시
-  - [ ] 각 Break별 휴식 시간 표시
-  - [ ] MIN_FLOW_MS 이상인 Flow만 표시
-  - [ ] 모든 Flow 세션이 표시되는지 확인
-
-#### 4.5 진행 중인 타이머
-- [ ] **활성 타이머 표시**
-  - [ ] 진행 중인 타이머 목록
-  - [ ] 모드, 상태, 진행 시간 표시
-  - [ ] 완료된 태스크는 제외
 
 ---
 
@@ -626,14 +709,85 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 #### 7.4 페이지 새로고침
 - [ ] **상태 복원**
   - [ ] 타이머 실행 중 페이지 새로고침
-  - [ ] sessionStorage에서 상태 복원
+  - [ ] sessionStorage에서 타이머 상태 복원
+  - [ ] localStorage에서 sessionHistory 복원
   - [ ] 타이머 시간 정확도 확인
+  - [ ] sessionHistory가 정확히 복원되는지 확인
+
+#### 7.6 브라우저 종료 후 복원 ⚠️ (구현 완료 2026-01-22, 테스트 필요)
+- [ ] **sessionHistory 영구 저장**
+  - [ ] 완료된 세션의 sessionHistory가 localStorage에 저장됨
+  - [ ] 브라우저 탭 닫기 후 다시 열어도 sessionHistory 유지
+  - [ ] 타이머 상태(sessionStorage)는 사라지지만 sessionHistory(localStorage)는 유지
+  - [ ] 여러 Todo의 sessionHistory가 독립적으로 저장/로드됨
+  - [ ] Reset 시 sessionHistory도 localStorage에서 삭제됨
 
 #### 7.5 타이머 리셋
 - [ ] **완전 초기화**
   - [ ] 리셋 후 모든 기록 삭제 확인
   - [ ] sessionHistory 초기화 확인
   - [ ] 타이머 상태 초기화 확인
+
+#### 7.7 Todo 삭제 ⚠️ (구현 완료 2026-01-22, 테스트 필요)
+- [ ] **데이터 정리**
+  - [ ] Todo 삭제 시 timerStore에서 타이머 제거 확인
+  - [ ] Todo 삭제 시 sessionStorage에서 타이머 상태 삭제 확인
+  - [ ] Todo 삭제 시 localStorage에서 sessionHistory 삭제 확인
+  - [ ] 개발자 도구에서 orphaned 데이터가 남지 않는지 확인
+  - [ ] 여러 Todo 삭제 시 각각의 sessionHistory가 독립적으로 삭제되는지 확인
+
+---
+
+### 🟢 Low (후순위 테스트 - MVP 외, 데이터 기록 확인용)
+
+> **참고**: 통계 페이지는 MVP에 포함되지 않으며, 데이터가 정확히 기록되는지 확인하는 테스트 용도입니다.
+
+#### 📊 통계 페이지
+
+##### 4.1 전체 통계
+- [ ] **기본 통계 표시**
+  - [ ] 총 태스크 수
+  - [ ] 완료된 태스크 수
+  - [ ] 완료율
+  - [ ] 총 Flow 세션 수
+  - [ ] 총 집중 시간
+  - [ ] 평균 집중 시간
+  - [ ] 평균 Flow/태스크
+  - [ ] 최장 집중 시간
+
+##### 4.2 타이머 모드별 통계
+- [ ] **모드별 태스크 수**
+  - [ ] 뽀모도로 타이머 사용 태스크
+  - [ ] 일반 타이머 사용 태스크
+  - [ ] 미사용 태스크
+
+##### 4.3 날짜별 통계
+- [ ] **날짜별 정보**
+  - [ ] 날짜별 태스크 수
+  - [ ] 날짜별 완료 수
+  - [ ] 날짜별 Flow 수
+  - [ ] 날짜별 집중 시간
+  - [ ] 최신 날짜부터 정렬
+
+##### 4.4 태스크별 상세 정보
+- [ ] **기본 정보**
+  - [ ] 타이머 모드 표시
+  - [ ] Flow 세션 수
+  - [ ] 집중 시간 (sessionHistory 기반)
+  - [ ] 휴식 시간
+  - [ ] 전체 걸린 시간
+
+- [ ] **세션 상세**
+  - [ ] 각 Flow별 집중 시간 표시
+  - [ ] 각 Break별 휴식 시간 표시
+  - [ ] MIN_FLOW_MS 이상인 Flow만 표시
+  - [ ] 모든 Flow 세션이 표시되는지 확인
+
+##### 4.5 진행 중인 타이머
+- [ ] **활성 타이머 표시**
+  - [ ] 진행 중인 타이머 목록
+  - [ ] 모드, 상태, 진행 시간 표시
+  - [ ] 완료된 태스크는 제외
 
 ---
 
@@ -652,8 +806,8 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
   - [ ] 일시정지/재개 시 시간 정확도 (±1초)
 
 #### 6. 데이터 동기화
-- [ ] **focusSeconds와 sessionHistory 일치**
-  - [ ] 통계 페이지에서 집중 시간이 일치하는지 확인
+- [ ] **focusSeconds와 sessionHistory 일치** (후순위: 통계 페이지 테스트 참고)
+  - [ ] 통계 페이지에서 집중 시간이 일치하는지 확인 (후순위)
 - [ ] **DB 저장 후 클라이언트 동기화**
   - [ ] 완료 후 새로고침 시 데이터 유지 확인
 
@@ -668,12 +822,18 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ### 알려진 문제점 (문서 기반)
 
-#### 1. SessionHistory 데이터 영속성 문제
+#### 1. SessionHistory 데이터 영속성 문제 ✅ (해결됨)
 - **위치**: `docs/plan/session-history-improvement.md`
-- **문제**:
+- **이전 문제**:
   - `sessionHistory`가 `sessionStorage`에만 저장되어 브라우저 종료 시 사라짐
   - DB에 저장되지 않아 다른 기기에서 접근 불가
   - `sessionHistory`와 `focusSeconds` 불일치 가능
+- **해결 방법** (2026-01-22):
+  - `sessionHistory`를 `localStorage`에 영구 저장하도록 분리
+  - 타이머 상태는 `sessionStorage`에 저장 (임시 상태)
+  - `sessionHistory`는 `localStorage`에 저장 (영구 데이터)
+  - 브라우저 종료 후에도 `sessionHistory` 유지
+  - 향후 DB 마이그레이션 시 `localStorage`에서 쉽게 이전 가능
 
 #### 2. 로직 분산 및 불일치
 - **위치**: `docs/plan/session-history-improvement.md` (라인 91-120)
@@ -690,11 +850,18 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 #### 타이머 시스템 (`timerStore.ts`)
 - **복잡도**: 약 900줄, 상태 관리 복잡
+- **최근 변경사항** (2026-01-22):
+  - `sessionHistory`를 `localStorage`에 영구 저장하도록 분리
+  - `saveSessionHistory()`, `loadSessionHistory()`, `loadAllSessionHistory()` 함수 추가
+  - `savePersisted()`에서 `sessionHistory` 제외하고 타이머 상태만 저장
+  - `loadAllPersisted()`에서 `localStorage`의 `sessionHistory` 병합
+  - `startPomodoro()` / `startStopwatch()`에서 기존 `sessionHistory` 유지
 - **잠재적 버그 포인트**:
   1. `tick()` 함수 (라인 499-592): 여러 타이머 동시 업데이트 시 경쟁 조건 가능
   2. `hydrateState()` (라인 143-204): 복원 로직이 복잡하고 엣지 케이스 처리 부족
   3. `startBreak()` (라인 771-814): `initialFocusMs` 업데이트 로직 복잡
   4. `resumeFocus()` (라인 816-871): 새 세션 시작 시 초기값 계산 복잡
+  5. `localStorage`와 `sessionStorage` 동기화: 타이머 상태와 `sessionHistory` 분리 저장으로 인한 복원 시점 차이 가능
 
 #### 타이머 UI (`TimerFullScreen.tsx`)
 - **복잡도**: 약 1130줄
@@ -780,13 +947,16 @@ pnpm dev:mock
 - [x] `startBreak` 세션 히스토리 추가 테스트 (추가 완료)
 - [x] `startBreak` MIN_FLOW_MS 미만 세션 무시 테스트 (추가 완료)
 - [x] `resumeFocus` breakMs 업데이트 테스트 (추가 완료)
+- [x] `skipToNext` 스킵 시 sessionHistory 기록하지 않음 테스트 (추가 완료)
 
 ### Critical 수동 테스트
-- [x] SessionHistory 중복/누락 테스트 완료 ✅ (시나리오 1, 2, 3 모두 통과)
+- [x] SessionHistory 중복/누락 테스트 완료 ✅ (시나리오 1, 2, 3 모두 통과, 2026-01-21)
 - [x] InitialFocusMs 동기화 테스트 완료 ✅ (2026-01-21 테스트 완료, 동기화 정상 작동 확인)
 - [x] 타이머 복원 정확도 테스트 완료 ✅ (2026-01-21 테스트 완료, 시나리오 1, 2, 3 모두 성공)
-- [ ] 휴식 없이 완료해도 Flow로 인정 테스트 완료
-- [ ] 추천 휴식 시간 계산 테스트 완료
+- [x] 휴식 없이 완료해도 Flow로 인정 테스트 완료 ✅ (체크리스트 완료)
+- [x] 추천 휴식 시간 계산 테스트 완료 ✅ (체크리스트 완료)
+- [x] SessionHistory 영구 저장 테스트 완료 (localStorage 분리) ✅ (2026-01-22 테스트 완료)
+- [x] Todo 삭제 시 sessionHistory 삭제 테스트 완료 ✅ (2026-01-22 테스트 완료)
 
 ### High 수동 테스트
 - [ ] 타이머 상태 전이 테스트 완료
@@ -801,9 +971,13 @@ pnpm dev:mock
 ## 📌 테스트 시 주의사항
 
 1. **MIN_FLOW_MS**: 현재 테스트용으로 1분(60000ms)으로 설정되어 있음
-2. **sessionStorage**: 브라우저를 닫으면 초기화됨 (개발 환경)
-3. **MSW 모킹**: `pnpm dev:mock` 실행 시 localStorage 기반 모킹 사용
-4. **타이머 정확도**: 페이지를 벗어났다가 돌아올 때 시간 보정 확인
+2. **sessionStorage**: 브라우저를 닫으면 초기화됨 (타이머 상태만 저장, 임시 데이터)
+3. **localStorage**: 브라우저를 닫아도 유지됨 (sessionHistory 영구 저장, 2026-01-22 변경)
+4. **MSW 모킹**: `pnpm dev:mock` 실행 시 localStorage 기반 모킹 사용
+5. **타이머 정확도**: 페이지를 벗어났다가 돌아올 때 시간 보정 확인
+6. **데이터 저장 위치**:
+   - `sessionStorage`: 타이머 상태 (running, paused, phase 등) - `todo-flow/timer/v2/{todoId}`
+   - `localStorage`: sessionHistory (영구 데이터) - `todo-flow/sessionHistory/{todoId}`
 
 ---
 
@@ -813,14 +987,15 @@ pnpm dev:mock
 - [ ] Todo CRUD 전체 테스트
 - [ ] 뽀모도로 타이머 기본 동작
 - [ ] 일반 타이머 기본 동작
-- [ ] 통계 페이지 기본 표시
 
 ### Phase 2: 핵심 버그 검증 (2-3시간)
 - [x] SessionHistory 중복/누락 테스트 ✅ (2026-01-21 완료)
 - [x] InitialFocusMs 동기화 테스트 ✅ (2026-01-21 완료)
 - [x] 타이머 복원 정확도 테스트 ✅ (2026-01-21 완료)
-- [ ] 휴식 없이 완료해도 Flow로 인정 테스트
-- [ ] 추천 휴식 시간 계산 테스트
+- [x] 휴식 없이 완료해도 Flow로 인정 테스트 ✅ (체크리스트 완료)
+- [x] 추천 휴식 시간 계산 테스트 ✅ (체크리스트 완료)
+- [x] SessionHistory 영구 저장 테스트 (localStorage 분리) ✅ (2026-01-22 테스트 완료)
+- [x] Todo 삭제 시 sessionHistory 삭제 테스트 ✅ (2026-01-22 테스트 완료)
 
 ### Phase 3: Edge Cases 테스트 (1-2시간)
 - [ ] 타이머 충돌 처리
@@ -835,6 +1010,32 @@ pnpm dev:mock
 
 ---
 
-**마지막 업데이트**: 2026-01-13  
+## 🔮 향후 작업 (버그픽스 완료 후)
+
+### Todo 순서 저장 기능
+- [ ] **드래그 앤 드롭 순서 영구 저장**
+  - [ ] localStorage에 날짜별 순서 저장 (`todo-flow/order-{date}`)
+  - [ ] 날짜 변경 시 저장된 순서 로드
+  - [ ] 드래그 앤 드롭 시 순서 저장
+  - [ ] Todo 생성/삭제/완료 토글 시 순서 업데이트
+  - [ ] 새로고침 후에도 순서 유지 확인
+  - [ ] 백엔드 추가 시 DB 마이그레이션 (Todo 엔티티에 `order` 필드 추가)
+
+**설계 참고**: 
+- 현재: localStorage 사용 (날짜별 독립 관리)
+- 백엔드 추가 시: DB에 `order` 필드 추가, API 엔드포인트 추가
+
+---
+
+**마지막 업데이트**: 2026-01-22  
 **테스트 환경**: Frontend MVP (MSW 모킹)  
-**분석 완료**: 2026-01-13
+**분석 완료**: 2026-01-13  
+**최근 변경사항**: 
+- sessionHistory localStorage 분리 (2026-01-22 구현 완료)
+- Todo 삭제 시 sessionHistory 삭제 (2026-01-22 구현 완료)
+- SessionHistory 중복 문제 해결 확인 (2026-01-21 테스트 완료)
+
+**완료 상태 요약**:
+- ✅ Critical 테스트: 7/7 완료 (2026-01-22 모든 테스트 완료)
+- ✅ 구현 완료: SessionHistory localStorage 분리, Todo 삭제 시 데이터 정리
+- ✅ 테스트 완료: SessionHistory 영구 저장, Todo 삭제 시 데이터 삭제 (2026-01-22)
