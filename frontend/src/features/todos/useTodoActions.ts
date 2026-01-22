@@ -27,6 +27,7 @@ export function useTodoActions(selectedDateKey: string) {
   // 타이머 store
   const stop = useTimerStore((s) => s.stop)
   const pause = useTimerStore((s) => s.pause)
+  const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
   const timers = useTimerStore((s) => s.timers)
 
@@ -126,8 +127,8 @@ export function useTodoActions(selectedDateKey: string) {
   }
 
   const handleDelete = (id: string) => {
-    // 타이머가 실행 중이면 정리
-    stop(id)
+    // 타이머 상태 및 sessionHistory 완전 삭제
+    reset(id)
     // Todo 삭제
     deleteTodo.mutate(id)
     setSelectedTodo(null)
