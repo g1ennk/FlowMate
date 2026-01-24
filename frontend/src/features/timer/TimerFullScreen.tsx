@@ -97,42 +97,38 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       hasInitializedRef.current = true
       
       const currentTimer = getTimer(todoId)
-      
-      // 이미 타이머가 있으면 (idle이 아닌 상태) 해당 모드로 유지
-      // 미완료로 변경한 경우 타이머 상태가 paused/waiting으로 유지되므로 이전 기록 보존
-      if (currentTimer && currentTimer.status !== 'idle') {
+
+      // 이미 타이머가 있고, 사용자가 다른 모드를 요청(initialMode)했다면 기존 상태를 정리하고 전환
+      if (currentTimer && currentTimer.status !== 'idle' && initialMode && initialMode !== currentTimer.mode) {
+        // 기존 타이머 상태 제거 후, 요청된 모드로 새로 시작 (paused)
+        reset(todoId)
+        setSelectedMode(initialMode)
+        if (initialMode === 'stopwatch') {
+          startStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
+          pause(todoId)
+        } else if (initialMode === 'pomodoro' && settings) {
+          startPomodoro(todoId, settings)
+          pause(todoId)
+        }
+        // DB의 timerMode도 동기화
+        updateTodo.mutate({ id: todoId, patch: { timerMode: initialMode } })
+      } else if (currentTimer && currentTimer.status !== 'idle') {
+        // 기존 타이머 유지
         setSelectedMode(currentTimer.mode)
-        // 타이머 상태는 이미 유지되고 있으므로 추가 초기화 불필요
       } else {
         // 타이머가 없거나 idle 상태인 경우에만 새로 시작
-        // initialMode는 handleOpenTimer에서 이미 todo.timerMode를 고려하여 설정됨
-        // idle 상태의 타이머는 loadAllPersisted에서 잘못된 mode('pomodoro')로 생성될 수 있으므로
-        // initialMode(todo.timerMode)를 우선 사용
         const modeToUse = initialMode || null
-        
         if (modeToUse) {
-          // 모드가 지정되면 해당 모드로 바로 시작 (paused 상태)
-          // 충돌 체크는 이미 handleOpenTimer에서 했으므로 여기서는 생략
           setSelectedMode(modeToUse)
-          
-          // 주의: timerMode는 실제로 타이머를 시작(resume)할 때만 저장됨
-          // 여기서는 타이머를 열기만 하고 paused 상태로 두므로 저장하지 않음
-          
           if (modeToUse === 'stopwatch') {
-            // 타이머가 없을 때만 새로 시작 (기존 타이머가 있으면 유지)
-            if (!currentTimer || currentTimer.status === 'idle') {
-              // 항상 focusSeconds부터 시작 (완료/미완료 무관)
-              // 설정을 전달하여 자동화 옵션 사용
-              startStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
-              pause(todoId)
-            }
+            startStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
+            pause(todoId)
           } else if (modeToUse === 'pomodoro' && settings) {
-            // 타이머가 없을 때만 새로 시작
-            if (!currentTimer || currentTimer.status === 'idle') {
-              startPomodoro(todoId, settings)
-              pause(todoId)
-            }
+            startPomodoro(todoId, settings)
+            pause(todoId)
           }
+          // DB의 timerMode도 동기화
+          updateTodo.mutate({ id: todoId, patch: { timerMode: modeToUse } })
         }
       }
       
@@ -194,40 +190,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   // 닫을 때 타이머 처리
   const handleClose = async () => {
     if (timer && timer.status !== 'idle') {
-      // Waiting 상태는 확인 없이 바로 닫기
-      if (timer.status === 'waiting') {
-        stop(todoId)
-        onClose()
-        return
-      }
-      
-      // Paused 상태: 새로운 기록이 없으면 stop, 있으면 그대로 유지
-      if (timer.status === 'paused') {
-        let hasNewRecord = false
-        
-        if (timer.mode === 'pomodoro') {
-          // 뽀모도로: 계획된 시간보다 2초 이상 줄어들었으면 새로운 기록 (시작한 것으로 간주)
-          const plannedMs = getPlannedMs()
-          const currentRemainingMs = timer.remainingMs ?? plannedMs
-          hasNewRecord = currentRemainingMs < plannedMs - 2000
-        } else {
-          // Flexible 타이머: focusElapsedMs 또는 breakElapsedMs 체크
-          const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
-          const currentBreakMs = timer.breakElapsedMs ?? 0
-          const hasFocusRecord = currentFocusMs > (timer.initialFocusMs ?? 0) + 2000
-          const hasBreakRecord = currentBreakMs > 2000
-          hasNewRecord = hasFocusRecord || hasBreakRecord
-        }
-        
-        if (!hasNewRecord) {
-          stop(todoId)
-        }
-        onClose()
-        return
-      }
-      
-      // Running 상태는 확인 없이 바로 닫기 (타이머는 계속 실행, 기록 X)
-      // sessionStorage에 저장되어 실시간으로 계속 흐름
+      // 상태를 유지한 채로 단순히 닫기 (waiting/paused/running 모두)
       onClose()
       return
     }
@@ -458,6 +421,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   const isRunning = timer?.status === 'running'
   const isActive = timer && timer.status !== 'idle'
+  const effectiveMode: 'stopwatch' | 'pomodoro' | null = selectedMode ?? (timer?.mode ?? null)
 
   if (!mounted) return null
 
@@ -478,14 +442,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   // Phase별 배경색
   const getBackgroundColor = () => {
-    if (selectedMode === 'stopwatch' || timer?.mode === 'stopwatch') {
+    if (effectiveMode === 'stopwatch') {
       // Flexible timer: 휴식 중이면 에메랄드
       if (timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free') {
         return 'bg-emerald-600'
       }
       return 'bg-black'
     }
-    if (selectedMode === 'pomodoro' || timer?.mode === 'pomodoro') {
+    if (effectiveMode === 'pomodoro') {
       if (timer?.phase === 'flow' || !isActive) return 'bg-black' // Flow 또는 시작 전: 블랙
       return 'bg-emerald-600' // Break: 홈 버튼 색
     }
@@ -506,9 +470,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
-        <h1 className="text-base font-medium text-white">
-          {selectedMode === 'pomodoro' || (isActive && timer?.mode === 'pomodoro') ? '뽀모도로 타이머' : '타이머'}
-        </h1>
+        <h1 className="text-base font-medium text-white">{effectiveMode === 'pomodoro' ? '뽀모도로 타이머' : '타이머'}</h1>
         {/* 리셋 버튼 (항상 표시) */}
         <button
           onClick={() => setShowResetModal(true)}
@@ -525,7 +487,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         <h2 className="mb-8 text-center text-lg font-medium text-white">{todoTitle}</h2>
 
         {/* 타이머 표시 */}
-        {selectedMode === 'stopwatch' || (isActive && timer?.mode === 'stopwatch') ? (
+        {effectiveMode === 'stopwatch' ? (
           // Flexible 타이머 (Count-up)
           timer?.flexiblePhase === 'focus' || !timer?.flexiblePhase ? (
             // 집중 모드

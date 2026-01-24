@@ -29,6 +29,7 @@ export function useTodoActions(selectedDateKey: string) {
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
   const timers = useTimerStore((s) => s.timers)
+  const updateSessionHistory = useTimerStore((s) => s.updateSessionHistory)
 
   // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -73,6 +74,28 @@ export function useTodoActions(selectedDateKey: string) {
           const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
           const additionalMs = currentFocusMs - (timer.initialFocusMs ?? 0)
           const additionalSec = Math.round(additionalMs / 1000)
+          
+          // 휴식 중이면 break 시간을 sessionHistory에 반영
+          if (timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') {
+            const currentBreakMs = timer.breakElapsedMs ?? 0
+            // 실행 중이었으면 추가 시간 계산
+            let totalBreakMs = currentBreakMs
+            if (timer.status === 'running' && timer.breakStartedAt) {
+              const delta = Date.now() - timer.breakStartedAt
+              totalBreakMs = currentBreakMs + delta
+            }
+            
+            // 마지막 세션의 breakMs 업데이트
+            const newSessionHistory = [...timer.sessionHistory]
+            if (newSessionHistory.length > 0) {
+              newSessionHistory[newSessionHistory.length - 1] = {
+                ...newSessionHistory[newSessionHistory.length - 1],
+                breakMs: totalBreakMs
+              }
+              // sessionHistory 업데이트 (break 시간 보존)
+              updateSessionHistory(id, newSessionHistory)
+            }
+          }
           
           if (additionalSec > 0) {
             await addFocus.mutateAsync({ id, body: { durationSec: additionalSec } })
@@ -205,17 +228,20 @@ export function useTodoActions(selectedDateKey: string) {
       return
     }
     
-    // 우선순위: 현재 실행 중인 타이머 모드 > todo.timerMode > currentMode > null
-    // reset 후에는 timer가 없으므로 todo.timerMode를 우선 사용 (미완료 처리 후 유지)
+    // 우선순위(일관화): 사용자 선택(currentMode) > 실행/일시정지 중인 로컬 타이머 > DB(timerMode) > null
     const timer = getTimer(todo.id)
-    // timer가 있으면 timer.mode 우선, 없으면 todo.timerMode 우선 (DB에 저장된 값)
-    const modeToUse = timer?.mode || todo.timerMode || currentMode || null
+    const modeToUse: TimerMode | null =
+      currentMode || (timer && timer.status !== 'idle' ? timer.mode : null) || todo.timerMode || null
     
     // 모드가 있으면 타이머 화면 열기
     if (modeToUse) {
       setTimerTodo(todo)
       setTimerMode(modeToUse)
       setSelectedTodo(null)
+      // 사용자 선택에 의해 명시적으로 모드가 지정된 경우, DB(timerMode)도 동기화
+      if (currentMode && todo.timerMode !== currentMode) {
+        updateTodo.mutate({ id: todo.id, patch: { timerMode: currentMode } })
+      }
     } else {
       // 타이머가 진행 중이지 않으면 더보기 메뉴 열기
       setSelectedTodo(todo)

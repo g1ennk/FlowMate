@@ -3,7 +3,7 @@
 > 자동화 테스트 결과, 수동 테스트 체크리스트, 버그 리포트를 통합한 문서입니다.
 
 **자동화 테스트 결과**: ✅ 13/13 통과  
-**테스트 날짜**: 2026-01-22 (최종 업데이트)  
+**테스트 날짜**: 2026-01-24 (최종 업데이트)  
 **브랜치**: test-bugfix  
 **테스트 환경**: Frontend MVP (MSW 모킹)
 
@@ -37,11 +37,10 @@
 - **실패**: 0개
 - **커버리지**: 기본 기능 테스트 완료
 
-### 4. 최근 구현 완료 (2026-01-22)
-- ✅ SessionHistory localStorage 분리 (영구 저장)
-- ✅ Todo 삭제 시 sessionHistory 및 타이머 상태 삭제
-- ✅ SessionHistory 영구 저장 테스트 완료 (2026-01-22)
-- ✅ Todo 삭제 테스트 완료 (2026-01-22)
+### 4. 최근 구현 완료
+- ✅ 타이머 모드 복원 버그 수정 (waiting 상태 처리, 2026-01-24)
+- ✅ SessionHistory localStorage 분리 (영구 저장, 2026-01-22)
+- ✅ Todo 삭제 시 sessionHistory 및 타이머 상태 삭제 (2026-01-22)
 
 ---
 
@@ -335,111 +334,6 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ---
 
-#### 6. SessionHistory 영구 저장 테스트 (localStorage 분리) ✅
-
-**테스트 시나리오 1: 브라우저 종료 후 sessionHistory 유지**
-```
-1. 일반 타이머 시작
-2. 1분 이상 집중 후 "완료" 버튼 클릭
-3. 통계 페이지에서 sessionHistory 확인 (예: 1개 세션)
-4. 브라우저 탭 완전히 닫기 (또는 개발자 도구에서 localStorage 확인)
-5. 브라우저 다시 열기
-6. 같은 Todo에서 타이머 시작
-7. 통계 페이지에서 sessionHistory 확인
-   - 예상: 이전 세션이 유지됨 (1개 세션)
-```
-
-**테스트 시나리오 2: 타이머 상태(localStorage)와 sessionHistory(localStorage) 모두 유지**
-```
-1. 일반 타이머 시작 → 1분 집중 중 (진행 중)
-2. 브라우저 탭 완전히 닫기
-3. 브라우저 다시 열기
-4. 같은 Todo에서 타이머 시작
-5. 타이머 상태 확인
-   - 예상: 타이머 상태가 복원됨 (paused/running 상태 유지)
-   - 예상: endAt 기반으로 남은 시간 계산
-   - 예상: 이미 지났으면 자동 완료 처리 (idle로 전환)
-6. 통계 페이지에서 sessionHistory 확인
-   - 예상: sessionHistory가 유지됨
-7. 개발자 도구에서 localStorage 확인
-   - 예상: `todo-flow/timer/v2/{todoId}` 키 존재 (타이머 상태)
-   - 예상: `todo-flow/sessionHistory/{todoId}` 키 존재
-```
-
-**테스트 시나리오 3: 완료된 타이머의 sessionHistory 복원**
-```
-1. 일반 타이머 시작
-2. 2분 집중 → 완료
-3. 통계 페이지에서 sessionHistory 확인 (1개 세션)
-4. 브라우저 탭 닫기
-5. 브라우저 다시 열기
-6. 같은 Todo에서 타이머 다시 시작
-7. 타이머 상태 확인
-   - 예상: 타이머 상태가 복원됨 (idle 상태)
-   - 예상: sessionHistory가 복원됨
-8. 통계 페이지에서 sessionHistory 확인
-   - 예상: 이전 세션이 유지됨 (1개 세션)
-9. 1분 더 집중 → 완료
-10. 통계 페이지에서 sessionHistory 확인
-   - 예상: 2개 세션 (이전 2분 + 새 1분)
-```
-
-**테스트 시나리오 4: 여러 Todo의 sessionHistory 독립 저장**
-```
-1. Todo A에서 타이머 시작 → 1분 집중 → 완료
-2. Todo B에서 타이머 시작 → 2분 집중 → 완료
-3. 브라우저 탭 닫기
-4. 브라우저 다시 열기
-5. 각 Todo의 타이머 상태 확인
-   - 예상: Todo A와 Todo B의 타이머 상태가 각각 복원됨
-6. 통계 페이지에서 각 Todo의 sessionHistory 확인
-   - 예상: Todo A는 1개 세션 (1분)
-   - 예상: Todo B는 1개 세션 (2분)
-7. 개발자 도구에서 확인
-   - localStorage: `todo-flow/timer/v2/{todoAId}` 키 존재
-   - localStorage: `todo-flow/timer/v2/{todoBId}` 키 존재
-   - localStorage: `todo-flow/sessionHistory/{todoAId}` 키 존재
-   - localStorage: `todo-flow/sessionHistory/{todoBId}` 키 존재
-```
-
-**테스트 시나리오 5: Reset 시 sessionHistory 삭제**
-```
-1. 일반 타이머 시작
-2. 1분 집중 → 완료
-3. 통계 페이지에서 sessionHistory 확인 (1개 세션)
-4. 타이머 리셋 버튼 클릭
-5. 통계 페이지에서 sessionHistory 확인
-   - 예상: sessionHistory가 비어있음 (0개 세션)
-6. 브라우저 탭 닫기
-7. 브라우저 다시 열기
-8. 통계 페이지에서 sessionHistory 확인
-   - 예상: 여전히 비어있음 (localStorage에서도 삭제됨)
-```
-
-**테스트 시나리오 6: Todo 삭제 시 sessionHistory 삭제**
-```
-1. 일반 타이머 시작
-2. 1분 집중 → 완료
-3. 통계 페이지에서 sessionHistory 확인 (1개 세션)
-4. 개발자 도구에서 localStorage 확인
-   - 예상: `todo-flow/timer/v2/{todoId}` 키 존재 (타이머 상태)
-   - 예상: `todo-flow/sessionHistory/{todoId}` 키 존재
-5. Todo 삭제 (더보기 메뉴 → 삭제)
-6. 개발자 도구에서 localStorage 확인
-   - 예상: `todo-flow/timer/v2/{todoId}` 키 삭제됨
-   - 예상: `todo-flow/sessionHistory/{todoId}` 키 삭제됨
-7. 통계 페이지에서 해당 Todo가 목록에서 제거되었는지 확인
-```
-
-**체크리스트**:
-- [x] 시나리오 1: 브라우저 종료 후 sessionHistory 유지 확인 ✅
-- [x] 시나리오 2: 타이머 상태(localStorage)와 sessionHistory(localStorage) 모두 유지 확인 ✅
-- [x] 시나리오 3: 완료된 타이머의 sessionHistory 복원 확인 ✅
-- [x] 시나리오 4: 여러 Todo의 sessionHistory 독립 저장 확인 ✅
-- [x] 시나리오 5: Reset 시 sessionHistory 삭제 확인 ✅
-- [x] 시나리오 6: Todo 삭제 시 sessionHistory 삭제 확인 ✅
-- [x] 개발자 도구에서 localStorage 키 확인 ✅
-
 ---
 
 ### 📋 1. Todo 관리 기능
@@ -462,8 +356,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 - [x] **Todo 삭제**
   - [x] 더보기 메뉴에서 삭제
-  - [ ] Todo 삭제 시 sessionHistory도 localStorage에서 삭제되는지 확인 ⚠️ (구현 완료 2026-01-22)
-  - [ ] Todo 삭제 시 타이머 상태도 sessionStorage에서 삭제되는지 확인 ⚠️ (구현 완료 2026-01-22)
+  - [x] Todo 삭제 시 sessionHistory 및 타이머 상태 삭제 확인 ✅ (7.7 참조)
   
 - [x] **Todo 완료/미완료 토글**
   - [x] 체크박스 클릭으로 완료 처리
@@ -706,29 +599,60 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
   - [ ] timerMode 유지
   - [ ] 타이머 다시 열 때 이전 상태 복원
 
-#### 7.4 페이지 새로고침
-- [ ] **상태 복원**
+#### 7.4 페이지 새로고침 및 브라우저 종료 후 복원
+- [ ] **페이지 새로고침 시 상태 복원**
   - [ ] 타이머 실행 중 페이지 새로고침
-  - [ ] sessionStorage에서 타이머 상태 복원
+  - [ ] localStorage에서 타이머 상태 복원
   - [ ] localStorage에서 sessionHistory 복원
-  - [ ] 타이머 시간 정확도 확인
+  - [ ] 타이머 시간 정확도 확인 (±10초)
   - [ ] sessionHistory가 정확히 복원되는지 확인
 
-#### 7.6 브라우저 종료 후 복원 ⚠️ (구현 완료 2026-01-22, 테스트 필요)
-- [ ] **sessionHistory 영구 저장**
+- [ ] **브라우저 종료 후 복원** ⚠️ (구현 완료 2026-01-22, 테스트 필요)
   - [ ] 완료된 세션의 sessionHistory가 localStorage에 저장됨
   - [ ] 브라우저 탭 닫기 후 다시 열어도 sessionHistory 유지
-  - [ ] 타이머 상태(sessionStorage)는 사라지지만 sessionHistory(localStorage)는 유지
+  - [ ] 타이머 상태(localStorage)와 sessionHistory(localStorage) 모두 유지
   - [ ] 여러 Todo의 sessionHistory가 독립적으로 저장/로드됨
-  - [ ] Reset 시 sessionHistory도 localStorage에서 삭제됨
+  - [ ] 개발자 도구에서 localStorage 키 확인 (`todo-flow/timer/v2/{todoId}`, `todo-flow/sessionHistory/{todoId}`)
 
-#### 7.5 타이머 리셋
+#### 7.5 타이머 모드 복원 (waiting 상태) ⚠️ (버그 수정 완료 2026-01-24, 테스트 필요)
+- [ ] **일반 타이머 → 뽀모도로 복원 문제**
+  - [ ] 일반 타이머 시작 (집중 모드)
+  - [ ] 1분 이상 집중 후 추천 휴식 시작 (autoStartBreak: false)
+  - [ ] 휴식 대기 상태 (status: 'waiting', flexiblePhase: 'break_suggested')
+  - [ ] 홈으로 나가기 (타이머 화면 닫기)
+  - [ ] 다시 타이머 화면 열기
+  - [ ] **확인**: 일반 타이머로 복원되어야 함 (뽀모도로로 바뀌면 안 됨)
+  - [ ] **확인**: 휴식 대기 상태 유지 (status: 'waiting')
+  - [ ] **확인**: 휴식 시간이 정확히 표시됨
+  - [ ] 집중 시작 버튼 클릭 → 집중 모드로 전환 확인
+
+- [ ] **뽀모도로 → 일반 타이머 복원 문제**
+  - [ ] 뽀모도로 타이머 시작
+  - [ ] Flow 완료 후 Break 대기 상태 (autoStartBreak: false)
+  - [ ] Break 대기 상태 (status: 'waiting', phase: 'short' 또는 'long')
+  - [ ] 홈으로 나가기 (타이머 화면 닫기)
+  - [ ] 다시 타이머 화면 열기
+  - [ ] **확인**: 뽀모도로 타이머로 복원되어야 함 (일반 타이머로 바뀌면 안 됨)
+  - [ ] **확인**: Break 대기 상태 유지 (status: 'waiting')
+  - [ ] **확인**: 남은 Break 시간이 정확히 표시됨
+  - [ ] 집중 시작 버튼 클릭 → Flow 모드로 전환 확인
+
+- [ ] **추가 엣지 케이스**
+  - [ ] 일반 타이머 휴식 중 (running 상태, autoStartBreak: true) → 홈 → 복원
+  - [ ] 뽀모도로 Break 중 (running 상태, autoStartBreak: true) → 홈 → 복원
+  - [ ] 일반 타이머 집중 중 (running 상태) → 홈 → 복원
+  - [ ] 뽀모도로 Flow 중 (running 상태) → 홈 → 복원
+
+#### 7.6 타이머 리셋
 - [ ] **완전 초기화**
-  - [ ] 리셋 후 모든 기록 삭제 확인
-  - [ ] sessionHistory 초기화 확인
-  - [ ] 타이머 상태 초기화 확인
+  - [ ] 리셋 버튼 클릭
+  - [ ] 확인 모달 표시
+  - [ ] 모든 기록 삭제 (focusSeconds, pomodoroDone, timerMode)
+  - [ ] sessionHistory 초기화 (localStorage에서도 삭제)
+  - [ ] 타이머 상태 초기화
+  - [ ] 홈 화면으로 돌아가기
 
-#### 7.7 Todo 삭제 ⚠️ (구현 완료 2026-01-22, 테스트 필요)
+#### 7.7 Todo 삭제 시 데이터 정리 ⚠️ (구현 완료 2026-01-22, 테스트 필요)
 - [ ] **데이터 정리**
   - [ ] Todo 삭제 시 timerStore에서 타이머 제거 확인
   - [ ] Todo 삭제 시 sessionStorage에서 타이머 상태 삭제 확인
@@ -1027,15 +951,17 @@ pnpm dev:mock
 
 ---
 
-**마지막 업데이트**: 2026-01-22  
+**마지막 업데이트**: 2026-01-24  
 **테스트 환경**: Frontend MVP (MSW 모킹)  
 **분석 완료**: 2026-01-13  
 **최근 변경사항**: 
+- 타이머 모드 복원 버그 수정 (waiting 상태 처리, 2026-01-24)
 - sessionHistory localStorage 분리 (2026-01-22 구현 완료)
 - Todo 삭제 시 sessionHistory 삭제 (2026-01-22 구현 완료)
 - SessionHistory 중복 문제 해결 확인 (2026-01-21 테스트 완료)
 
 **완료 상태 요약**:
 - ✅ Critical 테스트: 7/7 완료 (2026-01-22 모든 테스트 완료)
-- ✅ 구현 완료: SessionHistory localStorage 분리, Todo 삭제 시 데이터 정리
+- ✅ 구현 완료: SessionHistory localStorage 분리, Todo 삭제 시 데이터 정리, 타이머 모드 복원 버그 수정
 - ✅ 테스트 완료: SessionHistory 영구 저장, Todo 삭제 시 데이터 삭제 (2026-01-22)
+- ⚠️ 테스트 필요: 타이머 모드 복원 (waiting 상태, 2026-01-24)

@@ -250,24 +250,33 @@ function hydrateState(persisted: Persisted, sessionHistory: SessionRecord[] = []
     endAt = null
   }
 
-  if (persisted.mode === 'stopwatch' && persisted.status === 'running') {
+  if (persisted.mode === 'stopwatch') {
     const phase = persisted.flexiblePhase
     
-    if (phase === 'focus' && focusStartedAt) {
-      // 집중 중이었으면 focusElapsedMs 업데이트
-      const delta = now - focusStartedAt
-      focusElapsedMs = persisted.focusElapsedMs + delta
-      focusStartedAt = now
-    } else if ((phase === 'break_suggested' || phase === 'break_free') && breakStartedAt) {
-      // 휴식 중이었으면 breakElapsedMs 업데이트
-      const delta = now - breakStartedAt
-      breakElapsedMs = persisted.breakElapsedMs + delta
-      breakStartedAt = now
-    } else if (persisted.startedAt) {
-      // 기존 stopwatch (phase 없음)
-      const delta = now - persisted.startedAt
-      elapsedMs = persisted.elapsedMs + delta
+    if (persisted.status === 'running') {
+      // 실행 중인 타이머: 시간 보정 필요
+      if (phase === 'focus' && focusStartedAt) {
+        // 집중 중이었으면 focusElapsedMs 업데이트
+        const delta = now - focusStartedAt
+        focusElapsedMs = persisted.focusElapsedMs + delta
+        focusStartedAt = now
+      } else if ((phase === 'break_suggested' || phase === 'break_free') && breakStartedAt) {
+        // 휴식 중이었으면 breakElapsedMs 업데이트
+        const delta = now - breakStartedAt
+        breakElapsedMs = persisted.breakElapsedMs + delta
+        breakStartedAt = now
+      } else if (persisted.startedAt) {
+        // 기존 stopwatch (phase 없음)
+        const delta = now - persisted.startedAt
+        elapsedMs = persisted.elapsedMs + delta
+      }
+    } else if (persisted.status === 'waiting') {
+      // 대기 중인 타이머: 시간 보정 불필요, 저장된 값 그대로 사용
+      // breakStartedAt이 null이면 그대로 유지 (대기 상태이므로)
+      // focusStartedAt도 null이면 그대로 유지
+      // 저장된 focusElapsedMs, breakElapsedMs 값 그대로 사용
     }
+    // paused 상태는 이미 위에서 처리됨 (endAt 관련 로직)
   }
 
   return {
