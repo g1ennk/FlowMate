@@ -151,11 +151,12 @@ export const handlers = [
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
     }
+    // 주의: 기록 API는 timerMode를 변경하지 않습니다.
+    // 모드 변경은 사용자가 명시적으로 선택했을 때 PATCH /api/todos/:id 로만 수행합니다.
     const updated: Todo = {
       ...existing,
       pomodoroDone: existing.pomodoroDone + 1,
       focusSeconds: existing.focusSeconds + body.durationSec,
-      timerMode: 'pomodoro', // 뽀모도로 타이머로 설정
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
@@ -184,11 +185,12 @@ export const handlers = [
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
     }
+    // 주의: 기록 API는 timerMode를 변경하지 않습니다.
+    // 모드 변경은 사용자가 명시적으로 선택했을 때 PATCH /api/todos/:id 로만 수행합니다.
     const updated: Todo = {
       ...existing,
       // pomodoroDone은 증가시키지 않음
       focusSeconds: existing.focusSeconds + body.durationSec,
-      timerMode: 'stopwatch', // 일반 타이머로 설정
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))

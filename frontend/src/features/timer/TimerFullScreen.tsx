@@ -74,7 +74,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const startStopwatch = useTimerStore((s) => s.startStopwatch)
   const pause = useTimerStore((s) => s.pause)
   const resume = useTimerStore((s) => s.resume)
-  const stop = useTimerStore((s) => s.stop)
   const reset = useTimerStore((s) => s.reset)
   const updateInitialFocusMs = useTimerStore((s) => s.updateInitialFocusMs)
   const skipToNext = useTimerStore((s) => s.skipToNext)
