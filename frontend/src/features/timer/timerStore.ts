@@ -708,15 +708,17 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     breakMs: newBreakElapsed
                   }
                 }
+                saveSessionHistory(todoId, newSessionHistory)
                 
                 if (autoStartSession) {
                   // 자동으로 집중 시작
+                  const initialFocusMs = timer.initialFocusMs ?? 0
                   updates[todoId] = {
                     ...timer,
                     flexiblePhase: 'focus',
                     breakElapsedMs: 0,
                     breakStartedAt: null,
-                    focusElapsedMs: 0,
+                    focusElapsedMs: initialFocusMs,
                     focusStartedAt: Date.now(),
                     breakTargetMs: null,
                     breakCompleted: false,
@@ -731,6 +733,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     breakStartedAt: null,
                     breakCompleted: true,
                     status: 'waiting',
+                    sessionHistory: newSessionHistory,
                   }
                 }
                 
