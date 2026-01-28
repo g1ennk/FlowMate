@@ -45,6 +45,8 @@ type TimerState = {
 type TimerActions = {
   startPomodoro: (todoId: string, settings: PomodoroSettings) => void
   startStopwatch: (todoId: string, initialElapsedMs?: number, settings?: PomodoroSettings) => void
+  initPomodoro: (todoId: string, settings: PomodoroSettings) => void
+  initStopwatch: (todoId: string, initialElapsedMs?: number, settings?: PomodoroSettings) => void
   pause: (todoId: string) => void
   resume: (todoId: string) => void
   stop: (todoId: string) => void
@@ -414,6 +416,37 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       savePersisted(todoId, newTimer)
     },
 
+    initPomodoro: (todoId, settings) => {
+      const existingTimer = get().timers[todoId]
+      const existingHistory = existingTimer?.sessionHistory ?? loadSessionHistory(todoId)
+
+      const newTimer: SingleTimerState = {
+        mode: 'pomodoro',
+        settingsSnapshot: settings,
+        phase: 'flow',
+        status: 'idle',
+        endAt: null,
+        remainingMs: settings.flowMin * MINUTE,
+        elapsedMs: 0,
+        initialFocusMs: 0,
+        startedAt: null,
+        cycleCount: 0,
+        flexiblePhase: null,
+        focusElapsedMs: 0,
+        breakElapsedMs: 0,
+        breakTargetMs: null,
+        breakCompleted: false,
+        focusStartedAt: null,
+        breakStartedAt: null,
+        sessionHistory: existingHistory,
+      }
+
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: newTimer },
+      }))
+      savePersisted(todoId, newTimer)
+    },
+
     startStopwatch: (todoId, initialElapsedMs = 0, settings) => {
       // 전역 타이머 충돌 체크
       const [hasConflict, conflictMode] = checkTimerConflict(get().timers, todoId)
@@ -480,6 +513,37 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       savePersisted(todoId, newTimer)
     },
 
+    initStopwatch: (todoId, initialElapsedMs = 0, settings) => {
+      const existingTimer = get().timers[todoId]
+      const existingHistory = existingTimer?.sessionHistory ?? loadSessionHistory(todoId)
+
+      const newTimer: SingleTimerState = {
+        mode: 'stopwatch',
+        settingsSnapshot: settings ?? null,
+        phase: 'flow',
+        status: 'idle',
+        endAt: null,
+        remainingMs: null,
+        elapsedMs: initialElapsedMs,
+        initialFocusMs: initialElapsedMs,
+        startedAt: null,
+        cycleCount: 0,
+        flexiblePhase: 'focus',
+        focusElapsedMs: initialElapsedMs,
+        breakElapsedMs: 0,
+        breakTargetMs: null,
+        breakCompleted: false,
+        focusStartedAt: null,
+        breakStartedAt: null,
+        sessionHistory: existingHistory,
+      }
+
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: newTimer },
+      }))
+      savePersisted(todoId, newTimer)
+    },
+
     pause: (todoId) => {
       const timer = get().timers[todoId]
       if (!timer) return
@@ -533,7 +597,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           updateTimer(todoId, {
             flexiblePhase: 'focus',
             status: 'running',
-            focusElapsedMs: 0,
+            focusElapsedMs: timer.initialFocusMs ?? 0,
             focusStartedAt: Date.now(),
             breakElapsedMs: 0,
             breakStartedAt: null,

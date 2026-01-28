@@ -71,8 +71,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const resetTimer = useResetTimer() // 타이머 리셋용 (기록 삭제)
   
   const timer = useTimer(todoId)
-  const startPomodoro = useTimerStore((s) => s.startPomodoro)
-  const startStopwatch = useTimerStore((s) => s.startStopwatch)
+  const initPomodoro = useTimerStore((s) => s.initPomodoro)
+  const initStopwatch = useTimerStore((s) => s.initStopwatch)
   const pause = useTimerStore((s) => s.pause)
   const resume = useTimerStore((s) => s.resume)
   const reset = useTimerStore((s) => s.reset)
@@ -104,11 +104,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         reset(todoId)
         setSelectedMode(initialMode)
         if (initialMode === 'stopwatch') {
-          startStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
-          pause(todoId)
+          initStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
         } else if (initialMode === 'pomodoro' && settings) {
-          startPomodoro(todoId, settings)
-          pause(todoId)
+          initPomodoro(todoId, settings)
         }
         // DB의 timerMode도 동기화
         updateTodo.mutate({ id: todoId, patch: { timerMode: initialMode } })
@@ -121,11 +119,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         if (modeToUse) {
           setSelectedMode(modeToUse)
           if (modeToUse === 'stopwatch') {
-            startStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
-            pause(todoId)
+            initStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
           } else if (modeToUse === 'pomodoro' && settings) {
-            startPomodoro(todoId, settings)
-            pause(todoId)
+            initPomodoro(todoId, settings)
           }
           // DB의 timerMode도 동기화
           updateTodo.mutate({ id: todoId, patch: { timerMode: modeToUse } })
