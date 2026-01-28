@@ -15,6 +15,7 @@ import {
 } from '../../ui/Icons'
 import { useTimer, useTimerStore } from './timerStore'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
+import { completeTaskFromTimer } from './completeHelpers'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -206,184 +207,24 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   // 뽀모도로 정지 (■) - 시간만 기록 + pause 상태로 저장 후 닫기
   // Note: Explicit Pomodoro stop is not used in UI controls
 
-  // 뽀모도로 완료 (✓) - 기록 + 태스크 완료 (타이머 상태 유지)
-  const handlePomodoroComplete = async () => {
-    if (!timer) return
-    
-    // 타이머 일시정지 (상태 유지)
-    if (timer.status === 'running') {
-      pause(todoId)
-      // pause 후 업데이트된 타이머 값 다시 가져오기
-      const pausedTimer = getTimer(todoId)
-      if (!pausedTimer) return
-      // timer를 업데이트된 값으로 교체
-      Object.assign(timer, pausedTimer)
-    }
-    
-    // Flow phase에서만 시간 기록 및 sessionHistory 업데이트
-    if (timer.phase === 'flow') {
-      const plannedMs = getPlannedMs()
-      const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-      const elapsedMs = plannedMs - remaining
-      const elapsedSec = Math.round(elapsedMs / 1000)
-      
-      // sessionHistory 업데이트: MIN_FLOW_MS 이상이면 Flow로 인정하여 세션 추가
-      const newSessionHistory = [...timer.sessionHistory]
-      
-      if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
-        // Flow로 인정: sessionHistory에 세션 추가 (휴식 없이 완료해도 Flow로 인정)
-        newSessionHistory.push({ focusMs: elapsedMs, breakMs: 0 })
-        
-        // sessionHistory 업데이트 (관심사 분리: timerStore 메서드 사용)
-        updateSessionHistory(todoId, newSessionHistory)
-      }
-      
-      if (elapsedSec > 0) {
-        // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
-        if (remaining < 5000) {
-          await completeTodo.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-        } else {
-          // 중간에 완료하면 시간만 기록
-          await addFocus.mutateAsync({ id: todoId, body: { durationSec: elapsedSec } })
-        }
-      }
-    }
-    // Break 중이면 시간 기록 없이 태스크만 완료
-    
-    await updateTodo.mutateAsync({ id: todoId, patch: { isDone: true } })
-    // 타이머 상태 유지 (완료된 태스크에서도 집중 시간 표시를 위해)
-    toast.success('태스크 완료! 🎉', { id: 'task-completed' })
-    onClose()
-  }
-
   // 일반 타이머 정지 (■) - 시간 기록 + 타이머 일시정지 유지
   // Note: Explicit Stopwatch stop is not used in UI controls
 
-  // 일반 타이머 완료 (✓) - Flow 카운트 + 태스크 완료
-  const handleStopwatchComplete = async () => {
+  const handleComplete = async () => {
     if (!timer) return
-    
-    // pause 먼저 호출 (정확한 focusElapsedMs 계산)
-    if (timer.status === 'running') {
-      pause(todoId)
-      // pause 후 업데이트된 타이머 값 다시 가져오기
-      const pausedTimer = getTimer(todoId)
-      if (!pausedTimer) return
-      // timer를 업데이트된 값으로 교체
-      Object.assign(timer, pausedTimer)
-    }
-    
-    // 현재 진행 중인 세션의 집중 시간만 계산 (휴식 시간 제외)
-    const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
-    const initialMs = timer.initialFocusMs ?? 0
-    const currentSessionMs = currentFocusMs - initialMs
-    
-    // 현재 진행 중인 break 시간 계산 (있는 경우)
-    let currentBreakMs = timer.breakElapsedMs ?? 0
-    if (timer.breakStartedAt && (timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free')) {
-      const delta = Date.now() - timer.breakStartedAt
-      currentBreakMs = timer.breakElapsedMs + delta
-    }
-    
-    // 현재 세션이 MIN_FLOW_MS 이상이면 sessionHistory에 추가
-    // 완료 버튼으로 끝나는 경우에도 Flow로 인정되어야 함
-    const newSessionHistory = [...timer.sessionHistory]
-    
-    // 현재 세션이 MIN_FLOW_MS 이상이면 Flow로 인정하여 sessionHistory에 추가
-    if (currentSessionMs >= MIN_FLOW_MS) {
-      // 현재 세션이 집중 중이면 추가, 휴식 중이면 마지막 세션의 breakMs만 업데이트
-      const isInFocus = timer.flexiblePhase === 'focus' || !timer.flexiblePhase
-      const isInBreak = timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
-      
-      if (isInFocus) {
-        // 집중 중: 새 세션 추가 (휴식 없이 완료해도 Flow로 인정)
-        newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
-      } else if (isInBreak && newSessionHistory.length > 0) {
-        // 휴식 중: 마지막 세션의 breakMs 업데이트 (currentBreakMs가 0이어도 업데이트)
-        newSessionHistory[newSessionHistory.length - 1] = {
-          ...newSessionHistory[newSessionHistory.length - 1],
-          breakMs: currentBreakMs
-        }
-      } else {
-        // flexiblePhase가 예상치 못한 값이거나 null인 경우에도 세션 추가
-        // (안전장치: MIN_FLOW_MS 이상이면 항상 Flow로 인정)
-        newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
-      }
-    } else if (newSessionHistory.length > 0) {
-      // 현재 세션이 MIN_FLOW_MS 미만이지만, 마지막 세션의 breakMs는 업데이트
-      newSessionHistory[newSessionHistory.length - 1] = {
-        ...newSessionHistory[newSessionHistory.length - 1],
-        breakMs: currentBreakMs
-      }
-    }
-    
-    // 전체 집중 시간 = newSessionHistory의 모든 세션의 집중 시간 합산
-    // 주의: breakMs는 집중 시간에 포함하지 않음!
-    const totalFocusMs = newSessionHistory.reduce((sum, session) => sum + session.focusMs, 0)
-    const totalFocusSec = Math.round(totalFocusMs / 1000)
-    
-    // 현재 세션의 시간만 계산 (백엔드 API에 전달할 값)
-    // 백엔드는 focusSeconds += durationSec 형태로 더하므로, 현재 세션만 전달해야 함
-    const currentSessionSec = Math.round(currentSessionMs / 1000)
-    
-    // 디버깅: 일반 타이머 완료 시 로그
-    console.log('[일반 타이머 완료]', {
-      currentFocusMs,
-      initialMs,
-      currentSessionMs,
-      currentSessionMsSeconds: Math.round(currentSessionMs / 1000),
-      totalFocusMs,
-      totalFocusSec,
-      currentSessionSec,
-      MIN_FLOW_MS,
-      MIN_FLOW_MSSeconds: Math.round(MIN_FLOW_MS / 1000),
-      oldSessionHistoryLength: timer.sessionHistory.length,
-      newSessionHistoryLength: newSessionHistory.length,
-      oldSessionHistory: timer.sessionHistory,
-      newSessionHistory: newSessionHistory,
-      isValid: currentSessionMs >= MIN_FLOW_MS,
+    await completeTaskFromTimer({
+      todoId,
+      timer,
+      settings: settings ?? undefined,
+      pause,
+      getTimer,
+      updateSessionHistory,
+      updateInitialFocusMs,
+      completeTodo: completeTodo.mutateAsync,
+      addFocus: addFocus.mutateAsync,
+      updateTodo: updateTodo.mutateAsync,
+      debug: timer.mode === 'stopwatch',
     })
-    
-    // 시간 및 Flow 카운트 기록
-    // 현재 세션만 처리 (이전 세션들은 startBreak에서 이미 처리됨)
-    if (currentSessionSec > 0) {
-      // 현재 세션이 MIN_FLOW_MS 이상이면 Flow로 인정
-      const isCurrentSessionValid = currentSessionMs >= MIN_FLOW_MS
-      
-      if (isCurrentSessionValid) {
-        // Flow로 인정: completeTodo 호출 (pomodoroDone 증가)
-        const response = await completeTodo.mutateAsync({ id: todoId, body: { durationSec: currentSessionSec } })
-        const newFocusMs = response.focusSeconds * 1000
-        updateInitialFocusMs(todoId, newFocusMs)
-      } else {
-        // Flow 인정 X (시간만 기록)
-        const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: currentSessionSec } })
-        const newFocusMs = response.focusSeconds * 1000
-        updateInitialFocusMs(todoId, newFocusMs)
-      }
-    }
-    
-    // sessionHistory 업데이트 (breakMs 포함) - timerStore에 반영
-    // newSessionHistory가 변경되었으면 항상 저장 (새 세션이 추가되었거나 breakMs가 업데이트된 경우)
-    const hasNewSession = newSessionHistory.length > timer.sessionHistory.length
-    const hasBreakUpdate = newSessionHistory.length > 0 && 
-      newSessionHistory.length === timer.sessionHistory.length &&
-      newSessionHistory[newSessionHistory.length - 1]?.breakMs !== timer.sessionHistory[timer.sessionHistory.length - 1]?.breakMs
-    
-    if (hasNewSession || hasBreakUpdate || newSessionHistory.length > 0) {
-      // sessionHistory 업데이트 (관심사 분리: timerStore 메서드 사용)
-      updateSessionHistory(todoId, newSessionHistory)
-    }
-    
-    // timerMode 저장 (완료 후에도 올바른 모드 표시를 위해)
-    await updateTodo.mutateAsync({ 
-      id: todoId, 
-      patch: { 
-        isDone: true,
-        timerMode: timer.mode // 일반 타이머 완료 시 timerMode 저장
-      } 
-    })
-    // 타이머 상태 유지 (완료된 태스크에서도 집중 시간 표시를 위해)
     toast.success('태스크 완료! 🎉', { id: 'task-completed' })
     onClose()
   }
@@ -952,11 +793,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               <button
                 onClick={() => {
                   setShowCompleteModal(false)
-                  if (timer?.mode === 'stopwatch') {
-                    handleStopwatchComplete()
-                  } else {
-                    handlePomodoroComplete()
-                  }
+                  handleComplete()
                 }}
                 className="flex-1 rounded-full bg-emerald-600 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
               >

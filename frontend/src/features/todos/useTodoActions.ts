@@ -10,7 +10,8 @@ import {
 import type { Todo } from '../../api/types'
 import { useTimerStore, type TimerMode } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
-import { checkTimerConflict, getTimerConflictMessage, getPlannedMs } from '../timer/timerHelpers'
+import { checkTimerConflict, getTimerConflictMessage } from '../timer/timerHelpers'
+import { completeTaskFromTimer } from '../timer/completeHelpers'
 
 /**
  * Todo CRUD 및 타이머 관련 핸들러를 제공하는 커스텀 훅
@@ -30,6 +31,7 @@ export function useTodoActions(selectedDateKey: string) {
   const getTimer = useTimerStore((s) => s.getTimer)
   const timers = useTimerStore((s) => s.timers)
   const updateSessionHistory = useTimerStore((s) => s.updateSessionHistory)
+  const updateInitialFocusMs = useTimerStore((s) => s.updateInitialFocusMs)
 
   // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -59,79 +61,20 @@ export function useTodoActions(selectedDateKey: string) {
     if (next) {
       let timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
-        // 타이머 일시정지
-        if (timer.status === 'running') {
-          pause(id)
-          // pause 후 업데이트된 타이머 값 다시 가져오기 (Zustand는 동기적으로 업데이트됨)
-          const pausedTimer = getTimer(id)
-          if (!pausedTimer) return // 방어 코드: pause 실패 시
-          timer = pausedTimer
-        }
-        
-        // 시간 기록
-        if (timer.mode === 'stopwatch') {
-          // 일반 타이머: focusElapsedMs 사용 (추가된 시간만 계산)
-          const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
-          const additionalMs = currentFocusMs - (timer.initialFocusMs ?? 0)
-          const additionalSec = Math.round(additionalMs / 1000)
-          
-          // 휴식 중이면 break 시간을 sessionHistory에 반영
-          if (timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') {
-            const currentBreakMs = timer.breakElapsedMs ?? 0
-            // 실행 중이었으면 추가 시간 계산
-            let totalBreakMs = currentBreakMs
-            if (timer.status === 'running' && timer.breakStartedAt) {
-              const delta = Date.now() - timer.breakStartedAt
-              totalBreakMs = currentBreakMs + delta
-            }
-            
-            // 마지막 세션의 breakMs 업데이트
-            const newSessionHistory = [...timer.sessionHistory]
-            if (newSessionHistory.length > 0) {
-              newSessionHistory[newSessionHistory.length - 1] = {
-                ...newSessionHistory[newSessionHistory.length - 1],
-                breakMs: totalBreakMs
-              }
-              // sessionHistory 업데이트 (break 시간 보존)
-              updateSessionHistory(id, newSessionHistory)
-            }
-          }
-          
-          if (additionalSec > 0) {
-            await addFocus.mutateAsync({ id, body: { durationSec: additionalSec } })
-          }
-        } else if (timer.mode === 'pomodoro') {
-          // 뽀모도로: Flow phase에서만 시간 기록
-          if (timer.phase === 'flow') {
-            const plannedMs = getPlannedMs(timer, settings)
-            // pause된 상태이므로 remainingMs 사용
-            const remaining = timer.remainingMs ?? plannedMs
-            const elapsedSec = Math.round((plannedMs - remaining) / 1000)
-            
-            if (elapsedSec > 0) {
-              // 타이머가 거의 완료되었으면 (남은 시간 < 5초) 횟수 증가
-              if (remaining < 5000) {
-                await completeTodo.mutateAsync({ id, body: { durationSec: elapsedSec } })
-              } else {
-                // 중간에 완료하면 시간만 기록
-                await addFocus.mutateAsync({ id, body: { durationSec: elapsedSec } })
-              }
-            }
-          }
-        }
-        
-        // timerMode 저장 (완료 전에 저장하여 이후 올바른 모드 표시)
-        if (timer.mode) {
-          await updateTodo.mutateAsync({ id, patch: { timerMode: timer.mode } })
-        }
-        
-        // 타이머 정리 (sessionHistory 유지를 위해 stop 대신 pause만)
-        // stop을 호출하면 status가 'idle'이 되지만 sessionHistory는 유지됨
-        // 완료된 태스크의 sessionHistory를 보존하기 위해 stop 대신 pause 사용
-        if (timer.status === 'running') {
-          pause(id)
-        }
+        await completeTaskFromTimer({
+          todoId: id,
+          timer,
+          settings: settings ?? undefined,
+          pause,
+          getTimer,
+          updateSessionHistory,
+          updateInitialFocusMs,
+          completeTodo: completeTodo.mutateAsync,
+          addFocus: addFocus.mutateAsync,
+          updateTodo: updateTodo.mutateAsync,
+        })
         toast.success('타이머 저장 완료!', { id: 'timer-saved' })
+        return
       }
     } else {
       // 미완료로 변경하는 경우, 타이머 상태는 유지 (일시정지 상태로)
