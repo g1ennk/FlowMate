@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import {
   CheckIcon,
   ClockIcon,
@@ -95,9 +96,14 @@ export function TodoItem({
   } else if (isActiveTimer) {
     // 휴식 중인지 체크 (일반 타이머만)
     if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
-      // 추천 휴식: 카운트다운 표시 (남은 시간)
-      const remainingMs = Math.max(0, breakTargetMs - breakElapsedMs)
-      displayTimeSeconds = Math.ceil(remainingMs / 1000)
+      // 추천 휴식: 완료 전에는 카운트다운, 완료 후에는 추가 휴식 카운트업
+      if (breakElapsedMs >= breakTargetMs) {
+        const extraMs = breakElapsedMs - breakTargetMs
+        displayTimeSeconds = Math.floor(extraMs / 1000)
+      } else {
+        const remainingMs = Math.max(0, breakTargetMs - breakElapsedMs)
+        displayTimeSeconds = Math.ceil(remainingMs / 1000)
+      }
     } else if (flexiblePhase === 'break_free' && breakElapsedMs !== undefined) {
       // 자유 휴식: 카운트업 표시 (경과 시간)
       displayTimeSeconds = Math.floor(breakElapsedMs / 1000)
@@ -131,27 +137,57 @@ export function TodoItem({
   const focusMin = Math.floor(totalFocusSeconds / 60)
   const focusSec = totalFocusSeconds % 60
   const focusTimeDisplay = `${focusMin}:${String(focusSec).padStart(2, '0')}`  // "3:00" 또는 "3:45"
+  const shouldShowTimerButton = !!isActiveTimer || pomodoroDone > 0 || totalFocusSeconds > 0
+  const shouldShowTimerTime = totalFocusSeconds > 0 || !!isActiveTimer
 
   // 편집 모드
   if (isEditing) {
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
+    
+    // 자동 높이 조정
+    useEffect(() => {
+      const textarea = textareaRef.current
+      if (textarea) {
+        textarea.style.height = 'auto'
+        textarea.style.height = `${textarea.scrollHeight}px`
+      }
+    }, [editingTitle])
+    
+    // 포커스 시 커서를 끝으로 이동
+    useEffect(() => {
+      const textarea = textareaRef.current
+      if (textarea && isEditing) {
+        textarea.focus()
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+      }
+    }, [isEditing])
+    
     return (
       <div className="rounded-xl p-2">
-        <div className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+        <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
           {/* 체크박스 (비활성) */}
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50" />
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
           
           {/* 입력 필드 */}
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
             value={editingTitle}
-            onChange={(e) => onEditingTitleChange(e.target.value)}
+            onChange={(e) => {
+              onEditingTitleChange(e.target.value)
+              // 높이 자동 조정
+              e.target.style.height = 'auto'
+              e.target.style.height = `${e.target.scrollHeight}px`
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') onSaveEdit()
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                onSaveEdit()
+              }
               if (e.key === 'Escape') onCancelEdit()
             }}
             onBlur={onSaveEdit}
-            autoFocus
-            className="flex-1 bg-transparent text-sm text-gray-900 outline-none"
+            className="flex-1 bg-transparent text-sm text-gray-900 outline-none resize-none overflow-hidden min-h-[20px]"
+            rows={1}
           />
           
           {/* 더보기 버튼 (비활성) */}
@@ -184,7 +220,7 @@ export function TodoItem({
         {/* 내용 */}
         <div className="min-w-0 flex-1">
           <p
-            className={`truncate text-sm cursor-pointer ${
+            className={`text-sm cursor-pointer break-words whitespace-pre-wrap ${
               isDone ? 'text-gray-400 line-through' : 'text-gray-900'
             }`}
             onClick={onOpenMenu}
@@ -192,7 +228,7 @@ export function TodoItem({
             {title}
           </p>
           {/* 누적 통계 표시 - 타이머 버튼 */}
-          {(pomodoroDone > 0 || totalFocusSeconds > 0) && (
+          {shouldShowTimerButton && (
             <button
               onClick={onOpenTimer}
               className={`mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors ${
@@ -200,7 +236,7 @@ export function TodoItem({
               }`}
             >
               {/* 아이콘: 휴식=Stop, 집중=Clock | 색깔: 뽀모=빨강, 일반=초록 */}
-              {isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
+              {!isDone && isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
                 <StopIcon 
                   className={`h-3.5 w-3.5 shrink-0 ${
                     activeTimerMode === 'pomodoro' ? 'text-red-500' : 'text-emerald-400'
@@ -219,7 +255,7 @@ export function TodoItem({
                   }`} 
                 />
               )}
-              {totalFocusSeconds > 0 && (
+              {shouldShowTimerTime && (
                 <span className={`text-xs font-medium tabular-nums ${
                     // 완료: 진한 초록색
                   isDone 
