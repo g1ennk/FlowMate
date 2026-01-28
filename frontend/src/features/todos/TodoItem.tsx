@@ -137,6 +137,8 @@ export function TodoItem({
   const focusMin = Math.floor(totalFocusSeconds / 60)
   const focusSec = totalFocusSeconds % 60
   const focusTimeDisplay = `${focusMin}:${String(focusSec).padStart(2, '0')}`  // "3:00" 또는 "3:45"
+  const shouldShowTimerButton = !!isActiveTimer || pomodoroDone > 0 || totalFocusSeconds > 0
+  const shouldShowTimerTime = totalFocusSeconds > 0 || !!isActiveTimer
 
   // 편집 모드
   if (isEditing) {
@@ -226,7 +228,7 @@ export function TodoItem({
             {title}
           </p>
           {/* 누적 통계 표시 - 타이머 버튼 */}
-          {(pomodoroDone > 0 || totalFocusSeconds > 0) && (
+          {shouldShowTimerButton && (
             <button
               onClick={onOpenTimer}
               className={`mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors ${
@@ -234,7 +236,7 @@ export function TodoItem({
               }`}
             >
               {/* 아이콘: 휴식=Stop, 집중=Clock | 색깔: 뽀모=빨강, 일반=초록 */}
-              {isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
+              {!isDone && isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
                 <StopIcon 
                   className={`h-3.5 w-3.5 shrink-0 ${
                     activeTimerMode === 'pomodoro' ? 'text-red-500' : 'text-emerald-400'
@@ -253,7 +255,7 @@ export function TodoItem({
                   }`} 
                 />
               )}
-              {totalFocusSeconds > 0 && (
+              {shouldShowTimerTime && (
                 <span className={`text-xs font-medium tabular-nums ${
                     // 완료: 진한 초록색
                   isDone 

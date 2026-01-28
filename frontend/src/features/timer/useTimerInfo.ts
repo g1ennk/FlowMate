@@ -1,7 +1,20 @@
 import type { SingleTimerState } from './timerStore'
 
 export function getTimerInfo(timer: SingleTimerState | undefined) {
-  const isActiveTimer = timer && (timer.status === 'running' || timer.status === 'paused')
+  const isWaitingBreak = !!timer && timer.status === 'waiting' && (
+    (timer.mode === 'pomodoro' && (timer.phase === 'short' || timer.phase === 'long')) ||
+    (timer.mode === 'stopwatch' && (timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'))
+  )
+  const isWaitingFocus = !!timer && timer.status === 'waiting' && (
+    (timer.mode === 'pomodoro' && timer.phase === 'flow') ||
+    (timer.mode === 'stopwatch' && timer.flexiblePhase === 'focus')
+  )
+  const isActiveTimer = timer && (
+    timer.status === 'running' ||
+    timer.status === 'paused' ||
+    isWaitingBreak ||
+    isWaitingFocus
+  )
   
   let activeTimerElapsedMs: number | undefined = undefined
   let activeTimerRemainingMs: number | undefined = undefined
