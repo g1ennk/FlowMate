@@ -96,9 +96,14 @@ export function TodoItem({
   } else if (isActiveTimer) {
     // 휴식 중인지 체크 (일반 타이머만)
     if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
-      // 추천 휴식: 카운트다운 표시 (남은 시간)
-      const remainingMs = Math.max(0, breakTargetMs - breakElapsedMs)
-      displayTimeSeconds = Math.ceil(remainingMs / 1000)
+      // 추천 휴식: 완료 전에는 카운트다운, 완료 후에는 추가 휴식 카운트업
+      if (breakElapsedMs >= breakTargetMs) {
+        const extraMs = breakElapsedMs - breakTargetMs
+        displayTimeSeconds = Math.floor(extraMs / 1000)
+      } else {
+        const remainingMs = Math.max(0, breakTargetMs - breakElapsedMs)
+        displayTimeSeconds = Math.ceil(remainingMs / 1000)
+      }
     } else if (flexiblePhase === 'break_free' && breakElapsedMs !== undefined) {
       // 자유 휴식: 카운트업 표시 (경과 시간)
       displayTimeSeconds = Math.floor(breakElapsedMs / 1000)

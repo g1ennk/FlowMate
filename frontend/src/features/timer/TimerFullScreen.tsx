@@ -472,18 +472,43 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           ) : (
             // 휴식 모드
             <>
-              {/* 휴식 라벨 */}
-              <p className="mb-4 text-center text-base font-semibold text-white">
-                {timer.flexiblePhase === 'break_suggested' ? '추천 휴식' : '자유 휴식'}
-              </p>
+              {(() => {
+                const isRecommended = timer.flexiblePhase === 'break_suggested'
+                const targetMs = timer.breakTargetMs ?? 0
+                const isCompleted = isRecommended && timer.breakCompleted && targetMs > 0
+                const extraBreakMs = isCompleted
+                  ? Math.max(0, timer.breakElapsedMs - targetMs)
+                  : 0
 
-              {/* 타이머 숫자 - 추천 휴식은 카운트다운, 자유 휴식은 카운트업 */}
-              <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
-                {timer.flexiblePhase === 'break_suggested' && timer.breakTargetMs
-                  ? formatCountdown(Math.max(0, timer.breakTargetMs - timer.breakElapsedMs))
-                  : formatStopwatch(timer.breakElapsedMs)
-                }
-              </p>
+                const breakLabel = isRecommended
+                  ? isCompleted
+                    ? timer.status === 'running' ? '추가 휴식' : '추천 휴식 완료'
+                    : '추천 휴식'
+                  : '자유 휴식'
+
+                const displayMs = isRecommended
+                  ? isCompleted && timer.status === 'running'
+                    ? extraBreakMs
+                    : Math.max(0, targetMs - timer.breakElapsedMs)
+                  : timer.breakElapsedMs
+
+                return (
+                  <>
+                    {/* 휴식 라벨 */}
+                    <p className="mb-4 text-center text-base font-semibold text-white">
+                      {breakLabel}
+                    </p>
+
+                    {/* 타이머 숫자 */}
+                    <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
+                      {isRecommended && !(isCompleted && timer.status === 'running')
+                        ? formatCountdown(displayMs)
+                        : formatStopwatch(displayMs)
+                      }
+                    </p>
+                  </>
+                )
+              })()}
 
               {/* 세션 dots - 일반: 휴식 중에도 전체 세션 표시 (sessionHistory 기반) */}
               <div className="mb-8 flex items-center justify-center gap-2.5">
