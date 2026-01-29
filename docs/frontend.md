@@ -19,6 +19,8 @@
 
 ---
 
+> Node.js 22.12+ 권장 (Vite 7 요구사항, `.nvmrc` 참고)
+
 ## 2. 폴더 구조
 
 ```
@@ -36,14 +38,20 @@ src/
 ├── features/
 │   ├── todos/             # Todo 기능
 │   │   ├── TodosPage.tsx
-│   │   ├── TodoItem.tsx
-│   │   ├── SortableTodoItem.tsx
+│   │   ├── components/
+│   │   │   ├── TodoItem.tsx
+│   │   │   └── SortableTodoItem.tsx
 │   │   ├── hooks.ts       # useTodos, useCreateTodo 등
-│   │   └── useTodoActions.ts  # 핸들러 훅
+│   │   ├── useTodoActions.ts  # 핸들러 훅
+│   │   └── statsUtils.ts  # 통계 계산/포맷 유틸
 │   ├── timer/             # 타이머 기능
 │   │   ├── TimerFullScreen.tsx
-│   │   ├── timerStore.ts      # Zustand 스토어 (타입 export)
+│   │   ├── timerStore.ts      # Zustand 스토어 (로직/액션)
 │   │   ├── timerHelpers.ts    # 타이머 유틸리티 함수
+│   │   ├── timerTypes.ts      # 타이머 타입 정의
+│   │   ├── timerDefaults.ts   # 초기 상태
+│   │   ├── timerPersistence.ts # localStorage 저장/복원
+│   │   ├── timerFormat.ts     # 타이머 표시 포맷터
 │   │   ├── useTimerTicker.ts  # Ticker 훅
 │   │   └── useTimerInfo.ts    # 타이머 정보 계산
 │   └── settings/          # 설정

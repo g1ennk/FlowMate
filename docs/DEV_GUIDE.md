@@ -8,6 +8,8 @@
 - `docs/plan/prd.md`: 제품 요구사항
 - `docs/plan/design.md`: UI/UX 설계
 - `docs/plan/api.md`: API 명세(백엔드 구현 기준)
+- `docs/plan/backend-integration.md`: 백엔드 연동 설계
+- `docs/plan/codebase-analysis.md`: 코드베이스 분석/리스크
 - `docs/frontend.md`: 프론트엔드 상세 가이드(일부 내용은 코드와 싱크 필요)
 - `docs/backend.md`: 백엔드 계획
 - `docs/frontend_test.md`: 테스트/체크리스트/버그 리포트
@@ -16,6 +18,10 @@
 - **Frontend MVP 완료** (Todo + 타이머 + 통계)
 - **Backend 미구현** (`backend/` 폴더만 존재)
 - API는 **MSW 모킹**으로 동작
+
+## 개발 환경
+- Node.js **22.12+** 권장 (Vite 7 요구사항)
+- `.nvmrc`로 버전 고정
 
 ## 코드베이스 구조 (요약)
 - `frontend/`: React + TypeScript + Vite 앱
@@ -44,6 +50,7 @@
 - **Stopwatch(일반 타이머)**: 카운트업 기반, `focus/break` 전환
 - `useTimerTicker`가 **100ms 간격**으로 `tick()` 호출
 - `visibilitychange` 이벤트에서 `syncWithNow()`로 시간 보정
+- 로컬 저장/복원: `timerPersistence.ts`에서 `localStorage`에 상태/세션 히스토리 관리
 
 ### Flow 인정 기준
 - `MIN_FLOW_MS`(현재 1분) 이상 집중 시 **Flow**로 인정
