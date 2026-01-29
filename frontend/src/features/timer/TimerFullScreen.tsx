@@ -16,6 +16,7 @@ import {
 import { useTimer, useTimerStore } from './timerStore'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 import { completeTaskFromTimer } from './completeHelpers'
+import { formatCountdown, formatMs, formatStopwatch } from './timerFormat'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -28,32 +29,7 @@ type TimerFullScreenProps = {
   isDone?: boolean
 }
 
-// 시간 포맷 (00:00)
-function formatStopwatch(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-}
-
-function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-  
-  if (hours > 0) {
-    return `${hours}시간 ${minutes}분 ${secs}초`
-  }
-  if (minutes > 0) {
-    return `${minutes}분 ${secs}초`
-  }
-  return `${secs}초`
-}
-
-function formatMs(ms: number): string {
-  const seconds = Math.floor(ms / 1000)
-  return formatTime(seconds)
-}
+// time formatters are extracted to timerFormat.ts
 
 export function TimerFullScreen(props: TimerFullScreenProps) {
   const { isOpen, onClose, todoId, todoTitle, focusSeconds, pomodoroDone, initialMode, isDone = false } = props
@@ -267,14 +243,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     : (timer?.remainingMs ?? (settings?.flowMin ?? 25) * MINUTE_MS)  // paused/waiting: 저장된 값
   const isFlow = timer?.phase === 'flow'
 
-  // 카운트다운 표시에 맞춘 포맷터 (초 단위는 올림 처리해 홈 리스트와 일치)
-  const formatCountdown = (ms: number): string => {
-    const clamped = Math.max(0, ms)
-    const totalSeconds = Math.ceil(clamped / 1000)
-    const minutes = Math.floor(totalSeconds / 60)
-    const seconds = totalSeconds % 60
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  }
+  // formatCountdown은 timerFormat.ts에서 제공
 
   // Phase별 배경색
   const getBackgroundColor = () => {

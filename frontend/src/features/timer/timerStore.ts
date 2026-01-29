@@ -3,39 +3,18 @@ import type { PomodoroSettings } from '../../api/types'
 import { MIN_FLOW_MS } from '../../lib/constants'
 import { playNotificationSound } from '../../lib/sound'
 import { checkTimerConflict, getTimerConflictMessage } from './timerHelpers'
+import type { SessionRecord, SingleTimerState, TimerPhase } from './timerTypes'
+import {
+  loadAllPersisted,
+  loadSessionHistory,
+  removePersisted,
+  savePersisted,
+  saveSessionHistory,
+} from './timerPersistence'
 
-export type TimerPhase = 'flow' | 'short' | 'long'
-export type TimerStatus = 'idle' | 'running' | 'paused' | 'waiting'
-export type TimerMode = 'pomodoro' | 'stopwatch'
-export type FlexiblePhase = 'focus' | 'break_suggested' | 'break_free'
-
-export type SessionRecord = {
-  focusMs: number
-  breakMs: number
-}
-
-export type SingleTimerState = {
-  mode: TimerMode
-  phase: TimerPhase
-  status: TimerStatus
-  endAt: number | null
-  remainingMs: number | null
-  elapsedMs: number
-  initialFocusMs: number
-  startedAt: number | null
-  cycleCount: number
-  settingsSnapshot: PomodoroSettings | null
-  
-  // Flexible timer (stopwatch) 전용 필드
-  flexiblePhase: FlexiblePhase | null
-  focusElapsedMs: number      // 집중 시간 (카운트업)
-  breakElapsedMs: number      // 휴식 시간 (카운트업)
-  breakTargetMs: number | null  // 휴식 목표 (null = 자유 휴식)
-  breakCompleted: boolean     // 목표 도달 여부
-  focusStartedAt: number | null  // 집중 시작 시간
-  breakStartedAt: number | null  // 휴식 시작 시간
-  sessionHistory: SessionRecord[]  // 완료된 세션 히스토리
-}
+export type { FlexiblePhase, SessionRecord, SingleTimerState, TimerMode, TimerPhase, TimerStatus } from './timerTypes'
+export { initialSingleTimerState } from './timerDefaults'
+export { saveSessionHistory } from './timerPersistence'
 
 type TimerState = {
   timers: Record<string, SingleTimerState>
@@ -69,35 +48,9 @@ type TimerActions = {
 
 type TimerStore = TimerState & TimerActions
 
-const STORAGE_KEY_PREFIX = 'todo-flow/timer/v2/'
-const SESSION_HISTORY_KEY_PREFIX = 'todo-flow/sessionHistory/'
 const MINUTE = 60_000
 
-export const initialSingleTimerState: SingleTimerState = {
-  mode: 'pomodoro',
-  phase: 'flow',
-  status: 'idle',
-  endAt: null,
-  remainingMs: null,
-  elapsedMs: 0,
-  initialFocusMs: 0,
-  startedAt: null,
-  cycleCount: 0,
-  settingsSnapshot: null,
-  // Flexible timer 기본값
-  flexiblePhase: null,
-  focusElapsedMs: 0,
-  breakElapsedMs: 0,
-  breakTargetMs: null,
-  breakCompleted: false,
-  focusStartedAt: null,
-  breakStartedAt: null,
-  sessionHistory: [],
-}
 
-// sessionStorage에 저장할 타입 (sessionHistory 제외)
-type PersistedTimerState = Omit<SingleTimerState, 'sessionHistory'>
-type Persisted = PersistedTimerState
 
 // === 헬퍼 함수들 ===
 
@@ -109,193 +62,6 @@ const getBreakType = (cycleCount: number, cycleEvery: number): { phase: 'short' 
     phase: isLong ? 'long' : 'short',
     duration: 0, // 나중에 settings에서 가져옴
     isLong,
-  }
-}
-
-// === sessionHistory 저장/로드 함수 (localStorage) ===
-
-// sessionHistory를 localStorage에 저장 (export하여 외부에서도 사용 가능)
-export function saveSessionHistory(todoId: string, history: SessionRecord[]) {
-  if (typeof window === 'undefined') return
-  const key = SESSION_HISTORY_KEY_PREFIX + todoId
-  if (history.length === 0) {
-    localStorage.removeItem(key)  // 빈 배열이면 삭제
-    return
-  }
-  try {
-    localStorage.setItem(key, JSON.stringify(history))
-  } catch (e) {
-    console.error('Failed to save sessionHistory to localStorage:', e)
-  }
-}
-
-// sessionHistory를 localStorage에서 로드
-function loadSessionHistory(todoId: string): SessionRecord[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const key = SESSION_HISTORY_KEY_PREFIX + todoId
-    const raw = localStorage.getItem(key)
-    if (raw) {
-      return JSON.parse(raw) as SessionRecord[]
-    }
-  } catch (e) {
-    console.error('Failed to load sessionHistory from localStorage:', e)
-  }
-  return []
-}
-
-// 모든 sessionHistory 로드 (복원용)
-function loadAllSessionHistory(): Record<string, SessionRecord[]> {
-  if (typeof window === 'undefined') return {}
-  const histories: Record<string, SessionRecord[]> = {}
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key?.startsWith(SESSION_HISTORY_KEY_PREFIX)) {
-        const todoId = key.replace(SESSION_HISTORY_KEY_PREFIX, '')
-        const raw = localStorage.getItem(key)
-        if (raw) {
-          histories[todoId] = JSON.parse(raw) as SessionRecord[]
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load all sessionHistory:', e)
-  }
-  return histories
-}
-
-const loadAllPersisted = (): Record<string, SingleTimerState> => {
-  if (typeof window === 'undefined') return {}
-  
-  const timers: Record<string, SingleTimerState> = {}
-  const sessionHistories = loadAllSessionHistory()  // 모든 sessionHistory 로드
-  
-  try {
-    // localStorage에서 타이머 상태 로드
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key?.startsWith(STORAGE_KEY_PREFIX)) {
-        const todoId = key.replace(STORAGE_KEY_PREFIX, '')
-        const raw = localStorage.getItem(key)
-        if (raw) {
-          const persisted = JSON.parse(raw) as PersistedTimerState
-          // sessionHistory를 localStorage에서 로드하여 병합
-          timers[todoId] = hydrateState(persisted, sessionHistories[todoId] ?? [])
-        }
-      }
-    }
-    
-    // localStorage에 없는 타이머도 sessionHistory가 있으면 로드 (완료된 타이머)
-    // 주의: mode는 'pomodoro'로 기본값이지만, TimerFullScreen에서 initialMode(todo.timerMode)를 우선 사용함
-    for (const [todoId, history] of Object.entries(sessionHistories)) {
-      if (!timers[todoId] && history.length > 0) {
-        // 완료된 타이머는 기본 상태로 생성하고 sessionHistory만 설정
-        // mode는 기본값이지만, TimerFullScreen에서 currentTimer.status === 'idle'일 때
-        // initialMode(todo.timerMode)를 우선 사용하므로 문제 없음
-        timers[todoId] = {
-          ...initialSingleTimerState,
-          sessionHistory: history
-        }
-      }
-    }
-  } catch {
-    return {}
-  }
-  
-  return timers
-}
-
-const savePersisted = (todoId: string, state: SingleTimerState) => {
-  if (typeof window === 'undefined') return
-  
-  // sessionHistory 제외하고 타이머 상태만 저장
-  const { sessionHistory, ...timerState } = state
-  
-  if (state.status === 'idle') {
-    // idle 상태는 localStorage에서 제거 (sessionHistory는 별도로 유지)
-    localStorage.removeItem(STORAGE_KEY_PREFIX + todoId)
-    // idle 상태가 되어도 sessionHistory는 유지 (영구 저장)
-    return
-  }
-  
-  // 타이머 상태를 localStorage에 저장 (영구 저장)
-  localStorage.setItem(STORAGE_KEY_PREFIX + todoId, JSON.stringify(timerState))
-  
-  // sessionHistory는 별도로 localStorage에 저장
-  saveSessionHistory(todoId, sessionHistory)
-}
-
-function hydrateState(persisted: Persisted, sessionHistory: SessionRecord[] = []): SingleTimerState {
-  const now = Date.now()
-  let endAt = persisted.endAt
-  let remainingMs = persisted.remainingMs
-  let elapsedMs = persisted.elapsedMs ?? 0
-  const status: TimerStatus = persisted.status
-  
-  // Flexible timer 상태 복원
-  let focusElapsedMs = persisted.focusElapsedMs ?? 0
-  let breakElapsedMs = persisted.breakElapsedMs ?? 0
-  let focusStartedAt = persisted.focusStartedAt ?? null
-  let breakStartedAt = persisted.breakStartedAt ?? null
-
-  if (persisted.mode === 'pomodoro' && persisted.status === 'running' && endAt) {
-    const left = endAt - now
-    if (left <= 0) {
-      return { ...initialSingleTimerState, sessionHistory }
-    }
-    remainingMs = left
-  }
-
-  if (persisted.status === 'paused' && endAt) {
-    remainingMs = Math.max(0, endAt - now)
-    endAt = null
-  }
-
-  if (persisted.mode === 'stopwatch') {
-    const phase = persisted.flexiblePhase
-    
-    if (persisted.status === 'running') {
-      // 실행 중인 타이머: 시간 보정 필요
-      if (phase === 'focus' && focusStartedAt) {
-        // 집중 중이었으면 focusElapsedMs 업데이트
-        const delta = now - focusStartedAt
-        focusElapsedMs = persisted.focusElapsedMs + delta
-        focusStartedAt = now
-      } else if ((phase === 'break_suggested' || phase === 'break_free') && breakStartedAt) {
-        // 휴식 중이었으면 breakElapsedMs 업데이트
-        const delta = now - breakStartedAt
-        breakElapsedMs = persisted.breakElapsedMs + delta
-        breakStartedAt = now
-      } else if (persisted.startedAt) {
-        // 기존 stopwatch (phase 없음)
-        const delta = now - persisted.startedAt
-        elapsedMs = persisted.elapsedMs + delta
-      }
-    } else if (persisted.status === 'waiting') {
-      // 대기 중인 타이머: 시간 보정 불필요, 저장된 값 그대로 사용
-      // breakStartedAt이 null이면 그대로 유지 (대기 상태이므로)
-      // focusStartedAt도 null이면 그대로 유지
-      // 저장된 focusElapsedMs, breakElapsedMs 값 그대로 사용
-    }
-    // paused 상태는 이미 위에서 처리됨 (endAt 관련 로직)
-  }
-
-  return {
-    ...persisted,
-    status,
-    endAt,
-    remainingMs,
-    elapsedMs,
-    focusElapsedMs,
-    breakElapsedMs,
-    focusStartedAt,
-    breakStartedAt,
-    // 기본값 보장
-    flexiblePhase: persisted.flexiblePhase ?? null,
-    breakTargetMs: persisted.breakTargetMs ?? null,
-    breakCompleted: persisted.breakCompleted ?? false,
-    sessionHistory,
   }
 }
 
@@ -625,7 +391,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         updateTimer(todoId, {
           status: 'running',
           endAt: Date.now() + timer.remainingMs,
-          remainingMs: timer.remainingMs,
+          remainingMs: null,
         })
         return
       }
@@ -635,7 +401,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         updateTimer(todoId, {
           status: 'running',
           endAt: Date.now() + timer.remainingMs,
-          remainingMs: timer.remainingMs,
+          remainingMs: null,
         })
       }
     },
@@ -654,12 +420,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       
       set({ timers })
       
-      // localStorage에서도 제거
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(STORAGE_KEY_PREFIX + todoId)
-        // sessionHistory도 삭제 (리셋 시 모든 기록 삭제)
-        saveSessionHistory(todoId, [])
-      }
+      removePersisted(todoId)
     },
 
     updateInitialFocusMs: (todoId, newInitialFocusMs) => {
@@ -687,7 +448,12 @@ export const useTimerStore = create<TimerStore>((set, get) => {
             const initialMs = timer.initialFocusMs ?? 0
             const baseElapsed = timer.focusElapsedMs - initialMs
             const newFocusElapsed = initialMs + baseElapsed + delta
-            updates[todoId] = { ...timer, focusElapsedMs: newFocusElapsed, focusStartedAt: now }
+            updates[todoId] = {
+              ...timer,
+              focusElapsedMs: newFocusElapsed,
+              elapsedMs: newFocusElapsed,
+              focusStartedAt: now,
+            }
           } else if ((timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free') && timer.breakStartedAt) {
             // 휴식 시간 카운트업
             const newBreakElapsed = timer.breakElapsedMs + (Date.now() - timer.breakStartedAt)
@@ -719,6 +485,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     breakElapsedMs: 0,
                     breakStartedAt: null,
                     focusElapsedMs: initialFocusMs,
+                    elapsedMs: initialFocusMs,
                     focusStartedAt: Date.now(),
                     breakTargetMs: null,
                     breakCompleted: false,
@@ -742,7 +509,12 @@ export const useTimerStore = create<TimerStore>((set, get) => {
             }
             
             // 일반적인 휴식 시간 업데이트
-            updates[todoId] = { ...timer, breakElapsedMs: newBreakElapsed, breakStartedAt: Date.now() }
+            updates[todoId] = {
+              ...timer,
+              breakElapsedMs: newBreakElapsed,
+              elapsedMs: newBreakElapsed,
+              breakStartedAt: Date.now(),
+            }
           } else if (timer.startedAt) {
             // 기존 stopwatch 호환성
             const newElapsed = timer.elapsedMs + (Date.now() - timer.startedAt)
@@ -771,11 +543,8 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     completePhase: (todoId) => {
       const timer = get().timers[todoId]
       if (!timer || timer.mode !== 'pomodoro' || !timer.settingsSnapshot) return
-      // Guard against duplicate/early calls: only when current phase actually ended
+      // Guard against duplicate calls: only when running
       if (timer.status !== 'running') return
-      const remaining = timer.endAt ? (timer.endAt - Date.now()) : null
-      if (remaining !== null && remaining > 0) return
-      if (remaining === null && (timer.remainingMs ?? 0) > 0) return
       
       const { phase, cycleCount, settingsSnapshot } = timer
       const { cycleEvery, breakMin, longBreakMin, flowMin, autoStartBreak, autoStartSession } = settingsSnapshot
@@ -834,7 +603,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       if (!timer || timer.mode !== 'pomodoro' || !timer.settingsSnapshot) return
       
       const { phase, settingsSnapshot } = timer
-      const { breakMin, longBreakMin, flowMin, cycleEvery, autoStartBreak, autoStartSession } = settingsSnapshot
+      const { breakMin, longBreakMin, flowMin, cycleEvery } = settingsSnapshot
       
       if (phase === 'flow') {
         // Flow → Break 수동 스킵: cycleCount +1
@@ -844,10 +613,10 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         
         // Flow 스킵 시 sessionHistory에 기록하지 않음 (완료가 아니므로)
         transitionPhase(
-          todoId, 
-          breakType.phase, 
-          nextBreakDuration, 
-          autoStartBreak ?? false, 
+          todoId,
+          breakType.phase,
+          nextBreakDuration,
+          true,
           1,
           (currentHistory) => currentHistory // 스킵은 기록하지 않음
         )
@@ -856,10 +625,10 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         // Break 스킵 시 sessionHistory에 기록하지 않음 (완료가 아니므로)
         const cycleCountDelta = phase === 'long' ? -timer.cycleCount : 0
         transitionPhase(
-          todoId, 
-          'flow', 
-          flowMin, 
-          autoStartSession ?? false, 
+          todoId,
+          'flow',
+          flowMin,
+          true,
           cycleCountDelta,
           (currentHistory) => currentHistory // 스킵은 기록하지 않음
         )

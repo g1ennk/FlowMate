@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { CheckCircleIcon, SettingsIcon, ChartBarIcon } from '../ui/Icons'
 
@@ -30,7 +31,15 @@ function AppLayout() {
     <div className="flex min-h-dvh flex-col bg-gray-50">
       <main className="flex-1 overflow-y-auto pb-16">
         <div className="mx-auto w-full max-w-lg px-5 py-6">
-          <Outlet />
+          <Suspense
+            fallback={
+              <div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-400">
+                불러오는 중...
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </div>
       </main>
 

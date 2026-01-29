@@ -1,9 +1,13 @@
+import { lazy } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import AppLayout from './App'
-import NotFoundPage from './NotFoundPage'
-import TodosPage from '../features/todos/TodosPage'
-import { StatsPage } from '../features/todos/StatsPage'
-import PomodoroSettingsPage from '../features/settings/PomodoroSettingsPage'
+
+const TodosPage = lazy(() => import('../features/todos/TodosPage'))
+const StatsPage = lazy(() =>
+  import('../features/todos/StatsPage').then((module) => ({ default: module.StatsPage }))
+)
+const PomodoroSettingsPage = lazy(() => import('../features/settings/PomodoroSettingsPage'))
+const NotFoundPage = lazy(() => import('./NotFoundPage'))
 
 export const router = createBrowserRouter([
   {

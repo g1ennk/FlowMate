@@ -59,7 +59,7 @@ export function useTodoActions(selectedDateKey: string) {
   const handleToggleDone = async (id: string, next: boolean) => {
     // 완료로 변경하는 경우, 타이머가 실행 중이면 시간 저장
     if (next) {
-      let timer = getTimer(id)
+      const timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
         await completeTaskFromTimer({
           todoId: id,

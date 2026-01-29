@@ -4,7 +4,7 @@ import {
   ClockIcon,
   StopIcon,
   MoreVerticalIcon,
-} from '../../ui/Icons'
+} from '../../../ui/Icons'
 
 export type TodoItemProps = {
   title: string
@@ -64,6 +64,27 @@ export function TodoItem({
   sessionHistory = [],
   initialFocusMs = 0,
 }: TodoItemProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 편집 모드: 자동 높이/포커스 처리
+  useEffect(() => {
+    if (!isEditing) return
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${textarea.scrollHeight}px`
+    }
+  }, [isEditing, editingTitle])
+
+  useEffect(() => {
+    if (!isEditing) return
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.focus()
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    }
+  }, [isEditing])
+
   // 실시간 타이머가 실행 중일 때
   // 태스크 밑에는 집중 시간만 표시 (추천 휴식 카운트다운일 때는 카운트다운 표시)
   let displayTimeSeconds: number
@@ -142,26 +163,6 @@ export function TodoItem({
 
   // 편집 모드
   if (isEditing) {
-    const textareaRef = useRef<HTMLTextAreaElement>(null)
-    
-    // 자동 높이 조정
-    useEffect(() => {
-      const textarea = textareaRef.current
-      if (textarea) {
-        textarea.style.height = 'auto'
-        textarea.style.height = `${textarea.scrollHeight}px`
-      }
-    }, [editingTitle])
-    
-    // 포커스 시 커서를 끝으로 이동
-    useEffect(() => {
-      const textarea = textareaRef.current
-      if (textarea && isEditing) {
-        textarea.focus()
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length)
-      }
-    }, [isEditing])
-    
     return (
       <div className="rounded-xl p-2">
         <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">

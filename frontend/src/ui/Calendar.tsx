@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
+import { formatDateKey } from './calendarUtils'
 
 type ViewMode = 'month' | 'week'
 
@@ -50,10 +51,6 @@ function getWeekDays(date: Date) {
     days.push(d)
   }
   return days
-}
-
-function formatDateKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -276,5 +273,3 @@ export function Calendar({
     </div>
   )
 }
-
-export { formatDateKey }

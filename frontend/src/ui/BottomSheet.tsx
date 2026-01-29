@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 type BottomSheetProps = {
@@ -9,23 +9,15 @@ type BottomSheetProps = {
 }
 
 export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetProps) {
-  const [mounted, setMounted] = useState(false)
-  const [visible, setVisible] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  // 마운트/언마운트 애니메이션
   useEffect(() => {
+    const node = containerRef.current
+    if (!node) return
     if (isOpen) {
-      setMounted(true)
-      // 다음 프레임에서 visible 설정 (애니메이션 트리거)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setVisible(true)
-        })
-      })
+      node.removeAttribute('inert')
     } else {
-      setVisible(false)
-      const timer = setTimeout(() => setMounted(false), 300)
-      return () => clearTimeout(timer)
+      node.setAttribute('inert', '')
     }
   }, [isOpen])
 
@@ -44,14 +36,17 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
     }
   }, [isOpen, onClose])
 
-  if (!mounted) return null
-
   return createPortal(
-    <div className="fixed inset-0" style={{ zIndex: 9999 }}>
+    <div
+      ref={containerRef}
+      className={`fixed inset-0 ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+      style={{ zIndex: 9999 }}
+      aria-hidden={!isOpen}
+    >
       {/* 배경 */}
       <div
         className={`absolute inset-0 bg-black transition-opacity duration-300 ${
-          visible ? 'opacity-60' : 'opacity-0'
+          isOpen ? 'opacity-60' : 'opacity-0'
         }`}
         onClick={onClose}
       />
@@ -59,7 +54,7 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
       {/* 시트 */}
       <div
         className={`absolute inset-x-0 bottom-0 max-h-[85vh] overflow-hidden rounded-t-3xl bg-white shadow-xl transition-transform duration-300 ease-out ${
-          visible ? 'translate-y-0' : 'translate-y-full'
+          isOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
         {/* 핸들 */}

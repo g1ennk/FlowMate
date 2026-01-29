@@ -19,7 +19,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { useTimerStore } from '../timer/timerStore'
-import { Calendar, formatDateKey } from '../../ui/Calendar'
+import { Calendar } from '../../ui/Calendar'
+import { formatDateKey } from '../../ui/calendarUtils'
 import {
   BottomSheet,
   BottomSheetActions,
@@ -35,7 +36,7 @@ import {
   DocumentIcon,
   MoreVerticalIcon,
 } from '../../ui/Icons'
-import { SortableTodoItem } from './SortableTodoItem'
+import { SortableTodoItem } from './components/SortableTodoItem'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
 import { useTodoActions } from './useTodoActions'
 import { useTodos } from './hooks'

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect } from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, useWatch, type Resolver } from 'react-hook-form'
 import { toast } from 'react-hot-toast'
 import { z } from 'zod'
 import { Switch } from '../../ui/Switch'
@@ -28,30 +28,33 @@ const settingsItems: {
   { field: 'cycleEvery', label: '주기', suffix: '회' },
 ]
 
+const defaultValues: FormValues = {
+  flowMin: 25,
+  breakMin: 5,
+  longBreakMin: 15,
+  cycleEvery: 4,
+  autoStartBreak: false,
+  autoStartSession: false,
+}
+
 function PomodoroSettingsPage() {
   const { data, isLoading } = usePomodoroSettings()
   const updateSettings = useUpdatePomodoroSettings()
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
-    watch,
     setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as Resolver<FormValues>,
-    defaultValues: {
-      flowMin: 25,
-      breakMin: 5,
-      longBreakMin: 15,
-      cycleEvery: 4,
-      autoStartBreak: false,
-      autoStartSession: false,
-    },
+    defaultValues,
   })
 
-  const values = watch()
+  const watchedValues = useWatch({ control })
+  const values: FormValues = { ...defaultValues, ...watchedValues }
 
   useEffect(() => {
     if (data) {
