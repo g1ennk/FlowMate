@@ -493,13 +493,13 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     sessionHistory: newSessionHistory,
                   }
                 } else {
-                  // waiting 상태로 전환 (사용자가 수동으로 시작해야 함)
+                  // 추가 휴식 카운트업 유지 (사용자가 수동으로 집중 시작/완료)
                   updates[todoId] = {
                     ...timer,
                     breakElapsedMs: newBreakElapsed,
-                    breakStartedAt: null,
                     breakCompleted: true,
-                    status: 'waiting',
+                    status: 'running',
+                    breakStartedAt: Date.now(),
                     sessionHistory: newSessionHistory,
                   }
                 }
@@ -726,22 +726,20 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
       }
       
-      // 자동화 설정 확인
-      const autoStartBreak = timer.settingsSnapshot?.autoStartBreak ?? false
-      
       // 휴식 시작
       // 중요: initialFocusMs를 newFocusElapsed로 업데이트하여 다음 세션의 시작점을 설정
       // 이렇게 하면 resumeFocus에서 새 세션을 시작할 때 올바른 기준점을 가짐
+      // 휴식은 사용자가 명시적으로 선택했으므로 즉시 시작
       updateTimer(todoId, {
         flexiblePhase: targetMs ? 'break_suggested' : 'break_free',
         focusElapsedMs: newFocusElapsed,
         initialFocusMs: newFocusElapsed,  // 다음 세션의 시작점으로 설정
         focusStartedAt: null,
         breakElapsedMs: 0,
-        breakStartedAt: autoStartBreak ? Date.now() : null,  // autoStartBreak가 true면 즉시 시작, false면 대기
+        breakStartedAt: Date.now(),
         breakTargetMs: targetMs,
         breakCompleted: false,
-        status: autoStartBreak ? 'running' : 'waiting',  // autoStartBreak에 따라 상태 결정
+        status: 'running',
         sessionHistory: newSessionHistory,
       })
     },
