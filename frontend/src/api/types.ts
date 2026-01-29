@@ -6,6 +6,7 @@ export const TodoSchema = z.object({
   note: z.string().nullable(),
   date: z.string(), // YYYY-MM-DD
   isDone: z.boolean(),
+  order: z.number().int(),
   pomodoroDone: z.number().int(),
   focusSeconds: z.number().int(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(), // 선택된 타이머 타입
@@ -27,8 +28,18 @@ export const TodoPatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   note: z.string().nullable().optional(),
   isDone: z.boolean().optional(),
+  order: z.number().int().optional(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable().optional(),
   pomodoroDone: z.number().int().optional(),
+})
+
+export const TodoReorderItemSchema = z.object({
+  id: z.string().uuid(),
+  order: z.number().int(),
+})
+
+export const TodoReorderRequestSchema = z.object({
+  items: z.array(TodoReorderItemSchema).min(1),
 })
 
 export const PomodoroSettingsSchema = z.object({
@@ -81,3 +92,5 @@ export type PomodoroCompleteResponse = z.infer<typeof PomodoroCompleteResponseSc
 export type FocusAddRequest = z.infer<typeof FocusAddRequestSchema>
 export type FocusAddResponse = z.infer<typeof FocusAddResponseSchema>
 export type TimerResetResponse = z.infer<typeof TimerResetResponseSchema>
+export type TodoReorderItem = z.infer<typeof TodoReorderItemSchema>
+export type TodoReorderRequest = z.infer<typeof TodoReorderRequestSchema>

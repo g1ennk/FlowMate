@@ -9,6 +9,7 @@ import {
   type TodoCreateInput,
   type TodoList,
   type TodoPatchInput,
+  type TodoReorderRequest,
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
 
@@ -41,6 +42,34 @@ export function useDeleteTodo() {
   return useMutation({
     mutationFn: (id: string) => todoApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.todos() }),
+  })
+}
+
+export function useReorderTodos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: TodoReorderRequest) => todoApi.reorder(payload),
+    onMutate: async (payload) => {
+      await qc.cancelQueries({ queryKey: queryKeys.todos() })
+      const previous = qc.getQueryData<TodoList>(queryKeys.todos())
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+        if (!old) return old
+        const orderMap = new Map(payload.items.map((item) => [item.id, item.order]))
+        return {
+          items: old.items.map((todo) => {
+            const nextOrder = orderMap.get(todo.id)
+            return nextOrder === undefined ? todo : { ...todo, order: nextOrder }
+          }),
+        }
+      })
+      return { previous }
+    },
+    onError: (_err, _payload, context) => {
+      if (context?.previous) {
+        qc.setQueryData(queryKeys.todos(), context.previous)
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.todos() }),
   })
 }
 

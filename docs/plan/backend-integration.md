@@ -12,6 +12,7 @@ Base URL: `/api`
 - `GET /api/todos` → `{ items: Todo[] }`
 - `POST /api/todos` → `Todo`
 - `PATCH /api/todos/:id` → `Todo`
+- `PUT /api/todos/reorder` → `{ items: Todo[] }`
 - `DELETE /api/todos/:id` → `204`
 
 ### Timer Completion

@@ -66,6 +66,7 @@ com.example.flowtodo
 - userId: String (indexed)
 - title: String
 - note: String?
+- order: int (날짜+완료 상태별 정렬용)
 - isDone: boolean
 - pomodoroDone: int (default 0)
 - focusSeconds: int (default 0)
@@ -134,6 +135,7 @@ com.example.flowtodo
 - GET /api/todos
 - POST /api/todos
 - PATCH /api/todos/{id}
+- PUT /api/todos/reorder
 - DELETE /api/todos/{id}
 - POST /api/todos/{id}/pomodoro/complete
 - POST /api/todos/{id}/focus/add

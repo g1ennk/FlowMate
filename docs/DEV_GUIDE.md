@@ -63,7 +63,7 @@
 
 ## 데이터 모델 (프론트 기준)
 ### Todo
-- `id` (UUID), `title`, `note`, `date`, `isDone`
+- `id` (UUID), `title`, `note`, `date`, `isDone`, `order`
 - `pomodoroDone`, `focusSeconds`, `timerMode`
 - `createdAt`, `updatedAt`
 
@@ -80,6 +80,7 @@
 GET    /api/todos
 POST   /api/todos
 PATCH  /api/todos/:id
+PUT    /api/todos/reorder
 DELETE /api/todos/:id
 POST   /api/todos/:id/pomodoro/complete
 POST   /api/todos/:id/focus/add
@@ -89,6 +90,7 @@ PUT    /api/settings/pomodoro
 ```
 - `durationSec`: 1 ~ 10800
 - `timerMode`는 **완료 API가 아닌** `PATCH /todos/:id`로 동기화
+- 순서 변경은 `PUT /api/todos/reorder`로 저장 (날짜+완료 상태별 `order` 사용)
 
 ## 환경 변수
 - `VITE_USE_MOCK=1`: MSW 모킹 활성화

@@ -16,6 +16,7 @@ Content-Type: `application/json`
   "note": "string|null",
   "date": "2026-01-09",
   "isDone": false,
+  "order": 0,
   "pomodoroDone": 2,
   "focusSeconds": 3000,
   "timerMode": "stopwatch",
@@ -59,12 +60,21 @@ Content-Type: `application/json`
 - `PATCH /api/todos/{id}`
 - Body: 위 필드 중 일부(any subset)
 ```json
-{ "title": "string", "note": "string|null", "isDone": true, "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
+{ "title": "string", "note": "string|null", "isDone": true, "order": 3, "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
 ```
 - Response 200: `Todo`
 - Errors: 404 Not Found, 400 Validation Error
 
-### 2.4 Delete Todo
+### 2.4 Reorder Todos
+- `PUT /api/todos/reorder`
+- Body:
+```json
+{ "items": [{ "id": "uuid", "order": 0 }] }
+```
+- Response 200: `{ "items": Todo[] }`
+- Errors: 400 Validation Error
+
+### 2.5 Delete Todo
 - `DELETE /api/todos/{id}`
 - Response 204
 - Errors: 404 Not Found
@@ -179,3 +189,4 @@ Content-Type: `application/json`
 | 2026-01-13 | 뽀모도로 타이머에도 `sessionHistory` 추가                        |
 | 2026-01-22 | `sessionHistory`를 localStorage에 영구 저장으로 변경              |
 | 2026-01-24 | `POST /api/todos/{id}/reset` 추가 (타이머 기록 초기화)            |
+| 2026-01-29 | Todo에 `order` 필드 추가 + `PUT /api/todos/reorder` 추가          |

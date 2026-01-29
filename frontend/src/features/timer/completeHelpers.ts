@@ -4,7 +4,10 @@ import type { SessionRecord, SingleTimerState, TimerMode } from './timerStore'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 
 type CompleteTodoArgs = { id: string; body: { durationSec: number } }
-type UpdateTodoArgs = { id: string; patch: { isDone: boolean; timerMode: TimerMode | null } }
+type UpdateTodoArgs = {
+  id: string
+  patch: { isDone: boolean; timerMode: TimerMode | null; order?: number }
+}
 
 type CompletionDeps = {
   todoId: string
@@ -17,6 +20,7 @@ type CompletionDeps = {
   completeTodo: (args: CompleteTodoArgs) => Promise<PomodoroCompleteResponse>
   addFocus: (args: CompleteTodoArgs) => Promise<FocusAddResponse>
   updateTodo: (args: UpdateTodoArgs) => Promise<unknown>
+  nextOrder?: number
   debug?: boolean
 }
 
@@ -160,6 +164,10 @@ export async function completeTaskFromTimer(deps: CompletionDeps) {
 
   await deps.updateTodo({
     id: todoId,
-    patch: { isDone: true, timerMode: timer.mode },
+    patch: {
+      isDone: true,
+      timerMode: timer.mode,
+      ...(deps.nextOrder === undefined ? {} : { order: deps.nextOrder }),
+    },
   })
 }

@@ -5,6 +5,7 @@ import {
   PomodoroCompleteRequestSchema,
   PomodoroCompleteResponseSchema,
   TimerResetResponseSchema,
+  TodoReorderRequestSchema,
   TodoListSchema,
   TodoSchema,
   type FocusAddRequest,
@@ -16,6 +17,7 @@ import {
   type TodoCreateInput,
   type TodoList,
   type TodoPatchInput,
+  type TodoReorderRequest,
 } from './types'
 
 export const todoApi = {
@@ -24,6 +26,8 @@ export const todoApi = {
   update: (id: string, body: TodoPatchInput): Promise<Todo> =>
     api.patch(`/todos/${id}`, body, TodoSchema),
   remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`),
+  reorder: (body: TodoReorderRequest): Promise<TodoList> =>
+    api.put('/todos/reorder', TodoReorderRequestSchema.parse(body), TodoListSchema),
   // 뽀모도로 완료 (횟수 + 시간)
   complete: (id: string, body: PomodoroCompleteRequest): Promise<PomodoroCompleteResponse> =>
     api.post(

@@ -97,6 +97,7 @@ src/
 - `useCreateTodo` - Todo 생성
 - `useUpdateTodo` - Todo 수정
 - `useDeleteTodo` - Todo 삭제
+- `useReorderTodos` - Todo 순서 저장 (드래그 후)
 - `useCompleteTodo` - 뽀모도로 세션 완료 기록 (시간+횟수)
 - `useAddFocus` - 일반 타이머 시간 기록 (시간만)
 - `usePomodoroSettings` - 설정 조회
@@ -139,6 +140,7 @@ src/
 - 생성/수정/삭제/완료
 - 드래그로 순서 변경 (@dnd-kit)
 - 메모 기능
+  - 순서는 `order` 필드로 관리되며, 드래그 시 `PUT /api/todos/reorder`로 저장
 
 #### 태스크 추가 방법
 **입력 필드 열기:**

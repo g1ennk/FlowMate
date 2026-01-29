@@ -1,6 +1,8 @@
 import { HttpResponse, delay, http } from 'msw'
 import type { PomodoroSettings, Todo } from '../api/types'
 
+type StoredTodo = Omit<Todo, 'order'> & { order?: number }
+
 const STORAGE_KEYS = {
   TODOS: 'todo-flow/todos',
   SETTINGS: 'todo-flow/settings',
@@ -23,12 +25,58 @@ const defaultSettings: PomodoroSettings = {
   autoStartSession: false,
 }
 
+function normalizeTodos(input: StoredTodo[]) {
+  let changed = false
+  const groups = new Map<string, StoredTodo[]>()
+
+  for (const todo of input) {
+    const key = `${todo.date}::${todo.isDone ? 'done' : 'active'}`
+    const bucket = groups.get(key)
+    if (bucket) {
+      bucket.push(todo)
+    } else {
+      groups.set(key, [todo])
+    }
+  }
+
+  const normalized: Todo[] = []
+
+  for (const group of groups.values()) {
+    const orders = group
+      .map((todo) => todo.order)
+      .filter((order): order is number => Number.isFinite(order))
+    const hasInvalid = group.length !== orders.length
+    const hasDuplicates = new Set(orders).size !== orders.length
+
+    if (hasInvalid || hasDuplicates) {
+      const sorted = [...group].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      )
+      sorted.forEach((todo, index) => {
+        if (todo.order !== index) changed = true
+        normalized.push({ ...todo, order: index } as Todo)
+      })
+      continue
+    }
+
+    for (const todo of group) {
+      normalized.push({ ...todo, order: todo.order as number } as Todo)
+    }
+  }
+
+  if (normalized.length !== input.length) changed = true
+  return { todos: normalized, changed }
+}
+
 // localStorage에서 로드
 function loadTodos(): Todo[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEYS.TODOS)
     if (stored) {
-      return JSON.parse(stored) as Todo[]
+      const parsed = JSON.parse(stored) as StoredTodo[]
+      const { todos: normalized, changed } = normalizeTodos(parsed)
+      if (changed) saveTodos(normalized)
+      return normalized
     }
   } catch (e) {
     console.error('Failed to load todos from localStorage:', e)
@@ -42,6 +90,13 @@ function saveTodos(todos: Todo[]) {
   } catch (e) {
     console.error('Failed to save todos to localStorage:', e)
   }
+}
+
+function getNextOrder(todos: Todo[], date: string, isDone: boolean) {
+  const orders = todos
+    .filter((todo) => todo.date === date && todo.isDone === isDone)
+    .map((todo) => todo.order)
+  return orders.length === 0 ? 0 : Math.max(...orders) + 1
 }
 
 function loadSettings(): PomodoroSettings {
@@ -84,19 +139,22 @@ export const handlers = [
         { status: 400 },
       )
     }
+    const date = body.date ?? today()
+    todos = loadTodos()
+    const nextOrder = getNextOrder(todos, date, false)
     const next: Todo = {
       id: crypto.randomUUID(),
       title: body.title,
       note: body.note ?? null,
-      date: body.date ?? today(),
+      date,
       isDone: false,
+      order: nextOrder,
       pomodoroDone: 0,
       focusSeconds: 0,
       timerMode: null, // 아직 타이머 타입 선택 안함
       createdAt: now(),
       updatedAt: now(),
     }
-    todos = loadTodos()
     todos = [next, ...todos]
     saveTodos(todos)
     return HttpResponse.json(next, { status: 201 })
@@ -120,6 +178,35 @@ export const handlers = [
     todos = todos.map((t) => (t.id === id ? updated : t))
     saveTodos(todos)
     return HttpResponse.json(updated)
+  }),
+
+  http.put('/api/todos/reorder', async ({ request }) => {
+    await delay(latency)
+    const body = (await request.json()) as { items?: Array<{ id?: string; order?: number }> }
+    if (!body.items || body.items.length === 0) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'items is required' } },
+        { status: 400 },
+      )
+    }
+    const invalid = body.items.some(
+      (item) => typeof item.id !== 'string' || !Number.isInteger(item.order),
+    )
+    if (invalid) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'items invalid' } },
+        { status: 400 },
+      )
+    }
+    const orderMap = new Map(body.items.map((item) => [item.id as string, item.order as number]))
+    todos = loadTodos()
+    todos = todos.map((todo) => {
+      const nextOrder = orderMap.get(todo.id)
+      if (nextOrder === undefined) return todo
+      return { ...todo, order: nextOrder, updatedAt: now() }
+    })
+    saveTodos(todos)
+    return HttpResponse.json({ items: todos })
   }),
 
   http.delete('/api/todos/:id', async ({ params }) => {

@@ -39,7 +39,7 @@ import {
 import { SortableTodoItem } from './components/SortableTodoItem'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
 import { useTodoActions } from './useTodoActions'
-import { useTodos } from './hooks'
+import { useReorderTodos, useTodos } from './hooks'
 import { getTimerInfo } from '../timer/useTimerInfo'
 
 // === 스키마 ===
@@ -61,11 +61,10 @@ function TodosPage() {
 
   // Todo 액션 훅
   const actions = useTodoActions(selectedDateKey)
+  const reorderTodos = useReorderTodos()
 
   // UI 상태
   const [showInput, setShowInput] = useState(false)
-  const [activeOrder, setActiveOrder] = useState<string[]>([])
-  const [doneOrder, setDoneOrder] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const isSubmittingRef = useRef(false)
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -84,14 +83,7 @@ function TodosPage() {
 
   // === Memoized 데이터 ===
   const todosForSelectedDate = useMemo(() => {
-    return (data?.items ?? [])
-      .filter((t) => t.date === selectedDateKey)
-      .sort((a, b) => {
-        // 완료 여부로 정렬 (미완료 > 완료)
-        if (a.isDone !== b.isDone) return a.isDone ? 1 : -1
-        // 생성 시간 순으로 정렬
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      })
+    return (data?.items ?? []).filter((t) => t.date === selectedDateKey)
   }, [data?.items, selectedDateKey])
 
   const markedDates = useMemo(() => {
@@ -104,28 +96,23 @@ function TodosPage() {
     return marks
   }, [data?.items])
 
-  const activeTodosRaw = todosForSelectedDate.filter((t) => !t.isDone)
-  const doneTodosRaw = todosForSelectedDate.filter((t) => t.isDone)
-
   const activeTodos = useMemo(() => {
-    if (activeOrder.length === 0) return activeTodosRaw
-    const orderMap = new Map(activeOrder.map((id, idx) => [id, idx]))
-    return [...activeTodosRaw].sort((a, b) => {
-      const orderA = orderMap.get(a.id) ?? Infinity
-      const orderB = orderMap.get(b.id) ?? Infinity
-      return orderA - orderB
-    })
-  }, [activeTodosRaw, activeOrder])
+    return [...todosForSelectedDate]
+      .filter((t) => !t.isDone)
+      .sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      })
+  }, [todosForSelectedDate])
 
   const doneTodos = useMemo(() => {
-    if (doneOrder.length === 0) return doneTodosRaw
-    const orderMap = new Map(doneOrder.map((id, idx) => [id, idx]))
-    return [...doneTodosRaw].sort((a, b) => {
-      const orderA = orderMap.get(a.id) ?? Infinity
-      const orderB = orderMap.get(b.id) ?? Infinity
-      return orderA - orderB
-    })
-  }, [doneTodosRaw, doneOrder])
+    return [...todosForSelectedDate]
+      .filter((t) => t.isDone)
+      .sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      })
+  }, [todosForSelectedDate])
 
   // 타이머 상태
   // === Effects ===
@@ -152,13 +139,19 @@ function TodosPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
+  const getNextOrder = (list: Array<{ order: number }>) =>
+    list.length === 0 ? 0 : Math.max(...list.map((todo) => todo.order)) + 1
+
   const handleActiveDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = activeTodos.findIndex((t) => t.id === active.id)
     const newIndex = activeTodos.findIndex((t) => t.id === over.id)
     if (oldIndex !== -1 && newIndex !== -1) {
-      setActiveOrder(arrayMove(activeTodos.map((t) => t.id), oldIndex, newIndex))
+      const nextTodos = arrayMove(activeTodos, oldIndex, newIndex)
+      reorderTodos.mutate({
+        items: nextTodos.map((todo, index) => ({ id: todo.id, order: index })),
+      })
     }
   }
 
@@ -168,7 +161,10 @@ function TodosPage() {
     const oldIndex = doneTodos.findIndex((t) => t.id === active.id)
     const newIndex = doneTodos.findIndex((t) => t.id === over.id)
     if (oldIndex !== -1 && newIndex !== -1) {
-      setDoneOrder(arrayMove(doneTodos.map((t) => t.id), oldIndex, newIndex))
+      const nextTodos = arrayMove(doneTodos, oldIndex, newIndex)
+      reorderTodos.mutate({
+        items: nextTodos.map((todo, index) => ({ id: todo.id, order: index })),
+      })
     }
   }
 
@@ -239,7 +235,9 @@ function TodosPage() {
                       isEditing={actions.editingId === todo.id}
                       editingTitle={actions.editingTitle}
                       onEditingTitleChange={actions.setEditingTitle}
-                      onToggle={() => actions.handleToggleDone(todo.id, !todo.isDone)}
+                      onToggle={() =>
+                        actions.handleToggleDone(todo.id, !todo.isDone, getNextOrder(doneTodos))
+                      }
                       onEdit={() => actions.handleEdit(todo.id, todo.title)}
                       onSaveEdit={actions.handleSaveEdit}
                       onCancelEdit={actions.handleCancelEdit}
@@ -387,7 +385,13 @@ function TodosPage() {
                           isEditing={actions.editingId === todo.id}
                           editingTitle={actions.editingTitle}
                           onEditingTitleChange={actions.setEditingTitle}
-                          onToggle={() => actions.handleToggleDone(todo.id, !todo.isDone)}
+                          onToggle={() =>
+                            actions.handleToggleDone(
+                              todo.id,
+                              !todo.isDone,
+                              getNextOrder(activeTodos),
+                            )
+                          }
                           onEdit={() => actions.handleEdit(todo.id, todo.title)}
                           onSaveEdit={actions.handleSaveEdit}
                           onCancelEdit={actions.handleCancelEdit}

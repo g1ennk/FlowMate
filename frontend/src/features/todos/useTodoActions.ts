@@ -56,7 +56,7 @@ export function useTodoActions(selectedDateKey: string) {
     await createTodo.mutateAsync({ title, note: null, date: selectedDateKey })
   }
 
-  const handleToggleDone = async (id: string, next: boolean) => {
+  const handleToggleDone = async (id: string, next: boolean, nextOrder?: number) => {
     // 완료로 변경하는 경우, 타이머가 실행 중이면 시간 저장
     if (next) {
       const timer = getTimer(id)
@@ -72,6 +72,7 @@ export function useTodoActions(selectedDateKey: string) {
           completeTodo: completeTodo.mutateAsync,
           addFocus: addFocus.mutateAsync,
           updateTodo: updateTodo.mutateAsync,
+          nextOrder,
         })
         toast.success('타이머 저장 완료!', { id: 'timer-saved' })
         return
@@ -88,7 +89,13 @@ export function useTodoActions(selectedDateKey: string) {
     }
     
     // 완료 상태 변경
-    updateTodo.mutate({ id, patch: { isDone: next } })
+    updateTodo.mutate({
+      id,
+      patch: {
+        isDone: next,
+        ...(nextOrder === undefined ? {} : { order: nextOrder }),
+      },
+    })
   }
 
   const handleDelete = (id: string) => {
