@@ -19,16 +19,12 @@ Content-Type: `application/json`
   "pomodoroDone": 2,
   "focusSeconds": 3000,
   "timerMode": "stopwatch",
-  "sessionHistory": [
-    { "focusMs": 1500000, "breakMs": 300000 },
-    { "focusMs": 1500000, "breakMs": 0 }
-  ],
   "createdAt": "2026-01-09T12:00:00Z",
   "updatedAt": "2026-01-09T12:10:00Z"
 }
 ```
 
-**참고**: `sessionHistory`는 V2 마이그레이션 후 추가됩니다. 현재는 클라이언트 `sessionStorage`에만 저장됩니다.
+**참고**: `sessionHistory`는 **클라이언트 로컬 기록**으로 API 응답에 포함되지 않습니다. 현재는 `localStorage`에만 저장됩니다.
 
 ### PomodoroSettings
 ```json
@@ -63,7 +59,7 @@ Content-Type: `application/json`
 - `PATCH /api/todos/{id}`
 - Body: 위 필드 중 일부(any subset)
 ```json
-{ "title": "string", "note": "string|null", "isDone": true, "date": "2026-01-09", "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
+{ "title": "string", "note": "string|null", "isDone": true, "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
 ```
 - Response 200: `Todo`
 - Errors: 404 Not Found, 400 Validation Error
@@ -118,6 +114,7 @@ Content-Type: `application/json`
 }
 ```
 - Errors: 404 Not Found, 400 Validation Error (durationSec 1~10800 권장)
+ - Note: 완료/누적 API는 `timerMode`를 변경하지 않음 (모드는 `PATCH /api/todos/{id}`로 동기화)
 
 ### 4.2 Add Focus Time (일반 타이머)
 - `POST /api/todos/{id}/focus/add`
@@ -136,6 +133,20 @@ Content-Type: `application/json`
 ```
 - Errors: 404 Not Found, 400 Validation Error (durationSec 1~10800 권장)
 - Note: 일반 타이머(Stopwatch)는 시간만 누적하고 세션 횟수는 증가시키지 않음
+
+### 4.3 Reset Timer
+- `POST /api/todos/{id}/reset`
+- Body: `{}` (빈 객체)
+- Behavior: `focusSeconds=0`, `pomodoroDone=0`, `timerMode=null`
+- Response 200:
+```json
+{
+  "id": "uuid",
+  "focusSeconds": 0,
+  "pomodoroDone": 0,
+  "updatedAt": "2026-01-09T12:20:00Z"
+}
+```
 
 ---
 
@@ -161,9 +172,10 @@ Content-Type: `application/json`
 | 2026-01-09 | PomodoroSettings에 `autoStartBreak`, `autoStartSession` 추가      |
 | 2026-01-09 | `POST /api/todos/{id}/focus/add` API 추가 (일반 타이머 전용)      |
 | 2026-01-13 | 일반 타이머 세션 히스토리 추가 (`sessionHistory`)                 |
-| 2026-01-13 | Flow 개념 도입 (3분 이상 집중 + 명시적 행동)                      |
+| 2026-01-13 | Flow 개념 도입 (`MIN_FLOW_MS` 기준)                               |
 | 2026-01-13 | Todo에 `timerMode` 필드 추가 (타이머 모드 영구 저장)              |
 | 2026-01-13 | 통계 페이지 추가 (`/stats`)                                       |
 | 2026-01-13 | 홈 화면 시간 표시 개선 (추천 휴식 카운트다운, 자유 휴식 카운트업) |
 | 2026-01-13 | 뽀모도로 타이머에도 `sessionHistory` 추가                        |
-| 2026-01-13 | `sessionHistory` DB 저장 설계 (`docs/plan/session-history.md`) |
+| 2026-01-22 | `sessionHistory`를 localStorage에 영구 저장으로 변경              |
+| 2026-01-24 | `POST /api/todos/{id}/reset` 추가 (타이머 기록 초기화)            |

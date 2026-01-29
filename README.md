@@ -31,11 +31,11 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
         - 기본 25분 집중 + 5분 휴식 사이클 제공
         - 사용자 설정으로 집중/휴식 시간을 자유롭게 변경 가능
 - 설정: 타이머 시간, 자동 시작 등 커스터마이징
-- 통계(기획 중): 일별 완료/미완료, 집중 시간/세션 등 지표 제공 예정
+- 통계: `/stats`에서 태스크/Flow/집중 시간 등 기본 지표 확인
 
 ## 기술 스택
 
-### Frontend (예정)
+### Frontend
 
 - Framework: React 19 + TypeScript
 - Build: Vite
@@ -77,8 +77,9 @@ todo-flow/
 │   ├── plan/                 # 기획 문서 (PRD/Design/API)
 │   ├── frontend.md           # 프론트엔드 가이드
 │   ├── backend.md            # 백엔드 가이드
-│   └── test.md               # 테스트 가이드
-└── AGENT.md                  # 개발 가이드
+│   ├── frontend_test.md      # 테스트 가이드
+│   └── DEV_GUIDE.md          # 내부 개발/운영 가이드
+└── AGENTS.md                 # 기여자 가이드
 ```
 
 ## 시작하기
@@ -131,7 +132,6 @@ cd frontend
 # 단위 테스트 실행
 pnpm test
 
-# 타이머 수동 테스트 (docs/test.md 참고)
+# 타이머 수동 테스트 (docs/frontend_test.md 참고)
 pnpm dev:mock
 ```
-

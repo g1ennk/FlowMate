@@ -8,23 +8,24 @@
 - 추후 인증/다중 유저 확장 가능하도록 최소한의 계층화
 
 ## 2. System Overview
-- Frontend: CSR SPA (React 18, Vite), 클라이언트 타이머, REST API 소비
+- Frontend: CSR SPA (React 19, Vite), 클라이언트 타이머, REST API 소비
 - Backend: Spring Boot REST API, MySQL(prod) / H2(dev) + Flyway 마이그레이션
 - Timer: 클라이언트 endAt 기반, 서버는 완료 누적 API만 제공
 
 ## 3. High-Level Structure
-- Client: React Router `/todos`, `/timer/:todoId`, `/settings/pomodoro` + 상태(Query + Zustand)
-- API 경계: `/api/todos`, `/api/settings/pomodoro`, `/api/todos/{id}/pomodoro/complete`
+- Client: React Router `/todos`, `/stats`, `/settings/pomodoro` + 상태(Query + Zustand)
+- Timer UI: `TimerFullScreen` 풀스크린 오버레이(라우팅 없이 표시)
+- API 경계: `/api/todos`, `/api/settings/pomodoro`, `/api/todos/{id}/pomodoro/complete`, `/api/todos/{id}/focus/add`, `/api/todos/{id}/reset`
 - Server: Controller → Service → Repository(JPA) → DB(MySQL prod / H2 dev)
 - Data: Todo, PomodoroSettings 두 테이블
 
 ## 4. Frontend Design (요약)
-- Stack: Vite + pnpm, React 18 + TS, React Router, TanStack Query, Zustand(타이머), Tailwind, react-hook-form + zod
+- Stack: Vite + pnpm, React 19 + TS, React Router, TanStack Query, Zustand(타이머), Tailwind, react-hook-form + zod
 - Timer 상태:
   - **뽀모도로**: `phase`, `endAt`, `todoId`, `cycleCount`, `settingsSnapshot`, `status`
   - **일반 타이머**: `flexiblePhase`, `focusElapsedMs`, `breakElapsedMs`, `focusStartedAt`, `breakStartedAt`, `breakTargetMs`, `breakCompleted`, `sessionHistory` (SessionRecord[])
-  - sessionStorage에 스냅샷 저장/복구
-- 모킹: 개발 시 MSW 선택적 사용(`USE_MOCK` 플래그)
+  - localStorage에 스냅샷 저장/복구
+- 모킹: 개발 시 MSW 선택적 사용(`VITE_USE_MOCK` 플래그)
 - API 클라이언트: baseURL 래퍼 + zod 응답 검증, 단순 에러 토스트
 - UI/UX:
   - 타이머 도트 디자인: 진행 중인 도트에 프로그레스바, Flow/Break 색상 구분
@@ -34,20 +35,22 @@
 ## 5. Backend Design (요약)
 - Stack: Spring Boot, Web, Data JPA, Flyway, MySQL(H2 dev)
 - 계층: Controller(REST) → Service(도메인 로직) → Repository(JPA) → Entity
-- 엔드포인트: PRD 8장 명세 그대로 사용
+- 엔드포인트: PRD 명세 + 프론트에서 사용하는 실사용 API
   - Todos: GET/POST/PATCH/DELETE `/api/todos`
   - Settings: GET/PUT `/api/settings/pomodoro`
   - Complete: POST `/api/todos/{id}/pomodoro/complete` (durationSec 반영)
+  - Add Focus: POST `/api/todos/{id}/focus/add`
+  - Reset: POST `/api/todos/{id}/reset`
 - 검증: 요청 DTO에 Bean Validation (범위는 PRD 검증 규칙 준수)
-- 에러: 단순 JSON `{message, code?}` 형태(400/404/500)
+- 에러: `{ error: { code?, message, fields? } }` 형태 권장(400/404/500)
 
 ## 6. Data Model (공유 개념)
 - Todo: id(UUID), userId("local"), title, note?, isDone, pomodoroDone, focusSeconds, timerMode?, createdAt, updatedAt
 - PomodoroSettings: userId(PK, "local"), flowMin, breakMin, longBreakMin, cycleEvery, autoStartBreak?, autoStartSession?
-- SessionRecord (클라이언트만): { focusMs: number, breakMs: number } - 일반 타이머 세션 히스토리
+- SessionRecord (클라이언트만): { focusMs: number, breakMs: number } - 일반/뽀모도로 세션 히스토리
 
 ## 7. 환경 변수
-- Frontend: `VITE_API_BASE_URL`, `USE_MOCK`
+- Frontend: `VITE_API_BASE_URL`, `VITE_USE_MOCK`
 - Backend: `PORT`(기본 8080), `SPRING_PROFILES_ACTIVE`, DB URL/USER/PW (prod=MySQL, dev=H2), Flyway 설정
 
 ## 8. Build & Deploy (MVP 기준)
@@ -59,7 +62,7 @@
 - Backend: Service/Repository 단위 테스트, Controller 슬라이스로 Todo/Settings/Complete happy path
 
 ## 10. 운영/비기능 (MVP 최소)
-- 성능: 클라이언트 interval 1s, 서버 단순 CRUD
+- 성능: 클라이언트 interval 100ms(타이머 부드러운 갱신), 서버 단순 CRUD
 - 신뢰성: 단일 활성 타이머 권장(멀티 탭 동시 실행은 차단 또는 경고)
 - 보안: 인증 없음(MVP), CORS는 프론트 도메인 허용; 추후 인증 시 미들웨어 추가
 - 로깅/모니터링: 기본 로그 수준 info; 추가 관측은 추후 확장

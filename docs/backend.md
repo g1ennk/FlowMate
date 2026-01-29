@@ -89,7 +89,7 @@ com.example.flowtodo
 - breakSeconds: int (휴식 시간, 초)
 - sessionOrder: int (세션 순서: 1, 2, 3...)
 - createdAt, updatedAt (auditing)
-- 참고: `docs/plan/session-history.md` 참조
+- 참고: 서버 저장은 추후 설계 (현재는 클라이언트 localStorage에만 저장)
 
 ---
 
@@ -101,7 +101,7 @@ com.example.flowtodo
 - `db/migration/V2__add_session_history.sql` (추후)
   - todo_sessions 테이블
   - 인덱스: todo_sessions(todo_id, user_id)
-  - 참고: `docs/plan/session-history.md` 참조
+  - 상세 스키마는 추후 확정
 
 ---
 
@@ -119,6 +119,8 @@ com.example.flowtodo
 - addFocus(userId, id, durationSec)
   - focusSeconds += durationSec (pomodoroDone 증가 없음)
   - 일반 타이머 전용
+- resetTimer(userId, id)
+  - focusSeconds = 0, pomodoroDone = 0, timerMode = null
 
 ### 6.2 PomodoroSettingsService
 - get(userId)
@@ -135,6 +137,7 @@ com.example.flowtodo
 - DELETE /api/todos/{id}
 - POST /api/todos/{id}/pomodoro/complete
 - POST /api/todos/{id}/focus/add
+- POST /api/todos/{id}/reset
 - GET /api/settings/pomodoro
 - PUT /api/settings/pomodoro
 
@@ -159,4 +162,3 @@ com.example.flowtodo
 - dev profile: H2 가능
 - prod profile: MySQL
 - CORS: 프론트 dev origin 허용
-

@@ -2,12 +2,12 @@
 
 ## 배경
 
-현재 `sessionHistory`는 클라이언트의 `sessionStorage`에만 저장되어 브라우저를 닫으면 사라집니다. 통계 페이지에서 세션별 집중/휴식 시간을 표시하기 위해 영구 저장이 필요하며, 뽀모도로와 일반 타이머의 로직을 통일하여 유지보수성을 향상시켜야 합니다.
+과거에는 `sessionHistory`가 클라이언트 `sessionStorage`에만 저장되어 브라우저를 닫으면 사라졌습니다. 현재는 `localStorage` 영구 저장으로 개선되었으며(2026-01-22), 뽀모도로/일반 타이머의 기록 로직도 `updateSessionHistory()` 경로로 통일되었습니다.
 
 ## 현재 방식 요약
 
 ### 데이터 저장
-- **sessionHistory**: 클라이언트 `sessionStorage`에만 저장
+- **sessionHistory**: 클라이언트 `localStorage`에 저장
 - **focusSeconds, pomodoroDone**: DB에 저장 (누적값)
 - **통계 계산**: `sessionHistory` 우선, 없으면 `focusSeconds` 사용
 
@@ -50,11 +50,11 @@ type SessionRecord = {
 
 ---
 
-### 단점 및 문제점
+### 이전 문제(해결됨)
 
 #### 1. 데이터 영속성 문제 ⚠️
 **문제:**
-- 브라우저를 닫으면 `sessionHistory` 사라짐
+- 브라우저를 닫으면 `sessionHistory` 사라짐 (과거)
 - 다른 기기에서 접속 시 데이터 없음
 - 시크릿 모드에서는 사용 불가
 
@@ -79,7 +79,7 @@ type SessionRecord = {
 
 #### 3. 중복 저장 및 동기화 복잡도
 **문제:**
-- `sessionHistory`는 `sessionStorage`에 저장
+- (과거) `sessionHistory`는 `sessionStorage`에 저장
 - `focusSeconds`는 DB에 저장
 - 두 데이터가 따로 관리됨
 
@@ -110,8 +110,8 @@ if (currentSessionMs >= MIN_FLOW_MS) {
 // 위치 4: timerStore.ts - resumeFocus (일반 타이머)
 newSessionHistory[newSessionHistory.length - 1] = { ..., breakMs: newBreakElapsed }
 
-// 위치 5: TimerFullScreen.tsx - handleStopwatchComplete (일반 타이머) ⚠️
-useTimerStore.setState(...) // 직접 store 업데이트
+// 위치 5: TimerFullScreen.tsx - handleStopwatchComplete (과거) ⚠️
+// useTimerStore.setState(...) // 직접 store 업데이트 (현재는 제거됨)
 ```
 
 **로직 불일치:**
@@ -119,9 +119,9 @@ useTimerStore.setState(...) // 직접 store 업데이트
 - **일반 타이머**: MIN_FLOW_MS 이상일 때만 기록 (가변 시간)
 - **Break 업데이트**: 뽀모도로는 transitionPhase 콜백, 일반 타이머는 직접 업데이트
 
-#### 5. 관심사 분리 위반
-- `TimerFullScreen`에서 직접 store 업데이트
-- 세션 관리 로직이 UI 컴포넌트에 있음
+#### 5. 관심사 분리 위반 (해결됨)
+- `TimerFullScreen`에서 직접 store 업데이트 제거
+- `updateSessionHistory()` 경로로 세션 관리 통일
 
 #### 6. 통계 정확도 문제
 **문제:**

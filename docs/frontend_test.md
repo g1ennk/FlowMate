@@ -134,7 +134,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 **이전 문제**: 
 - `TimerFullScreen`에서 직접 `useTimerStore.setState()` 호출
-- `sessionStorage`에도 직접 저장
+- `localStorage`에도 직접 저장
 
 **해결 방법** (2026-01-22):
 - `timerStore`에 `updateSessionHistory()` 메서드 추가
@@ -378,7 +378,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 - [ ] **순서 변경**
   - [x] 미완료 Todo 드래그로 순서 변경
   - [x] 완료된 Todo 드래그로 순서 변경
-  - [ ] 순서가 sessionStorage에 저장되는지 확인 (현재 순서 저장 로직은 미구현,테스트 이후 구현 예정)
+  - [ ] 순서가 localStorage에 저장되는지 확인 (현재 순서 저장 로직은 미구현,테스트 이후 구현 예정)
   #### 1.4 캘린더
   - [x] **날짜 선택**
   - [x] 캘린더에서 날짜 클릭
@@ -502,7 +502,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
   - [ ] startBreak에서 MIN_FLOW_MS 이상 세션을 sessionHistory에 추가
   - [ ] resumeFocus에서 마지막 세션의 breakMs 업데이트
   - [ ] handleStopwatchComplete에서 현재 세션 추가 (중복 카운트 방지)
-  - [ ] sessionStorage에 저장 확인
+  - [ ] localStorage에 저장 확인
 
 - [ ] **세션 히스토리 표시** (후순위: 통계 페이지 테스트 참고)
   - [ ] 통계 페이지에서 세션 상세 정보 확인 (후순위)
@@ -655,7 +655,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 #### 7.7 Todo 삭제 시 데이터 정리 ⚠️ (구현 완료 2026-01-22, 테스트 필요)
 - [ ] **데이터 정리**
   - [ ] Todo 삭제 시 timerStore에서 타이머 제거 확인
-  - [ ] Todo 삭제 시 sessionStorage에서 타이머 상태 삭제 확인
+  - [ ] Todo 삭제 시 localStorage에서 타이머 상태 삭제 확인
   - [ ] Todo 삭제 시 localStorage에서 sessionHistory 삭제 확인
   - [ ] 개발자 도구에서 orphaned 데이터가 남지 않는지 확인
   - [ ] 여러 Todo 삭제 시 각각의 sessionHistory가 독립적으로 삭제되는지 확인
@@ -664,7 +664,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ### 🟢 Low (후순위 테스트 - MVP 외, 데이터 기록 확인용)
 
-> **참고**: 통계 페이지는 MVP에 포함되지 않으며, 데이터가 정확히 기록되는지 확인하는 테스트 용도입니다.
+> **참고**: 통계 페이지는 참고/검증용으로 구현되어 있으며, 데이터가 정확히 기록되는지 확인하는 테스트 용도입니다.
 
 #### 📊 통계 페이지
 
@@ -741,33 +741,33 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
 
 ### 프로젝트 개요
 - **상태**: Frontend MVP 완료, Backend 미구현
-- **기술 스택**: React 18 + TypeScript, Vite, Zustand, TanStack Query, MSW
+- **기술 스택**: React 19 + TypeScript, Vite, Zustand, TanStack Query, MSW
 - **주요 기능**: Todo 관리, 뽀모도로 타이머, 일반 타이머(Stopwatch), 통계 페이지
 
 ### 알려진 문제점 (문서 기반)
 
 #### 1. SessionHistory 데이터 영속성 문제 ✅ (해결됨)
-- **위치**: `docs/plan/session-history-improvement.md`
+- **위치**: `frontend/src/features/timer/timerStore.ts`
 - **이전 문제**:
-  - `sessionHistory`가 `sessionStorage`에만 저장되어 브라우저 종료 시 사라짐
+  - (과거) `sessionHistory`가 `sessionStorage`에만 저장되어 브라우저 종료 시 사라짐 → 현재는 localStorage 저장
   - DB에 저장되지 않아 다른 기기에서 접근 불가
   - `sessionHistory`와 `focusSeconds` 불일치 가능
 - **해결 방법** (2026-01-22):
   - `sessionHistory`를 `localStorage`에 영구 저장하도록 분리
-  - 타이머 상태는 `sessionStorage`에 저장 (임시 상태)
+  - 타이머 상태도 `localStorage`에 저장 (idle 시 제거)
   - `sessionHistory`는 `localStorage`에 저장 (영구 데이터)
   - 브라우저 종료 후에도 `sessionHistory` 유지
   - 향후 DB 마이그레이션 시 `localStorage`에서 쉽게 이전 가능
 
 #### 2. 로직 분산 및 불일치
-- **위치**: `docs/plan/session-history-improvement.md` (라인 91-120)
+- **위치**: `frontend/src/features/timer/timerStore.ts`, `frontend/src/features/timer/TimerFullScreen.tsx`
 - **문제**:
   - `sessionHistory` 업데이트가 5곳에 분산
   - 뽀모도로와 일반 타이머 로직 불일치
   - `TimerFullScreen.tsx`에서 직접 store 업데이트 (관심사 분리 위반)
 
 #### 3. 멀티 탭 동기화 부재
-- **위치**: `AGENT.md` (라인 618-620)
+- **위치**: `docs/DEV_GUIDE.md`
 - **문제**: 멀티 탭에서 동시 실행 시 경고 없음 (단일 활성 권장만 문서화)
 
 ### 코드 구조 분석
@@ -785,7 +785,7 @@ const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs)
   2. `hydrateState()` (라인 143-204): 복원 로직이 복잡하고 엣지 케이스 처리 부족
   3. `startBreak()` (라인 771-814): `initialFocusMs` 업데이트 로직 복잡
   4. `resumeFocus()` (라인 816-871): 새 세션 시작 시 초기값 계산 복잡
-  5. `localStorage`와 `sessionStorage` 동기화: 타이머 상태와 `sessionHistory` 분리 저장으로 인한 복원 시점 차이 가능
+  5. `localStorage` 단일 저장: 타이머 상태와 `sessionHistory` 동기화 기준 확인
 
 #### 타이머 UI (`TimerFullScreen.tsx`)
 - **복잡도**: 약 1130줄
@@ -895,13 +895,12 @@ pnpm dev:mock
 ## 📌 테스트 시 주의사항
 
 1. **MIN_FLOW_MS**: 현재 테스트용으로 1분(60000ms)으로 설정되어 있음
-2. **sessionStorage**: 브라우저를 닫으면 초기화됨 (타이머 상태만 저장, 임시 데이터)
-3. **localStorage**: 브라우저를 닫아도 유지됨 (sessionHistory 영구 저장, 2026-01-22 변경)
-4. **MSW 모킹**: `pnpm dev:mock` 실행 시 localStorage 기반 모킹 사용
-5. **타이머 정확도**: 페이지를 벗어났다가 돌아올 때 시간 보정 확인
-6. **데이터 저장 위치**:
-   - `sessionStorage`: 타이머 상태 (running, paused, phase 등) - `todo-flow/timer/v2/{todoId}`
-   - `localStorage`: sessionHistory (영구 데이터) - `todo-flow/sessionHistory/{todoId}`
+2. **localStorage**: 브라우저를 닫아도 유지됨 (타이머 상태 + sessionHistory 저장)
+3. **MSW 모킹**: `pnpm dev:mock` 실행 시 localStorage 기반 모킹 사용
+4. **타이머 정확도**: 페이지를 벗어났다가 돌아올 때 시간 보정 확인
+5. **데이터 저장 위치**:
+   - `localStorage`: 타이머 상태 - `todo-flow/timer/v2/{todoId}`
+   - `localStorage`: sessionHistory - `todo-flow/sessionHistory/{todoId}`
 
 ---
 

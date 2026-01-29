@@ -5,7 +5,7 @@
 | 분류            | 라이브러리                       |
 | --------------- | -------------------------------- |
 | 빌드            | Vite + pnpm                      |
-| UI              | React 18 + TypeScript            |
+| UI              | React 19 + TypeScript            |
 | 라우팅          | React Router                     |
 | 서버 상태       | TanStack Query                   |
 | 클라이언트 상태 | Zustand (타이머)                 |
@@ -39,8 +39,7 @@ src/
 │   │   ├── TodoItem.tsx
 │   │   ├── SortableTodoItem.tsx
 │   │   ├── hooks.ts       # useTodos, useCreateTodo 등
-│   │   ├── useTodoActions.ts  # 핸들러 훅
-│   │   └── components/
+│   │   └── useTodoActions.ts  # 핸들러 훅
 │   ├── timer/             # 타이머 기능
 │   │   ├── TimerFullScreen.tsx
 │   │   ├── timerStore.ts      # Zustand 스토어 (타입 export)
@@ -60,7 +59,6 @@ src/
 ├── lib/                    # 유틸리티
 │   ├── constants.ts       # 공통 상수 (MIN_FLOW_MS, PHASE_LABELS 등)
 │   ├── time.ts
-│   ├── timerFormat.ts     # 시간 포맷 함수들
 │   ├── sound.ts
 │   └── queryKeys.ts
 ├── mocks/                  # MSW 핸들러
@@ -114,7 +112,7 @@ src/
     - `checkTimerConflict`: 타이머 충돌 체크
     - `getPlannedMs`: 계획된 시간 계산
     - `getTimerConflictMessage`: 에러 메시지 생성
-  - sessionStorage에 상태 저장/복구 (페이지 새로고침 대응)
+  - localStorage에 상태 저장/복구 (페이지 새로고침 대응)
   - 정지 후 재개 가능 (pause 상태 유지)
 
 ---
@@ -202,13 +200,13 @@ src/
   
 - **일반 타이머** (카운트업, 자유로운 집중)
   - `MM:SS` 형식으로 표시 (예: `05:30`)
-  - **Flow 개념**: 3분 이상 집중 + 명시적 행동(휴식/완료)
-    - 최소 집중 시간: `MIN_FLOW_MS` (3분, 180000ms)
+  - **Flow 개념**: `MIN_FLOW_MS` 이상 집중 + 명시적 행동(휴식/완료)
+    - 최소 집중 시간: `MIN_FLOW_MS` (현재 1분, 60000ms — 상수로 조정 가능)
     - 완료된 Flow만 카운트 (`pomodoroDone`)
     - `handleStopwatchComplete`에서 현재 세션만 처리 (중복 카운트 방지)
   - **휴식 기능**:
     - "휴식" 버튼 클릭 → 추천 휴식 / 자유 휴식 선택
-    - 추천 휴식: 집중 시간의 20% (5~30분 범위, 카운트다운)
+    - 추천 휴식: 집중 시간의 20% (최소/최대 제한 없음, 카운트다운)
     - 자유 휴식: 무제한 카운트업 (`MM:SS` 형식)
   - **세션 히스토리** (`sessionHistory`):
     - 각 세션의 `focusMs`와 `breakMs` 저장 (`SessionRecord[]`)
@@ -228,8 +226,8 @@ src/
 
 #### 공통 기능
 - **일시정지/재개**: pause 상태로 저장, 언제든 재개 가능
-- **완료(✓)**: 기록 + 태스크 완료
-  - 일반 타이머: 3분 이상이면 Flow 카운트 증가 (`completeTodo`), 미만이면 시간만 기록 (`addFocus`)
+  - **완료(✓)**: 기록 + 태스크 완료
+    - 일반 타이머: `MIN_FLOW_MS` 이상이면 Flow 카운트 증가 (`completeTodo`), 미만이면 시간만 기록 (`addFocus`)
   - 뽀모도로: 자동 완료 시에만 Flow 카운트 증가
 - **timerMode 저장**: 사용자가 모드를 명시적으로 선택/시작할 때 `timerMode`를 DB에 저장 (기록 API는 모드를 변경하지 않음)
 - **타이머 충돌 방지**: 한 번에 하나의 타이머만 실행 가능 (모든 태스크에 적용)
@@ -263,6 +261,8 @@ src/
 - localStorage에 데이터 저장
 - 새로고침해도 유지
 - 키: `todo-flow/todos`, `todo-flow/settings`
+- 타이머 상태: `todo-flow/timer/v2/{todoId}`
+- 세션 히스토리: `todo-flow/sessionHistory/{todoId}`
 
 ### 프로덕션
 - 백엔드 API 연동 예정
@@ -329,5 +329,5 @@ VITE_USE_MOCK=1
 
 ```bash
 pnpm test      # 전체 테스트
-pnpm test:ui   # UI 모드
+pnpm test:watch   # watch 모드
 ```

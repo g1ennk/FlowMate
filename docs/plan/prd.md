@@ -22,18 +22,18 @@
 다음 기능은 **이번 MVP 범위에서 제외**한다:
 - 로그인 / 회원가입 / 멀티유저
 - 소셜 기능
-- 통계 대시보드
-- 일기 / 루틴 / 캘린더
+- 고급 통계 대시보드(기간/필터/내보내기)
+- 일기 / 루틴
 - 서버 기반 실시간 타이머 동기화
 
 ## 4. 기술 스택
 ### Frontend
-- Vite + pnpm, React 18 + TypeScript
+- Vite + pnpm, React 19 + TypeScript
 - React Router (CSR)
 - TanStack Query, Zustand (타이머 endAt/phase 저장)
 - react-hook-form + zod
 - Tailwind CSS, date-fns, clsx
-- Vitest + @testing-library/react, ESLint + Prettier
+- Vitest + @testing-library/react, ESLint
 - Timer는 **클라이언트에서 실행**
 
 ### Backend
@@ -62,6 +62,7 @@
 ### 6.1 Todo
 - Todo 생성 / 수정 / 삭제
 - Todo 완료 체크
+- 캘린더 기반 날짜 선택/필터 (월/주 뷰)
 - 각 Todo는 다음 정보를 가진다:
   - title (필수)
   - note (선택)
@@ -90,13 +91,13 @@
 
 #### 일반 타이머 (Flexible/Flow)
 - 카운트업 방식 (00:00부터 시작)
-- **Flow 개념**: 3분 이상 집중 + 명시적 행동(휴식/완료)
-  - 최소 집중 시간: 3분 (`MIN_FLOW_MS`, 180000ms)
+- **Flow 개념**: `MIN_FLOW_MS` 이상 집중 + 명시적 행동(휴식/완료)
+  - 최소 집중 시간: `MIN_FLOW_MS` (현재 1분, 60000ms — 상수로 조정 가능)
   - 완료된 Flow만 카운트 (`pomodoroDone`)
   - `handleStopwatchComplete`에서 현재 세션만 처리 (중복 카운트 방지)
 - **휴식 기능**:
   - "휴식" 버튼 클릭 → 추천 휴식 / 자유 휴식 선택
-  - 추천 휴식: 집중 시간의 20% (5~30분 범위, 카운트다운)
+  - 추천 휴식: 집중 시간의 20% (최소/최대 제한 없음, 카운트다운)
   - 자유 휴식: 무제한 카운트업
 - **세션 히스토리**:
   - 각 세션의 집중 시간과 휴식 시간 저장
@@ -120,6 +121,12 @@
 - breakMin: 5
 - longBreakMin: 15
 - cycleEvery: 4
+
+### 6.4 통계 (기본)
+- `/stats`에서 기본 통계 확인
+  - 총 태스크, 완료율, 총 Flow/집중 시간
+  - 날짜별 태스크/완료/집중 시간 요약
+  - 세션 히스토리 기반 태스크 상세(집중/휴식 시간)
 - autoStartBreak: false
 - autoStartSession: false
 
