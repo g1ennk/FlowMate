@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { PHASE_LABELS, MIN_FLOW_MS } from '../../lib/constants'
 import { MINUTE_MS } from '../../lib/time'
+import type { TodoList } from '../../api/types'
 import { usePomodoroSettings } from '../settings/hooks'
 import { useAddFocus, useCompleteTodo, useResetTimer, useUpdateTodo } from '../todos/hooks'
 import { toast } from 'react-hot-toast'
@@ -17,6 +19,7 @@ import { useTimer, useTimerStore } from './timerStore'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 import { completeTaskFromTimer } from './completeHelpers'
 import { formatCountdown, formatMs, formatStopwatch } from './timerFormat'
+import { queryKeys } from '../../lib/queryKeys'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -39,12 +42,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [showResetModal, setShowResetModal] = useState(false)
   const [showBreakSelection, setShowBreakSelection] = useState(false)
   const [showTotalTime, setShowTotalTime] = useState(true) // 디폴트: 전체 누적(true) vs 현재 세션(false)
+  const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
 
   const { data: settings } = usePomodoroSettings()
   const completeTodo = useCompleteTodo() // 뽀모도로용 (횟수 + 시간)
   const addFocus = useAddFocus() // 일반 타이머용 (시간만)
   const updateTodo = useUpdateTodo()
   const resetTimer = useResetTimer() // 타이머 리셋용 (기록 삭제)
+  const queryClient = useQueryClient()
   
   const timer = useTimer(todoId)
   const initPomodoro = useTimerStore((s) => s.initPomodoro)
@@ -127,10 +132,15 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     ) {
       setShowTotalTime(true)
     }
+
+    const isBreakPhase = currentPhase === 'break_suggested' || currentPhase === 'break_free'
+    if (!isBreakPhase || !timer?.breakCompleted) {
+      setShowBreakTotal(false)
+    }
     
     // 이전 phase 업데이트
     prevFlexiblePhaseRef.current = currentPhase ?? null
-  }, [timer?.flexiblePhase, timer?.mode])
+  }, [timer?.flexiblePhase, timer?.mode, timer?.breakCompleted])
 
   // Flow 자동 완료 감지 (뽀모도로 세션 카운트 증가)
   useEffect(() => {
@@ -176,6 +186,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   // 현재 phase의 계획된 시간(ms) 계산
   const getPlannedMs = () => getPlannedMsUtil(timer, settings)
 
+  const getNextDoneOrder = () => {
+    const data = queryClient.getQueryData<TodoList>(queryKeys.todos())
+    if (!data) return undefined
+    const current = data.items.find((item) => item.id === todoId)
+    if (!current || current.isDone) return undefined
+    const doneTodos = data.items.filter(
+      (item) => item.date === current.date && item.isDone && item.id !== todoId,
+    )
+    const maxOrder = doneTodos.length === 0 ? -1 : Math.max(...doneTodos.map((item) => item.order))
+    return maxOrder + 1
+  }
+
   // 뽀모도로 정지 (■) - 시간만 기록 + pause 상태로 저장 후 닫기
   // Note: Explicit Pomodoro stop is not used in UI controls
 
@@ -195,6 +217,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       completeTodo: completeTodo.mutateAsync,
       addFocus: addFocus.mutateAsync,
       updateTodo: updateTodo.mutateAsync,
+      nextOrder: getNextDoneOrder(),
       debug: timer.mode === 'stopwatch',
     })
     toast.success('태스크 완료! 🎉', { id: 'task-completed' })
@@ -297,9 +320,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           timer?.flexiblePhase === 'focus' || !timer?.flexiblePhase ? (
             // 집중 모드
           <>
-            {/* Flow 라벨 */}
+            {/* 집중 라벨 */}
               <p className="mb-4 text-center text-base font-semibold text-emerald-400">
-              Flow
+              집중
             </p>
 
             {/* 타이머 숫자 - 클릭으로 전환 */}
@@ -312,13 +335,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 // 현재 세션의 집중 시간만 계산 (실시간 반영, 휴식 시간 제외)
                 // focusElapsedMs는 누적값이므로, initialFocusMs를 빼야 현재 세션의 순수 집중 시간이 나옴
                 // 일시정지 상태에서는 delta를 더하지 않음
-                let currentSessionMs = timer?.focusElapsedMs ?? 0
-                if (timer?.flexiblePhase === 'focus' && timer?.focusStartedAt && timer?.status === 'running') {
-                  // running 상태일 때만 실시간 delta 추가
-                  const delta = Date.now() - timer.focusStartedAt
-                  currentSessionMs = currentSessionMs + delta
-                }
-                // paused/waiting 상태에서는 focusElapsedMs 그대로 사용 (이미 pause 시점의 값으로 저장됨)
+                const currentSessionMs = timer?.focusElapsedMs ?? 0
                 const initialMs = timer?.initialFocusMs ?? 0
                 const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs) // 현재 세션의 집중 시간만
                 
@@ -331,7 +348,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   totalAccumulatedMs = focusSeconds * 1000
                 }
                 
-                // 표시할 시간과 라벨 결정 (디폴트: 전체 누적)
+                // 표시할 시간 (디폴트: 전체 누적)
                 const displayMs = showTotalTime ? totalAccumulatedMs : currentSessionFocusMs
                 const displayLabel = showTotalTime ? '전체 누적' : '현재 세션'
                 
@@ -449,15 +466,16 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   ? Math.max(0, timer.breakElapsedMs - targetMs)
                   : 0
 
+                const canToggleBreak = isRecommended && isCompleted
                 const breakLabel = isRecommended
                   ? isCompleted
-                    ? timer.status === 'running' ? '추가 휴식' : '추천 휴식 완료'
+                    ? (showBreakTotal ? '총 휴식' : '추가 휴식')
                     : '추천 휴식'
                   : '자유 휴식'
 
                 const displayMs = isRecommended
-                  ? isCompleted && timer.status === 'running'
-                    ? extraBreakMs
+                  ? isCompleted
+                    ? (showBreakTotal ? timer.breakElapsedMs : extraBreakMs)
                     : Math.max(0, targetMs - timer.breakElapsedMs)
                   : timer.breakElapsedMs
 
@@ -465,16 +483,36 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   <>
                     {/* 휴식 라벨 */}
                     <p className="mb-4 text-center text-base font-semibold text-white">
-                      {breakLabel}
+                      휴식
                     </p>
 
                     {/* 타이머 숫자 */}
-                    <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
-                      {isRecommended && !(isCompleted && timer.status === 'running')
-                        ? formatCountdown(displayMs)
-                        : formatStopwatch(displayMs)
-                      }
-                    </p>
+                    {canToggleBreak ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowBreakTotal(!showBreakTotal)}
+                        className="w-full cursor-pointer transition-opacity hover:opacity-80"
+                      >
+                        <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
+                          {formatStopwatch(displayMs)}
+                        </p>
+                        <p className="mt-1 text-center text-xs font-medium text-white/80">
+                          {breakLabel}
+                        </p>
+                      </button>
+                    ) : (
+                      <>
+                        <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
+                          {isRecommended
+                            ? formatCountdown(displayMs)
+                            : formatStopwatch(displayMs)
+                          }
+                        </p>
+                        <p className="mt-1 text-center text-xs font-medium text-white/80">
+                          {breakLabel}
+                        </p>
+                      </>
+                    )}
                   </>
                 )
               })()}
