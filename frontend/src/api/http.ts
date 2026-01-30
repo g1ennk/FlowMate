@@ -6,7 +6,19 @@ export type ApiError = {
   fields?: Record<string, string>
 }
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '')
+function normalizeBaseUrl(value?: string) {
+  const fallback = '/api'
+  if (!value) return fallback
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/$/, '')
+  }
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return withLeadingSlash.replace(/\/$/, '')
+}
+
+const baseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
 
 const ErrorSchema = z
   .object({
