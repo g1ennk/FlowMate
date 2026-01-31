@@ -306,7 +306,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
-        <h1 className="text-base font-medium text-white">{effectiveMode === 'pomodoro' ? '뽀모도로 타이머' : '타이머'}</h1>
+        <h1 className="text-base font-medium text-white">{effectiveMode === 'pomodoro' ? '뽀모도로 타이머' : '일반 타이머'}</h1>
         {/* 리셋 버튼 (항상 표시) */}
         <button
           onClick={() => setShowResetModal(true)}
