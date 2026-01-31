@@ -7,10 +7,10 @@ import { Switch } from '../../ui/Switch'
 import { usePomodoroSettings, useUpdatePomodoroSettings } from './hooks'
 
 const schema = z.object({
-  flowMin: z.coerce.number().int().min(1).max(180),
-  breakMin: z.coerce.number().int().min(1).max(60),
-  longBreakMin: z.coerce.number().int().min(1).max(120),
-  cycleEvery: z.coerce.number().int().min(1).max(12),
+  flowMin: z.coerce.number().int().min(1).max(90),
+  breakMin: z.coerce.number().int().min(1).max(90),
+  longBreakMin: z.coerce.number().int().min(1).max(90),
+  cycleEvery: z.coerce.number().int().min(1).max(10),
   autoStartBreak: z.boolean(),
   autoStartSession: z.boolean(),
 })

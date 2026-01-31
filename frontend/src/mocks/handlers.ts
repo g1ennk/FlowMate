@@ -227,7 +227,7 @@ export const handlers = [
     await delay(latency)
     const id = params.id as string
     const body = (await request.json()) as { durationSec?: number }
-    if (!body.durationSec || body.durationSec < 1 || body.durationSec > 10_800) {
+    if (!body.durationSec || body.durationSec < 1 || body.durationSec > 43_200) {
       return HttpResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'durationSec invalid' } },
         { status: 400 },
@@ -261,7 +261,7 @@ export const handlers = [
     await delay(latency)
     const id = params.id as string
     const body = (await request.json()) as { durationSec?: number }
-    if (!body.durationSec || body.durationSec < 1 || body.durationSec > 10_800) {
+    if (!body.durationSec || body.durationSec < 1 || body.durationSec > 43_200) {
       return HttpResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'durationSec invalid' } },
         { status: 400 },

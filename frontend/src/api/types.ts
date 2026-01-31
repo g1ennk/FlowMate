@@ -43,16 +43,16 @@ export const TodoReorderRequestSchema = z.object({
 })
 
 export const PomodoroSettingsSchema = z.object({
-  flowMin: z.number().int(),
-  breakMin: z.number().int(),
-  longBreakMin: z.number().int(),
-  cycleEvery: z.number().int(),
+  flowMin: z.number().int().min(1).max(90),
+  breakMin: z.number().int().min(1).max(90),
+  longBreakMin: z.number().int().min(1).max(90),
+  cycleEvery: z.number().int().min(1).max(10),
   autoStartBreak: z.boolean().optional(),
   autoStartSession: z.boolean().optional(),
 })
 
 export const PomodoroCompleteRequestSchema = z.object({
-  durationSec: z.number().int().min(1).max(10_800),
+  durationSec: z.number().int().min(1).max(43_200),
 })
 
 export const PomodoroCompleteResponseSchema = z.object({
@@ -64,7 +64,7 @@ export const PomodoroCompleteResponseSchema = z.object({
 
 // 일반 타이머용 (시간만 추가, 횟수 X)
 export const FocusAddRequestSchema = z.object({
-  durationSec: z.number().int().min(1).max(10_800),
+  durationSec: z.number().int().min(1).max(43_200),
 })
 
 export const FocusAddResponseSchema = z.object({

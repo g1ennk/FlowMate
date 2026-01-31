@@ -142,10 +142,10 @@
 
 검증 규칙:
 
-- flowMin: 1 ~ 180
-- breakMin: 1 ~ 60
-- longBreakMin: 1 ~ 120
-- cycleEvery: 1 ~ 12
+- flowMin: 1 ~ 90
+- breakMin: 1 ~ 90
+- longBreakMin: 1 ~ 90
+- cycleEvery: 1 ~ 10
 - autoStartBreak: boolean
 - autoStartSession: boolean
 

@@ -151,8 +151,8 @@ com.example.flowtodo
 
 ## 8. Validation
 - title: @NotBlank, @Size(max=200)
-- durationSec: @Min(1) @Max(10800) (권장 상한)
-- settings: PRD 범위 동일 (autoStartBreak/autoStartSession은 optional)
+- durationSec: @Min(1) @Max(43200) (권장 상한)
+- settings: flowMin 1~90, breakMin 1~90, longBreakMin 1~90, cycleEvery 1~10 (autoStartBreak/autoStartSession은 optional)
 
 ---
 

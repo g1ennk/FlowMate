@@ -103,7 +103,7 @@ Content-Type: `application/json`
   "autoStartSession": false
 }
 ```
-- Validation: flowMin 1~180, breakMin 1~60, longBreakMin 1~120, cycleEvery 1~12
+- Validation: flowMin 1~90, breakMin 1~90, longBreakMin 1~90, cycleEvery 1~10
 - Note: `autoStartBreak`, `autoStartSession`은 선택(optional)이며 누락 시 `false`로 처리
 - Response 200: `PomodoroSettings`
 
@@ -127,7 +127,7 @@ Content-Type: `application/json`
   "updatedAt": "2026-01-09T12:20:00Z"
 }
 ```
-- Errors: 404 Not Found, 400 Validation Error (durationSec 1~10800 권장)
+- Errors: 404 Not Found, 400 Validation Error (durationSec 1~43200 권장)
  - Note: 완료/누적 API는 `timerMode`를 변경하지 않음 (모드는 `PATCH /api/todos/{id}`로 동기화)
 
 ### 4.2 Add Focus Time (일반 타이머)
@@ -145,7 +145,7 @@ Content-Type: `application/json`
   "updatedAt": "2026-01-09T12:20:00Z"
 }
 ```
-- Errors: 404 Not Found, 400 Validation Error (durationSec 1~10800 권장)
+- Errors: 404 Not Found, 400 Validation Error (durationSec 1~43200 권장)
 - Note: 일반 타이머(Stopwatch)는 시간만 누적하고 세션 횟수는 증가시키지 않음
 
 ### 4.3 Reset Timer
