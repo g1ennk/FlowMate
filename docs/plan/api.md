@@ -25,7 +25,7 @@ Content-Type: `application/json`
 }
 ```
 
-**참고**: `sessionHistory`는 **클라이언트 로컬 기록**으로 API 응답에 포함되지 않습니다. 현재는 `localStorage`에만 저장됩니다.
+**참고**: `sessionHistory`는 **클라이언트 로컬 기록**으로 API 응답에 포함되지 않습니다. 현재는 `localStorage`에만 저장됩니다. (DB에 저장해야 하는 거 아님?)
 
 ### PomodoroSettings
 ```json
@@ -38,6 +38,7 @@ Content-Type: `application/json`
   "autoStartSession": false
 }
 ```
+**참고**: `autoStartBreak`, `autoStartSession`는 응답에서 생략될 수 있으며, 프론트는 누락 시 `false`로 처리합니다.
 
 ---
 
@@ -87,6 +88,7 @@ Content-Type: `application/json`
 ### 3.1 Get Settings
 - `GET /api/settings/pomodoro`
 - Response 200: `PomodoroSettings` (없으면 default 생성/반환)
+- Note: `autoStartBreak`, `autoStartSession` 누락 시 `false`로 간주
 
 ### 3.2 Update Settings
 - `PUT /api/settings/pomodoro`
@@ -102,6 +104,7 @@ Content-Type: `application/json`
 }
 ```
 - Validation: flowMin 1~180, breakMin 1~60, longBreakMin 1~120, cycleEvery 1~12
+- Note: `autoStartBreak`, `autoStartSession`은 선택(optional)이며 누락 시 `false`로 처리
 - Response 200: `PomodoroSettings`
 
 ---

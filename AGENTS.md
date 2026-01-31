@@ -9,7 +9,8 @@
   - `src/mocks/`: MSW 핸들러 및 목 서버
   - `src/lib/`: 공용 유틸/상수
 - `backend/`: Spring Boot 서비스 예정 (현재 비어 있음)
-- `docs/`: 기획/구현 문서 (상세 운영 가이드는 `docs/DEV_GUIDE.md` 참고)
+- `docs/`: 기획/구현 문서 (운영/개발 컨텍스트는 `docs/codebase-analysis.md` 참고)
+  - `plan/`: PRD/API
 - `infra/`: 배포/인프라 설정 (예정)
 - `images/`: 문서용 이미지 자산
 
@@ -36,7 +37,7 @@
 ## 테스트 가이드
 - Vitest + Testing Library, JSDOM 환경, API 모킹은 MSW 사용.
 - 단위 테스트는 `frontend/src/**` 내에 두고 파일명은 `*.test.ts`.
-- 수동/QA 체크는 `docs/frontend_test.md`에 갱신.
+- 수동/QA 체크 문서는 현재 별도 파일 없음 (필요 시 추가).
 
 ## 커밋 & PR 가이드
 - Conventional Commits 사용: `type(scope): summary` (예: `fix(frontend): ...`, `docs: ...`).

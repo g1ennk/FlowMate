@@ -201,7 +201,6 @@ src/
   - 수동 스킵: "휴식" 버튼으로 다음 phase로 이동
   - **Dot 표시** (시간 아래 위치):
     - 완료된 Flow: 밝은 초록색 (`bg-emerald-400`)
-    - 스킵된 Flow: 밝은 초록색 (`bg-emerald-400`)
     - 진행 중 Flow: 긴 도트 (`w-10 h-3`) + 내부 프로그레스바 (초록색 그라데이션) + 그림자
     - 예정된 Flow: 짧은 도트 (`w-2.5 h-2.5`) + 어두운 회색 (`bg-gray-700/50`)
     - Break phase일 때: 완료된 Flow는 흰색 (`bg-white/90`)
@@ -211,28 +210,29 @@ src/
 - **일반 타이머** (카운트업, 자유로운 집중)
   - `MM:SS` 형식으로 표시 (예: `05:30`)
   - **Flow 개념**: `MIN_FLOW_MS` 이상 집중 + 명시적 행동(휴식/완료)
-    - 최소 집중 시간: `MIN_FLOW_MS` (현재 1분, 60000ms — 상수로 조정 가능)
+    - 최소 집중 시간: `MIN_FLOW_MS` (현재 0분, 0ms — 상수로 조정 가능)
     - 완료된 Flow만 카운트 (`pomodoroDone`)
-    - `handleStopwatchComplete`에서 현재 세션만 처리 (중복 카운트 방지)
+    - 완료 처리 로직에서 현재 세션만 처리 (중복 카운트 방지)
   - **휴식 기능**:
     - "휴식" 버튼 클릭 → 추천 휴식 / 자유 휴식 선택
-    - 추천 휴식: 집중 시간의 20% (최소/최대 제한 없음, 카운트다운)
+    - 추천 휴식: 집중 시간(분) * 20%를 반올림한 분 단위 (0분 가능, 카운트다운)
     - 자유 휴식: 무제한 카운트업 (`MM:SS` 형식)
   - **세션 히스토리** (`sessionHistory`):
     - 각 세션의 `focusMs`와 `breakMs` 저장 (`SessionRecord[]`)
     - `startBreak`에서 MIN_FLOW_MS 이상인 세션을 히스토리에 추가
     - `resumeFocus`에서 마지막 세션의 `breakMs` 업데이트
-    - `handleStopwatchComplete`에서 현재 세션을 히스토리에 추가 (MIN_FLOW_MS 이상인 경우)
+    - 완료 처리 로직에서 현재 세션을 히스토리에 추가/갱신 (MIN_FLOW_MS 기준)
     - 집중 재개 후 `focusElapsedMs`는 0부터 새로 시작
     - 완료된 태스크의 `sessionHistory`는 `pause` 상태로 유지 (통계 페이지에서 표시)
     - 현재는 `localStorage`에 저장 (브라우저 새로고침/재실행 시에도 유지, 추후 서버 저장 예정)
   - **Dot 표시** (시간 아래 위치):
     - 완료된 Flow: 밝은 초록색 (`bg-emerald-400`)
-    - 진행 중 Flow: 긴 도트 (`w-10 h-3`) + 내부 프로그레스바 + 깜빡임 애니메이션 (`animate-pulse`)
+    - 진행 중 Flow: 짧은 도트 (`w-2.5 h-2.5`) + 깜빡임 애니메이션 (`animate-pulse`)
     - Flow phase일 때: 완료된 Flow는 초록색
     - Break phase일 때: 완료된 Flow는 흰색 (`bg-white/90`)
+    - 추천 휴식(카운트다운) 중: 긴 도트(`w-10 h-3`) + 내부 프로그레스바
   - "집중 시작" 버튼으로 다시 집중 모드
-  - 자동화 설정 적용: `autoStartBreak`, `autoStartSession` (뽀모도로 설정과 동일)
+  - 자동화 설정 적용: `autoStartSession`만 사용 (추천 휴식 종료 후 자동 집중 시작)
 
 #### 공통 기능
 - **일시정지/재개**: pause 상태로 저장, 언제든 재개 가능

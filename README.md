@@ -35,7 +35,7 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 
 ## 기술 스택
 
-### Frontend
+### Frontend (추후 왜 선택했는지 자세히)
 
 - Framework: React 19 + TypeScript
 - Build: Vite
@@ -49,10 +49,10 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 - Testing: Vitest + @testing-library/react
 - Mocking: MSW (Mock Service Worker)
 
-### Backend (예정)
+### Backend (추후 왜 선택했는지 자세히)
 
 - Framework: Spring Boot 3.x
-- Database: MySQL (Prod) / H2 (Dev)
+- Database: MySQL (Prod, Dev) /  H2 (Local)
 - Migration: Flyway
 
 ## 프로젝트 구조 (모노레포)
@@ -74,11 +74,10 @@ FlowMate/
 ├── backend/                  # Spring Boot 앱 (예정)
 ├── infra/                    # 인프라/배포 구성 (예정)
 ├── docs/                     # 문서
-│   ├── plan/                 # 기획 문서 (PRD/Design/API)
+│   ├── plan/                 # 기획 문서 (PRD/API)
 │   ├── frontend.md           # 프론트엔드 가이드
 │   ├── backend.md            # 백엔드 가이드
-│   ├── frontend_test.md      # 테스트 가이드
-│   └── DEV_GUIDE.md          # 내부 개발/운영 가이드
+│   └── codebase-analysis.md  # 코드베이스 분석/운영 컨텍스트
 └── AGENTS.md                 # 기여자 가이드
 ```
 
@@ -131,7 +130,4 @@ cd frontend
 
 # 단위 테스트 실행
 pnpm test
-
-# 타이머 수동 테스트 (docs/frontend_test.md 참고)
-pnpm dev:mock
 ```

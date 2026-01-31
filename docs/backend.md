@@ -1,5 +1,7 @@
 # Backend Implementation Plan (Spring Boot)
 
+> API 계약의 단일 소스는 `docs/plan/api.md`입니다. 구현/검증은 해당 문서를 기준으로 합니다.
+
 ## 1. 모듈
 - spring-boot-starter-web
 - spring-boot-starter-validation
@@ -81,6 +83,7 @@ com.example.flowtodo
 - cycleEvery: int default 4
 - autoStartBreak: boolean default false
 - autoStartSession: boolean default false
+- Note: 요청에서 누락되면 false로 처리 (백워드 호환)
 
 ### 4.3 TodoSession Entity (V2 마이그레이션)
 - id: UUID (PK)
@@ -128,6 +131,7 @@ com.example.flowtodo
   - 없으면 default 반환 또는 생성 후 반환(권장: 생성)
 - update(userId, dto)
   - validation 체크
+  - autoStartBreak/autoStartSession 누락 시 false로 보정
 
 ---
 
@@ -148,7 +152,7 @@ com.example.flowtodo
 ## 8. Validation
 - title: @NotBlank, @Size(max=200)
 - durationSec: @Min(1) @Max(10800) (권장 상한)
-- settings: PRD 범위 동일
+- settings: PRD 범위 동일 (autoStartBreak/autoStartSession은 optional)
 
 ---
 
@@ -161,6 +165,7 @@ com.example.flowtodo
 ---
 
 ## 10. 개발/운영 환경
-- dev profile: H2 가능
+- local profile: H2
+- dev profile: MySQL
 - prod profile: MySQL
 - CORS: 프론트 dev origin 허용
