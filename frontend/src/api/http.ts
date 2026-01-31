@@ -1,4 +1,5 @@
 import { z, type ZodSchema } from 'zod'
+import { getClientId } from '../lib/clientId'
 
 export type ApiError = {
   status: number
@@ -67,6 +68,7 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
     method,
     headers: {
       'Content-Type': 'application/json',
+      'X-Client-Id': getClientId(),
       ...headers,
     },
     body: normalizeBody(body),

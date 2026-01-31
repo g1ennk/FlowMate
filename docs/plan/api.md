@@ -1,8 +1,10 @@
 # API Spec – Todo + Pomodoro Web App (MVP)
 
 Base URL: `/api`
-Auth: 없음(MVP 단일 사용자, 서버 내부 userId="local")
+Auth: 없음(MVP는 게스트, 서버는 `X-Client-Id`를 userId로 사용)
 Content-Type: `application/json`
+Headers (MVP):
+- `X-Client-Id`: 게스트 사용자 식별자(클라이언트에서 생성된 UUID)
 
 ---
 

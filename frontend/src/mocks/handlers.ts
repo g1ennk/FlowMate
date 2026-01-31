@@ -4,8 +4,10 @@ import type { PomodoroSettings, Todo } from '../api/types'
 type StoredTodo = Omit<Todo, 'order'> & { order?: number }
 
 const STORAGE_KEYS = {
-  TODOS: 'todo-flow/todos',
-  SETTINGS: 'todo-flow/settings',
+  legacyTodos: 'todo-flow/todos',
+  legacySettings: 'todo-flow/settings',
+  todos: (clientId: string) => `todo-flow/${clientId}/todos`,
+  settings: (clientId: string) => `todo-flow/${clientId}/settings`,
 }
 
 const now = () => new Date().toISOString()
@@ -23,6 +25,10 @@ const defaultSettings: PomodoroSettings = {
   cycleEvery: 4,
   autoStartBreak: false,
   autoStartSession: false,
+}
+
+function getClientId(request: Request) {
+  return request.headers.get('X-Client-Id') || 'local'
 }
 
 function normalizeTodos(input: StoredTodo[]) {
@@ -69,13 +75,22 @@ function normalizeTodos(input: StoredTodo[]) {
 }
 
 // localStorage에서 로드
-function loadTodos(): Todo[] {
+function loadTodos(clientId: string): Todo[] {
   try {
-    const stored = localStorage.getItem(STORAGE_KEYS.TODOS)
+    const key = STORAGE_KEYS.todos(clientId)
+    let stored = localStorage.getItem(key)
+    if (!stored) {
+      const legacy = localStorage.getItem(STORAGE_KEYS.legacyTodos)
+      if (legacy) {
+        localStorage.setItem(key, legacy)
+        localStorage.removeItem(STORAGE_KEYS.legacyTodos)
+        stored = legacy
+      }
+    }
     if (stored) {
       const parsed = JSON.parse(stored) as StoredTodo[]
       const { todos: normalized, changed } = normalizeTodos(parsed)
-      if (changed) saveTodos(normalized)
+      if (changed) saveTodos(clientId, normalized)
       return normalized
     }
   } catch (e) {
@@ -84,9 +99,9 @@ function loadTodos(): Todo[] {
   return [] // 빈 상태로 시작
 }
 
-function saveTodos(todos: Todo[]) {
+function saveTodos(clientId: string, todos: Todo[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.TODOS, JSON.stringify(todos))
+    localStorage.setItem(STORAGE_KEYS.todos(clientId), JSON.stringify(todos))
   } catch (e) {
     console.error('Failed to save todos to localStorage:', e)
   }
@@ -99,9 +114,18 @@ function getNextOrder(todos: Todo[], date: string, isDone: boolean) {
   return orders.length === 0 ? 0 : Math.max(...orders) + 1
 }
 
-function loadSettings(): PomodoroSettings {
+function loadSettings(clientId: string): PomodoroSettings {
   try {
-    const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS)
+    const key = STORAGE_KEYS.settings(clientId)
+    let stored = localStorage.getItem(key)
+    if (!stored) {
+      const legacy = localStorage.getItem(STORAGE_KEYS.legacySettings)
+      if (legacy) {
+        localStorage.setItem(key, legacy)
+        localStorage.removeItem(STORAGE_KEYS.legacySettings)
+        stored = legacy
+      }
+    }
     if (stored) {
       return JSON.parse(stored) as PomodoroSettings
     }
@@ -111,27 +135,25 @@ function loadSettings(): PomodoroSettings {
   return defaultSettings
 }
 
-function saveSettings(settings: PomodoroSettings) {
+function saveSettings(clientId: string, settings: PomodoroSettings) {
   try {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings))
+    localStorage.setItem(STORAGE_KEYS.settings(clientId), JSON.stringify(settings))
   } catch (e) {
     console.error('Failed to save settings to localStorage:', e)
   }
 }
 
-// 메모리 캐시 (핸들러 내에서 사용)
-let todos: Todo[] = loadTodos()
-let settings: PomodoroSettings = loadSettings()
-
 export const handlers = [
-  http.get('/api/todos', async () => {
+  http.get('/api/todos', async ({ request }) => {
     await delay(latency)
-    todos = loadTodos() // 최신 데이터 로드
+    const clientId = getClientId(request)
+    const todos = loadTodos(clientId)
     return HttpResponse.json({ items: todos })
   }),
 
   http.post('/api/todos', async ({ request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const body = (await request.json()) as Partial<Todo>
     if (!body.title || body.title.length === 0 || body.title.length > 200) {
       return HttpResponse.json(
@@ -140,7 +162,7 @@ export const handlers = [
       )
     }
     const date = body.date ?? today()
-    todos = loadTodos()
+    let todos = loadTodos(clientId)
     const nextOrder = getNextOrder(todos, date, false)
     const next: Todo = {
       id: crypto.randomUUID(),
@@ -156,15 +178,16 @@ export const handlers = [
       updatedAt: now(),
     }
     todos = [next, ...todos]
-    saveTodos(todos)
+    saveTodos(clientId, todos)
     return HttpResponse.json(next, { status: 201 })
   }),
 
   http.patch('/api/todos/:id', async ({ params, request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const id = params.id as string
     const body = (await request.json()) as Partial<Todo>
-    todos = loadTodos()
+    let todos = loadTodos(clientId)
     const existing = todos.find((t) => t.id === id)
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
@@ -176,12 +199,13 @@ export const handlers = [
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
-    saveTodos(todos)
+    saveTodos(clientId, todos)
     return HttpResponse.json(updated)
   }),
 
   http.put('/api/todos/reorder', async ({ request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const body = (await request.json()) as { items?: Array<{ id?: string; order?: number }> }
     if (!body.items || body.items.length === 0) {
       return HttpResponse.json(
@@ -199,32 +223,34 @@ export const handlers = [
       )
     }
     const orderMap = new Map(body.items.map((item) => [item.id as string, item.order as number]))
-    todos = loadTodos()
+    let todos = loadTodos(clientId)
     todos = todos.map((todo) => {
       const nextOrder = orderMap.get(todo.id)
       if (nextOrder === undefined) return todo
       return { ...todo, order: nextOrder, updatedAt: now() }
     })
-    saveTodos(todos)
+    saveTodos(clientId, todos)
     return HttpResponse.json({ items: todos })
   }),
 
-  http.delete('/api/todos/:id', async ({ params }) => {
+  http.delete('/api/todos/:id', async ({ params, request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const id = params.id as string
-    todos = loadTodos()
+    let todos = loadTodos(clientId)
     const existing = todos.find((t) => t.id === id)
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
     }
     todos = todos.filter((t) => t.id !== id)
-    saveTodos(todos)
+    saveTodos(clientId, todos)
     return HttpResponse.json(null, { status: 204 })
   }),
 
   // 뽀모도로 완료 (횟수 + 시간)
   http.post('/api/todos/:id/pomodoro/complete', async ({ params, request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const id = params.id as string
     const body = (await request.json()) as { durationSec?: number }
     if (!body.durationSec || body.durationSec < 1 || body.durationSec > 43_200) {
@@ -233,7 +259,7 @@ export const handlers = [
         { status: 400 },
       )
     }
-    todos = loadTodos()
+    let todos = loadTodos(clientId)
     const existing = todos.find((t) => t.id === id)
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
@@ -247,7 +273,7 @@ export const handlers = [
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
-    saveTodos(todos)
+    saveTodos(clientId, todos)
     return HttpResponse.json({
       id,
       pomodoroDone: updated.pomodoroDone,
@@ -259,6 +285,7 @@ export const handlers = [
   // 일반 타이머 - 시간만 추가 (횟수 증가 X)
   http.post('/api/todos/:id/focus/add', async ({ params, request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const id = params.id as string
     const body = (await request.json()) as { durationSec?: number }
     if (!body.durationSec || body.durationSec < 1 || body.durationSec > 43_200) {
@@ -267,7 +294,7 @@ export const handlers = [
         { status: 400 },
       )
     }
-    todos = loadTodos()
+    let todos = loadTodos(clientId)
     const existing = todos.find((t) => t.id === id)
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
@@ -281,7 +308,7 @@ export const handlers = [
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
-    saveTodos(todos)
+    saveTodos(clientId, todos)
     return HttpResponse.json({
       id,
       focusSeconds: updated.focusSeconds,
@@ -290,10 +317,11 @@ export const handlers = [
   }),
 
   // 타이머 리셋 (focusSeconds와 pomodoroDone 초기화)
-  http.post('/api/todos/:id/reset', async ({ params }) => {
+  http.post('/api/todos/:id/reset', async ({ params, request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const id = params.id as string
-    todos = loadTodos()
+    let todos = loadTodos(clientId)
     const existing = todos.find((t) => t.id === id)
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
@@ -306,7 +334,7 @@ export const handlers = [
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
-    saveTodos(todos)
+    saveTodos(clientId, todos)
     return HttpResponse.json({
       id,
       focusSeconds: 0,
@@ -315,17 +343,19 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/settings/pomodoro', async () => {
+  http.get('/api/settings/pomodoro', async ({ request }) => {
     await delay(latency)
-    settings = loadSettings()
+    const clientId = getClientId(request)
+    const settings = loadSettings(clientId)
     return HttpResponse.json(settings)
   }),
 
   http.put('/api/settings/pomodoro', async ({ request }) => {
     await delay(latency)
+    const clientId = getClientId(request)
     const body = (await request.json()) as PomodoroSettings
-    settings = { ...body }
-    saveSettings(settings)
+    const settings = { ...body }
+    saveSettings(clientId, settings)
     return HttpResponse.json(settings)
   }),
 ]

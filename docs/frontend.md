@@ -78,6 +78,10 @@ src/
 
 ---
 
+### API 클라이언트 동작
+- 모든 API 요청에 `X-Client-Id` 헤더를 포함 (게스트 사용자 식별용)
+- 클라이언트 ID는 `localStorage`의 `todo-flow/client-id`에 저장됨
+
 ## 3. 라우팅
 
 | 경로                 | 페이지               | 설명               |
@@ -279,7 +283,7 @@ src/
 ### 개발 환경 (MSW)
 - localStorage에 데이터 저장
 - 새로고침해도 유지
-- 키: `todo-flow/todos`, `todo-flow/settings`
+- 키: `todo-flow/{clientId}/todos`, `todo-flow/{clientId}/settings`
 - 타이머 상태: `todo-flow/timer/v2/{todoId}`
 - 세션 히스토리: `todo-flow/sessionHistory/{todoId}`
 

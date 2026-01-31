@@ -1,6 +1,7 @@
 # Backend Implementation Plan (Spring Boot)
 
 > API 계약의 단일 소스는 `docs/plan/api.md`입니다. 구현/검증은 해당 문서를 기준으로 합니다.
+> MVP는 게스트 모드이며, `X-Client-Id` 헤더 값을 `userId`로 사용합니다.
 
 ## 1. 모듈
 - spring-boot-starter-web
@@ -54,9 +55,9 @@ com.example.flowtodo
 
 ---
 
-## 3. 멀티유저 대비(현재는 local)
+## 3. 멀티유저 대비(현재는 게스트)
 - 인증 없이 동작
-- Controller/Service에서 항상 `userId = "local"`로 조회/저장
+- Controller/Service에서 `X-Client-Id`를 `userId`로 사용해 조회/저장
 - 나중에 JWT 붙이면 `userId`를 SecurityContext에서 가져오도록 교체
 
 ---

@@ -65,9 +65,10 @@
 ### 2.4 로컬 저장소 키
 - 타이머 상태: `todo-flow/timer/v2/{todoId}`
 - 세션 히스토리: `todo-flow/sessionHistory/{todoId}`
+- 게스트 사용자 ID: `todo-flow/client-id`
 - MSW 모킹 데이터:
-  - Todos: `todo-flow/todos`
-  - Settings: `todo-flow/settings`
+  - Todos: `todo-flow/{clientId}/todos`
+  - Settings: `todo-flow/{clientId}/settings`
 
 ### 2.5 SessionHistory 운영/개선 요약
 - `sessionHistory`는 **클라이언트 localStorage에만 영구 저장**되며 API 응답에는 포함되지 않음
@@ -151,6 +152,7 @@
      **자동 완료로 기록되지 않는** 케이스 발생 가능.
 
 ## 6. API 요약 (프론트 사용 기준)
+- 모든 요청에 `X-Client-Id` 헤더 포함 (게스트 사용자 식별)
 - `GET /api/todos`
 - `POST /api/todos`
 - `PATCH /api/todos/:id`

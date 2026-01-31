@@ -228,6 +228,7 @@
 - 서버는 결과 누적만 담당(`complete` 시 pomodoroDone/focusSeconds 증가)
 - 설정은 타이머 시작 시 스냅샷 적용
 - MVP는 인증 생략, userId 필드는 유지 (수정 필요)
+- MVP는 게스트 모드이며 `X-Client-Id`를 userId로 사용
 - 단일 활성 타이머를 권장(멀티 탭 동시 실행은 막거나 경고)
 
 ## 11. 성공 기준 (Success Metrics)
