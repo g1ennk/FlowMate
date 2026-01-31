@@ -5,6 +5,7 @@ import {
   StopIcon,
   MoreVerticalIcon,
 } from '../../../ui/Icons'
+import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDisplay'
 
 export type TodoItemProps = {
   title: string
@@ -85,79 +86,20 @@ export function TodoItem({
     }
   }, [isEditing])
 
-  // 실시간 타이머가 실행 중일 때
-  // 태스크 밑에는 집중 시간만 표시 (추천 휴식 카운트다운일 때는 카운트다운 표시)
-  let displayTimeSeconds: number
-  
-  // 집중 시간 계산: sessionHistory가 있으면 sessionHistory 기반, 없으면 DB 값 사용
-  // 일반 타이머는 sessionHistory를 사용, 뽀모도로는 DB 값 사용
-  // 타이머 화면과 동일한 로직: sessionHistoryTotalMs + currentSessionFocusMs
-  let sessionHistoryFocusSeconds: number | null = null
-  if (sessionHistory.length > 0) {
-    const sessionHistoryTotalMs = sessionHistory.reduce((sum, s) => sum + s.focusMs, 0)
-    
-    // 현재 진행 중인 세션의 집중 시간 계산 (실시간 반영)
-    // 타이머 화면과 동일한 로직: sessionHistoryTotalMs + currentSessionFocusMs
-    if (activeTimerElapsedMs !== undefined && isActiveTimer) {
-      // activeTimerElapsedMs는 이미 실시간 delta가 포함된 전체 누적 시간
-      // initialFocusMs를 빼면 현재 세션의 순수 집중 시간이 나옴
-      const currentSessionFocusMs = Math.max(0, activeTimerElapsedMs - initialFocusMs)
-      // 전체 누적 집중 시간 = 이전 세션들의 집중 시간 + 현재 세션의 집중 시간
-      const totalAccumulatedMs = sessionHistoryTotalMs + currentSessionFocusMs
-      sessionHistoryFocusSeconds = Math.floor(totalAccumulatedMs / 1000)
-    } else {
-      // 타이머가 비활성이면 sessionHistory만 사용
-      sessionHistoryFocusSeconds = Math.floor(sessionHistoryTotalMs / 1000)
-    }
-  }
-  
-  if (isDone) {
-    // 완료된 태스크: sessionHistory가 있으면 sessionHistory 기반, 없으면 DB 값 사용
-    displayTimeSeconds = sessionHistoryFocusSeconds ?? focusSeconds
-  } else if (isActiveTimer) {
-    // 휴식 중인지 체크 (일반 타이머만)
-    if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
-      // 추천 휴식: 완료 전에는 카운트다운, 완료 후에는 추가 휴식 카운트업
-      if (breakElapsedMs >= breakTargetMs) {
-        const extraMs = breakElapsedMs - breakTargetMs
-        displayTimeSeconds = Math.floor(extraMs / 1000)
-      } else {
-        const remainingMs = Math.max(0, breakTargetMs - breakElapsedMs)
-        displayTimeSeconds = Math.ceil(remainingMs / 1000)
-      }
-    } else if (flexiblePhase === 'break_free' && breakElapsedMs !== undefined) {
-      // 자유 휴식: 카운트업 표시 (경과 시간)
-      displayTimeSeconds = Math.floor(breakElapsedMs / 1000)
-    } else if (activeTimerRemainingMs !== undefined) {
-      // 뽀모도로: 카운트다운 (남은 시간 표시)
-      displayTimeSeconds = Math.ceil(activeTimerRemainingMs / 1000)
-    } else if (activeTimerElapsedMs !== undefined) {
-      // 일반 타이머: 전체 집중 시간 표시
-      // sessionHistory가 있으면 sessionHistoryTotalMs + currentSessionFocusMs (이미 계산됨)
-      // 없으면 activeTimerElapsedMs 사용 (첫 세션)
-      if (sessionHistory.length > 0) {
-        // 타이머 화면과 동일한 로직: 전체 누적 집중 시간
-        // sessionHistoryFocusSeconds는 이미 sessionHistoryTotalMs + currentSessionFocusMs로 계산됨
-        displayTimeSeconds = sessionHistoryFocusSeconds ?? Math.floor(activeTimerElapsedMs / 1000)
-      } else {
-        // sessionHistory가 없으면 activeTimerElapsedMs 사용 (첫 세션)
-        displayTimeSeconds = Math.floor(activeTimerElapsedMs / 1000)
-      }
-    } else {
-      // sessionHistory가 있으면 사용, 없으면 DB 값
-      displayTimeSeconds = sessionHistoryFocusSeconds ?? focusSeconds
-    }
-  } else {
-    // 미완료 + 타이머 비활성: sessionHistory가 있으면 사용, 없으면 DB 값
-    displayTimeSeconds = sessionHistoryFocusSeconds ?? focusSeconds
-  }
-  
-  const totalFocusSeconds = displayTimeSeconds
-  
-  // 시간 포맷: 모든 경우에 분:초 형식으로 표시
-  const focusMin = Math.floor(totalFocusSeconds / 60)
-  const focusSec = totalFocusSeconds % 60
-  const focusTimeDisplay = `${focusMin}:${String(focusSec).padStart(2, '0')}`  // "3:00" 또는 "3:45"
+  const totalFocusSeconds = getTodoDisplayTimeSeconds({
+    isDone,
+    focusSeconds,
+    isActiveTimer,
+    activeTimerElapsedMs,
+    activeTimerRemainingMs,
+    breakElapsedMs,
+    breakTargetMs,
+    flexiblePhase,
+    sessionHistory,
+    initialFocusMs,
+  })
+
+  const focusTimeDisplay = formatTimerSeconds(totalFocusSeconds)
   const shouldShowTimerButton = !!isActiveTimer || pomodoroDone > 0 || totalFocusSeconds > 0
   const shouldShowTimerTime = totalFocusSeconds > 0 || !!isActiveTimer
 

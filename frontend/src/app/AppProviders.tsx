@@ -6,6 +6,7 @@ import { Toaster } from 'react-hot-toast'
 import { queryClient } from './queryClient'
 import { startMockWorker } from '../mocks/browser'
 import { useTimerTicker } from '../features/timer/useTimerTicker'
+import { ActiveTimerTitle } from './ActiveTimerTitle'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
@@ -34,6 +35,7 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ActiveTimerTitle />
       {children}
       <Toaster 
         position="top-center"

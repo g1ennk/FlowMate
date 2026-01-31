@@ -41,6 +41,7 @@ import { TimerFullScreen } from '../timer/TimerFullScreen'
 import { useTodoActions } from './useTodoActions'
 import { useReorderTodos, useTodos } from './hooks'
 import { getTimerInfo } from '../timer/useTimerInfo'
+import { formatTimerHoursMinutes } from './todoTimerDisplay'
 
 // === 스키마 ===
 const createSchema = z.object({
@@ -140,13 +141,6 @@ function TodosPage() {
     }, 0)
   }, [todosForSelectedDate, timers])
 
-  const formatHoursMinutes = (seconds: number) => {
-    const totalMinutes = Math.floor(seconds / 60)
-    const hours = Math.floor(totalMinutes / 60)
-    const minutes = totalMinutes % 60
-    if (hours > 0) return `${hours}시간 ${minutes}분`
-    return `${minutes}분`
-  }
 
   // 타이머 상태
   // === Effects ===
@@ -221,7 +215,7 @@ function TodosPage() {
               {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
             </h2>
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-              집중 · {formatHoursMinutes(selectedDateFocusSeconds)}
+              집중 · {formatTimerHoursMinutes(selectedDateFocusSeconds)}
             </span>
           </div>
           <button
@@ -402,7 +396,7 @@ function TodosPage() {
                   <div className="py-2">
                     <div className="flex items-center gap-2">
                       <p className="text-xs font-medium text-gray-400">
-                        완료됨 · {formatHoursMinutes(completedDateFocusSeconds)}
+                        완료됨 · {formatTimerHoursMinutes(completedDateFocusSeconds)}
                       </p>
                     </div>
                   </div>
