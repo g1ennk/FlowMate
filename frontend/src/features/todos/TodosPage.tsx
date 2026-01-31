@@ -52,6 +52,7 @@ type CreateForm = z.infer<typeof createSchema>
 function TodosPage() {
   const { data, isLoading } = useTodos()
   const store = useTimerStore()
+  const timers = useTimerStore((s) => s.timers)
 
   // Global ticker is installed in AppProviders
 
@@ -113,6 +114,39 @@ function TodosPage() {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       })
   }, [todosForSelectedDate])
+
+  const selectedDateFocusSeconds = useMemo(() => {
+    return todosForSelectedDate.reduce((sum, todo) => {
+      const timer = timers[todo.id]
+      const sessionHistory = timer?.sessionHistory ?? []
+      if (sessionHistory.length > 0) {
+        const totalSessionFocusMs = sessionHistory.reduce((s, session) => s + session.focusMs, 0)
+        return sum + Math.floor(totalSessionFocusMs / 1000)
+      }
+      return sum + todo.focusSeconds
+    }, 0)
+  }, [todosForSelectedDate, timers])
+
+  const completedDateFocusSeconds = useMemo(() => {
+    return todosForSelectedDate.reduce((sum, todo) => {
+      if (!todo.isDone) return sum
+      const timer = timers[todo.id]
+      const sessionHistory = timer?.sessionHistory ?? []
+      if (sessionHistory.length > 0) {
+        const totalSessionFocusMs = sessionHistory.reduce((s, session) => s + session.focusMs, 0)
+        return sum + Math.floor(totalSessionFocusMs / 1000)
+      }
+      return sum + todo.focusSeconds
+    }, 0)
+  }, [todosForSelectedDate, timers])
+
+  const formatHoursMinutes = (seconds: number) => {
+    const totalMinutes = Math.floor(seconds / 60)
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    if (hours > 0) return `${hours}시간 ${minutes}분`
+    return `${minutes}분`
+  }
 
   // 타이머 상태
   // === Effects ===
@@ -182,9 +216,14 @@ function TodosPage() {
       <div className="rounded-2xl bg-white p-4 shadow-sm">
         {/* 헤더 */}
         <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold text-gray-900">
               {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
             </h2>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+              집중 · {formatHoursMinutes(selectedDateFocusSeconds)}
+            </span>
+          </div>
           <button
             onClick={() => setShowInput((v) => !v)}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors"
@@ -361,7 +400,11 @@ function TodosPage() {
               <>
                 {activeTodos.length > 0 && (
                   <div className="py-2">
-                    <p className="text-xs font-medium text-gray-400">완료됨</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-medium text-gray-400">
+                        완료됨 · {formatHoursMinutes(completedDateFocusSeconds)}
+                      </p>
+                    </div>
                   </div>
                 )}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDoneDragEnd}>
