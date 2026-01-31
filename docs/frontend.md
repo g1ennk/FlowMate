@@ -185,6 +185,7 @@ src/
 - **데이터 소스**:
   - `sessionHistory` 기반 집중 시간 계산 (일반 타이머)
   - `focusSeconds`, `pomodoroDone` (뽀모도로 또는 sessionHistory 없는 경우)
+> Note: MVP에서는 하단 탭에서 통계 탭을 숨김. 필요 시 URL로 직접 접근.
 
 #### 태스크 편집
 - 태스크 제목 클릭 시 인라인 편집 모드
