@@ -474,13 +474,10 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     breakMs: newBreakElapsed
                   }
                 }
-                saveSessionHistory(todoId, newSessionHistory)
-                
                 if (autoStartSession) {
                   // 자동으로 집중 시작
                   const initialFocusMs = timer.initialFocusMs ?? 0
-                  updates[todoId] = {
-                    ...timer,
+                  updateTimer(todoId, {
                     flexiblePhase: 'focus',
                     breakElapsedMs: 0,
                     breakStartedAt: null,
@@ -491,17 +488,16 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     breakCompleted: false,
                     status: 'running',
                     sessionHistory: newSessionHistory,
-                  }
+                  })
                 } else {
                   // 추가 휴식 카운트업 유지 (사용자가 수동으로 집중 시작/완료)
-                  updates[todoId] = {
-                    ...timer,
+                  updateTimer(todoId, {
                     breakElapsedMs: newBreakElapsed,
                     breakCompleted: true,
                     status: 'running',
                     breakStartedAt: Date.now(),
                     sessionHistory: newSessionHistory,
-                  }
+                  })
                 }
                 
                 return // 이미 처리했으므로 아래 로직 스킵

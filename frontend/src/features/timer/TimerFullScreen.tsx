@@ -118,6 +118,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, todoId, initialMode])
 
+  useEffect(() => {
+    if (!isOpen || !settings) return
+    if (selectedMode !== 'pomodoro') return
+    const currentTimer = getTimer(todoId)
+    if (currentTimer && currentTimer.mode === 'pomodoro' && currentTimer.status !== 'idle') return
+    initPomodoro(todoId, settings)
+  }, [isOpen, settings, selectedMode, todoId, getTimer, initPomodoro])
+
   // 휴식에서 집중으로 전환될 때만 showTotalTime을 전체 누적(true)로 리셋
   const prevFlexiblePhaseRef = useRef<string | null>(null)
   useEffect(() => {

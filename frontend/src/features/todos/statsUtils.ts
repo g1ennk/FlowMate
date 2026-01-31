@@ -160,7 +160,14 @@ export function buildStats(
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
   const avgFocusTime = totalTasks > 0 ? Math.round(totalFocusSeconds / totalTasks) : 0
   const avgFlowsPerTask = totalTasks > 0 ? (totalFlows / totalTasks).toFixed(1) : '0'
-  const maxFocusTime = todos.reduce((max, t) => Math.max(max, t.focusSeconds), 0)
+  const maxFocusTime = todos.reduce((max, todo) => {
+    const timer = timers[todo.id]
+    const sessionHistory = timer?.sessionHistory ?? []
+    const effectiveFocusSeconds = sessionHistory.length > 0
+      ? Math.floor(sessionHistory.reduce((s, session) => s + session.focusMs, 0) / 1000)
+      : todo.focusSeconds
+    return Math.max(max, effectiveFocusSeconds)
+  }, 0)
   const tasksWithNotes = todos.filter((t) => t.note && t.note.trim().length > 0).length
 
   const dateMap = new Map<string, DateStats>()

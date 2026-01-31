@@ -3,14 +3,14 @@
 > 자동화 테스트 결과 + 수동 시나리오 + 버그 리포트를 한 곳에 정리합니다.
 
 ## 메타
-- 마지막 업데이트: 2026-01-29
-- 브랜치: refactor/frontend-cleanup
+- 마지막 업데이트: 2026-01-31
+- 브랜치: chore/pre-backend-audit-fixes
 - 환경: Frontend MVP (MSW 모킹)
 - Node: 22.12.0 (`.nvmrc` 기준)
 
 ---
 
-## 🤖 자동화 테스트 결과 (2026-01-29)
+## 🤖 자동화 테스트 결과 (2026-01-31)
 - `pnpm lint` ✅
 - `pnpm test` ✅ (총 9개: timerStore 7, api 2)
 - `pnpm build` ✅

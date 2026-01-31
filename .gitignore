@@ -3,3 +3,5 @@ node_modules/
 .idea/
 .vscode/
 *.iml
+frontend/dist/
+frontend/.vite/

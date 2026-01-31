@@ -58,7 +58,7 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 ## 프로젝트 구조 (모노레포)
 
 ```txt
-todo-flow/
+FlowMate/
 ├── frontend/                 # React 앱
 │   ├── src/
 │   │   ├── api/              # API 클라이언트
@@ -86,7 +86,7 @@ todo-flow/
 
 ### 개발 환경 요구사항
 
-- Node.js 18+
+- Node.js 22.12.0 (`.nvmrc` 기준)
 - pnpm 8+
 
 ### Frontend 실행

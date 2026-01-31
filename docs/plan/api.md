@@ -53,7 +53,8 @@ Content-Type: `application/json`
 ```json
 { "title": "string", "note": "string|null", "date": "2026-01-09" }
 ```
-- Validation: title 1~200, date YYYY-MM-DD format
+- Validation: title 1~200, date는 선택(optional)이며 제공 시 YYYY-MM-DD format
+- Note: date 누락 시 서버에서 오늘 날짜로 기본값 적용
 - Response 201: `Todo`
 
 ### 2.3 Update Todo (partial)
