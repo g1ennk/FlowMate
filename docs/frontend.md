@@ -80,7 +80,7 @@ src/
 
 ### API 클라이언트 동작
 - 모든 API 요청에 `X-Client-Id` 헤더를 포함 (게스트 사용자 식별용)
-- 클라이언트 ID는 `localStorage`의 `todo-flow/client-id`에 저장됨
+- 클라이언트 ID는 `localStorage`의 `flowmate/client-id`에 저장됨
 
 ## 3. 라우팅
 
@@ -283,9 +283,12 @@ src/
 ### 개발 환경 (MSW)
 - localStorage에 데이터 저장
 - 새로고침해도 유지
-- 키: `todo-flow/{clientId}/todos`, `todo-flow/{clientId}/settings`
-- 타이머 상태: `todo-flow/timer/v2/{todoId}`
-- 세션 히스토리: `todo-flow/sessionHistory/{todoId}`
+- 키: `flowmate/{clientId}/todos`, `flowmate/{clientId}/settings`
+- 타이머 상태: `flowmate/{clientId}/timer/v2/{todoId}`
+- 세션 히스토리: `flowmate/{clientId}/sessionHistory/{todoId}`
+- 레거시 키(`todo-flow/...`)는 최초 로드 시 `flowmate/...`로 마이그레이션
+- 참고: sessionHistory는 현재 localStorage에 저장되며, 서버 저장으로 이관 예정
+- 키 규칙은 `src/lib/storageKeys.ts`에서 관리
 
 ### 프로덕션
 - 백엔드 API 연동 예정

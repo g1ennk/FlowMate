@@ -1,13 +1,16 @@
 import { HttpResponse, delay, http } from 'msw'
 import type { PomodoroSettings, Todo } from '../api/types'
+import { storageKeys } from '../lib/storageKeys'
 
 type StoredTodo = Omit<Todo, 'order'> & { order?: number }
 
 const STORAGE_KEYS = {
-  legacyTodos: 'todo-flow/todos',
-  legacySettings: 'todo-flow/settings',
-  todos: (clientId: string) => `todo-flow/${clientId}/todos`,
-  settings: (clientId: string) => `todo-flow/${clientId}/settings`,
+  legacyTodos: storageKeys.legacyTodos,
+  legacySettings: storageKeys.legacySettings,
+  legacyTodosByClient: storageKeys.legacyTodosByClient,
+  legacySettingsByClient: storageKeys.legacySettingsByClient,
+  todos: storageKeys.todos,
+  settings: storageKeys.settings,
 }
 
 const now = () => new Date().toISOString()
@@ -80,11 +83,19 @@ function loadTodos(clientId: string): Todo[] {
     const key = STORAGE_KEYS.todos(clientId)
     let stored = localStorage.getItem(key)
     if (!stored) {
-      const legacy = localStorage.getItem(STORAGE_KEYS.legacyTodos)
-      if (legacy) {
-        localStorage.setItem(key, legacy)
-        localStorage.removeItem(STORAGE_KEYS.legacyTodos)
-        stored = legacy
+      const legacyClientKey = STORAGE_KEYS.legacyTodosByClient(clientId)
+      const legacyClient = localStorage.getItem(legacyClientKey)
+      if (legacyClient) {
+        localStorage.setItem(key, legacyClient)
+        localStorage.removeItem(legacyClientKey)
+        stored = legacyClient
+      } else {
+        const legacy = localStorage.getItem(STORAGE_KEYS.legacyTodos)
+        if (legacy) {
+          localStorage.setItem(key, legacy)
+          localStorage.removeItem(STORAGE_KEYS.legacyTodos)
+          stored = legacy
+        }
       }
     }
     if (stored) {
@@ -119,11 +130,19 @@ function loadSettings(clientId: string): PomodoroSettings {
     const key = STORAGE_KEYS.settings(clientId)
     let stored = localStorage.getItem(key)
     if (!stored) {
-      const legacy = localStorage.getItem(STORAGE_KEYS.legacySettings)
-      if (legacy) {
-        localStorage.setItem(key, legacy)
-        localStorage.removeItem(STORAGE_KEYS.legacySettings)
-        stored = legacy
+      const legacyClientKey = STORAGE_KEYS.legacySettingsByClient(clientId)
+      const legacyClient = localStorage.getItem(legacyClientKey)
+      if (legacyClient) {
+        localStorage.setItem(key, legacyClient)
+        localStorage.removeItem(legacyClientKey)
+        stored = legacyClient
+      } else {
+        const legacy = localStorage.getItem(STORAGE_KEYS.legacySettings)
+        if (legacy) {
+          localStorage.setItem(key, legacy)
+          localStorage.removeItem(STORAGE_KEYS.legacySettings)
+          stored = legacy
+        }
       }
     }
     if (stored) {

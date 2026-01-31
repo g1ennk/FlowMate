@@ -63,12 +63,13 @@
   - `sessionHistory: { focusMs, breakMs }[]`
 
 ### 2.4 로컬 저장소 키
-- 타이머 상태: `todo-flow/timer/v2/{todoId}`
-- 세션 히스토리: `todo-flow/sessionHistory/{todoId}`
-- 게스트 사용자 ID: `todo-flow/client-id`
+- 타이머 상태: `flowmate/{clientId}/timer/v2/{todoId}`
+- 세션 히스토리: `flowmate/{clientId}/sessionHistory/{todoId}`
+- 게스트 사용자 ID: `flowmate/client-id`
 - MSW 모킹 데이터:
-  - Todos: `todo-flow/{clientId}/todos`
-  - Settings: `todo-flow/{clientId}/settings`
+  - Todos: `flowmate/{clientId}/todos`
+  - Settings: `flowmate/{clientId}/settings`
+- 레거시 키(`todo-flow/...`)는 최초 로드 시 `flowmate/...`로 마이그레이션
 
 ### 2.5 SessionHistory 운영/개선 요약
 - `sessionHistory`는 **클라이언트 localStorage에만 영구 저장**되며 API 응답에는 포함되지 않음

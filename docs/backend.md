@@ -94,7 +94,7 @@ com.example.flowtodo
 - breakSeconds: int (휴식 시간, 초)
 - sessionOrder: int (세션 순서: 1, 2, 3...)
 - createdAt, updatedAt (auditing)
-- 참고: 서버 저장은 추후 설계 (현재는 클라이언트 localStorage에만 저장)
+- 참고: sessionHistory는 서버 저장 대상이며, 클라이언트 localStorage는 타이머 상태/백업 용도로 유지
 
 ---
 

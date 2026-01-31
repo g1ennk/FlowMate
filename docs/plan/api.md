@@ -27,7 +27,7 @@ Headers (MVP):
 }
 ```
 
-**참고**: `sessionHistory`는 **클라이언트 로컬 기록**으로 API 응답에 포함되지 않습니다. 현재는 `localStorage`에만 저장됩니다. (DB에 저장해야 하는 거 아님?)
+**참고**: `sessionHistory`는 **서버 저장 대상**이며 API 응답에는 포함하지 않습니다. 클라이언트는 타이머 상태/임시 백업만 localStorage에 유지합니다.
 
 ### PomodoroSettings
 ```json
@@ -196,3 +196,4 @@ Headers (MVP):
 | 2026-01-22 | `sessionHistory`를 localStorage에 영구 저장으로 변경              |
 | 2026-01-24 | `POST /api/todos/{id}/reset` 추가 (타이머 기록 초기화)            |
 | 2026-01-29 | Todo에 `order` 필드 추가 + `PUT /api/todos/reorder` 추가          |
+| 2026-01-31 | `sessionHistory` 서버 저장 정책 확정 (타이머 상태는 클라 유지)     |

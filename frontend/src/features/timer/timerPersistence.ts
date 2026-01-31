@@ -1,17 +1,30 @@
 import type { SingleTimerState, SessionRecord } from './timerTypes'
 import { initialSingleTimerState } from './timerDefaults'
+import { getClientId } from '../../lib/clientId'
+import { storageKeys } from '../../lib/storageKeys'
 
 export type PersistedTimerState = Omit<SingleTimerState, 'sessionHistory'>
 
 type Persisted = PersistedTimerState
 
-const STORAGE_KEY_PREFIX = 'todo-flow/timer/v2/'
-const SESSION_HISTORY_KEY_PREFIX = 'todo-flow/sessionHistory/'
+function getClientPrefixes() {
+  const clientId = getClientId()
+  return {
+    clientId,
+    timerPrefix: storageKeys.timerPrefix(clientId),
+    sessionPrefix: storageKeys.sessionPrefix(clientId),
+    legacyTimerPrefix: storageKeys.legacyTimerPrefix,
+    legacySessionPrefix: storageKeys.legacySessionPrefix,
+    legacyTimerClientPrefix: storageKeys.legacyTimerPrefixByClient(clientId),
+    legacySessionClientPrefix: storageKeys.legacySessionPrefixByClient(clientId),
+  }
+}
 
 // sessionHistory를 localStorage에 저장
 export function saveSessionHistory(todoId: string, history: SessionRecord[]) {
   if (typeof window === 'undefined') return
-  const key = SESSION_HISTORY_KEY_PREFIX + todoId
+  const { sessionPrefix } = getClientPrefixes()
+  const key = sessionPrefix + todoId
   if (history.length === 0) {
     localStorage.removeItem(key)
     return
@@ -27,8 +40,26 @@ export function saveSessionHistory(todoId: string, history: SessionRecord[]) {
 export function loadSessionHistory(todoId: string): SessionRecord[] {
   if (typeof window === 'undefined') return []
   try {
-    const key = SESSION_HISTORY_KEY_PREFIX + todoId
-    const raw = localStorage.getItem(key)
+    const { sessionPrefix, legacySessionPrefix, legacySessionClientPrefix } = getClientPrefixes()
+    const key = sessionPrefix + todoId
+    let raw = localStorage.getItem(key)
+    if (!raw) {
+      const legacyClientKey = legacySessionClientPrefix + todoId
+      const legacyClientRaw = localStorage.getItem(legacyClientKey)
+      if (legacyClientRaw) {
+        localStorage.setItem(key, legacyClientRaw)
+        localStorage.removeItem(legacyClientKey)
+        raw = legacyClientRaw
+      } else {
+        const legacyKey = legacySessionPrefix + todoId
+        const legacyRaw = localStorage.getItem(legacyKey)
+        if (legacyRaw) {
+          localStorage.setItem(key, legacyRaw)
+          localStorage.removeItem(legacyKey)
+          raw = legacyRaw
+        }
+      }
+    }
     if (raw) {
       return JSON.parse(raw) as SessionRecord[]
     }
@@ -41,14 +72,34 @@ export function loadSessionHistory(todoId: string): SessionRecord[] {
 // 모든 sessionHistory 로드 (복원용)
 function loadAllSessionHistory(): Record<string, SessionRecord[]> {
   if (typeof window === 'undefined') return {}
+  const { sessionPrefix, legacySessionPrefix, legacySessionClientPrefix } = getClientPrefixes()
   const histories: Record<string, SessionRecord[]> = {}
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (key?.startsWith(SESSION_HISTORY_KEY_PREFIX)) {
-        const todoId = key.replace(SESSION_HISTORY_KEY_PREFIX, '')
+      if (!key) continue
+      if (key.startsWith(sessionPrefix)) {
+        const todoId = key.replace(sessionPrefix, '')
         const raw = localStorage.getItem(key)
         if (raw) {
+          histories[todoId] = JSON.parse(raw) as SessionRecord[]
+        }
+      } else if (key.startsWith(legacySessionClientPrefix)) {
+        const todoId = key.replace(legacySessionClientPrefix, '')
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          const nextKey = sessionPrefix + todoId
+          localStorage.setItem(nextKey, raw)
+          localStorage.removeItem(key)
+          histories[todoId] = JSON.parse(raw) as SessionRecord[]
+        }
+      } else if (key.startsWith(legacySessionPrefix)) {
+        const todoId = key.replace(legacySessionPrefix, '')
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          const nextKey = sessionPrefix + todoId
+          localStorage.setItem(nextKey, raw)
+          localStorage.removeItem(key)
           histories[todoId] = JSON.parse(raw) as SessionRecord[]
         }
       }
@@ -63,15 +114,37 @@ export function loadAllPersisted(): Record<string, SingleTimerState> {
   if (typeof window === 'undefined') return {}
 
   const timers: Record<string, SingleTimerState> = {}
+  const { timerPrefix, legacyTimerPrefix, legacyTimerClientPrefix } = getClientPrefixes()
   const sessionHistories = loadAllSessionHistory()
 
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (key?.startsWith(STORAGE_KEY_PREFIX)) {
-        const todoId = key.replace(STORAGE_KEY_PREFIX, '')
+      if (!key) continue
+      if (key.startsWith(timerPrefix)) {
+        const todoId = key.replace(timerPrefix, '')
         const raw = localStorage.getItem(key)
         if (raw) {
+          const persisted = JSON.parse(raw) as PersistedTimerState
+          timers[todoId] = hydrateState(persisted, sessionHistories[todoId] ?? [])
+        }
+      } else if (key.startsWith(legacyTimerClientPrefix)) {
+        const todoId = key.replace(legacyTimerClientPrefix, '')
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          const nextKey = timerPrefix + todoId
+          localStorage.setItem(nextKey, raw)
+          localStorage.removeItem(key)
+          const persisted = JSON.parse(raw) as PersistedTimerState
+          timers[todoId] = hydrateState(persisted, sessionHistories[todoId] ?? [])
+        }
+      } else if (key.startsWith(legacyTimerPrefix)) {
+        const todoId = key.replace(legacyTimerPrefix, '')
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          const nextKey = timerPrefix + todoId
+          localStorage.setItem(nextKey, raw)
+          localStorage.removeItem(key)
           const persisted = JSON.parse(raw) as PersistedTimerState
           timers[todoId] = hydrateState(persisted, sessionHistories[todoId] ?? [])
         }
@@ -96,21 +169,23 @@ export function loadAllPersisted(): Record<string, SingleTimerState> {
 
 export function savePersisted(todoId: string, state: SingleTimerState) {
   if (typeof window === 'undefined') return
+  const { timerPrefix } = getClientPrefixes()
 
   const { sessionHistory, ...timerState } = state
 
   if (state.status === 'idle') {
-    localStorage.removeItem(STORAGE_KEY_PREFIX + todoId)
+    localStorage.removeItem(timerPrefix + todoId)
     return
   }
 
-  localStorage.setItem(STORAGE_KEY_PREFIX + todoId, JSON.stringify(timerState))
+  localStorage.setItem(timerPrefix + todoId, JSON.stringify(timerState))
   saveSessionHistory(todoId, sessionHistory)
 }
 
 export function removePersisted(todoId: string) {
   if (typeof window === 'undefined') return
-  localStorage.removeItem(STORAGE_KEY_PREFIX + todoId)
+  const { timerPrefix } = getClientPrefixes()
+  localStorage.removeItem(timerPrefix + todoId)
   saveSessionHistory(todoId, [])
 }
 
