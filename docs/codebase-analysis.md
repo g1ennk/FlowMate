@@ -12,7 +12,7 @@
 - **모노레포 구조**
   - `frontend/`만 구현됨 (React + Vite + TS). `backend/`는 계획 문서만 존재.
 - **라우팅/앱 쉘**
-  - React Router로 `/todos`, `/stats`, `/settings/pomodoro` 제공.
+  - React Router로 `/todos`, `/stats`, `/settings` 제공.
   - 타이머 UI는 라우트가 아닌 **풀스크린 오버레이**(`TimerFullScreen`)로 표시.
 - **상태 관리**
   - 서버 상태: TanStack Query (Todo/Settings CRUD, 완료/누적 API 호출)
@@ -47,7 +47,7 @@
 
 ## 3. 데이터 모델 요약
 ### 2.1 Todo (프론트 타입 기준)
-- `id`, `title`, `note`, `date`, `isDone`, `order`
+- `id`, `title`, `note`, `date`, `isDone`, `miniDay`, `dayOrder`
 - `pomodoroDone`, `focusSeconds`, `timerMode`
 - `createdAt`, `updatedAt`
 
@@ -69,6 +69,7 @@
 - MSW 모킹 데이터:
   - Todos: `flowmate/{clientId}/todos`
   - Settings: `flowmate/{clientId}/settings`
+- Mini Days 설정: `flowmate/settings/miniDays`
 - 레거시 키(`todo-flow/...`)는 최초 로드 시 `flowmate/...`로 마이그레이션
 
 ### 2.5 SessionHistory 운영/개선 요약

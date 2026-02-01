@@ -73,6 +73,10 @@
 - 메모 생성 / 수정 / 삭제
 - Todo 완료 체크 (홈에서 완료하거나, 타이머 환경에서 완료)
 - 캘린더 기반 날짜 선택/필터 (월/주 뷰)
+- 미니 데이(Day 0~3) 섹션으로 분리된 목록
+  - Day 0: 미분류, Day 1~3: 시간대 기반
+  - 드래그로 섹션 내 정렬 및 Day 간 이동
+  - 완료 항목도 해당 Day 섹션에 유지
 
 ### 6.2 타이머
 
@@ -165,7 +169,8 @@
 - createdAt
 - updatedAt
 - date
-- order
+- miniDay
+- dayOrder
 
 ### Timer
 
@@ -218,7 +223,7 @@
 - /todos
     - Todo 리스트
     - 각 Todo에 Start 버튼
-- /settings/pomodoro
+- /settings
     - Pomodoro 설정 화면
 - /stats: 개발용 통계 화면
 

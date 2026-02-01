@@ -86,11 +86,12 @@ src/
 
 | 경로                 | 페이지               | 설명               |
 | -------------------- | -------------------- | ------------------ |
-| `/todos`             | TodosPage            | 캘린더 + Todo 목록 |
-| `/stats`             | StatsPage            | 통계 페이지        |
-| `/settings/pomodoro` | PomodoroSettingsPage | 타이머 설정        |
+| `/todos`    | TodosPage            | 캘린더 + Todo 목록 |
+| `/stats`    | StatsPage            | 통계 페이지        |
+| `/settings` | PomodoroSettingsPage | 타이머 설정        |
 
 - 타이머는 풀스크린 오버레이 (`TimerFullScreen`)로 구현
+- `/settings/pomodoro`는 `/settings`로 리다이렉트
 
 ---
 
@@ -142,22 +143,27 @@ src/
 
 #### 기본 기능
 - 생성/수정/삭제/완료
-- 드래그로 순서 변경 (@dnd-kit)
+- Day 0~3 섹션으로 분리된 리스트 (Day 0: 미분류, Day 1~3: 시간대 라벨)
+- Day 1~3 라벨/시간 범위는 miniDays 설정에서 로드 (기본: 오전/오후/저녁, UI는 비공개)
+- 드래그로 순서 변경 및 Day 간 이동 (@dnd-kit)
+- 완료된 Todo는 해당 Day 섹션의 완료 그룹에 유지
 - 메모 기능
-  - 순서는 `order` 필드로 관리되며, 드래그 시 `PUT /api/todos/reorder`로 저장
+  - 순서는 `dayOrder`로 관리되며, 드래그 시 `PUT /api/todos/reorder`로 저장
+  - 각 Todo는 `miniDay`(0~3)로 섹션을 결정
 
 #### 집중 시간 표시
-- 날짜 헤더 옆에 **선택 날짜 기준 집중 합계**를 표시  
-  - 표기: `집중 · ?시간 ?분`
+- 날짜 헤더 옆에 **선택 날짜 기준 Flow 합계**를 표시  
+  - 표기: `총 Flow · ?시간 ?분`
   - 계산: `sessionHistory` 합계 우선, 없으면 `focusSeconds` 사용
-- 완료 섹션 헤더 옆에 **완료된 태스크 기준 집중 합계** 표시  
+- Day 섹션 헤더 옆에 **해당 Day 기준 Flow 합계** 표시  
+  - 표기: `Flow · ?시간 ?분`
+- 완료 섹션 헤더 옆에 **완료된 태스크 기준 Flow 합계** 표시  
   - 표기: `완료됨 · ?시간 ?분`
 
 #### 태스크 추가 방법
 **입력 필드 열기:**
-- `+` 버튼 클릭
-- 빈 상태에서 "할 일 추가하기" 버튼 클릭
-- 미완료 태스크 리스트 맨 아래에 인라인 입력 필드 표시
+- 각 Day 섹션의 `+` 버튼 클릭
+- 해당 섹션 맨 아래에 인라인 입력 필드 표시
 
 **태스크 추가:**
 1. **Enter 키로 추가**
@@ -176,6 +182,12 @@ src/
 
 **중복 방지:**
 - `isSubmittingRef` 플래그로 Enter와 blur 동시 발생 시 중복 POST 요청 방지
+
+### 설정 (Pomodoro)
+- **경로**: `/settings`
+- Flow/휴식/주기를 **프리셋 바텀시트**로 선택
+- 변경 시 즉시 저장 (저장 버튼 없음)
+- 사용자 지정 입력 UI는 다음 버전에서 공개 예정
 
 ### 통계 페이지
 - **경로**: `/stats`
@@ -251,7 +263,7 @@ src/
   - **완료(✓)**: 기록 + 태스크 완료
     - 일반 타이머: `MIN_FLOW_MS` 이상이면 Flow 카운트 증가 (`completeTodo`), 미만이면 시간만 기록 (`addFocus`)
   - 뽀모도로: 자동 완료 시에만 Flow 카운트 증가
-- **브라우저 탭 타이틀**: 실행 중인 타이머 시간 표시 (`Flow: M:SS` / `Break: M:SS`)
+- **브라우저 탭 타이틀**: 실행 중인 타이머 시간 표시 (`Flow: M:SS` / `휴식: M:SS`)
 - **timerMode 저장**: 사용자가 모드를 명시적으로 선택/시작할 때 `timerMode`를 DB에 저장 (기록 API는 모드를 변경하지 않음)
 - **타이머 충돌 방지**: 한 번에 하나의 타이머만 실행 가능 (모든 태스크에 적용)
 - **완료된 태스크**: 타이머 시작 불가, 토스트 메시지 표시 (한 번만 표시)
@@ -283,7 +295,7 @@ src/
 ### 개발 환경 (MSW)
 - localStorage에 데이터 저장
 - 새로고침해도 유지
-- 키: `flowmate/{clientId}/todos`, `flowmate/{clientId}/settings`
+- 키: `flowmate/{clientId}/todos`, `flowmate/{clientId}/settings`, `flowmate/settings/miniDays`
 - 타이머 상태: `flowmate/{clientId}/timer/v2/{todoId}`
 - 세션 히스토리: `flowmate/{clientId}/sessionHistory/{todoId}`
 - 레거시 키(`todo-flow/...`)는 최초 로드 시 `flowmate/...`로 마이그레이션

@@ -17,8 +17,9 @@ Headers (MVP):
   "title": "string",
   "note": "string|null",
   "date": "2026-01-09",
+  "miniDay": 0,
+  "dayOrder": 0,
   "isDone": false,
-  "order": 0,
   "pomodoroDone": 2,
   "focusSeconds": 3000,
   "timerMode": "stopwatch",
@@ -54,7 +55,7 @@ Headers (MVP):
 - `POST /api/todos`
 - Body:
 ```json
-{ "title": "string", "note": "string|null", "date": "2026-01-09" }
+{ "title": "string", "note": "string|null", "date": "2026-01-09", "miniDay": 0, "dayOrder": 0 }
 ```
 - Validation: title 1~200, date는 선택(optional)이며 제공 시 YYYY-MM-DD format
 - Note: date 누락 시 서버에서 오늘 날짜로 기본값 적용
@@ -64,7 +65,7 @@ Headers (MVP):
 - `PATCH /api/todos/{id}`
 - Body: 위 필드 중 일부(any subset)
 ```json
-{ "title": "string", "note": "string|null", "isDone": true, "order": 3, "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
+{ "title": "string", "note": "string|null", "isDone": true, "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
 ```
 - Response 200: `Todo`
 - Errors: 404 Not Found, 400 Validation Error
@@ -73,7 +74,7 @@ Headers (MVP):
 - `PUT /api/todos/reorder`
 - Body:
 ```json
-{ "items": [{ "id": "uuid", "order": 0 }] }
+{ "items": [{ "id": "uuid", "dayOrder": 0, "miniDay": 0 }] }
 ```
 - Response 200: `{ "items": Todo[] }`
 - Errors: 400 Validation Error
@@ -195,5 +196,5 @@ Headers (MVP):
 | 2026-01-13 | 뽀모도로 타이머에도 `sessionHistory` 추가                        |
 | 2026-01-22 | `sessionHistory`를 localStorage에 영구 저장으로 변경              |
 | 2026-01-24 | `POST /api/todos/{id}/reset` 추가 (타이머 기록 초기화)            |
-| 2026-01-29 | Todo에 `order` 필드 추가 + `PUT /api/todos/reorder` 추가          |
+| 2026-01-29 | Todo에 `miniDay`, `dayOrder` 필드 추가 + `PUT /api/todos/reorder` 확장 |
 | 2026-01-31 | `sessionHistory` 서버 저장 정책 확정 (타이머 상태는 클라 유지)     |
