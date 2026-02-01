@@ -6,9 +6,22 @@ type BottomSheetProps = {
   onClose: () => void
   title?: string
   children: ReactNode
+  panelClassName?: string
+  contentClassName?: string
+  titleClassName?: string
+  hideHandle?: boolean
 }
 
-export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetProps) {
+export function BottomSheet({
+  isOpen,
+  onClose,
+  title,
+  children,
+  panelClassName = '',
+  contentClassName = '',
+  titleClassName = '',
+  hideHandle = false,
+}: BottomSheetProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -55,22 +68,23 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
       <div
         className={`absolute inset-x-0 bottom-0 max-h-[85vh] overflow-hidden rounded-t-3xl bg-white shadow-xl transition-transform duration-300 ease-out ${
           isOpen ? 'translate-y-0' : 'translate-y-full'
-        }`}
+        } ${panelClassName}`}
       >
-        {/* 핸들 */}
-        <div className="flex justify-center py-3">
-          <div className="h-1 w-10 rounded-full bg-gray-300" />
-        </div>
+        {!hideHandle && (
+          <div className="flex justify-center py-3">
+            <div className="h-1 w-10 rounded-full bg-gray-300" />
+          </div>
+        )}
 
         {/* 타이틀 */}
         {title && (
           <div className="border-b border-gray-100 px-5 pb-3">
-            <h3 className="text-center text-base font-semibold text-gray-900 truncate">{title}</h3>
+            <h3 className={`text-center text-base font-semibold text-gray-900 truncate ${titleClassName}`}>{title}</h3>
           </div>
         )}
 
         {/* 컨텐츠 */}
-        <div className="overflow-y-auto px-5 pb-8 pt-2" style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom))' }}>
+        <div className={`overflow-y-auto px-5 pb-8 pt-2 ${contentClassName}`} style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom))' }}>
           {children}
         </div>
       </div>
@@ -81,6 +95,7 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
 
 type BottomSheetItemProps = {
   icon?: ReactNode
+  rightIcon?: ReactNode
   label: string
   onClick: () => void
   variant?: 'default' | 'danger'
@@ -90,6 +105,7 @@ type BottomSheetItemProps = {
 
 export function BottomSheetItem({
   icon,
+  rightIcon,
   label,
   onClick,
   variant = 'default',
@@ -99,6 +115,7 @@ export function BottomSheetItem({
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-all ${
         disabled
           ? 'cursor-not-allowed opacity-40'
@@ -109,6 +126,7 @@ export function BottomSheetItem({
     >
       {icon && <span className="flex h-6 w-6 items-center justify-center">{icon}</span>}
       <span className="text-sm font-medium">{label}</span>
+      {rightIcon && <span className="ml-auto flex h-5 w-5 items-center justify-center">{rightIcon}</span>}
     </button>
   )
 }

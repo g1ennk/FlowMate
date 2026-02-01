@@ -1,34 +1,17 @@
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
-import { useForm, useWatch, type Resolver } from 'react-hook-form'
+import { useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { z } from 'zod'
+import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
+import { CheckIcon } from '../../ui/Icons'
 import { Switch } from '../../ui/Switch'
+import { type PomodoroSettings } from '../../api/types'
 import { usePomodoroSettings, useUpdatePomodoroSettings } from './hooks'
 
-const schema = z.object({
-  flowMin: z.coerce.number().int().min(1).max(90),
-  breakMin: z.coerce.number().int().min(1).max(90),
-  longBreakMin: z.coerce.number().int().min(1).max(90),
-  cycleEvery: z.coerce.number().int().min(1).max(10),
-  autoStartBreak: z.boolean(),
-  autoStartSession: z.boolean(),
-})
+const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
+const SHORT_BREAK_PRESETS = [5, 10, 15, 20, 30]
+const LONG_BREAK_PRESETS = [15, 20, 30]
+const CYCLE_PRESETS = Array.from({ length: 10 }, (_, index) => index + 1)
 
-type FormValues = z.infer<typeof schema>
-
-const settingsItems: {
-  field: 'flowMin' | 'breakMin' | 'longBreakMin' | 'cycleEvery'
-  label: string
-  suffix: string
-}[] = [
-  { field: 'flowMin', label: 'Flow 시간', suffix: '분' },
-  { field: 'breakMin', label: '휴식 시간', suffix: '분' },
-  { field: 'longBreakMin', label: '긴 휴식 시간', suffix: '분' },
-  { field: 'cycleEvery', label: '주기', suffix: '회' },
-]
-
-const defaultValues: FormValues = {
+const defaultSettings: PomodoroSettings = {
   flowMin: 25,
   breakMin: 5,
   longBreakMin: 15,
@@ -37,89 +20,97 @@ const defaultValues: FormValues = {
   autoStartSession: false,
 }
 
+type SettingsRowProps = {
+  label: string
+  value: string
+  onClick: () => void
+  disabled?: boolean
+}
+
+function SettingsRow({ label, value, onClick, disabled = false }: SettingsRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors ${
+        disabled ? 'cursor-not-allowed text-gray-400' : 'hover:bg-gray-50'
+      }`}
+    >
+      <span className={`text-sm ${disabled ? 'text-gray-400' : 'text-gray-900'}`}>{label}</span>
+      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+        disabled ? 'bg-gray-50 text-gray-400' : 'bg-emerald-50 text-emerald-700'
+      }`}>
+        {value}
+      </span>
+    </button>
+  )
+}
+
+// 사용자 지정 모달은 다음 버전에서 공개
+
 function PomodoroSettingsPage() {
   const { data, isLoading } = usePomodoroSettings()
   const updateSettings = useUpdatePomodoroSettings()
+  const [overrides, setOverrides] = useState<Partial<PomodoroSettings>>({})
+  const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
 
-  const {
-    control,
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema) as Resolver<FormValues>,
-    defaultValues,
-  })
+  const values = useMemo(
+    () => ({
+      flowMin: data?.flowMin ?? defaultSettings.flowMin,
+      breakMin: data?.breakMin ?? defaultSettings.breakMin,
+      longBreakMin: data?.longBreakMin ?? defaultSettings.longBreakMin,
+      cycleEvery: data?.cycleEvery ?? defaultSettings.cycleEvery,
+      autoStartBreak: data?.autoStartBreak ?? defaultSettings.autoStartBreak,
+      autoStartSession: data?.autoStartSession ?? defaultSettings.autoStartSession,
+      ...overrides,
+    }),
+    [data, overrides],
+  )
 
-  const watchedValues = useWatch({ control })
-  const values: FormValues = { ...defaultValues, ...watchedValues }
-
-  useEffect(() => {
-    if (data) {
-      reset({
-        flowMin: data.flowMin,
-        breakMin: data.breakMin,
-        longBreakMin: data.longBreakMin,
-        cycleEvery: data.cycleEvery,
-        autoStartBreak: data.autoStartBreak ?? false,
-        autoStartSession: data.autoStartSession ?? false,
-      })
-    }
-  }, [data, reset])
-
-  const onSubmit = handleSubmit(async (formValues) => {
-    await updateSettings.mutateAsync(formValues)
-    toast.success('저장됨', { id: 'settings-saved' })
-  })
-
-  const handleNumberFieldSave = () => {
-    onSubmit()
-  }
-
-  const handleToggle = (field: 'autoStartBreak' | 'autoStartSession') => {
-    const newValue = !values[field]
-    setValue(field, newValue)
-    updateSettings.mutate({
-      ...values,
-      [field]: newValue,
+  const commitSettings = (next: Partial<PomodoroSettings>) => {
+    setOverrides((prev) => ({ ...prev, ...next }))
+    const updated = { ...values, ...next }
+    updateSettings.mutate(updated, {
+      onSuccess: () => toast.success('저장됨', { id: 'settings-saved' }),
     })
   }
 
+  const handleToggle = (field: 'autoStartBreak' | 'autoStartSession') => {
+    commitSettings({ [field]: !values[field] })
+  }
+
+  const breakValueLabel = `${values.breakMin}, ${values.longBreakMin}분`
+  const cycleLabel = `${values.cycleEvery} 세션`
+
+
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
       <header>
         <h1 className="text-2xl font-bold text-gray-900">설정</h1>
       </header>
 
-      {/* 세션 설정 */}
       <section>
-        <p className="mb-3 text-sm font-medium text-gray-500">세션</p>
+        <p className="mb-3 text-sm font-medium text-gray-500">뽀모도로 세션</p>
         <div className="divide-y divide-gray-100 rounded-2xl bg-white shadow-sm">
-          {settingsItems.map(({ field, label, suffix }) => (
-            <div key={field} className="flex items-center justify-between px-4 py-3.5">
-              <span className="text-sm text-gray-900">{label}</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  {...register(field)}
-                  onBlur={handleNumberFieldSave}
-                  className="w-16 rounded-lg bg-emerald-50 px-3 py-1 text-right text-sm font-medium text-emerald-600 outline-none"
-                />
-                <span className="text-sm text-gray-500">{suffix}</span>
-              </div>
-            </div>
-          ))}
+          <SettingsRow
+            label="Flow 시간"
+            value={`${values.flowMin}분`}
+            onClick={() => setActiveSheet('flow')}
+          />
+          <SettingsRow
+            label="휴식 시간"
+            value={breakValueLabel}
+            onClick={() => setActiveSheet('break')}
+          />
+          <SettingsRow
+            label="주기"
+            value={cycleLabel}
+            onClick={() => setActiveSheet('cycle')}
+          />
         </div>
-        {Object.keys(errors).length > 0 && (
-          <p className="mt-2 text-xs text-red-500">유효한 값을 입력해주세요</p>
-        )}
       </section>
 
-      {/* 자동화 설정 */}
       <section>
         <p className="mb-3 text-sm font-medium text-gray-500">자동화</p>
         <div className="divide-y divide-gray-100 rounded-2xl bg-white shadow-sm">
@@ -127,7 +118,7 @@ function PomodoroSettingsPage() {
             <Switch
               label="휴식 시간 자동 시작"
               description="Flow 종료 후 자동으로 휴식 시작"
-              checked={values.autoStartBreak}
+              checked={values.autoStartBreak ?? false}
               onChange={() => handleToggle('autoStartBreak')}
               disabled={isLoading}
             />
@@ -135,8 +126,8 @@ function PomodoroSettingsPage() {
           <div className="px-4 py-3.5">
             <Switch
               label="세션 자동 시작"
-              description="휴식 종료 후 자동으로 집중 시작"
-              checked={values.autoStartSession}
+              description="휴식 종료 후 자동으로 Flow 시작"
+              checked={values.autoStartSession ?? false}
               onChange={() => handleToggle('autoStartSession')}
               disabled={isLoading}
             />
@@ -144,8 +135,90 @@ function PomodoroSettingsPage() {
         </div>
       </section>
 
-      {/* 버전 정보 */}
+      {/* 미니 데이 설정은 다음 버전에서 공개 */}
+
       <p className="text-center text-xs text-gray-400">Todo Flow v0.1.0</p>
+
+      <BottomSheet
+        isOpen={activeSheet === 'flow'}
+        onClose={() => setActiveSheet(null)}
+        title="Flow 시간"
+      >
+        {FLOW_PRESETS.map((preset) => (
+          <BottomSheetItem
+            key={preset}
+            label={`${preset}분`}
+            rightIcon={values.flowMin === preset ? (
+              <CheckIcon className="h-4 w-4 text-emerald-500" />
+            ) : undefined}
+            onClick={() => {
+              commitSettings({ flowMin: preset })
+              setActiveSheet(null)
+            }}
+          />
+        ))}
+        {/* 사용자 지정은 다음 버전에서 공개 */}
+      </BottomSheet>
+
+      <BottomSheet
+        isOpen={activeSheet === 'break'}
+        onClose={() => setActiveSheet(null)}
+        title="휴식 시간"
+      >
+        <p className="px-2 pb-2 pt-1 text-xs font-semibold text-gray-400">짧은 휴식</p>
+        {SHORT_BREAK_PRESETS.map((preset) => (
+          <BottomSheetItem
+            key={`short-${preset}`}
+            label={`${preset}분`}
+            rightIcon={values.breakMin === preset ? (
+              <CheckIcon className="h-4 w-4 text-emerald-500" />
+            ) : undefined}
+            onClick={() => {
+              commitSettings({ breakMin: preset })
+              setActiveSheet(null)
+            }}
+          />
+        ))}
+        <p className="px-2 pb-2 pt-4 text-xs font-semibold text-gray-400">긴 휴식</p>
+        {LONG_BREAK_PRESETS.map((preset) => (
+          <BottomSheetItem
+            key={`long-${preset}`}
+            label={`${preset}분`}
+            rightIcon={values.longBreakMin === preset ? (
+              <CheckIcon className="h-4 w-4 text-emerald-500" />
+            ) : undefined}
+            onClick={() => {
+              commitSettings({ longBreakMin: preset })
+              setActiveSheet(null)
+            }}
+          />
+        ))}
+        {/* 사용자 지정은 다음 버전에서 공개 */}
+      </BottomSheet>
+
+      <BottomSheet
+        isOpen={activeSheet === 'cycle'}
+        onClose={() => setActiveSheet(null)}
+        title="주기"
+      >
+        {CYCLE_PRESETS.map((preset) => (
+          <BottomSheetItem
+            key={preset}
+            label={`${preset} 세션`}
+            rightIcon={values.cycleEvery === preset ? (
+              <CheckIcon className="h-4 w-4 text-emerald-500" />
+            ) : undefined}
+            onClick={() => {
+              commitSettings({ cycleEvery: preset })
+              setActiveSheet(null)
+            }}
+          />
+        ))}
+      </BottomSheet>
+
+
+      {/* 사용자 지정 모달은 다음 버전에서 공개 */}
+
     </div>
   )
 }

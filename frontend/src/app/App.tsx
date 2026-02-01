@@ -11,7 +11,7 @@ const tabs = [
     ),
   },
   {
-    to: '/settings/pomodoro',
+    to: '/settings',
     label: '설정',
     icon: (active: boolean) => (
       <SettingsIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
