@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, type ReactNode } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { toast } from 'react-hot-toast'
@@ -16,6 +16,8 @@ import {
   useSensors,
   useDroppable,
   type DragEndEvent,
+  type DragStartEvent,
+  type DragOverEvent,
 } from '@dnd-kit/core'
 import {
   arrayMove,
@@ -64,6 +66,8 @@ type GroupedTodos = {
   done: Record<number, Todo[]>
 }
 
+type RectLike = { top: number; height: number }
+
 const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): GroupedTodos => {
   const active: Record<number, Todo[]> = {}
   const done: Record<number, Todo[]> = {}
@@ -95,6 +99,17 @@ const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): Gr
   return { active, done }
 }
 
+const resolveActiveRect = (rect: unknown): RectLike | null => {
+  const raw = (rect as { current?: unknown })?.current ?? rect
+  const candidate = (raw as { translated?: unknown; initial?: unknown })?.translated ??
+    (raw as { translated?: unknown; initial?: unknown })?.initial ??
+    raw
+  if (!candidate || typeof (candidate as RectLike).top !== 'number' || typeof (candidate as RectLike).height !== 'number') {
+    return null
+  }
+  return candidate as RectLike
+}
+
 const getNextDayOrder = (list: Array<{ dayOrder?: number }>) =>
   list.length === 0 ? 0 : Math.max(...list.map((todo) => todo.dayOrder ?? 0)) + 1
 
@@ -107,106 +122,6 @@ const parseContainerId = (id: DropContainerId) => {
   return {
     miniDay: Number.isNaN(parsedMiniDay) ? 0 : parsedMiniDay,
     isDone: parts[2] === 'done',
-  }
-}
-
-const findTodoById = (list: Todo[], id: string) => list.find((todo) => todo.id === id)
-
-const applyReorderUpdates = (list: Todo[], items: TodoReorderItem[]) => {
-  const updates = new Map(items.map((item) => [item.id, item]))
-  return list.map((todo) => {
-    const next = updates.get(todo.id)
-    if (!next) return todo
-    return {
-      ...todo,
-      dayOrder: next.dayOrder ?? todo.dayOrder ?? 0,
-      miniDay: next.miniDay ?? todo.miniDay ?? 0,
-    }
-  })
-}
-
-const getReorderResultByIds = (
-  list: Todo[],
-  grouped: GroupedTodos,
-  activeId: string,
-  overId: string,
-) => {
-  if (activeId === overId) return null
-  const activeTodo = findTodoById(list, activeId)
-  if (!activeTodo) return null
-
-  const sourceMiniDay = activeTodo.miniDay ?? 0
-  const sourceIsDone = activeTodo.isDone
-  const sourceContainerId = getContainerId(sourceMiniDay, sourceIsDone)
-  const overTodo = findTodoById(list, overId)
-  const targetContainerId = overId.startsWith('day-')
-    ? (overId as DropContainerId)
-    : overTodo
-      ? getContainerId(overTodo.miniDay ?? 0, overTodo.isDone)
-      : sourceContainerId
-
-  const sourceContainer = parseContainerId(sourceContainerId)
-  const targetContainer = parseContainerId(targetContainerId)
-  if (sourceContainer.isDone !== targetContainer.isDone) return null
-
-  const targetMiniDay = targetContainer.miniDay
-  const resolvedSourceMiniDay = sourceContainer.miniDay
-  const sourceList = sourceContainer.isDone
-    ? grouped.done[sourceContainer.miniDay] ?? []
-    : grouped.active[sourceContainer.miniDay] ?? []
-  const targetList = sourceContainer.isDone
-    ? grouped.done[targetMiniDay] ?? []
-    : grouped.active[targetMiniDay] ?? []
-
-  const activeIndex = sourceList.findIndex((todo) => todo.id === activeTodo.id)
-  if (activeIndex === -1) return null
-
-  const isOverContainer = overId.startsWith('day-')
-  const isSameList = resolvedSourceMiniDay === targetMiniDay
-
-  let nextSource = [...sourceList]
-  let nextTarget = isSameList ? nextSource : [...targetList]
-
-  if (isSameList) {
-    const targetIndex = isOverContainer
-      ? sourceList.length - 1
-      : sourceList.findIndex((todo) => todo.id === overId)
-    if (!isOverContainer && targetIndex === -1) return null
-    const insertIndex = isOverContainer ? sourceList.length - 1 : targetIndex
-    nextSource = arrayMove(sourceList, activeIndex, Math.max(0, insertIndex))
-    nextTarget = nextSource
-  } else {
-    const [moved] = nextSource.splice(activeIndex, 1)
-    if (!moved) return null
-    const targetIndex = isOverContainer
-      ? targetList.length
-      : targetList.findIndex((todo) => todo.id === overId)
-    if (!isOverContainer && targetIndex === -1) return null
-    nextTarget.splice(Math.max(0, targetIndex), 0, moved)
-  }
-
-  const reorderItems: TodoReorderItem[] = nextSource.map((todo, index) => ({
-    id: todo.id,
-    dayOrder: index,
-    miniDay: resolvedSourceMiniDay,
-  }))
-
-  if (!isSameList) {
-    reorderItems.push(
-      ...nextTarget.map((todo, index) => ({
-        id: todo.id,
-        dayOrder: index,
-        miniDay: targetMiniDay,
-      })),
-    )
-  }
-
-  if (reorderItems.length === 0) return null
-  return {
-    reorderItems,
-    nextList: applyReorderUpdates(list, reorderItems),
-    sourceContainerId,
-    targetContainerId,
   }
 }
 
@@ -325,6 +240,86 @@ function TodosPage() {
     [daySections, todosForSelectedDate],
   )
 
+  // === DnD: multi-container live sorting state (option 2) ===
+type ContainerItems = Record<DropContainerId, string[]>
+
+const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  for (const key of aKeys) {
+    const aList = a[key as DropContainerId]
+    const bList = b[key as DropContainerId]
+    if (!aList || !bList) return false
+    if (aList.length !== bList.length) return false
+    for (let i = 0; i < aList.length; i += 1) {
+      if (aList[i] !== bList[i]) return false
+    }
+  }
+  return true
+}
+
+  const buildContainerItems = useCallback((grouped: GroupedTodos): ContainerItems => {
+    const result = {} as ContainerItems
+    for (const section of daySections) {
+      const activeId = getContainerId(section.id, false)
+      const doneId = getContainerId(section.id, true)
+      result[activeId] = (grouped.active[section.id] ?? []).map((t) => t.id)
+      result[doneId] = (grouped.done[section.id] ?? []).map((t) => t.id)
+    }
+    return result
+  }, [daySections])
+
+  const [containerItems, setContainerItems] = useState<ContainerItems>(() =>
+    buildContainerItems(buildGroupedTodos([], daySections)),
+  )
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const clonedItemsRef = useRef<ContainerItems | null>(null)
+  const dragOriginContainerRef = useRef<DropContainerId | null>(null)
+
+  const todoById = useMemo(() => {
+    const map = new Map<string, Todo>()
+    for (const t of todosForSelectedDate) map.set(t.id, t)
+    return map
+  }, [todosForSelectedDate])
+
+  const containerByTodoId = useMemo(() => {
+    const map = new Map<string, DropContainerId>()
+    for (const [cid, ids] of Object.entries(containerItems) as Array<[DropContainerId, string[]]>) {
+      for (const id of ids) map.set(id, cid)
+    }
+    return map
+  }, [containerItems])
+
+  const findContainerFor = (id: string) => {
+    if (id.startsWith('day-')) return id as DropContainerId
+    return containerByTodoId.get(id) ?? null
+  }
+
+  const getTodosForContainer = (containerId: DropContainerId): Todo[] => {
+    const ids = containerItems[containerId] ?? []
+    const { miniDay, isDone } = parseContainerId(containerId)
+    const items: Todo[] = []
+    ids.forEach((id, index) => {
+      const base = todoById.get(id)
+      if (!base) return
+      items.push({
+        ...base,
+        miniDay,
+        isDone,
+        dayOrder: index,
+      })
+    })
+    return items
+  }
+
+  // Keep local DnD state in sync with server data when not dragging
+  useEffect(() => {
+    if (activeDragId) return
+    const next = buildContainerItems(groupedTodos)
+    setContainerItems((prev) => (areContainerItemsEqual(prev, next) ? prev : next))
+  }, [activeDragId, groupedTodos, buildContainerItems])
+
 
   // 타이머 상태
   // === Effects ===
@@ -369,10 +364,8 @@ function TodosPage() {
 
       const containerCollision = pointerCollisions.find((collision) => isContainerId(collision.id))
       if (containerCollision) {
-        const container = parseContainerId(containerCollision.id as DropContainerId)
-        const containerTodos = container.isDone
-          ? groupedTodos.done[container.miniDay] ?? []
-          : groupedTodos.active[container.miniDay] ?? []
+        const containerId = containerCollision.id as DropContainerId
+        const containerTodos = getTodosForContainer(containerId)
         if (containerTodos.length === 0) return [containerCollision]
 
         const containerIds = new Set(containerTodos.map((todo) => todo.id))
@@ -441,13 +434,176 @@ function TodosPage() {
     }
   }
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragStart = (event: DragStartEvent) => {
+    const id = String(event.active.id)
+    setActiveDragId(id)
+    clonedItemsRef.current = containerItems
+    dragOriginContainerRef.current = findContainerFor(id)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
     if (!event.over) return
     const activeId = String(event.active.id)
     const overId = String(event.over.id)
-    const result = getReorderResultByIds(todosForSelectedDate, groupedTodos, activeId, overId)
-    if (!result) return
-    reorderTodos.mutate({ items: result.reorderItems })
+    const isOverContainer = overId.startsWith('day-')
+    const activeRect = resolveActiveRect(event.active.rect)
+    const activeTop = activeRect?.top ?? 0
+    const overRect = event.over.rect
+    const isBelowOverItem = !isOverContainer && activeTop > overRect.top + overRect.height / 2
+
+    const activeContainer = findContainerFor(activeId)
+    const overContainer = findContainerFor(overId)
+    if (!activeContainer || !overContainer) return
+
+    if (activeContainer === overContainer) return
+
+    // Disallow active <-> done moves
+    const from = parseContainerId(activeContainer)
+    const to = parseContainerId(overContainer)
+    if (from.isDone !== to.isDone) return
+
+    setContainerItems((prev) => {
+      const next = { ...prev }
+      const fromItems = [...(next[activeContainer] ?? [])]
+      const toItems = [...(next[overContainer] ?? [])]
+
+      const fromIndex = fromItems.indexOf(activeId)
+      if (fromIndex === -1) return prev
+
+      fromItems.splice(fromIndex, 1)
+
+      const overIndex = isOverContainer ? toItems.length : toItems.indexOf(overId)
+      if (!isOverContainer && overIndex === -1) return prev
+
+      const insertIndex = isOverContainer ? toItems.length : overIndex + (isBelowOverItem ? 1 : 0)
+      toItems.splice(Math.max(0, Math.min(insertIndex, toItems.length)), 0, activeId)
+
+      next[activeContainer] = fromItems
+      next[overContainer] = toItems
+      return next
+    })
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    if (!event.over) {
+      setActiveDragId(null)
+      clonedItemsRef.current = null
+      dragOriginContainerRef.current = null
+      return
+    }
+
+    const activeId = String(event.active.id)
+    const overId = String(event.over.id)
+    const isOverContainer = overId.startsWith('day-')
+    const activeRect = resolveActiveRect(event.active.rect)
+    const activeTop = activeRect?.top ?? 0
+    const overRect = event.over.rect
+    const isBelowOverItem = !isOverContainer && activeTop > overRect.top + overRect.height / 2
+
+    const activeContainer = findContainerFor(activeId)
+    const overContainer = findContainerFor(overId)
+    if (!activeContainer || !overContainer) {
+      setActiveDragId(null)
+      clonedItemsRef.current = null
+      dragOriginContainerRef.current = null
+      return
+    }
+
+    // Disallow active <-> done moves
+    const from = parseContainerId(activeContainer)
+    const to = parseContainerId(overContainer)
+    if (from.isDone !== to.isDone) {
+      setActiveDragId(null)
+      clonedItemsRef.current = null
+      dragOriginContainerRef.current = null
+      return
+    }
+
+    // If same container, we still want to reorder based on final over position
+    setContainerItems((prev) => {
+      const next = { ...prev }
+      const items = [...(next[activeContainer] ?? [])]
+      const oldIndex = items.indexOf(activeId)
+      if (oldIndex === -1) return prev
+
+      const newIndex = isOverContainer
+        ? items.length - 1
+        : items.indexOf(overId) + (isBelowOverItem ? 1 : 0)
+
+      if (!isOverContainer && newIndex === -1) return prev
+
+      next[activeContainer] = arrayMove(items, oldIndex, Math.max(0, Math.min(newIndex, items.length - 1)))
+      return next
+    })
+
+    // Build reorder payload for the affected containers from the current (already-updated) state
+    // Note: since setState is async, compute using a snapshot derived from containerItems PLUS the event intent.
+    const snapshot = (() => {
+      const current = containerItems
+      const next = { ...current }
+      const fromItems = [...(next[activeContainer] ?? [])]
+      const toItems = activeContainer === overContainer ? fromItems : [...(next[overContainer] ?? [])]
+
+      const fromIndex = fromItems.indexOf(activeId)
+      if (fromIndex === -1) return current
+
+      if (activeContainer === overContainer) {
+        const newIndex = isOverContainer
+          ? fromItems.length - 1
+          : fromItems.indexOf(overId) + (isBelowOverItem ? 1 : 0)
+        if (!isOverContainer && newIndex === -1) return current
+        next[activeContainer] = arrayMove(
+          fromItems,
+          fromIndex,
+          Math.max(0, Math.min(newIndex, fromItems.length - 1)),
+        )
+        return next
+      }
+
+      // move across containers
+      fromItems.splice(fromIndex, 1)
+      const overIndex = isOverContainer ? toItems.length : toItems.indexOf(overId)
+      if (!isOverContainer && overIndex === -1) return current
+      const insertIndex = isOverContainer ? toItems.length : overIndex + (isBelowOverItem ? 1 : 0)
+      toItems.splice(Math.max(0, Math.min(insertIndex, toItems.length)), 0, activeId)
+
+      next[activeContainer] = fromItems
+      next[overContainer] = toItems
+      return next
+    })()
+
+    const buildReorderItemsFor = (containerId: DropContainerId): TodoReorderItem[] => {
+      const ids = snapshot[containerId] ?? []
+      const { miniDay } = parseContainerId(containerId)
+      return ids.map((id, index) => ({
+        id,
+        dayOrder: index,
+        miniDay,
+      }))
+    }
+
+    const affected = new Set<DropContainerId>()
+    affected.add(activeContainer)
+    affected.add(overContainer)
+    if (dragOriginContainerRef.current) affected.add(dragOriginContainerRef.current)
+
+    const reorderItems = Array.from(affected).flatMap(buildReorderItemsFor)
+    if (reorderItems.length > 0) {
+      reorderTodos.mutate({ items: reorderItems })
+    }
+
+    setActiveDragId(null)
+    clonedItemsRef.current = null
+    dragOriginContainerRef.current = null
+  }
+
+  const handleDragCancel = () => {
+    if (clonedItemsRef.current) {
+      setContainerItems(clonedItemsRef.current)
+    }
+    setActiveDragId(null)
+    clonedItemsRef.current = null
+    dragOriginContainerRef.current = null
   }
 
 
@@ -485,14 +641,15 @@ function TodosPage() {
             sensors={sensors}
             collisionDetection={collisionDetectionStrategy}
             measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
-            onDragEnd={(event) => {
-              void handleDragEnd(event)
-            }}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragCancel={handleDragCancel}
+            onDragEnd={handleDragEnd}
           >
             <div className="space-y-6">
               {daySections.map((section, index) => {
-                const activeTodos = groupedTodos.active[section.id] ?? []
-                const doneTodos = groupedTodos.done[section.id] ?? []
+                const activeTodos = getTodosForContainer(getContainerId(section.id, false))
+                const doneTodos = getTodosForContainer(getContainerId(section.id, true))
                 const activeContainerId = getContainerId(section.id, false)
                 const doneContainerId = getContainerId(section.id, true)
                 const isInputOpen = inputDay === section.id
