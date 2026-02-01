@@ -29,7 +29,7 @@ export function SortableTodoItem({ id, ...props }: SortableTodoItemProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`${isDragging ? 'z-50 shadow-lg rounded-xl' : ''}`}
+      className={`touch-manipulation select-none ${isDragging ? 'z-50 shadow-lg rounded-xl' : ''}`}
       {...(canDrag ? { ...attributes, ...listeners } : {})}
     >
       <TodoItem {...props} />

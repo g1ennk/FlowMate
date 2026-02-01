@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useMemo, useRef, useState, useEffect, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { toast } from 'react-hot-toast'
@@ -6,10 +6,15 @@ import { z } from 'zod'
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
+  MeasuringStrategy,
+  type CollisionDetection,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
@@ -29,7 +34,6 @@ import {
 } from '../../ui/BottomSheet'
 import {
   PlusIcon,
-  CheckCircleIcon,
   EditIcon,
   TrashIcon,
   ClockIcon,
@@ -42,6 +46,8 @@ import { useTodoActions } from './useTodoActions'
 import { useReorderTodos, useTodos } from './hooks'
 import { getTimerInfo } from '../timer/useTimerInfo'
 import { formatTimerHoursMinutes } from './todoTimerDisplay'
+import { useMiniDaysSettings } from '../../lib/miniDays'
+import type { Todo, TodoReorderItem } from '../../api/types'
 
 // === 스키마 ===
 const createSchema = z.object({
@@ -49,24 +55,240 @@ const createSchema = z.object({
 })
 type CreateForm = z.infer<typeof createSchema>
 
+type DropContainerId = `day-${number}-${'active' | 'done'}`
+
+const getTodoOrder = (todo: { dayOrder?: number }) => todo.dayOrder ?? 0
+
+type GroupedTodos = {
+  active: Record<number, Todo[]>
+  done: Record<number, Todo[]>
+}
+
+const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): GroupedTodos => {
+  const active: Record<number, Todo[]> = {}
+  const done: Record<number, Todo[]> = {}
+  daySections.forEach((section) => {
+    active[section.id] = []
+    done[section.id] = []
+  })
+
+  for (const todo of list) {
+    const miniDay = todo.miniDay ?? 0
+    const target = todo.isDone ? done : active
+    if (!target[miniDay]) target[miniDay] = []
+    target[miniDay].push(todo)
+  }
+
+  const sortTodos = (list: Todo[]) =>
+    [...list].sort((a, b) => {
+      const aOrder = getTodoOrder(a)
+      const bOrder = getTodoOrder(b)
+      if (aOrder !== bOrder) return aOrder - bOrder
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
+
+  daySections.forEach((section) => {
+    active[section.id] = sortTodos(active[section.id])
+    done[section.id] = sortTodos(done[section.id])
+  })
+
+  return { active, done }
+}
+
+const getNextDayOrder = (list: Array<{ dayOrder?: number }>) =>
+  list.length === 0 ? 0 : Math.max(...list.map((todo) => todo.dayOrder ?? 0)) + 1
+
+const getContainerId = (miniDay: number, isDone: boolean): DropContainerId =>
+  `day-${miniDay}-${isDone ? 'done' : 'active'}`
+
+const parseContainerId = (id: DropContainerId) => {
+  const parts = id.split('-')
+  const parsedMiniDay = Number(parts[1])
+  return {
+    miniDay: Number.isNaN(parsedMiniDay) ? 0 : parsedMiniDay,
+    isDone: parts[2] === 'done',
+  }
+}
+
+const findTodoById = (list: Todo[], id: string) => list.find((todo) => todo.id === id)
+
+const applyReorderUpdates = (list: Todo[], items: TodoReorderItem[]) => {
+  const updates = new Map(items.map((item) => [item.id, item]))
+  return list.map((todo) => {
+    const next = updates.get(todo.id)
+    if (!next) return todo
+    return {
+      ...todo,
+      dayOrder: next.dayOrder ?? todo.dayOrder ?? 0,
+      miniDay: next.miniDay ?? todo.miniDay ?? 0,
+    }
+  })
+}
+
+const getReorderResultByIds = (
+  list: Todo[],
+  grouped: GroupedTodos,
+  activeId: string,
+  overId: string,
+) => {
+  if (activeId === overId) return null
+  const activeTodo = findTodoById(list, activeId)
+  if (!activeTodo) return null
+
+  const sourceMiniDay = activeTodo.miniDay ?? 0
+  const sourceIsDone = activeTodo.isDone
+  const sourceContainerId = getContainerId(sourceMiniDay, sourceIsDone)
+  const overTodo = findTodoById(list, overId)
+  const targetContainerId = overId.startsWith('day-')
+    ? (overId as DropContainerId)
+    : overTodo
+      ? getContainerId(overTodo.miniDay ?? 0, overTodo.isDone)
+      : sourceContainerId
+
+  const sourceContainer = parseContainerId(sourceContainerId)
+  const targetContainer = parseContainerId(targetContainerId)
+  if (sourceContainer.isDone !== targetContainer.isDone) return null
+
+  const targetMiniDay = targetContainer.miniDay
+  const resolvedSourceMiniDay = sourceContainer.miniDay
+  const sourceList = sourceContainer.isDone
+    ? grouped.done[sourceContainer.miniDay] ?? []
+    : grouped.active[sourceContainer.miniDay] ?? []
+  const targetList = sourceContainer.isDone
+    ? grouped.done[targetMiniDay] ?? []
+    : grouped.active[targetMiniDay] ?? []
+
+  const activeIndex = sourceList.findIndex((todo) => todo.id === activeTodo.id)
+  if (activeIndex === -1) return null
+
+  const isOverContainer = overId.startsWith('day-')
+  const isSameList = resolvedSourceMiniDay === targetMiniDay
+
+  let nextSource = [...sourceList]
+  let nextTarget = isSameList ? nextSource : [...targetList]
+
+  if (isSameList) {
+    const targetIndex = isOverContainer
+      ? sourceList.length - 1
+      : sourceList.findIndex((todo) => todo.id === overId)
+    if (!isOverContainer && targetIndex === -1) return null
+    const insertIndex = isOverContainer ? sourceList.length - 1 : targetIndex
+    nextSource = arrayMove(sourceList, activeIndex, Math.max(0, insertIndex))
+    nextTarget = nextSource
+  } else {
+    const [moved] = nextSource.splice(activeIndex, 1)
+    if (!moved) return null
+    const targetIndex = isOverContainer
+      ? targetList.length
+      : targetList.findIndex((todo) => todo.id === overId)
+    if (!isOverContainer && targetIndex === -1) return null
+    nextTarget.splice(Math.max(0, targetIndex), 0, moved)
+  }
+
+  const reorderItems: TodoReorderItem[] = nextSource.map((todo, index) => ({
+    id: todo.id,
+    dayOrder: index,
+    miniDay: resolvedSourceMiniDay,
+  }))
+
+  if (!isSameList) {
+    reorderItems.push(
+      ...nextTarget.map((todo, index) => ({
+        id: todo.id,
+        dayOrder: index,
+        miniDay: targetMiniDay,
+      })),
+    )
+  }
+
+  if (reorderItems.length === 0) return null
+  return {
+    reorderItems,
+    nextList: applyReorderUpdates(list, reorderItems),
+    sourceContainerId,
+    targetContainerId,
+  }
+}
+
+function DroppableList({
+  id,
+  children,
+}: {
+  id: DropContainerId
+  children: ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-h-[44px] space-y-1 rounded-lg py-1 transition-colors ${isOver ? 'bg-emerald-50/40' : ''}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function ActiveSectionDrop({
+  id,
+  className,
+  children,
+}: {
+  id: DropContainerId
+  className?: string
+  children: ReactNode | ((isOver: boolean) => ReactNode)
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  return (
+    <section ref={setNodeRef} className={className}>
+      {typeof children === 'function' ? children(isOver) : children}
+    </section>
+  )
+}
+
 // === 메인 컴포넌트 ===
 function TodosPage() {
   const { data, isLoading } = useTodos()
   const store = useTimerStore()
   const timers = useTimerStore((s) => s.timers)
+  const reorderTodos = useReorderTodos()
 
   // Global ticker is installed in AppProviders
 
   // 캘린더 상태
   const [selectedDate, setSelectedDate] = useState(new Date())
   const selectedDateKey = formatDateKey(selectedDate)
+  const miniDaysSettings = useMiniDaysSettings()
+
+  const daySections = useMemo(
+    () => [
+      { id: 0, label: 'Day 0', title: '미분류', range: '' },
+      {
+        id: 1,
+        label: 'Day 1',
+        title: miniDaysSettings.day1.label,
+        range: `${miniDaysSettings.day1.start}–${miniDaysSettings.day1.end}`,
+      },
+      {
+        id: 2,
+        label: 'Day 2',
+        title: miniDaysSettings.day2.label,
+        range: `${miniDaysSettings.day2.start}–${miniDaysSettings.day2.end}`,
+      },
+      {
+        id: 3,
+        label: 'Day 3',
+        title: miniDaysSettings.day3.label,
+        range: `${miniDaysSettings.day3.start}–${miniDaysSettings.day3.end}`,
+      },
+    ],
+    [miniDaysSettings],
+  )
 
   // Todo 액션 훅
   const actions = useTodoActions(selectedDateKey)
-  const reorderTodos = useReorderTodos()
 
   // UI 상태
-  const [showInput, setShowInput] = useState(false)
+  const [inputDay, setInputDay] = useState<number | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const isSubmittingRef = useRef(false)
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -98,48 +320,10 @@ function TodosPage() {
     return marks
   }, [data?.items])
 
-  const activeTodos = useMemo(() => {
-    return [...todosForSelectedDate]
-      .filter((t) => !t.isDone)
-      .sort((a, b) => {
-        if (a.order !== b.order) return a.order - b.order
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      })
-  }, [todosForSelectedDate])
-
-  const doneTodos = useMemo(() => {
-    return [...todosForSelectedDate]
-      .filter((t) => t.isDone)
-      .sort((a, b) => {
-        if (a.order !== b.order) return a.order - b.order
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      })
-  }, [todosForSelectedDate])
-
-  const selectedDateFocusSeconds = useMemo(() => {
-    return todosForSelectedDate.reduce((sum, todo) => {
-      const timer = timers[todo.id]
-      const sessionHistory = timer?.sessionHistory ?? []
-      if (sessionHistory.length > 0) {
-        const totalSessionFocusMs = sessionHistory.reduce((s, session) => s + session.focusMs, 0)
-        return sum + Math.floor(totalSessionFocusMs / 1000)
-      }
-      return sum + todo.focusSeconds
-    }, 0)
-  }, [todosForSelectedDate, timers])
-
-  const completedDateFocusSeconds = useMemo(() => {
-    return todosForSelectedDate.reduce((sum, todo) => {
-      if (!todo.isDone) return sum
-      const timer = timers[todo.id]
-      const sessionHistory = timer?.sessionHistory ?? []
-      if (sessionHistory.length > 0) {
-        const totalSessionFocusMs = sessionHistory.reduce((s, session) => s + session.focusMs, 0)
-        return sum + Math.floor(totalSessionFocusMs / 1000)
-      }
-      return sum + todo.focusSeconds
-    }, 0)
-  }, [todosForSelectedDate, timers])
+  const groupedTodos = useMemo(
+    () => buildGroupedTodos(todosForSelectedDate, daySections),
+    [daySections, todosForSelectedDate],
+  )
 
 
   // 타이머 상태
@@ -163,38 +347,109 @@ function TodosPage() {
 
   // DnD
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  const getNextOrder = (list: Array<{ order: number }>) =>
-    list.length === 0 ? 0 : Math.max(...list.map((todo) => todo.order)) + 1
+  const collisionDetectionStrategy: CollisionDetection = (args) => {
+    const isContainerId = (id: unknown) => String(id).startsWith('day-')
+    const pointerCollisions = pointerWithin(args)
+    if (pointerCollisions.length > 0) {
+      const itemCollisions = pointerCollisions.filter((collision) => !isContainerId(collision.id))
+      if (itemCollisions.length > 0) {
+        const itemIds = new Set(itemCollisions.map((collision) => String(collision.id)))
+        const itemContainers = args.droppableContainers.filter((droppable) =>
+          itemIds.has(String(droppable.id)),
+        )
+        if (itemContainers.length > 0) {
+          return closestCenter({ ...args, droppableContainers: itemContainers })
+        }
+      }
 
-  const handleActiveDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = activeTodos.findIndex((t) => t.id === active.id)
-    const newIndex = activeTodos.findIndex((t) => t.id === over.id)
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const nextTodos = arrayMove(activeTodos, oldIndex, newIndex)
-      reorderTodos.mutate({
-        items: nextTodos.map((todo, index) => ({ id: todo.id, order: index })),
-      })
+      const containerCollision = pointerCollisions.find((collision) => isContainerId(collision.id))
+      if (containerCollision) {
+        const container = parseContainerId(containerCollision.id as DropContainerId)
+        const containerTodos = container.isDone
+          ? groupedTodos.done[container.miniDay] ?? []
+          : groupedTodos.active[container.miniDay] ?? []
+        if (containerTodos.length === 0) return [containerCollision]
+
+        const containerIds = new Set(containerTodos.map((todo) => todo.id))
+        const itemContainers = args.droppableContainers.filter((droppable) =>
+          containerIds.has(String(droppable.id)),
+        )
+        if (itemContainers.length === 0) return [containerCollision]
+
+        if (args.pointerCoordinates) {
+          const firstId = containerTodos[0]?.id
+          const lastId = containerTodos[containerTodos.length - 1]?.id
+          const firstContainer = itemContainers.find((droppable) => String(droppable.id) === firstId)
+          const lastContainer = itemContainers.find((droppable) => String(droppable.id) === lastId)
+          const firstRect = firstContainer?.rect.current
+          const lastRect = lastContainer?.rect.current
+          if (lastRect && args.pointerCoordinates.y > lastRect.bottom) {
+            return [containerCollision]
+          }
+          if (firstRect && args.pointerCoordinates.y < firstRect.top) {
+            return [firstContainer ?? containerCollision]
+          }
+        }
+
+        return closestCenter({ ...args, droppableContainers: itemContainers })
+      }
+
+      return pointerCollisions
+    }
+    return closestCenter(args)
+  }
+
+  const blockFocusStats = useMemo(() => {
+    const totals: Record<number, number> = {}
+    const doneTotals: Record<number, number> = {}
+    daySections.forEach((section) => {
+      totals[section.id] = 0
+      doneTotals[section.id] = 0
+    })
+
+    for (const todo of todosForSelectedDate) {
+      const miniDay = todo.miniDay ?? 0
+      const timer = timers[todo.id]
+      const sessionHistory = timer?.sessionHistory ?? []
+      const focusSeconds =
+        sessionHistory.length > 0
+          ? Math.floor(sessionHistory.reduce((s, session) => s + session.focusMs, 0) / 1000)
+          : todo.focusSeconds
+      totals[miniDay] = (totals[miniDay] ?? 0) + focusSeconds
+      if (todo.isDone) {
+        doneTotals[miniDay] = (doneTotals[miniDay] ?? 0) + focusSeconds
+      }
+    }
+
+    const totalAll = daySections.reduce((sum, section) => sum + (totals[section.id] ?? 0), 0)
+    return { totals, doneTotals, totalAll }
+  }, [daySections, todosForSelectedDate, timers])
+
+  const getTodoTimerProps = (todo: { id: string }) => {
+    const timer = store.getTimer(todo.id)
+    const info = getTimerInfo(timer)
+    return {
+      timer,
+      ...info,
+      sessionHistory: timer?.sessionHistory ?? [],
+      initialFocusMs: timer?.initialFocusMs ?? 0,
     }
   }
 
-  const handleDoneDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = doneTodos.findIndex((t) => t.id === active.id)
-    const newIndex = doneTodos.findIndex((t) => t.id === over.id)
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const nextTodos = arrayMove(doneTodos, oldIndex, newIndex)
-      reorderTodos.mutate({
-        items: nextTodos.map((todo, index) => ({ id: todo.id, order: index })),
-      })
-    }
+  const handleDragEnd = async (event: DragEndEvent) => {
+    if (!event.over) return
+    const activeId = String(event.active.id)
+    const overId = String(event.over.id)
+    const result = getReorderResultByIds(todosForSelectedDate, groupedTodos, activeId, overId)
+    if (!result) return
+    reorderTodos.mutate({ items: result.reorderItems })
   }
+
 
   return (
     <div className="space-y-4">
@@ -214,248 +469,295 @@ function TodosPage() {
             <h2 className="text-base font-semibold text-gray-900">
               {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
             </h2>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-              집중 · {formatTimerHoursMinutes(selectedDateFocusSeconds)}
-            </span>
+            {blockFocusStats.totalAll > 0 && (
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                총 Flow · {formatTimerHoursMinutes(blockFocusStats.totalAll)}
+              </span>
+            )}
           </div>
-          <button
-            onClick={() => setShowInput((v) => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors"
-          >
-            <PlusIcon className="h-4 w-4" />
-          </button>
         </div>
 
         {/* 로딩 */}
         {isLoading && <div className="py-8 text-center text-sm text-gray-400">불러오는 중...</div>}
 
-        {/* 빈 상태 또는 리스트 */}
-        {!isLoading && todosForSelectedDate.length === 0 && !showInput ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
-              <CheckCircleIcon className="h-8 w-8 text-emerald-300" />
-            </div>
-            <p className="mb-1 text-sm font-medium text-gray-600">할 일이 없어요</p>
-            <p className="mb-4 text-xs text-gray-400">+ 버튼을 눌러 오늘의 첫 할 일을 추가해보세요</p>
-            <button
-              onClick={() => setShowInput(true)}
-              className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
-            >
-              + 할 일 추가하기
-            </button>
-          </div>
-        ) : (!isLoading && (todosForSelectedDate.length > 0 || showInput)) ? (
-          <div className="space-y-1">
-            {/* 미완료 Todo (드래그 가능) */}
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActiveDragEnd}>
-              <SortableContext items={activeTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-                {activeTodos.map((todo) => {
-                  // 실시간 타이머 정보 계산
-                  const timer = store.getTimer(todo.id)
-                  const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase, breakElapsedMs, breakTargetMs, isBreakPhase, flexiblePhase } = getTimerInfo(timer)
-                  const sessionHistory = timer?.sessionHistory ?? []
-                  const initialFocusMs = timer?.initialFocusMs ?? 0
-                  
-                  return (
-                    <SortableTodoItem
-                      key={todo.id}
-                      id={todo.id}
-                      title={todo.title}
-                      note={todo.note}
-                      pomodoroDone={todo.pomodoroDone}
-                      focusSeconds={todo.focusSeconds}
-                      isDone={todo.isDone}
-                      isEditing={actions.editingId === todo.id}
-                      editingTitle={actions.editingTitle}
-                      onEditingTitleChange={actions.setEditingTitle}
-                      onToggle={() =>
-                        actions.handleToggleDone(todo.id, !todo.isDone, getNextOrder(doneTodos))
-                      }
-                      onEdit={() => actions.handleEdit(todo.id, todo.title)}
-                      onSaveEdit={actions.handleSaveEdit}
-                      onCancelEdit={actions.handleCancelEdit}
-                      onDelete={() => actions.handleDelete(todo.id)}
-                      onOpenMenu={() => actions.setSelectedTodo(todo)}
-                      onOpenTimer={() => {
-                        // 우선순위: 현재 실행 중인 타이머 모드 > todo.timerMode > null
-                        const modeToUse = timer?.mode || todo.timerMode || null
-                        actions.handleOpenTimer(todo, modeToUse)
-                      }}
-                      onOpenNote={() => actions.handleOpenNote(todo)}
-                      isActiveTimer={isActiveTimer}
-                      activeTimerMode={timer?.mode}
-                      activeTimerElapsedMs={activeTimerElapsedMs}
-                      activeTimerRemainingMs={activeTimerRemainingMs}
-                      activeTimerPhase={activeTimerPhase}
-                      breakElapsedMs={breakElapsedMs}
-                      breakTargetMs={breakTargetMs}
-                      isBreakPhase={isBreakPhase}
-                      flexiblePhase={flexiblePhase}
-                      sessionHistory={sessionHistory}
-                      initialFocusMs={initialFocusMs}
-                    />
-                  )
-                })}
-              </SortableContext>
-            </DndContext>
+        {!isLoading && (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collisionDetectionStrategy}
+            measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
+            onDragEnd={(event) => {
+              void handleDragEnd(event)
+            }}
+          >
+            <div className="space-y-6">
+              {daySections.map((section, index) => {
+                const activeTodos = groupedTodos.active[section.id] ?? []
+                const doneTodos = groupedTodos.done[section.id] ?? []
+                const activeContainerId = getContainerId(section.id, false)
+                const doneContainerId = getContainerId(section.id, true)
+                const isInputOpen = inputDay === section.id
+                const nextDoneOrder = getNextDayOrder(doneTodos)
+                const nextActiveOrder = getNextDayOrder(activeTodos)
+                const dayFocus = blockFocusStats.totals[section.id] ?? 0
+                const doneFocus = blockFocusStats.doneTotals[section.id] ?? 0
+                const emptyMessage =
+                  section.id === 0
+                    ? '아직 분류되지 않은 할 일이 없어요'
+                    : `아직 ${section.title}에 할 일이 없어요`
 
-            {/* 새 할 일 추가 - TodoItem 형태 (미완료 태스크 맨 아래) */}
-            {showInput && (
-              <div className="rounded-xl p-2">
-                <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
-                  {/* 체크박스 (비활성) */}
-                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
-                  
-                  {/* 입력 필드 */}
-                  <textarea
-                    {...register('title')}
-                    ref={(e) => {
-                      register('title').ref(e)
-                      inputRef.current = e
-                      // 높이 자동 조정
-                      if (e) {
-                        e.style.height = 'auto'
-                        e.style.height = `${e.scrollHeight}px`
-                      }
-                    }}
-                    placeholder="할 일 입력"
-                    autoFocus
-                    onKeyDown={async (e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        if (isSubmittingRef.current) return
-                        
-                        const title = getValues('title')
-                        if (title?.trim()) {
-                          isSubmittingRef.current = true
-                          try {
-                            await actions.handleCreate(title)
-                            reset()
-                            // Enter 시에는 입력 필드 유지 (연속 입력 가능)
-                            setTimeout(() => {
-                              if (inputRef.current) {
-                                inputRef.current.focus()
-                                inputRef.current.style.height = 'auto'
-                                inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
+                return (
+                  <section
+                    key={section.id}
+                    className={`${index === 0 ? '' : 'border-t border-gray-100 pt-5'} space-y-2`}
+                  >
+                    <ActiveSectionDrop id={activeContainerId} className="space-y-2 pb-3">
+                      {(isActiveOver) => (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-sm font-semibold text-gray-900">
+                                {section.label} · {section.title}
+                              </h3>
+                              {section.range && <span className="text-xs text-gray-400">{section.range}</span>}
+                              {dayFocus > 0 && (
+                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                  Flow · {formatTimerHoursMinutes(dayFocus)}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() =>
+                                setInputDay((current) => (current === section.id ? null : section.id))
                               }
-                            }, 0)
-                          } catch (err) {
-                            toast.error('추가 실패', { id: 'todo-create-failed' })
-                            console.error(err)
-                          } finally {
-                            isSubmittingRef.current = false
-                          }
-                        }
-                      }
-                    }}
-                    onChange={(e) => {
-                      register('title').onChange(e)
-                      // 높이 자동 조정
-                      e.target.style.height = 'auto'
-                      e.target.style.height = `${e.target.scrollHeight}px`
-                    }}
-                    onBlur={async () => {
-                      // 제출 중이면 blur 무시
-                      if (isSubmittingRef.current) return
-                      
-                      const title = getValues('title')
-                      if (title?.trim()) {
-                        // 입력 값이 있으면 자동으로 추가
-                        isSubmittingRef.current = true
-                        try {
-                          await actions.handleCreate(title)
-                          reset()
-                          setShowInput(false) // blur 시에는 입력 필드 닫기
-                        } catch (err) {
-                          toast.error('추가 실패', { id: 'todo-create-failed' })
-                          console.error(err)
-                        } finally {
-                          isSubmittingRef.current = false
-                        }
-                      } else {
-                        // 입력 값이 없으면 입력 필드만 닫기
-                        setShowInput(false)
-                      }
-                    }}
-                    className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]"
-                    rows={1}
-                  />
-                  
-                  {/* 더보기 버튼 (비활성) */}
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-300 opacity-50">
-                    <MoreVerticalIcon className="h-4 w-4" />
-                  </div>
-                </div>
-              </div>
-            )}
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors"
+                            >
+                              <PlusIcon className="h-4 w-4" />
+                            </button>
+                          </div>
 
-            {/* 완료된 Todo (드래그 가능) */}
-            {doneTodos.length > 0 && (
-              <>
-                {activeTodos.length > 0 && (
-                  <div className="py-2">
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-medium text-gray-400">
-                        완료됨 · {formatTimerHoursMinutes(completedDateFocusSeconds)}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDoneDragEnd}>
-                  <SortableContext items={doneTodos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-                    {doneTodos.map((todo) => {
-                      // 실시간 타이머 정보 계산
-                      const timer = store.getTimer(todo.id)
-                      const { isActiveTimer, activeTimerElapsedMs, activeTimerRemainingMs, activeTimerPhase } = getTimerInfo(timer)
-                      const sessionHistory = timer?.sessionHistory ?? []
-                      const initialFocusMs = timer?.initialFocusMs ?? 0
-                      
-                      return (
-                        <SortableTodoItem
-                          key={todo.id}
-                          id={todo.id}
-                          title={todo.title}
-                          note={todo.note}
-                          pomodoroDone={todo.pomodoroDone}
-                          focusSeconds={todo.focusSeconds}
-                          isDone={todo.isDone}
-                          isEditing={actions.editingId === todo.id}
-                          editingTitle={actions.editingTitle}
-                          onEditingTitleChange={actions.setEditingTitle}
-                          onToggle={() =>
-                            actions.handleToggleDone(
-                              todo.id,
-                              !todo.isDone,
-                              getNextOrder(activeTodos),
-                            )
-                          }
-                          onEdit={() => actions.handleEdit(todo.id, todo.title)}
-                          onSaveEdit={actions.handleSaveEdit}
-                          onCancelEdit={actions.handleCancelEdit}
-                          onDelete={() => actions.handleDelete(todo.id)}
-                          onOpenMenu={() => actions.setSelectedTodo(todo)}
-                          onOpenTimer={() => {
-                        // 우선순위: 현재 실행 중인 타이머 모드 > todo.timerMode > null
-                        const modeToUse = timer?.mode || todo.timerMode || null
-                        actions.handleOpenTimer(todo, modeToUse)
-                      }}
-                          onOpenNote={() => actions.handleOpenNote(todo)}
-                          isActiveTimer={isActiveTimer}
-                          activeTimerMode={timer?.mode}
-                          activeTimerElapsedMs={activeTimerElapsedMs}
-                          activeTimerRemainingMs={activeTimerRemainingMs}
-                          activeTimerPhase={activeTimerPhase}
-                          sessionHistory={sessionHistory}
-                          initialFocusMs={initialFocusMs}
-                        />
-                      )
-                    })}
-                  </SortableContext>
-                </DndContext>
-              </>
-            )}
-          </div>
-        ) : null}
+                          <div
+                            className={`min-h-[44px] space-y-1 rounded-lg py-1 transition-colors ${isActiveOver ? 'bg-emerald-50/40' : ''}`}
+                          >
+                            {activeTodos.length === 0 && doneTodos.length === 0 && !isInputOpen && (
+                              <p className="px-2 py-1 text-xs text-gray-400 pointer-events-none">
+                                {emptyMessage}
+                              </p>
+                            )}
+                            <SortableContext
+                              id={activeContainerId}
+                              items={activeTodos.map((t) => t.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              {activeTodos.map((todo) => {
+                                const {
+                                  timer,
+                                  isActiveTimer,
+                                  activeTimerElapsedMs,
+                                  activeTimerRemainingMs,
+                                  activeTimerPhase,
+                                  breakElapsedMs,
+                                  breakTargetMs,
+                                  isBreakPhase,
+                                  flexiblePhase,
+                                  sessionHistory,
+                                  initialFocusMs,
+                                } = getTodoTimerProps(todo)
+
+                                return (
+                                  <SortableTodoItem
+                                    key={todo.id}
+                                    id={todo.id}
+                                    title={todo.title}
+                                    note={todo.note}
+                                    pomodoroDone={todo.pomodoroDone}
+                                    focusSeconds={todo.focusSeconds}
+                                    isDone={todo.isDone}
+                                    isEditing={actions.editingId === todo.id}
+                                    editingTitle={actions.editingTitle}
+                                    onEditingTitleChange={actions.setEditingTitle}
+                                    onToggle={() =>
+                                      actions.handleToggleDone(todo.id, !todo.isDone, nextDoneOrder)
+                                    }
+                                    onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                                    onSaveEdit={actions.handleSaveEdit}
+                                    onCancelEdit={actions.handleCancelEdit}
+                                    onDelete={() => actions.handleDelete(todo.id)}
+                                    onOpenMenu={() => actions.setSelectedTodo(todo)}
+                                    onOpenTimer={() => {
+                                      const modeToUse = timer?.mode || todo.timerMode || null
+                                      actions.handleOpenTimer(todo, modeToUse)
+                                    }}
+                                    onOpenNote={() => actions.handleOpenNote(todo)}
+                                    isActiveTimer={isActiveTimer}
+                                    activeTimerMode={timer?.mode}
+                                    activeTimerElapsedMs={activeTimerElapsedMs}
+                                    activeTimerRemainingMs={activeTimerRemainingMs}
+                                    activeTimerPhase={activeTimerPhase}
+                                    breakElapsedMs={breakElapsedMs}
+                                    breakTargetMs={breakTargetMs}
+                                    isBreakPhase={isBreakPhase}
+                                    flexiblePhase={flexiblePhase}
+                                    sessionHistory={sessionHistory}
+                                    initialFocusMs={initialFocusMs}
+                                  />
+                                )
+                              })}
+                            </SortableContext>
+
+                            {isInputOpen && (
+                              <div className="rounded-xl p-2">
+                                <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+                                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
+                                  <textarea
+                                    {...register('title')}
+                                    ref={(e) => {
+                                      register('title').ref(e)
+                                      inputRef.current = e
+                                      if (e) {
+                                        e.style.height = 'auto'
+                                        e.style.height = `${e.scrollHeight}px`
+                                      }
+                                    }}
+                                    placeholder="할 일 입력"
+                                    autoFocus
+                                    onKeyDown={async (e) => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault()
+                                        if (isSubmittingRef.current) return
+
+                                        const title = getValues('title')
+                                        if (title?.trim()) {
+                                          isSubmittingRef.current = true
+                                          try {
+                                            await actions.handleCreate(title, section.id, nextActiveOrder)
+                                            reset()
+                                            setTimeout(() => {
+                                              if (inputRef.current) {
+                                                inputRef.current.focus()
+                                                inputRef.current.style.height = 'auto'
+                                                inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
+                                              }
+                                            }, 0)
+                                          } catch (err) {
+                                            toast.error('추가 실패', { id: 'todo-create-failed' })
+                                            console.error(err)
+                                          } finally {
+                                            isSubmittingRef.current = false
+                                          }
+                                        }
+                                      }
+                                    }}
+                                    onChange={(e) => {
+                                      register('title').onChange(e)
+                                      e.target.style.height = 'auto'
+                                      e.target.style.height = `${e.target.scrollHeight}px`
+                                    }}
+                                    onBlur={async () => {
+                                      if (isSubmittingRef.current) return
+
+                                      const title = getValues('title')
+                                      if (title?.trim()) {
+                                        isSubmittingRef.current = true
+                                        try {
+                                          await actions.handleCreate(title, section.id, nextActiveOrder)
+                                          reset()
+                                          setInputDay(null)
+                                        } catch (err) {
+                                          toast.error('추가 실패', { id: 'todo-create-failed' })
+                                          console.error(err)
+                                        } finally {
+                                          isSubmittingRef.current = false
+                                        }
+                                      } else {
+                                        setInputDay(null)
+                                      }
+                                    }}
+                                    className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]"
+                                    rows={1}
+                                  />
+                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-300 opacity-50">
+                                    <MoreVerticalIcon className="h-4 w-4" />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </ActiveSectionDrop>
+                    {doneTodos.length > 0 && (
+                      <div className="space-y-1">
+                        {activeTodos.length > 0 && (
+                          <div className="py-2">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-medium text-gray-400">
+                                완료됨{doneFocus > 0 ? ` · ${formatTimerHoursMinutes(doneFocus)}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        <DroppableList id={doneContainerId}>
+                          <SortableContext
+                            id={doneContainerId}
+                            items={doneTodos.map((t) => t.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {doneTodos.map((todo) => {
+                              const {
+                                timer,
+                                isActiveTimer,
+                                activeTimerElapsedMs,
+                                activeTimerRemainingMs,
+                                activeTimerPhase,
+                                sessionHistory,
+                                initialFocusMs,
+                              } = getTodoTimerProps(todo)
+
+                              return (
+                                <SortableTodoItem
+                                  key={todo.id}
+                                  id={todo.id}
+                                  title={todo.title}
+                                  note={todo.note}
+                                  pomodoroDone={todo.pomodoroDone}
+                                  focusSeconds={todo.focusSeconds}
+                                  isDone={todo.isDone}
+                                  isEditing={actions.editingId === todo.id}
+                                  editingTitle={actions.editingTitle}
+                                  onEditingTitleChange={actions.setEditingTitle}
+                                  onToggle={() =>
+                                    actions.handleToggleDone(todo.id, !todo.isDone, nextActiveOrder)
+                                  }
+                                  onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                                  onSaveEdit={actions.handleSaveEdit}
+                                  onCancelEdit={actions.handleCancelEdit}
+                                  onDelete={() => actions.handleDelete(todo.id)}
+                                  onOpenMenu={() => actions.setSelectedTodo(todo)}
+                                  onOpenTimer={() => {
+                                    const modeToUse = timer?.mode || todo.timerMode || null
+                                    actions.handleOpenTimer(todo, modeToUse)
+                                  }}
+                                  onOpenNote={() => actions.handleOpenNote(todo)}
+                                  isActiveTimer={isActiveTimer}
+                                  activeTimerMode={timer?.mode}
+                                  activeTimerElapsedMs={activeTimerElapsedMs}
+                                  activeTimerRemainingMs={activeTimerRemainingMs}
+                                  activeTimerPhase={activeTimerPhase}
+                                  sessionHistory={sessionHistory}
+                                  initialFocusMs={initialFocusMs}
+                                />
+                              )
+                            })}
+                          </SortableContext>
+                        </DroppableList>
+                      </div>
+                    )}
+                  </section>
+                )
+              })}
+            </div>
+          </DndContext>
+        )}
       </div>
 
       {/* Todo 액션 바텀시트 */}
@@ -490,33 +792,33 @@ function TodosPage() {
             // 현재 선택된 태스크의 타이머 상태
             const currentTimer = store.getTimer(actions.selectedTodo.id)
             const currentTimerRunning = currentTimer?.status === 'running'
-            
+
             // 다른 태스크에서 실행 중인 타이머 찾기
             const allTimerEntries = Object.entries(store.timers)
             const otherRunningTimer = allTimerEntries.find(
               ([todoId, timer]) => timer.status === 'running' && todoId !== actions.selectedTodo?.id
             )
-            
+
             const isCompleted = actions.selectedTodo.isDone
-            
+
             // 일반 타이머 비활성화 조건
             // 1. 완료된 태스크
             // 2. 다른 태스크에서 타이머 실행 중
             // 3. 같은 태스크에서 뽀모도로 실행 중
-            const disableStopwatch = 
-              isCompleted || 
-              !!otherRunningTimer || 
+            const disableStopwatch =
+              isCompleted ||
+              !!otherRunningTimer ||
               (currentTimerRunning && currentTimer.mode === 'pomodoro')
-            
+
             // 뽀모도로 타이머 비활성화 조건
             // 1. 완료된 태스크
             // 2. 다른 태스크에서 타이머 실행 중
             // 3. 같은 태스크에서 일반 타이머 실행 중
-            const disablePomodoro = 
-              isCompleted || 
-              !!otherRunningTimer || 
+            const disablePomodoro =
+              isCompleted ||
+              !!otherRunningTimer ||
               (currentTimerRunning && currentTimer.mode === 'stopwatch')
-            
+
             return (
               <>
                 {/* 일반 타이머 */}
@@ -541,7 +843,7 @@ function TodosPage() {
                   }}
                   disabled={disableStopwatch}
                 />
-                
+
                 {/* 뽀모도로 타이머 */}
                 <BottomSheetItem
                   icon={<ClockIcon className="h-5 w-5 text-red-500" />}
@@ -571,8 +873,8 @@ function TodosPage() {
       </BottomSheet>
 
       {/* 메모 바텀시트 */}
-      <BottomSheet 
-        isOpen={actions.showNoteModal} 
+      <BottomSheet
+        isOpen={actions.showNoteModal}
         onClose={actions.handleCloseNote}
       >
         {/* 커스텀 헤더 */}

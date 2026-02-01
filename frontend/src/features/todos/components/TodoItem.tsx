@@ -110,7 +110,7 @@ export function TodoItem({
         <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
           {/* 체크박스 (비활성) */}
           <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
-          
+
           {/* 입력 필드 */}
           <textarea
             ref={textareaRef}
@@ -132,7 +132,7 @@ export function TodoItem({
             className="flex-1 bg-transparent text-sm text-gray-900 outline-none resize-none overflow-hidden min-h-[20px]"
             rows={1}
           />
-          
+
           {/* 더보기 버튼 (비활성) */}
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-300 opacity-50">
             <MoreVerticalIcon className="h-4 w-4" />
@@ -145,7 +145,7 @@ export function TodoItem({
   // 기본 상태
   return (
     <div className="rounded-xl p-2">
-      <div 
+      <div
         className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-gray-50"
       >
         {/* 체크박스 */}
@@ -180,28 +180,28 @@ export function TodoItem({
             >
               {/* 아이콘: 휴식=Stop, 집중=Clock | 색깔: 뽀모=빨강, 일반=초록 */}
               {!isDone && isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
-                <StopIcon 
+                <StopIcon
                   className={`h-3.5 w-3.5 shrink-0 ${
                     activeTimerMode === 'pomodoro' ? 'text-red-500' : 'text-emerald-400'
                   }`}
                 />
               ) : (
-                <ClockIcon 
+                <ClockIcon
                   className={`h-3.5 w-3.5 shrink-0 ${
                     // 완료: 진한 초록색
-                    isDone 
+                    isDone
                       ? 'text-emerald-600'
                     // 진행 중: 모드에 따라 색 구분
                     : isActiveTimer && activeTimerMode === 'pomodoro'
                       ? 'text-red-500'        // 뽀모도로: 빨간색
                       : 'text-emerald-400'    // 일반: 초록색
-                  }`} 
+                  }`}
                 />
               )}
               {shouldShowTimerTime && (
                 <span className={`text-xs font-medium tabular-nums ${
                     // 완료: 진한 초록색
-                  isDone 
+                  isDone
                       ? 'text-emerald-600'
                   // 진행 중/휴식 중: 모드에 따라 색 구분
                   : isActiveTimer && activeTimerMode === 'pomodoro'
@@ -227,7 +227,7 @@ export function TodoItem({
       {/* 메모 표시 */}
       {note && (
         <div className="ml-6 mt-2">
-          <div 
+          <div
             className="cursor-pointer rounded-lg bg-yellow-50 border border-yellow-200 px-2 py-1"
             onClick={onOpenNote}
           >
