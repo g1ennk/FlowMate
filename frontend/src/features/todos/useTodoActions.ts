@@ -22,9 +22,9 @@ export function useTodoActions(selectedDateKey: string) {
   const deleteTodo = useDeleteTodo()
   const addFocus = useAddFocus()
   const completeTodo = useCompleteTodo()
-  
+
   const { data: settings } = usePomodoroSettings()
-  
+
   // 타이머 store
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
@@ -52,8 +52,14 @@ export function useTodoActions(selectedDateKey: string) {
   const [timerErrorMessage, setTimerErrorMessage] = useState<string | null>(null)
 
   // === Todo CRUD ===
-  const handleCreate = async (title: string) => {
-    await createTodo.mutateAsync({ title, note: null, date: selectedDateKey })
+  const handleCreate = async (title: string, miniDay: number = 0, dayOrder?: number) => {
+    await createTodo.mutateAsync({
+      title,
+      note: null,
+      date: selectedDateKey,
+      miniDay,
+      ...(dayOrder === undefined ? {} : { dayOrder }),
+    })
   }
 
   const handleToggleDone = async (id: string, next: boolean, nextOrder?: number) => {
@@ -87,13 +93,13 @@ export function useTodoActions(selectedDateKey: string) {
       }
       // 타이머 상태는 유지 (다시 열 때 이전 기록이 보임)
     }
-    
+
     // 완료 상태 변경
     updateTodo.mutate({
       id,
       patch: {
         isDone: next,
-        ...(nextOrder === undefined ? {} : { order: nextOrder }),
+        ...(nextOrder === undefined ? {} : { dayOrder: nextOrder }),
       },
     })
   }
@@ -170,19 +176,19 @@ export function useTodoActions(selectedDateKey: string) {
       toast.error('완료된 태스크는 타이머를 시작할 수 없습니다', { id: 'completed-task-timer' })
       return
     }
-    
+
     // 다른 태스크에서 실행 중인 타이머가 있는지 체크
     const [hasConflict, conflictMode] = checkTimerConflict(timers, todo.id)
     if (hasConflict && conflictMode) {
       toast.error(getTimerConflictMessage(conflictMode), { id: 'timer-already-running' })
       return
     }
-    
+
     // 우선순위(일관화): 사용자 선택(currentMode) > 실행/일시정지 중인 로컬 타이머 > DB(timerMode) > null
     const timer = getTimer(todo.id)
     const modeToUse: TimerMode | null =
       currentMode || (timer && timer.status !== 'idle' ? timer.mode : null) || todo.timerMode || null
-    
+
     // 모드가 있으면 타이머 화면 열기
     if (modeToUse) {
       setTimerTodo(todo)

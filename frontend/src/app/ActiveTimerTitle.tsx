@@ -42,7 +42,7 @@ export function ActiveTimerTitle() {
     const timeLabel = formatTimerMinutesSeconds(displaySeconds)
     const isBreak =
       timerInfo.isBreakPhase || timerInfo.activeTimerPhase === 'short' || timerInfo.activeTimerPhase === 'long'
-    return `${isBreak ? 'Break' : 'Flow'}: ${timeLabel}`
+    return `${isBreak ? '휴식' : 'Flow'}: ${timeLabel}`
   }, [activeEntry, data?.items])
 
   useEffect(() => {

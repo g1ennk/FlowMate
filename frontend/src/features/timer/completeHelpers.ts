@@ -6,7 +6,7 @@ import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 type CompleteTodoArgs = { id: string; body: { durationSec: number } }
 type UpdateTodoArgs = {
   id: string
-  patch: { isDone: boolean; timerMode: TimerMode | null; order?: number }
+  patch: { isDone: boolean; timerMode: TimerMode | null; dayOrder?: number }
 }
 
 type CompletionDeps = {
@@ -167,7 +167,7 @@ export async function completeTaskFromTimer(deps: CompletionDeps) {
     patch: {
       isDone: true,
       timerMode: timer.mode,
-      ...(deps.nextOrder === undefined ? {} : { order: deps.nextOrder }),
+      ...(deps.nextOrder === undefined ? {} : { dayOrder: deps.nextOrder }),
     },
   })
 }

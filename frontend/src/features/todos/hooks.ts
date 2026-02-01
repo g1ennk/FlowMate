@@ -54,11 +54,24 @@ export function useReorderTodos() {
       const previous = qc.getQueryData<TodoList>(queryKeys.todos())
       qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
         if (!old) return old
-        const orderMap = new Map(payload.items.map((item) => [item.id, item.order]))
+        const orderMap = new Map(
+          payload.items.map((item) => [
+            item.id,
+            {
+              dayOrder: item.dayOrder,
+              miniDay: item.miniDay,
+            },
+          ]),
+        )
         return {
           items: old.items.map((todo) => {
-            const nextOrder = orderMap.get(todo.id)
-            return nextOrder === undefined ? todo : { ...todo, order: nextOrder }
+            const next = orderMap.get(todo.id)
+            if (!next) return todo
+            return {
+              ...todo,
+              dayOrder: next.dayOrder ?? todo.dayOrder,
+              miniDay: next.miniDay ?? todo.miniDay ?? 0,
+            }
           }),
         }
       })

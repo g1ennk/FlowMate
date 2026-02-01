@@ -199,10 +199,16 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     if (!data) return undefined
     const current = data.items.find((item) => item.id === todoId)
     if (!current || current.isDone) return undefined
+    const currentMiniDay = current.miniDay ?? 0
     const doneTodos = data.items.filter(
-      (item) => item.date === current.date && item.isDone && item.id !== todoId,
+      (item) =>
+        item.date === current.date &&
+        item.isDone &&
+        item.id !== todoId &&
+        (item.miniDay ?? 0) === currentMiniDay,
     )
-    const maxOrder = doneTodos.length === 0 ? -1 : Math.max(...doneTodos.map((item) => item.order))
+    const maxOrder =
+      doneTodos.length === 0 ? -1 : Math.max(...doneTodos.map((item) => item.dayOrder ?? 0))
     return maxOrder + 1
   }
 
@@ -330,7 +336,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           <>
             {/* 집중 라벨 */}
               <p className="mb-4 text-center text-base font-semibold text-emerald-400">
-              집중
+              Flow
             </p>
 
             {/* 타이머 숫자 - 클릭으로 전환 */}
@@ -491,7 +497,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   <>
                     {/* 휴식 라벨 */}
                     <p className="mb-4 text-center text-base font-semibold text-white">
-                      휴식
+                      {breakLabel}
                     </p>
 
                     {/* 타이머 숫자 */}
@@ -504,9 +510,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                         <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
                           {formatStopwatch(displayMs)}
                         </p>
-                        <p className="mt-1 text-center text-xs font-medium text-white/80">
-                          {breakLabel}
-                        </p>
                       </button>
                     ) : (
                       <>
@@ -515,9 +518,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                             ? formatCountdown(displayMs)
                             : formatStopwatch(displayMs)
                           }
-                        </p>
-                        <p className="mt-1 text-center text-xs font-medium text-white/80">
-                          {breakLabel}
                         </p>
                       </>
                     )}
@@ -605,7 +605,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
                     <StopIcon className="h-6 w-6" />
                   </div>
-                  <span className="text-xs font-medium text-white">집중 시작</span>
+                  <span className="text-xs font-medium text-white">Flow 시작</span>
                 </button>
 
                 {/* 완료 버튼 - 완료된 할일에서는 숨김 */}
@@ -725,7 +725,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   <StopIcon className="h-6 w-6" />
                 </div>
                 <span className={`text-xs font-medium ${isFlow ? 'text-gray-300' : 'text-white'}`}>
-                  {isFlow ? '휴식' : '집중 시작'}
+                  {isFlow ? '휴식' : 'Flow 시작'}
                 </span>
               </button>
 
@@ -813,7 +813,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                     <span className="text-lg font-semibold text-emerald-400">{totalSessions}개</span>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-300">총 집중 시간</span>
+                    <span className="text-sm font-medium text-gray-300">총 Flow 시간</span>
                     <span className="text-lg font-semibold text-emerald-400">{totalFocusTime}</span>
                   </div>
                 </div>
@@ -903,7 +903,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   {Math.floor(currentSessionFocusMs / 60000)}분
                 </h3>
                 <p className="mt-1 text-sm text-gray-400">
-                  집중 완료
+                  Flow 완료
                 </p>
               </div>
 
@@ -923,7 +923,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                         추천 휴식
                       </div>
                       <div className="mt-0.5 text-sm text-emerald-100">
-                        집중의 20%
+                        Flow의 20%
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-white">

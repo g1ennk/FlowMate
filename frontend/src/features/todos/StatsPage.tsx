@@ -48,11 +48,11 @@ export function StatsPage() {
             <p className="text-2xl font-bold text-blue-600">{stats.totalFlows}</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-4">
-            <p className="text-sm text-gray-500">총 집중 시간</p>
+            <p className="text-sm text-gray-500">총 Flow 시간</p>
             <p className="text-2xl font-bold text-purple-600">{stats.totalFocusTime}</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-4">
-            <p className="text-sm text-gray-500">평균 집중 시간</p>
+            <p className="text-sm text-gray-500">평균 Flow 시간</p>
             <p className="text-2xl font-bold text-purple-600">{formatTime(stats.avgFocusTime)}</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-4">
@@ -60,7 +60,7 @@ export function StatsPage() {
             <p className="text-2xl font-bold text-blue-600">{stats.avgFlowsPerTask}</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-4">
-            <p className="text-sm text-gray-500">최장 집중 시간</p>
+            <p className="text-sm text-gray-500">최장 Flow 시간</p>
             <p className="text-2xl font-bold text-purple-600">{formatTime(stats.maxFocusTime)}</p>
           </div>
         </div>
@@ -116,7 +116,7 @@ export function StatsPage() {
                       {timer.mode === 'pomodoro' && <span>사이클: {timer.cycleCount}</span>}
                       {timer.mode === 'stopwatch' && (
                         <>
-                          <span>집중: {formatMs(timer.focusElapsedMs)}</span>
+                          <span>Flow: {formatMs(timer.focusElapsedMs)}</span>
                           {timer.breakElapsedMs > 0 && <span>휴식: {formatMs(timer.breakElapsedMs)}</span>}
                         </>
                       )}
@@ -144,7 +144,7 @@ export function StatsPage() {
                     <span>태스크: {tasks}</span>
                     <span>완료: {completed}</span>
                     <span>Flow: {flows}</span>
-                    <span>집중: {formatTime(focusSeconds)}</span>
+                    <span>Flow: {formatTime(focusSeconds)}</span>
                   </div>
                 </div>
               </div>
@@ -194,7 +194,7 @@ export function StatsPage() {
                     <span className="ml-2 font-medium text-blue-600">{task.pomodoroDone}개</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">집중 시간:</span>
+                    <span className="text-gray-500">Flow 시간:</span>
                     <span className="ml-2 font-medium text-purple-600">{task.focusTime}</span>
                   </div>
                   {task.totalBreakTime && task.totalBreakTime !== '0분' && (
@@ -226,7 +226,7 @@ export function StatsPage() {
                           {session.breakMs > 0 && (
                             <>
                               <span className="mx-1">+</span>
-                              <span className="font-medium">Break {session.flowNumber}:</span>
+                              <span className="font-medium">휴식 {session.flowNumber}:</span>
                               <span className="ml-1 text-blue-600">{session.breakTime}</span>
                             </>
                           )}

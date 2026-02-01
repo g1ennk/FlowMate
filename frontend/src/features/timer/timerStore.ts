@@ -807,7 +807,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       return {
         targetMs: suggestedMin * 60000,
         targetMinutes: suggestedMin,
-        message: `${focusMin}분 집중 → ${suggestedMin}분 휴식 추천`
+        message: `Flow ${focusMin}분 → ${suggestedMin}분 휴식 추천`
       }
     },
 

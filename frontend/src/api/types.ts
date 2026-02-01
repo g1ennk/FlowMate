@@ -5,8 +5,9 @@ export const TodoSchema = z.object({
   title: z.string(),
   note: z.string().nullable(),
   date: z.string(), // YYYY-MM-DD
+  miniDay: z.number().int().min(0).max(3).optional(),
+  dayOrder: z.number().int().optional(),
   isDone: z.boolean(),
-  order: z.number().int(),
   pomodoroDone: z.number().int(),
   focusSeconds: z.number().int(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(), // 선택된 타이머 타입
@@ -22,20 +23,24 @@ export const TodoCreateSchema = z.object({
   title: z.string().min(1).max(200),
   note: z.string().nullable().optional(),
   date: z.string().optional(), // YYYY-MM-DD, defaults to today
+  miniDay: z.number().int().min(0).max(3).optional(),
+  dayOrder: z.number().int().optional(),
 })
 
 export const TodoPatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   note: z.string().nullable().optional(),
   isDone: z.boolean().optional(),
-  order: z.number().int().optional(),
+  miniDay: z.number().int().min(0).max(3).optional(),
+  dayOrder: z.number().int().optional(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable().optional(),
   pomodoroDone: z.number().int().optional(),
 })
 
 export const TodoReorderItemSchema = z.object({
   id: z.string().uuid(),
-  order: z.number().int(),
+  dayOrder: z.number().int(),
+  miniDay: z.number().int().min(0).max(3).optional(),
 })
 
 export const TodoReorderRequestSchema = z.object({

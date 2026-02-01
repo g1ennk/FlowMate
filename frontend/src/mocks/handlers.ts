@@ -2,7 +2,11 @@ import { HttpResponse, delay, http } from 'msw'
 import type { PomodoroSettings, Todo } from '../api/types'
 import { storageKeys } from '../lib/storageKeys'
 
-type StoredTodo = Omit<Todo, 'order'> & { order?: number }
+type StoredTodo = Omit<Todo, 'miniDay' | 'dayOrder'> & {
+  order?: number
+  miniDay?: number
+  dayOrder?: number
+}
 
 const STORAGE_KEYS = {
   legacyTodos: storageKeys.legacyTodos,
@@ -39,12 +43,18 @@ function normalizeTodos(input: StoredTodo[]) {
   const groups = new Map<string, StoredTodo[]>()
 
   for (const todo of input) {
-    const key = `${todo.date}::${todo.isDone ? 'done' : 'active'}`
+    const miniDay = todo.miniDay ?? 0
+    const dayOrder = todo.dayOrder ?? todo.order ?? 0
+    if (todo.miniDay === undefined) changed = true
+    if (todo.dayOrder === undefined) changed = true
+    if (todo.order !== undefined) changed = true
+    const key = `${todo.date}::${todo.isDone ? 'done' : 'active'}::${miniDay}`
     const bucket = groups.get(key)
+    const withDefaults = { ...todo, miniDay, dayOrder }
     if (bucket) {
-      bucket.push(todo)
+      bucket.push(withDefaults)
     } else {
-      groups.set(key, [todo])
+      groups.set(key, [withDefaults])
     }
   }
 
@@ -52,7 +62,7 @@ function normalizeTodos(input: StoredTodo[]) {
 
   for (const group of groups.values()) {
     const orders = group
-      .map((todo) => todo.order)
+      .map((todo) => todo.dayOrder)
       .filter((order): order is number => Number.isFinite(order))
     const hasInvalid = group.length !== orders.length
     const hasDuplicates = new Set(orders).size !== orders.length
@@ -62,14 +72,21 @@ function normalizeTodos(input: StoredTodo[]) {
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       )
       sorted.forEach((todo, index) => {
-        if (todo.order !== index) changed = true
-        normalized.push({ ...todo, order: index } as Todo)
+        const { order: legacyOrder, ...rest } = todo
+        void legacyOrder
+        if (todo.dayOrder !== index) changed = true
+        normalized.push({ ...rest, dayOrder: index } as Todo)
       })
       continue
     }
 
     for (const todo of group) {
-      normalized.push({ ...todo, order: todo.order as number } as Todo)
+      const { order: legacyOrder, ...rest } = todo
+      void legacyOrder
+      normalized.push({
+        ...rest,
+        dayOrder: todo.dayOrder as number,
+      } as Todo)
     }
   }
 
@@ -118,10 +135,12 @@ function saveTodos(clientId: string, todos: Todo[]) {
   }
 }
 
-function getNextOrder(todos: Todo[], date: string, isDone: boolean) {
+function getNextOrder(todos: Todo[], date: string, isDone: boolean, miniDay: number) {
   const orders = todos
-    .filter((todo) => todo.date === date && todo.isDone === isDone)
-    .map((todo) => todo.order)
+    .filter(
+      (todo) => todo.date === date && todo.isDone === isDone && (todo.miniDay ?? 0) === miniDay,
+    )
+    .map((todo) => todo.dayOrder ?? 0)
   return orders.length === 0 ? 0 : Math.max(...orders) + 1
 }
 
@@ -181,15 +200,19 @@ export const handlers = [
       )
     }
     const date = body.date ?? today()
+    const rawMiniDay = typeof body.miniDay === 'number' ? body.miniDay : 0
+    const miniDay = rawMiniDay >= 0 && rawMiniDay <= 3 ? rawMiniDay : 0
     let todos = loadTodos(clientId)
-    const nextOrder = getNextOrder(todos, date, false)
+    const nextOrder = getNextOrder(todos, date, false, miniDay)
+    const nextDayOrder = typeof body.dayOrder === 'number' ? body.dayOrder : nextOrder
     const next: Todo = {
       id: crypto.randomUUID(),
       title: body.title,
       note: body.note ?? null,
       date,
+      miniDay,
+      dayOrder: nextDayOrder,
       isDone: false,
-      order: nextOrder,
       pomodoroDone: 0,
       focusSeconds: 0,
       timerMode: null, // 아직 타이머 타입 선택 안함
@@ -211,10 +234,16 @@ export const handlers = [
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
     }
+    const currentMiniDay = existing.miniDay ?? 0
+    const rawMiniDay = typeof body.miniDay === 'number' ? body.miniDay : currentMiniDay
+    const nextMiniDay = rawMiniDay >= 0 && rawMiniDay <= 3 ? rawMiniDay : currentMiniDay
+    const nextDayOrder = typeof body.dayOrder === 'number' ? body.dayOrder : existing.dayOrder
     const updated: Todo = {
       ...existing,
       ...body,
       title: body.title ?? existing.title,
+      miniDay: nextMiniDay,
+      dayOrder: nextDayOrder ?? 0,
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
@@ -225,7 +254,9 @@ export const handlers = [
   http.put('/api/todos/reorder', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)
-    const body = (await request.json()) as { items?: Array<{ id?: string; order?: number }> }
+    const body = (await request.json()) as {
+      items?: Array<{ id?: string; dayOrder?: number; miniDay?: number }>
+    }
     if (!body.items || body.items.length === 0) {
       return HttpResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'items is required' } },
@@ -233,7 +264,7 @@ export const handlers = [
       )
     }
     const invalid = body.items.some(
-      (item) => typeof item.id !== 'string' || !Number.isInteger(item.order),
+      (item) => typeof item.id !== 'string' || !Number.isInteger(item.dayOrder),
     )
     if (invalid) {
       return HttpResponse.json(
@@ -241,12 +272,25 @@ export const handlers = [
         { status: 400 },
       )
     }
-    const orderMap = new Map(body.items.map((item) => [item.id as string, item.order as number]))
+    const orderMap = new Map(
+      body.items.map((item) => [
+        item.id as string,
+        {
+          dayOrder: item.dayOrder as number,
+          miniDay: typeof item.miniDay === 'number' ? item.miniDay : undefined,
+        },
+      ]),
+    )
     let todos = loadTodos(clientId)
     todos = todos.map((todo) => {
-      const nextOrder = orderMap.get(todo.id)
-      if (nextOrder === undefined) return todo
-      return { ...todo, order: nextOrder, updatedAt: now() }
+      const next = orderMap.get(todo.id)
+      if (!next) return todo
+      return {
+        ...todo,
+        dayOrder: next.dayOrder ?? todo.dayOrder ?? 0,
+        miniDay: next.miniDay ?? todo.miniDay ?? 0,
+        updatedAt: now(),
+      }
     })
     saveTodos(clientId, todos)
     return HttpResponse.json({ items: todos })

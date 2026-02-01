@@ -6,6 +6,7 @@ export const storageKeys = {
   legacyClientId: `${LEGACY_STORAGE_PREFIX}/client-id`,
   todos: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/todos`,
   settings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings`,
+  miniDaysSettings: `${STORAGE_PREFIX}/settings/miniDays`,
   timerPrefix: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/timer/v2/`,
   sessionPrefix: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/sessionHistory/`,
   legacyTodos: `${LEGACY_STORAGE_PREFIX}/todos`,
