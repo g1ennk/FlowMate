@@ -13,8 +13,27 @@ describe('api with msw', () => {
   })
 
   it('updates settings and returns persisted values', async () => {
-    const current = await settingsApi.get()
-    const updated = await settingsApi.update({ ...current, flowMin: current.flowMin + 1 })
-    expect(updated.flowMin).toBe(current.flowMin + 1)
+    const session = await settingsApi.getSession()
+    const updatedSession = await settingsApi.updateSession({ ...session, flowMin: session.flowMin + 1 })
+    expect(updatedSession.flowMin).toBe(session.flowMin + 1)
+
+    const automation = await settingsApi.getAutomation()
+    const updatedAutomation = await settingsApi.updateAutomation({
+      ...automation,
+      autoStartBreak: !automation.autoStartBreak,
+    })
+    expect(updatedAutomation.autoStartBreak).toBe(!automation.autoStartBreak)
+
+    const miniDays = await settingsApi.getMiniDays()
+    const updatedMiniDays = await settingsApi.updateMiniDays({
+      ...miniDays,
+      day1: { ...miniDays.day1, label: `${miniDays.day1.label}-변경` },
+    })
+    expect(updatedMiniDays.day1.label).toBe(`${miniDays.day1.label}-변경`)
+
+    const combined = await settingsApi.getSettings()
+    expect(combined.pomodoroSession.flowMin).toBe(updatedSession.flowMin)
+    expect(combined.automation.autoStartBreak).toBe(updatedAutomation.autoStartBreak)
+    expect(combined.miniDays.day1.label).toBe(updatedMiniDays.day1.label)
   })
 })

@@ -1,21 +1,8 @@
-import { useEffect, useState } from 'react'
-import { storageKeys } from './storageKeys'
+import type { MiniDaysSettings } from '../api/types'
 
-export type MiniDayRange = {
-  label: string
-  start: string
-  end: string
-}
-
-export type MiniDaysSettings = {
-  day1: MiniDayRange
-  day2: MiniDayRange
-  day3: MiniDayRange
-}
+export type MiniDayRange = MiniDaysSettings['day1']
 
 export type MiniDaysErrors = Partial<Record<keyof MiniDaysSettings | 'order', string>>
-
-export const MINI_DAYS_UPDATED_EVENT = 'flowmate:miniDaysUpdated'
 
 export const defaultMiniDaysSettings: MiniDaysSettings = {
   day1: { label: '오전', start: '06:00', end: '12:00' },
@@ -67,57 +54,23 @@ export function validateMiniDaysSettings(settings: MiniDaysSettings): MiniDaysEr
   return errors
 }
 
-export function getMiniDaysSettings(): MiniDaysSettings {
-  if (typeof window === 'undefined') return defaultMiniDaysSettings
-  try {
-    const raw = localStorage.getItem(storageKeys.miniDaysSettings)
-    if (!raw) return defaultMiniDaysSettings
-    const parsed = JSON.parse(raw) as MiniDaysSettings
-    if (!parsed?.day1 || !parsed?.day2 || !parsed?.day3) return defaultMiniDaysSettings
-    return {
-      day1: {
-        ...defaultMiniDaysSettings.day1,
-        ...parsed.day1,
-        label: parsed.day1.label?.trim() || defaultMiniDaysSettings.day1.label,
-      },
-      day2: {
-        ...defaultMiniDaysSettings.day2,
-        ...parsed.day2,
-        label: parsed.day2.label?.trim() || defaultMiniDaysSettings.day2.label,
-      },
-      day3: {
-        ...defaultMiniDaysSettings.day3,
-        ...parsed.day3,
-        label: parsed.day3.label?.trim() || defaultMiniDaysSettings.day3.label,
-      },
-    }
-  } catch {
-    return defaultMiniDaysSettings
+export function normalizeMiniDaysSettings(settings?: MiniDaysSettings | null): MiniDaysSettings {
+  if (!settings) return defaultMiniDaysSettings
+  return {
+    day1: {
+      ...defaultMiniDaysSettings.day1,
+      ...settings.day1,
+      label: settings.day1.label?.trim() || defaultMiniDaysSettings.day1.label,
+    },
+    day2: {
+      ...defaultMiniDaysSettings.day2,
+      ...settings.day2,
+      label: settings.day2.label?.trim() || defaultMiniDaysSettings.day2.label,
+    },
+    day3: {
+      ...defaultMiniDaysSettings.day3,
+      ...settings.day3,
+      label: settings.day3.label?.trim() || defaultMiniDaysSettings.day3.label,
+    },
   }
-}
-
-export function saveMiniDaysSettings(next: MiniDaysSettings) {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(storageKeys.miniDaysSettings, JSON.stringify(next))
-  window.dispatchEvent(new Event(MINI_DAYS_UPDATED_EVENT))
-}
-
-export function useMiniDaysSettings() {
-  const [settings, setSettings] = useState<MiniDaysSettings>(getMiniDaysSettings())
-
-  useEffect(() => {
-    const handle = () => setSettings(getMiniDaysSettings())
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === storageKeys.miniDaysSettings) handle()
-    }
-
-    window.addEventListener(MINI_DAYS_UPDATED_EVENT, handle)
-    window.addEventListener('storage', handleStorage)
-    return () => {
-      window.removeEventListener(MINI_DAYS_UPDATED_EVENT, handle)
-      window.removeEventListener('storage', handleStorage)
-    }
-  }, [])
-
-  return settings
 }

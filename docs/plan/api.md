@@ -32,18 +32,47 @@ Headers (MVP):
 
 **참고**: `sessionHistory`는 **서버 저장 대상**이며 API 응답에는 포함하지 않습니다. 현재 MVP는 클라이언트에서 타이머 상태와 `sessionHistory`를 localStorage에 유지합니다.
 
-### PomodoroSettings
+### PomodoroSessionSettings
 ```json
 {
   "flowMin": 25,
   "breakMin": 5,
   "longBreakMin": 15,
-  "cycleEvery": 4,
+  "cycleEvery": 4
+}
+```
+
+### AutomationSettings
+```json
+{
   "autoStartBreak": false,
   "autoStartSession": false
 }
 ```
 **참고**: `autoStartBreak`, `autoStartSession`는 응답에서 생략될 수 있으며, 프론트는 누락 시 `false`로 처리합니다.
+
+### MiniDaysSettings
+```json
+{
+  "day1": { "label": "오전", "start": "06:00", "end": "12:00" },
+  "day2": { "label": "오후", "start": "12:00", "end": "18:00" },
+  "day3": { "label": "저녁", "start": "18:00", "end": "24:00" }
+}
+```
+> Day 0(미분류)는 고정이며 설정에 포함하지 않습니다.
+
+### Settings (Combined)
+```json
+{
+  "pomodoroSession": { "flowMin": 25, "breakMin": 5, "longBreakMin": 15, "cycleEvery": 4 },
+  "automation": { "autoStartBreak": false, "autoStartSession": false },
+  "miniDays": {
+    "day1": { "label": "오전", "start": "06:00", "end": "12:00" },
+    "day2": { "label": "오후", "start": "12:00", "end": "18:00" },
+    "day3": { "label": "저녁", "start": "18:00", "end": "24:00" }
+  }
+}
+```
 
 ---
 
@@ -88,29 +117,63 @@ Headers (MVP):
 
 ---
 
-## 3. Pomodoro Settings Endpoints
+## 3. Settings Endpoints
 
-### 3.1 Get Settings
-- `GET /api/settings/pomodoro`
-- Response 200: `PomodoroSettings` (없으면 default 생성/반환)
-- Note: `autoStartBreak`, `autoStartSession` 누락 시 `false`로 간주
+### 3.0 Get Settings (Combined)
+- `GET /api/settings`
+- Response 200: `Settings`
+  - Note: 저장은 단일 user_settings 테이블 기준, API는 분리 유지
 
-### 3.2 Update Settings
-- `PUT /api/settings/pomodoro`
+### 3.1 Get Pomodoro Session Settings
+- `GET /api/settings/pomodoro-session`
+- Response 200: `PomodoroSessionSettings` (없으면 default 생성/반환)
+
+### 3.2 Update Pomodoro Session Settings
+- `PUT /api/settings/pomodoro-session`
 - Body:
 ```json
 {
   "flowMin": 25,
   "breakMin": 5,
   "longBreakMin": 15,
-  "cycleEvery": 4,
+  "cycleEvery": 4
+}
+```
+- Validation: flowMin 1~90, breakMin 1~90, longBreakMin 1~90, cycleEvery 1~10
+- Response 200: `PomodoroSessionSettings`
+
+### 3.3 Get Automation Settings
+- `GET /api/settings/automation`
+- Response 200: `AutomationSettings` (없으면 default 생성/반환)
+- Note: 누락 시 `false`로 간주
+
+### 3.4 Update Automation Settings
+- `PUT /api/settings/automation`
+- Body:
+```json
+{
   "autoStartBreak": false,
   "autoStartSession": false
 }
 ```
-- Validation: flowMin 1~90, breakMin 1~90, longBreakMin 1~90, cycleEvery 1~10
-- Note: `autoStartBreak`, `autoStartSession`은 선택(optional)이며 누락 시 `false`로 처리
-- Response 200: `PomodoroSettings`
+- Note: 누락 시 `false`로 처리
+- Response 200: `AutomationSettings`
+
+### 3.5 Get MiniDays Settings
+- `GET /api/settings/mini-days`
+- Response 200: `MiniDaysSettings` (없으면 default 생성/반환)
+
+### 3.6 Update MiniDays Settings
+- `PUT /api/settings/mini-days`
+- Body:
+```json
+{
+  "day1": { "label": "오전", "start": "06:00", "end": "12:00" },
+  "day2": { "label": "오후", "start": "12:00", "end": "18:00" },
+  "day3": { "label": "저녁", "start": "18:00", "end": "24:00" }
+}
+```
+- Response 200: `MiniDaysSettings`
 
 ---
 
@@ -188,7 +251,7 @@ Headers (MVP):
 | 날짜       | 변경 내용                                                         |
 | ---------- | ----------------------------------------------------------------- |
 | 2026-01-09 | Todo에 `date` 필드 추가 (날짜별 관리)                             |
-| 2026-01-09 | PomodoroSettings에 `autoStartBreak`, `autoStartSession` 추가      |
+| 2026-01-09 | AutomationSettings에 `autoStartBreak`, `autoStartSession` 추가    |
 | 2026-01-09 | `POST /api/todos/{id}/focus/add` API 추가 (일반 타이머 전용)      |
 | 2026-01-13 | 일반 타이머 세션 히스토리 추가 (`sessionHistory`)                 |
 | 2026-01-13 | Flow 개념 도입 (`MIN_FLOW_MS` 기준)                               |
@@ -198,5 +261,8 @@ Headers (MVP):
 | 2026-01-13 | 뽀모도로 타이머에도 `sessionHistory` 추가                        |
 | 2026-01-22 | `sessionHistory`를 localStorage에 영구 저장으로 변경              |
 | 2026-01-24 | `POST /api/todos/{id}/reset` 추가 (타이머 기록 초기화)            |
+| 2026-02-02 | Settings 분리 (pomodoro-session, automation)                     |
+| 2026-02-02 | `GET /api/settings` 통합 조회 추가                                |
+| 2026-02-02 | `MiniDaysSettings` 서버 저장 엔드포인트 추가                     |
 | 2026-01-29 | Todo에 `miniDay`, `dayOrder` 필드 추가 + `PUT /api/todos/reorder` 확장 |
 | 2026-01-31 | `sessionHistory` 서버 저장 정책 확정 (타이머 상태는 클라 유지)     |

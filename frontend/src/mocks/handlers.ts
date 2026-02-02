@@ -1,5 +1,12 @@
 import { HttpResponse, delay, http } from 'msw'
-import type { PomodoroSettings, Todo } from '../api/types'
+import type {
+  AutomationSettings,
+  MiniDaysSettings,
+  PomodoroSessionSettings,
+  PomodoroSettings,
+  Todo,
+} from '../api/types'
+import { defaultMiniDaysSettings, normalizeMiniDaysSettings } from '../lib/miniDays'
 import { storageKeys } from '../lib/storageKeys'
 
 type StoredTodo = Omit<Todo, 'miniDay' | 'dayOrder'> & {
@@ -8,13 +15,24 @@ type StoredTodo = Omit<Todo, 'miniDay' | 'dayOrder'> & {
   dayOrder?: number
 }
 
+type CombinedSettings = {
+  pomodoroSession: PomodoroSessionSettings
+  automation: AutomationSettings
+  miniDays: MiniDaysSettings
+}
+
 const STORAGE_KEYS = {
   legacyTodos: storageKeys.legacyTodos,
   legacySettings: storageKeys.legacySettings,
   legacyTodosByClient: storageKeys.legacyTodosByClient,
   legacySettingsByClient: storageKeys.legacySettingsByClient,
   todos: storageKeys.todos,
-  settings: storageKeys.settings,
+  settingsCombined: storageKeys.settings,
+  pomodoroSessionSettings: storageKeys.pomodoroSessionSettings,
+  automationSettings: storageKeys.automationSettings,
+  miniDaysSettings: storageKeys.miniDaysSettings,
+  sharedMiniDaysSettings: storageKeys.sharedMiniDaysSettings,
+  legacyMiniDaysSettings: storageKeys.legacyMiniDaysSettings,
 }
 
 const now = () => new Date().toISOString()
@@ -25,13 +43,22 @@ const today = () => {
 const latency = 200
 
 // 기본 설정 (Todo는 빈 상태)
-const defaultSettings: PomodoroSettings = {
+const defaultSessionSettings: PomodoroSessionSettings = {
   flowMin: 25,
   breakMin: 5,
   longBreakMin: 15,
   cycleEvery: 4,
+}
+
+const defaultAutomationSettings: AutomationSettings = {
   autoStartBreak: false,
   autoStartSession: false,
+}
+
+const defaultCombinedSettings: CombinedSettings = {
+  pomodoroSession: defaultSessionSettings,
+  automation: defaultAutomationSettings,
+  miniDays: defaultMiniDaysSettings,
 }
 
 function getClientId(request: Request) {
@@ -144,41 +171,142 @@ function getNextOrder(todos: Todo[], date: string, isDone: boolean, miniDay: num
   return orders.length === 0 ? 0 : Math.max(...orders) + 1
 }
 
-function loadSettings(clientId: string): PomodoroSettings {
-  try {
-    const key = STORAGE_KEYS.settings(clientId)
-    let stored = localStorage.getItem(key)
-    if (!stored) {
-      const legacyClientKey = STORAGE_KEYS.legacySettingsByClient(clientId)
-      const legacyClient = localStorage.getItem(legacyClientKey)
-      if (legacyClient) {
-        localStorage.setItem(key, legacyClient)
-        localStorage.removeItem(legacyClientKey)
-        stored = legacyClient
-      } else {
-        const legacy = localStorage.getItem(STORAGE_KEYS.legacySettings)
-        if (legacy) {
-          localStorage.setItem(key, legacy)
-          localStorage.removeItem(STORAGE_KEYS.legacySettings)
-          stored = legacy
-        }
-      }
-    }
-    if (stored) {
-      return JSON.parse(stored) as PomodoroSettings
-    }
-  } catch (e) {
-    console.error('Failed to load settings from localStorage:', e)
+function normalizeCombinedSettings(input?: Partial<CombinedSettings> | null): CombinedSettings {
+  return {
+    pomodoroSession: { ...defaultSessionSettings, ...(input?.pomodoroSession ?? {}) },
+    automation: { ...defaultAutomationSettings, ...(input?.automation ?? {}) },
+    miniDays: normalizeMiniDaysSettings(input?.miniDays ?? defaultMiniDaysSettings),
   }
-  return defaultSettings
 }
 
-function saveSettings(clientId: string, settings: PomodoroSettings) {
+function loadLegacyPomodoroSettings(clientId: string) {
+  const candidates = [STORAGE_KEYS.legacySettingsByClient(clientId), STORAGE_KEYS.legacySettings]
+  for (const key of candidates) {
+    const stored = localStorage.getItem(key)
+    if (stored) {
+      return { settings: JSON.parse(stored) as PomodoroSettings, key }
+    }
+  }
+  return null
+}
+
+function loadLegacyMiniDays() {
+  const legacyKeys = [STORAGE_KEYS.sharedMiniDaysSettings, STORAGE_KEYS.legacyMiniDaysSettings]
+  for (const key of legacyKeys) {
+    const legacy = localStorage.getItem(key)
+    if (legacy) return { settings: JSON.parse(legacy) as MiniDaysSettings, key }
+  }
+  return null
+}
+
+function saveCombinedSettings(clientId: string, settings: CombinedSettings) {
   try {
-    localStorage.setItem(STORAGE_KEYS.settings(clientId), JSON.stringify(settings))
+    localStorage.setItem(
+      STORAGE_KEYS.settingsCombined(clientId),
+      JSON.stringify(normalizeCombinedSettings(settings)),
+    )
   } catch (e) {
     console.error('Failed to save settings to localStorage:', e)
   }
+}
+
+function loadCombinedSettings(clientId: string): CombinedSettings {
+  const combinedKey = STORAGE_KEYS.settingsCombined(clientId)
+  const stored = localStorage.getItem(combinedKey)
+  if (stored) {
+    return normalizeCombinedSettings(JSON.parse(stored) as CombinedSettings)
+  }
+
+  let hydrated: Partial<CombinedSettings> | null = null
+  let shouldMigrate = false
+
+  const legacyCombined = loadLegacyPomodoroSettings(clientId)
+  if (legacyCombined) {
+    hydrated = hydrated ?? {}
+    hydrated.pomodoroSession = {
+      flowMin: legacyCombined.settings.flowMin,
+      breakMin: legacyCombined.settings.breakMin,
+      longBreakMin: legacyCombined.settings.longBreakMin,
+      cycleEvery: legacyCombined.settings.cycleEvery,
+    }
+    hydrated.automation = {
+      autoStartBreak:
+        legacyCombined.settings.autoStartBreak ?? defaultAutomationSettings.autoStartBreak,
+      autoStartSession:
+        legacyCombined.settings.autoStartSession ?? defaultAutomationSettings.autoStartSession,
+    }
+    localStorage.removeItem(legacyCombined.key)
+    shouldMigrate = true
+  }
+
+  const splitSession = localStorage.getItem(STORAGE_KEYS.pomodoroSessionSettings(clientId))
+  if (splitSession) {
+    hydrated = hydrated ?? {}
+    hydrated.pomodoroSession = JSON.parse(splitSession) as PomodoroSessionSettings
+    localStorage.removeItem(STORAGE_KEYS.pomodoroSessionSettings(clientId))
+    shouldMigrate = true
+  }
+
+  const splitAutomation = localStorage.getItem(STORAGE_KEYS.automationSettings(clientId))
+  if (splitAutomation) {
+    hydrated = hydrated ?? {}
+    hydrated.automation = JSON.parse(splitAutomation) as AutomationSettings
+    localStorage.removeItem(STORAGE_KEYS.automationSettings(clientId))
+    shouldMigrate = true
+  }
+
+  let miniDaysFromSplit: MiniDaysSettings | null = null
+  const splitMiniDays = localStorage.getItem(STORAGE_KEYS.miniDaysSettings(clientId))
+  if (splitMiniDays) {
+    miniDaysFromSplit = JSON.parse(splitMiniDays) as MiniDaysSettings
+    localStorage.removeItem(STORAGE_KEYS.miniDaysSettings(clientId))
+    shouldMigrate = true
+  }
+
+  const legacyMiniDays = miniDaysFromSplit ? null : loadLegacyMiniDays()
+  if (legacyMiniDays) {
+    miniDaysFromSplit = legacyMiniDays.settings
+    localStorage.removeItem(legacyMiniDays.key)
+    shouldMigrate = true
+  }
+
+  if (miniDaysFromSplit) {
+    hydrated = hydrated ?? {}
+    hydrated.miniDays = miniDaysFromSplit
+  }
+
+  if (!hydrated) return defaultCombinedSettings
+
+  const normalized = normalizeCombinedSettings(hydrated)
+  if (shouldMigrate) saveCombinedSettings(clientId, normalized)
+  return normalized
+}
+
+function loadPomodoroSessionSettings(clientId: string): PomodoroSessionSettings {
+  return loadCombinedSettings(clientId).pomodoroSession
+}
+
+function loadAutomationSettings(clientId: string): AutomationSettings {
+  return loadCombinedSettings(clientId).automation
+}
+
+function savePomodoroSessionSettings(clientId: string, settings: PomodoroSessionSettings) {
+  const combined = loadCombinedSettings(clientId)
+  saveCombinedSettings(clientId, { ...combined, pomodoroSession: { ...defaultSessionSettings, ...settings } })
+}
+
+function saveAutomationSettings(clientId: string, settings: AutomationSettings) {
+  const combined = loadCombinedSettings(clientId)
+  saveCombinedSettings(clientId, { ...combined, automation: { ...defaultAutomationSettings, ...settings } })
+}
+
+function loadMiniDaysSettings(clientId: string): MiniDaysSettings {
+  return loadCombinedSettings(clientId).miniDays
+}
+
+function saveMiniDaysSettings(clientId: string, settings: MiniDaysSettings) {
+  const combined = loadCombinedSettings(clientId)
+  saveCombinedSettings(clientId, { ...combined, miniDays: normalizeMiniDaysSettings(settings) })
 }
 
 export const handlers = [
@@ -406,19 +534,64 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/settings/pomodoro', async ({ request }) => {
+  http.get('/api/settings', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)
-    const settings = loadSettings(clientId)
+    return HttpResponse.json({
+      pomodoroSession: loadPomodoroSessionSettings(clientId),
+      automation: loadAutomationSettings(clientId),
+      miniDays: loadMiniDaysSettings(clientId),
+    })
+  }),
+
+  http.get('/api/settings/pomodoro-session', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const settings = loadPomodoroSessionSettings(clientId)
     return HttpResponse.json(settings)
   }),
 
-  http.put('/api/settings/pomodoro', async ({ request }) => {
+  http.put('/api/settings/pomodoro-session', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)
-    const body = (await request.json()) as PomodoroSettings
-    const settings = { ...body }
-    saveSettings(clientId, settings)
+    const body = (await request.json()) as PomodoroSessionSettings
+    const settings: PomodoroSessionSettings = { ...defaultSessionSettings, ...body }
+    savePomodoroSessionSettings(clientId, settings)
+    return HttpResponse.json(settings)
+  }),
+
+  http.get('/api/settings/automation', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const settings = loadAutomationSettings(clientId)
+    return HttpResponse.json(settings)
+  }),
+
+  http.put('/api/settings/automation', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const body = (await request.json()) as AutomationSettings
+    const settings: AutomationSettings = {
+      autoStartBreak: body.autoStartBreak ?? false,
+      autoStartSession: body.autoStartSession ?? false,
+    }
+    saveAutomationSettings(clientId, settings)
+    return HttpResponse.json(settings)
+  }),
+
+  http.get('/api/settings/mini-days', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const settings = loadMiniDaysSettings(clientId)
+    return HttpResponse.json(settings)
+  }),
+
+  http.put('/api/settings/mini-days', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const body = (await request.json()) as MiniDaysSettings
+    const settings = normalizeMiniDaysSettings(body)
+    saveMiniDaysSettings(clientId, settings)
     return HttpResponse.json(settings)
   }),
 ]

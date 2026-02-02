@@ -41,16 +41,20 @@ com.example.flowtodo
       TodoController.java
   settings/
     domain/
-      PomodoroSettings.java
+      UserSettings.java
     dto/
-      PomodoroSettingsRequest.java
-      PomodoroSettingsResponse.java
+      PomodoroSessionSettingsRequest.java
+      PomodoroSessionSettingsResponse.java
+      AutomationSettingsRequest.java
+      AutomationSettingsResponse.java
+      MiniDaysSettingsRequest.java
+      MiniDaysSettingsResponse.java
     repo/
-      PomodoroSettingsRepository.java
+      UserSettingsRepository.java
     service/
-      PomodoroSettingsService.java
+      SettingsService.java
     web/
-      PomodoroSettingsController.java
+      SettingsController.java
 ```
 
 ---
@@ -77,7 +81,7 @@ com.example.flowtodo
 - timerMode: String? ('stopwatch' | 'pomodoro' | null)
 - createdAt, updatedAt (auditing 추천)
 
-### 4.2 PomodoroSettings Entity
+### 4.2 UserSettings Entity (단일 테이블, API는 분리)
 - userId: String (PK)
 - flowMin: int default 25
 - breakMin: int default 5
@@ -85,7 +89,14 @@ com.example.flowtodo
 - cycleEvery: int default 4
 - autoStartBreak: boolean default false
 - autoStartSession: boolean default false
-- Note: 요청에서 누락되면 false로 처리 (백워드 호환)
+- day1Label, day1StartMin, day1EndMin
+- day2Label, day2StartMin, day2EndMin
+- day3Label, day3StartMin, day3EndMin
+- updatedAt (auditing)
+- Note:
+  - API는 **세션 설정/자동화/미니데이**로 분리하되, 테이블은 단일 유지
+  - Day 0(미분류)은 고정이며 DB에 저장하지 않음
+  - 시간은 분 단위(min) 저장을 권장 (API는 HH:MM)
 
 ### 4.3 TodoSession Entity (V2 마이그레이션)
 - id: UUID (PK)
@@ -103,7 +114,7 @@ com.example.flowtodo
 ## 5. Flyway 마이그레이션
 - `db/migration/V1__init.sql`
   - todos 테이블 (MySQL 기준 타입, UTF8MB4, InnoDB)
-  - pomodoro_settings 테이블
+  - user_settings 테이블
   - 인덱스: todos(user_id, created_at)
 - `db/migration/V2__add_session_history.sql` (추후)
   - todo_sessions 테이블
@@ -129,12 +140,21 @@ com.example.flowtodo
 - resetTimer(userId, id)
   - focusSeconds = 0, pomodoroDone = 0, timerMode = null
 
-### 6.2 PomodoroSettingsService
-- get(userId)
+### 6.2 SettingsService (단일 테이블)
+- getSession(userId)
   - 없으면 default 반환 또는 생성 후 반환(권장: 생성)
-- update(userId, dto)
+- updateSession(userId, dto)
   - validation 체크
+- getAutomation(userId)
+  - 없으면 default 반환 또는 생성 후 반환
+- updateAutomation(userId, dto)
   - autoStartBreak/autoStartSession 누락 시 false로 보정
+- getMiniDays(userId)
+  - 없으면 default 반환 또는 생성 후 반환
+- updateMiniDays(userId, dto)
+  - validation 체크
+- getSettings(userId)
+  - 세션/자동화/미니데이 통합 조회 (GET /api/settings)
 
 ---
 
@@ -147,15 +167,24 @@ com.example.flowtodo
 - POST /api/todos/{id}/pomodoro/complete
 - POST /api/todos/{id}/focus/add
 - POST /api/todos/{id}/reset
-- GET /api/settings/pomodoro
-- PUT /api/settings/pomodoro
+- GET /api/settings
+- GET /api/settings/pomodoro-session
+- PUT /api/settings/pomodoro-session
+- GET /api/settings/automation
+- PUT /api/settings/automation
+- GET /api/settings/mini-days
+- PUT /api/settings/mini-days
 
 ---
 
 ## 8. Validation
 - title: @NotBlank, @Size(max=200)
 - durationSec: @Min(1) @Max(43200) (권장 상한)
-- settings: flowMin 1~90, breakMin 1~90, longBreakMin 1~90, cycleEvery 1~10 (autoStartBreak/autoStartSession은 optional)
+- session settings: flowMin 1~90, breakMin 1~90, longBreakMin 1~90, cycleEvery 1~10
+- automation settings: autoStartBreak/autoStartSession은 optional (누락 시 false)
+- miniDays settings:
+  - label: non-empty
+  - 시간 형식: HH:MM, day1End=day2Start, day2End=day3Start
 
 ---
 

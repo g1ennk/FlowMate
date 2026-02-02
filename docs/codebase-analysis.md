@@ -54,11 +54,19 @@
 - `pomodoroDone`, `focusSeconds`, `timerMode`
 - `createdAt`, `updatedAt`
 
-### 2.2 PomodoroSettings
-- `flowMin`, `breakMin`, `longBreakMin`, `cycleEvery`
-- `autoStartBreak`, `autoStartSession`
+### 2.2 Settings (단일 엔티티, API 분리)
+- **PomodoroSessionSettings**: `flowMin`, `breakMin`, `longBreakMin`, `cycleEvery`
+- **AutomationSettings**: `autoStartBreak`, `autoStartSession`
+- **MiniDaysSettings**: `day1/2/3` 라벨 + 시간
+- 서버 저장은 **단일 user_settings 테이블** 기준, API는 분리 유지
+- 필요 시 `GET /api/settings`로 통합 조회 가능
 
-### 2.3 Timer 상태 (Zustand SingleTimerState)
+### 2.3 MiniDaysSettings
+- `day1/2/3`: 라벨 + 시간 범위
+- Day 0(미분류)은 고정이며 설정에 포함하지 않음
+- 서버 저장 대상(엔드포인트 분리), UI는 해당 설정을 표시용으로 사용
+
+### 2.4 Timer 상태 (Zustand SingleTimerState)
 - **공통**: `mode`, `phase`, `status`, `endAt`, `remainingMs`, `elapsedMs`, `initialFocusMs`, `cycleCount`, `settingsSnapshot`
 - **Flexible(Stopwatch) 전용**:
   - `flexiblePhase`, `focusElapsedMs`, `breakElapsedMs`, `breakTargetMs`, `breakCompleted`
@@ -72,7 +80,7 @@
 - MSW 모킹 데이터:
   - Todos: `flowmate/{clientId}/todos`
   - Settings: `flowmate/{clientId}/settings`
-- Mini Days 설정: `flowmate/settings/miniDays`
+- 레거시 분리 키: `flowmate/{clientId}/settings/pomodoroSession`, `flowmate/{clientId}/settings/automation`, `flowmate/{clientId}/settings/miniDays` → 결합 키로 마이그레이션
 - 레거시 키(`todo-flow/...`)는 최초 로드 시 `flowmate/...`로 마이그레이션
 
 ### 2.5 SessionHistory 운영/개선 요약
@@ -166,8 +174,13 @@
 - `POST /api/todos/:id/pomodoro/complete`
 - `POST /api/todos/:id/focus/add`
 - `POST /api/todos/:id/reset`
-- `GET /api/settings/pomodoro`
-- `PUT /api/settings/pomodoro`
+- `GET /api/settings`
+- `GET /api/settings/pomodoro-session`
+- `PUT /api/settings/pomodoro-session`
+- `GET /api/settings/automation`
+- `PUT /api/settings/automation`
+- `GET /api/settings/mini-days`
+- `PUT /api/settings/mini-days`
 
 ## 7. 파일/폴더 맵 (빠른 탐색용)
 - **앱 설정/라우팅**

@@ -105,8 +105,12 @@ src/
 - `useReorderTodos` - Todo 순서 저장 (드래그 후)
 - `useCompleteTodo` - 뽀모도로 세션 완료 기록 (시간+횟수)
 - `useAddFocus` - 일반 타이머 시간 기록 (시간만)
-- `usePomodoroSettings` - 설정 조회
-- `useUpdatePomodoroSettings` - 설정 수정
+- `usePomodoroSessionSettings` - 세션 설정 조회
+- `useAutomationSettings` - 자동화 설정 조회
+- `usePomodoroSettings` - 세션+자동화 병합 조회 (타이머용)
+- `useUpdatePomodoroSettings` - 세션/자동화 분리 업데이트
+- `useMiniDaysSettings` - MiniDays 설정 조회
+- `useSettings` - 통합 Settings 조회(옵션)
 
 ### 클라이언트 상태 (Zustand)
 - `timerStore` - 타이머 상태 관리
@@ -189,6 +193,7 @@ src/
 - Flow/휴식/주기를 **프리셋 바텀시트**로 선택
 - 변경 시 즉시 저장 (저장 버튼 없음)
 - 사용자 지정 입력 UI는 다음 버전에서 공개 예정
+  - MiniDays(라벨/시간)는 Day 1~3만 커스텀, Day 0는 미분류 고정
 
 ### 통계 페이지
 - **경로**: `/stats`
@@ -296,9 +301,10 @@ src/
 ### 개발 환경 (MSW)
 - localStorage에 데이터 저장
 - 새로고침해도 유지
-- 키: `flowmate/{clientId}/todos`, `flowmate/{clientId}/settings`, `flowmate/settings/miniDays`
+- 키(MSW): `flowmate/{clientId}/todos`, `flowmate/{clientId}/settings`
 - 타이머 상태: `flowmate/{clientId}/timer/v2/{todoId}`
 - 세션 히스토리: `flowmate/{clientId}/sessionHistory/{todoId}`
+- 레거시 분리 키: `flowmate/{clientId}/settings/pomodoroSession`, `flowmate/{clientId}/settings/automation`, `flowmate/{clientId}/settings/miniDays` → 결합 키로 마이그레이션
 - 레거시 키(`todo-flow/...`)는 최초 로드 시 `flowmate/...`로 마이그레이션
 - 참고: sessionHistory는 현재 localStorage에 저장되며, 서버 저장으로 이관 예정
 - 키 규칙은 `src/lib/storageKeys.ts`에서 관리

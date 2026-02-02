@@ -1,8 +1,27 @@
 import { api } from './http'
-import { PomodoroSettingsSchema, type PomodoroSettings } from './types'
+import {
+  AutomationSettingsSchema,
+  MiniDaysSettingsSchema,
+  PomodoroSessionSettingsSchema,
+  SettingsSchema,
+  type AutomationSettings,
+  type MiniDaysSettings,
+  type PomodoroSessionSettings,
+  type Settings,
+} from './types'
 
 export const settingsApi = {
-  get: (): Promise<PomodoroSettings> => api.get('/settings/pomodoro', PomodoroSettingsSchema),
-  update: (body: PomodoroSettings): Promise<PomodoroSettings> =>
-    api.put('/settings/pomodoro', body, PomodoroSettingsSchema),
+  getSettings: (): Promise<Settings> => api.get('/settings', SettingsSchema),
+  getSession: (): Promise<PomodoroSessionSettings> =>
+    api.get('/settings/pomodoro-session', PomodoroSessionSettingsSchema),
+  updateSession: (body: PomodoroSessionSettings): Promise<PomodoroSessionSettings> =>
+    api.put('/settings/pomodoro-session', body, PomodoroSessionSettingsSchema),
+  getAutomation: (): Promise<AutomationSettings> =>
+    api.get('/settings/automation', AutomationSettingsSchema),
+  updateAutomation: (body: AutomationSettings): Promise<AutomationSettings> =>
+    api.put('/settings/automation', body, AutomationSettingsSchema),
+  getMiniDays: (): Promise<MiniDaysSettings> =>
+    api.get('/settings/mini-days', MiniDaysSettingsSchema),
+  updateMiniDays: (body: MiniDaysSettings): Promise<MiniDaysSettings> =>
+    api.put('/settings/mini-days', body, MiniDaysSettingsSchema),
 }

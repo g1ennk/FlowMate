@@ -181,14 +181,23 @@
 - breakMs
 - focusMs
 
-### PomodoroSettings
+### PomodoroSessionSettings
 
-- autoStartBreak
-- autoStartSession
 - breakMin
 - cycleEvery
 - flowMin
 - longBreakMin
+
+### AutomationSettings
+
+- autoStartBreak
+- autoStartSession
+
+### MiniDaysSettings
+
+- day1/2/3 라벨
+- day1/2/3 시간 범위
+- Day 0(미분류)는 고정, 설정에 포함하지 않음
 
 ## 8. API 요구사항
 
@@ -200,10 +209,15 @@
 - PUT /api/todos/reorder
 - DELETE /api/todos/{id}
 
-### Pomodoro Settings
+### Settings
 
-- GET /api/settings/pomodoro
-- PUT /api/settings/pomodoro
+- GET /api/settings
+- GET /api/settings/pomodoro-session
+- PUT /api/settings/pomodoro-session
+- GET /api/settings/automation
+- PUT /api/settings/automation
+- GET /api/settings/mini-days
+- PUT /api/settings/mini-days
 
 ### Pomodoro 완료 누적
 

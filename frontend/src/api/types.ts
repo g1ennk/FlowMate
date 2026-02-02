@@ -47,13 +47,36 @@ export const TodoReorderRequestSchema = z.object({
   items: z.array(TodoReorderItemSchema).min(1),
 })
 
-export const PomodoroSettingsSchema = z.object({
+export const PomodoroSessionSettingsSchema = z.object({
   flowMin: z.number().int().min(1).max(90),
   breakMin: z.number().int().min(1).max(90),
   longBreakMin: z.number().int().min(1).max(90),
   cycleEvery: z.number().int().min(1).max(10),
+})
+
+export const AutomationSettingsSchema = z.object({
   autoStartBreak: z.boolean().optional(),
   autoStartSession: z.boolean().optional(),
+})
+
+export const PomodoroSettingsSchema = PomodoroSessionSettingsSchema.merge(AutomationSettingsSchema)
+
+export const MiniDayRangeSchema = z.object({
+  label: z.string(),
+  start: z.string(),
+  end: z.string(),
+})
+
+export const MiniDaysSettingsSchema = z.object({
+  day1: MiniDayRangeSchema,
+  day2: MiniDayRangeSchema,
+  day3: MiniDayRangeSchema,
+})
+
+export const SettingsSchema = z.object({
+  pomodoroSession: PomodoroSessionSettingsSchema,
+  automation: AutomationSettingsSchema,
+  miniDays: MiniDaysSettingsSchema,
 })
 
 export const PomodoroCompleteRequestSchema = z.object({
@@ -91,7 +114,11 @@ export type TodoList = z.infer<typeof TodoListSchema>
 export type TodoCreateInput = z.infer<typeof TodoCreateSchema>
 export type TodoPatchInput = z.infer<typeof TodoPatchSchema>
 
+export type PomodoroSessionSettings = z.infer<typeof PomodoroSessionSettingsSchema>
+export type AutomationSettings = z.infer<typeof AutomationSettingsSchema>
 export type PomodoroSettings = z.infer<typeof PomodoroSettingsSchema>
+export type MiniDaysSettings = z.infer<typeof MiniDaysSettingsSchema>
+export type Settings = z.infer<typeof SettingsSchema>
 export type PomodoroCompleteRequest = z.infer<typeof PomodoroCompleteRequestSchema>
 export type PomodoroCompleteResponse = z.infer<typeof PomodoroCompleteResponseSchema>
 export type FocusAddRequest = z.infer<typeof FocusAddRequestSchema>
