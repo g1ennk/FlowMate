@@ -20,6 +20,7 @@
     - 일반 타이머: 끊김 없는 몰입을 위한 카운트업 타이머에, 필요할 때만 추천/자유 휴식을 붙여 일반 타이머와 뽀모도로를 유연하게 오가는 방식.
     - 뽀모도로 타이머: 사용자가 설정한 Flow 시간 / 휴식 시간 / 주기(cycle)를 타이머에 반영한다
 - Flow 1회 완료 시 Todo에 **집중 시간이 누적**된다
+- 하루를 Day 0~3 미니 데이로 나눠 계획/회고가 가능하다
 - MVP 수준에서 **단순하지만 확장 가능한 구조**를 갖는다
 
 ## 3. 비목표 (Non-Goals)
@@ -155,7 +156,7 @@
 
 **참고**: 일반 타이머는 `autoStartSession`만 적용합니다 (`autoStartBreak` 미적용).
 
-## 7. 데이터 모델 (수정 필요)
+## 7. 데이터 모델
 
 ### Todo
 
@@ -189,13 +190,14 @@
 - flowMin
 - longBreakMin
 
-## 8. API 요구사항 (점검 필요)
+## 8. API 요구사항
 
 ### Todo
 
 - GET /api/todos
 - POST /api/todos
 - PATCH /api/todos/{id}
+- PUT /api/todos/reorder
 - DELETE /api/todos/{id}
 
 ### Pomodoro Settings
@@ -215,6 +217,26 @@
     - 서버 동작:
         - pomodoroDone += 1
         - focusSeconds += durationSec
+
+### 일반 타이머 집중 누적
+
+- POST /api/todos/{id}/focus/add
+    - request body:
+      ```json
+      {
+        "durationSec": number
+      }
+      ```
+    - 서버 동작:
+        - focusSeconds += durationSec (pomodoroDone 증가 없음)
+
+### 타이머 기록 초기화
+
+- POST /api/todos/{id}/reset
+    - 서버 동작:
+        - focusSeconds = 0
+        - pomodoroDone = 0
+        - timerMode = null
 
 ## 9. UI 구성
 

@@ -7,6 +7,7 @@
 ## 1. 문서 역할 원칙
 - `docs/codebase-analysis.md`: **요약 + 리스크**만 유지 (상세 동작/설명은 `docs/frontend.md`로 이동)
 - `docs/frontend.md`: 프론트엔드 **상세 동작/UX 스펙**의 단일 소스
+- `docs/backend.md`: 백엔드 구현 계획 (API 계약은 plan/api.md가 소스)
 
 ## 2. 핵심 아키텍처 요약
 - **모노레포 구조**
@@ -14,6 +15,8 @@
 - **라우팅/앱 쉘**
   - React Router로 `/todos`, `/stats`, `/settings` 제공.
   - 타이머 UI는 라우트가 아닌 **풀스크린 오버레이**(`TimerFullScreen`)로 표시.
+- **Todo UI 구조**
+  - 하루를 Day 0~3으로 분리해 섹션별로 표시 (Day 0: 미분류, Day 1~3: 시간대)
 - **상태 관리**
   - 서버 상태: TanStack Query (Todo/Settings CRUD, 완료/누적 API 호출)
   - 클라이언트 상태: Zustand(`timerStore`)로 모든 타이머 상태/전이/세션 히스토리 관리

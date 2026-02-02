@@ -28,7 +28,9 @@ Headers (MVP):
 }
 ```
 
-**참고**: `sessionHistory`는 **서버 저장 대상**이며 API 응답에는 포함하지 않습니다. 클라이언트는 타이머 상태/임시 백업만 localStorage에 유지합니다.
+> miniDay: Day 0(미분류), Day 1~3(시간대)
+
+**참고**: `sessionHistory`는 **서버 저장 대상**이며 API 응답에는 포함하지 않습니다. 현재 MVP는 클라이언트에서 타이머 상태와 `sessionHistory`를 localStorage에 유지합니다.
 
 ### PomodoroSettings
 ```json

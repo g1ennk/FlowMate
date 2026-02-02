@@ -20,6 +20,7 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 
 - Todo 관리: 날짜별 할 일 생성/수정/삭제
     - 메모: 할 일별 메모 추가
+    - 하루를 Day 0~3 미니 데이로 분리 (Day 0: 미분류, Day 1~3: 시간대)
 - 캘린더 뷰: 월간/주간 뷰 지원, 일별 진행 상황 표시
 - 이중 타이머 시스템
     - 일반 타이머(Stopwatch, 카운트업)
@@ -77,6 +78,7 @@ FlowMate/
 │   ├── plan/                 # 기획 문서 (PRD/API)
 │   ├── frontend.md           # 프론트엔드 가이드
 │   ├── backend.md            # 백엔드 가이드
+│   ├── infra.md              # 인프라/배포 초안
 │   └── codebase-analysis.md  # 코드베이스 분석/운영 컨텍스트
 └── AGENTS.md                 # 기여자 가이드
 ```

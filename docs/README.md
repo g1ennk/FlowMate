@@ -8,6 +8,7 @@
 - `docs/codebase-analysis.md`: 운영/개발 컨텍스트, 코드베이스 요약, 리스크
 - `docs/frontend.md`: 프론트엔드 상세 동작/UX 스펙
 - `docs/backend.md`: 백엔드 구현 계획 (API 계약은 plan/api.md가 소스)
+- `docs/infra.md`: 인프라/배포 구성 초안
 - `docs/plan/prd.md`: 제품 요구사항 (PRD)
 - `docs/plan/api.md`: API 계약 단일 소스
 
