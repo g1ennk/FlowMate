@@ -48,7 +48,8 @@ import { useTodoActions } from './useTodoActions'
 import { useReorderTodos, useTodos } from './hooks'
 import { getTimerInfo } from '../timer/useTimerInfo'
 import { formatTimerHoursMinutes } from './todoTimerDisplay'
-import { useMiniDaysSettings } from '../../lib/miniDays'
+import { defaultMiniDaysSettings } from '../../lib/miniDays'
+import { useMiniDaysSettings } from '../settings/hooks'
 import type { Todo, TodoReorderItem } from '../../api/types'
 
 // === 스키마 ===
@@ -65,6 +66,8 @@ type GroupedTodos = {
   active: Record<number, Todo[]>
   done: Record<number, Todo[]>
 }
+
+type ContainerItems = Record<DropContainerId, string[]>
 
 type RectLike = { top: number; height: number }
 
@@ -125,6 +128,22 @@ const parseContainerId = (id: DropContainerId) => {
   }
 }
 
+const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  for (const key of aKeys) {
+    const aList = a[key as DropContainerId]
+    const bList = b[key as DropContainerId]
+    if (!aList || !bList) return false
+    if (aList.length !== bList.length) return false
+    for (let i = 0; i < aList.length; i += 1) {
+      if (aList[i] !== bList[i]) return false
+    }
+  }
+  return true
+}
+
 function DroppableList({
   id,
   children,
@@ -172,7 +191,7 @@ function TodosPage() {
   // 캘린더 상태
   const [selectedDate, setSelectedDate] = useState(new Date())
   const selectedDateKey = formatDateKey(selectedDate)
-  const miniDaysSettings = useMiniDaysSettings()
+  const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
 
   const daySections = useMemo(
     () => [
@@ -241,24 +260,6 @@ function TodosPage() {
   )
 
   // === DnD: multi-container live sorting state (option 2) ===
-type ContainerItems = Record<DropContainerId, string[]>
-
-const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
-  const aKeys = Object.keys(a)
-  const bKeys = Object.keys(b)
-  if (aKeys.length !== bKeys.length) return false
-  for (const key of aKeys) {
-    const aList = a[key as DropContainerId]
-    const bList = b[key as DropContainerId]
-    if (!aList || !bList) return false
-    if (aList.length !== bList.length) return false
-    for (let i = 0; i < aList.length; i += 1) {
-      if (aList[i] !== bList[i]) return false
-    }
-  }
-  return true
-}
-
   const buildContainerItems = useCallback((grouped: GroupedTodos): ContainerItems => {
     const result = {} as ContainerItems
     for (const section of daySections) {
@@ -653,8 +654,8 @@ const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
                 const activeContainerId = getContainerId(section.id, false)
                 const doneContainerId = getContainerId(section.id, true)
                 const isInputOpen = inputDay === section.id
-                const nextDoneOrder = getNextDayOrder(doneTodos)
-                const nextActiveOrder = getNextDayOrder(activeTodos)
+                const nextDoneOrder = getNextDayOrder(groupedTodos.done[section.id] ?? [])
+                const nextActiveOrder = getNextDayOrder(groupedTodos.active[section.id] ?? [])
                 const dayFocus = blockFocusStats.totals[section.id] ?? 0
                 const doneFocus = blockFocusStats.doneTotals[section.id] ?? 0
                 const emptyMessage =
