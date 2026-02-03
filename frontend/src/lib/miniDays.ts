@@ -32,23 +32,36 @@ export function validateMiniDaysSettings(settings: MiniDaysSettings): MiniDaysEr
   if (!label2) errors.day2 = '라벨을 입력해주세요'
   if (!label3) errors.day3 = '라벨을 입력해주세요'
 
-  const day1Start = parseTime(settings.day1.start, false)
-  const day1End = parseTime(settings.day1.end, false)
-  const day2Start = parseTime(settings.day2.start, false)
-  const day2End = parseTime(settings.day2.end, false)
-  const day3Start = parseTime(settings.day3.start, false)
-  const day3End = parseTime(settings.day3.end, true)
+  const day1StartRaw = settings.day1.start.trim()
+  const day1EndRaw = settings.day1.end.trim()
+  const day2StartRaw = settings.day2.start.trim()
+  const day2EndRaw = settings.day2.end.trim()
+  const day3StartRaw = settings.day3.start.trim()
+  const day3EndRaw = settings.day3.end.trim()
 
-  if (day1Start === null || day1End === null) errors.day1 = '형식은 HH:MM 이어야 해요'
-  if (day2Start === null || day2End === null) errors.day2 = '형식은 HH:MM 이어야 해요'
-  if (day3Start === null || day3End === null) errors.day3 = '형식은 HH:MM 이어야 해요'
+  const day1Start = day1StartRaw ? parseTime(day1StartRaw, false) : null
+  const day1End = day1EndRaw ? parseTime(day1EndRaw, false) : null
+  const day2Start = day2StartRaw ? parseTime(day2StartRaw, false) : null
+  const day2End = day2EndRaw ? parseTime(day2EndRaw, false) : null
+  const day3Start = day3StartRaw ? parseTime(day3StartRaw, false) : null
+  const day3End = day3EndRaw ? parseTime(day3EndRaw, true) : null
 
-  if (day1Start !== null && day1End !== null && day2Start !== null && day2End !== null && day3Start !== null && day3End !== null) {
-    if (day1Start >= day1End) errors.order = 'Day 1 시작은 종료보다 빨라야 해요'
-    if (day1End !== day2Start) errors.order = 'Day 1 종료와 Day 2 시작을 맞춰주세요'
-    if (day2Start >= day2End) errors.order = 'Day 2 시작은 종료보다 빨라야 해요'
-    if (day2End !== day3Start) errors.order = 'Day 2 종료와 Day 3 시작을 맞춰주세요'
-    if (day3Start >= day3End) errors.order = 'Day 3 시작은 종료보다 빨라야 해요'
+  if ((day1StartRaw && day1Start === null) || (day1EndRaw && day1End === null)) {
+    errors.day1 = '형식은 HH:MM 이어야 해요'
+  } else if (day1Start !== null && day1End !== null && day1Start >= day1End) {
+    errors.day1 = '시작은 종료보다 빨라야 해요'
+  }
+
+  if ((day2StartRaw && day2Start === null) || (day2EndRaw && day2End === null)) {
+    errors.day2 = '형식은 HH:MM 이어야 해요'
+  } else if (day2Start !== null && day2End !== null && day2Start >= day2End) {
+    errors.day2 = '시작은 종료보다 빨라야 해요'
+  }
+
+  if ((day3StartRaw && day3Start === null) || (day3EndRaw && day3End === null)) {
+    errors.day3 = '형식은 HH:MM 이어야 해요'
+  } else if (day3Start !== null && day3End !== null && day3Start >= day3End) {
+    errors.day3 = '시작은 종료보다 빨라야 해요'
   }
 
   return errors

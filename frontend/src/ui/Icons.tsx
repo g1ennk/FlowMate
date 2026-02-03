@@ -117,6 +117,21 @@ export function ChevronRightIcon({ size, className, ...props }: IconProps) {
   )
 }
 
+export function CloseIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      strokeWidth={1.5}
+      {...props}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6l-12 12" />
+    </svg>
+  )
+}
+
 export function MoreVerticalIcon({ size, className, ...props }: IconProps) {
   return (
     <svg

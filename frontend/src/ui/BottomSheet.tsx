@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { CloseIcon } from './Icons'
 
 type BottomSheetProps = {
   isOpen: boolean
@@ -10,6 +11,9 @@ type BottomSheetProps = {
   contentClassName?: string
   titleClassName?: string
   hideHandle?: boolean
+  showCloseButton?: boolean
+  closeButtonAriaLabel?: string
+  headerAction?: ReactNode
 }
 
 export function BottomSheet({
@@ -21,6 +25,9 @@ export function BottomSheet({
   contentClassName = '',
   titleClassName = '',
   hideHandle = false,
+  showCloseButton = false,
+  closeButtonAriaLabel = 'Close',
+  headerAction,
 }: BottomSheetProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -58,8 +65,8 @@ export function BottomSheet({
     >
       {/* 배경 */}
       <div
-        className={`absolute inset-0 bg-black transition-opacity duration-300 ${
-          isOpen ? 'opacity-60' : 'opacity-0'
+        className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${
+          isOpen ? 'opacity-100' : 'opacity-0'
         }`}
         onClick={onClose}
       />
@@ -78,8 +85,20 @@ export function BottomSheet({
 
         {/* 타이틀 */}
         {title && (
-          <div className="border-b border-gray-100 px-5 pb-3">
+          <div className="relative border-b border-gray-100 px-5 pb-3">
             <h3 className={`text-center text-base font-semibold text-gray-900 truncate ${titleClassName}`}>{title}</h3>
+            {headerAction ? (
+              <div className="absolute right-4 top-1/2 -translate-y-1/2">{headerAction}</div>
+            ) : showCloseButton ? (
+              <button
+                type="button"
+                aria-label={closeButtonAriaLabel}
+                onClick={onClose}
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 transition-colors hover:text-gray-600"
+              >
+                <CloseIcon className="h-4 w-4" />
+              </button>
+            ) : null}
           </div>
         )}
 
