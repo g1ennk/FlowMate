@@ -32,7 +32,7 @@
 ## 2) FlowMate 핵심 책임 영역 매핑
 
 - **API**: `docs/plan/api.md`와 1:1 정합
-- **데이터**: `todos`, `pomodoro_settings`, (추후 `todo_sessions`)
+- **데이터**: `todos`, `user_settings`, `todo_sessions`(Session 기록)
 - **인증/인가**: MVP는 게스트(`X-Client-Id`), 후속 소셜 로그인
 - **성능**: 날짜별/정렬 쿼리 인덱스 최적화
 - **안정성**: 에러 포맷/Validation 표준화
@@ -64,11 +64,10 @@
 **상세 작업**
 - ERD 정의(entities + 관계 + 인덱스 근거)
 - Flyway V1 마이그레이션 작성
-  - `todos`: user_id, date, mini_day, day_order, is_done, focus_seconds, pomodoro_done, timer_mode
-  - `pomodoro_settings`: user_id, flow_min, break_min, long_break_min, cycle_every, auto_start_break, auto_start_session
+  - 테이블 상세 스키마는 `docs/plan/data.md` 참고
 - 인덱스 설계
   - `todos(user_id, date)`
-  - `todos(user_id, is_done, mini_day, day_order)`
+  - `todos(user_id, date, is_done, mini_day, day_order)`
 - JPA 엔티티/리포지토리 구현
 - Todo/Settings CRUD 구현 (Service 계층)
 **산출물**
@@ -112,7 +111,7 @@
 **상세 작업**
 - Service 단위 테스트
   - reorder/dayOrder 정렬 유지
-  - complete/focus/add/reset 누적 로직
+  - Session 생성 시 누적 로직 + reset 초기화
 - Controller 통합 테스트
   - Validation 에러 포맷
   - user_id 격리 확인

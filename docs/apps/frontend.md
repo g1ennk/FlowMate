@@ -103,8 +103,9 @@ src/
 - `useUpdateTodo` - Todo 수정
 - `useDeleteTodo` - Todo 삭제
 - `useReorderTodos` - Todo 순서 저장 (드래그 후)
-- `useCompleteTodo` - 뽀모도로 세션 완료 기록 (시간+횟수)
-- `useAddFocus` - 일반 타이머 시간 기록 (시간만)
+- `useTodoSessions` - Session 목록 조회 (GET /api/todos/{id}/sessions)
+- `useCreateSession` - Session 기록 추가 (POST /api/todos/{id}/sessions)
+- `useDeleteSessions` - Session 전체 삭제 (DELETE /api/todos/{id}/sessions)
 - `usePomodoroSessionSettings` - 세션 설정 조회
 - `useAutomationSettings` - 자동화 설정 조회
 - `usePomodoroSettings` - 세션+자동화 병합 조회 (타이머용)
@@ -118,7 +119,7 @@ src/
   - **필드**: 
     - `timers`: 각 Todo별 타이머 상태 (Record 구조)
       - **뽀모도로**: `mode`, `phase`, `status`, `endAt`, `remainingMs`, `cycleCount`, `settingsSnapshot`
-      - **일반 타이머**: `flexiblePhase`, `focusElapsedMs`, `breakElapsedMs`, `focusStartedAt`, `breakStartedAt`, `breakTargetMs`, `breakCompleted`, `sessionHistory`
+      - **일반 타이머**: `flexiblePhase`, `focusElapsedMs`, `breakElapsedMs`, `focusStartedAt`, `breakStartedAt`, `breakTargetMs`, `breakCompleted`, `sessions`(Session 기록, 초 단위)
       - **공통**: `initialFocusMs`, `elapsedMs` (레거시 호환)
     - `autoCompletedTodos`: 자동 완료된 Flow 추적용 Set
   - **Actions**: 
@@ -147,11 +148,12 @@ src/
 
 #### 기본 기능
 - 생성/수정/삭제/완료
-- 하루를 Day 0~3 미니 데이로 분리한 리스트
-  - Day 0: 미분류(Inbox), Day 1~3: 시간대 라벨
-- Day 1~3 라벨/시간 범위는 miniDays 설정에서 로드 (기본: 오전/오후/저녁, UI는 비공개)
-- 드래그로 순서 변경 및 Day 간 이동 (@dnd-kit)
-- 완료된 Todo는 해당 Day 섹션의 완료 그룹에 유지
+- 하루를 미니 데이 섹션으로 분리한 리스트 (미분류 + 시간대 라벨)
+  - UI에는 Day 숫자 대신 라벨만 노출
+- 라벨/시간 범위는 miniDays 설정에서 로드 (기본: 오전/오후/저녁, 설정 UI에서 수정 가능)
+- 드래그로 순서 변경 및 섹션 간 이동 (@dnd-kit)
+- 완료된 Todo는 해당 섹션의 완료 그룹에 유지
+  - 완료된 항목을 다른 섹션 위에 드롭하면 완료 상태로 해당 섹션에 이동
 - 메모 기능
   - 순서는 `dayOrder`로 관리되며, 드래그 시 `PUT /api/todos/reorder`로 저장
   - 각 Todo는 `miniDay`(0~3)로 섹션을 결정
@@ -159,15 +161,15 @@ src/
 #### 집중 시간 표시
 - 날짜 헤더 옆에 **선택 날짜 기준 Flow 합계**를 표시  
   - 표기: `총 Flow · ?시간 ?분`
-  - 계산: `sessionHistory` 합계 우선, 없으면 `focusSeconds` 사용
-- Day 섹션 헤더 옆에 **해당 Day 기준 Flow 합계** 표시  
+- 계산: Session(`sessions`) 합계 우선, 없으면 `sessionFocusSeconds` 사용
+- 섹션 헤더 옆에 **해당 섹션 기준 Flow 합계** 표시  
   - 표기: `Flow · ?시간 ?분`
 - 완료 섹션 헤더 옆에 **완료된 태스크 기준 Flow 합계** 표시  
   - 표기: `완료됨 · ?시간 ?분`
 
 #### 태스크 추가 방법
 **입력 필드 열기:**
-- 각 Day 섹션의 `+` 버튼 클릭
+- 각 섹션의 `+` 버튼 클릭
 - 해당 섹션 맨 아래에 인라인 입력 필드 표시
 
 **태스크 추가:**
@@ -192,8 +194,16 @@ src/
 - **경로**: `/settings`
 - Flow/휴식/주기를 **프리셋 바텀시트**로 선택
 - 변경 시 즉시 저장 (저장 버튼 없음)
-- 사용자 지정 입력 UI는 다음 버전에서 공개 예정
-  - MiniDays(라벨/시간)는 Day 1~3만 커스텀, Day 0는 미분류 고정
+- MiniDays 라벨/시간은 리스트에서 선택 후 **전용 바텀시트**에서 수정
+  - 상단 타이틀 + 우측 `초기화` 버튼으로 기본값(오전/오후/저녁)으로 복원
+  - 라벨 입력은 한 줄 인풋으로 즉시 수정
+  - 시작/종료 필드는 가로 카드 2개로 배치 (활성 강조 + 체크/chevron)
+  - 시간 선택은 3열 Wheel Picker(AM·PM/시/분) + 중앙 하이라이트
+  - 요약 프리뷰(`06:00 ~ 12:00 · 6시간`) 제공
+  - 취소/저장 버튼으로 저장 (오류 시 저장 비활성화)
+  - day3 종료에 한해 `24:00` 빠른 선택 버튼 제공
+  - 미분류 섹션은 고정
+  - 시간 구간은 연속일 필요가 없으며 공백을 허용
 
 ### 통계 페이지
 - **경로**: `/stats`
@@ -205,8 +215,8 @@ src/
     - 세션 상세: 각 Flow별 집중 시간과 휴식 시간
   - 진행 중인 타이머 정보
 - **데이터 소스**:
-  - `sessionHistory` 기반 집중 시간 계산 (일반 타이머)
-  - `focusSeconds`, `pomodoroDone` (뽀모도로 또는 sessionHistory 없는 경우)
+- Session(`sessions`) 기반 집중 시간 계산 (일반 타이머)
+- `sessionFocusSeconds`, `sessionCount` (뽀모도로 또는 Session 미존재 시)
 > Note: MVP에서는 하단 탭에서 통계 탭을 숨김. 필요 시 URL로 직접 접근.
 
 #### 태스크 편집
@@ -234,27 +244,29 @@ src/
     - 진행 중 Flow: 긴 도트 (`w-10 h-3`) + 내부 프로그레스바 (초록색 그라데이션) + 그림자
     - 예정된 Flow: 짧은 도트 (`w-2.5 h-2.5`) + 어두운 회색 (`bg-gray-700/50`)
     - Break phase일 때: 완료된 Flow는 흰색 (`bg-white/90`)
-  - 자동 완료 시에만 Flow 카운트 증가 (`pomodoroDone`)
+  - 자동 완료 시에만 Flow 카운트 증가 (`sessionCount`)
   - 긴 휴식 완료 후 자동으로 사이클 초기화 (`cycleCount = 0`)
   
 - **일반 타이머** (카운트업, 자유로운 집중)
   - `MM:SS` 형식으로 표시 (예: `05:30`)
   - **Flow 개념**: `MIN_FLOW_MS` 이상 집중 + 명시적 행동(휴식/완료)
     - 최소 집중 시간: `MIN_FLOW_MS` (현재 0분, 0ms — 상수로 조정 가능)
-    - 완료된 Flow만 카운트 (`pomodoroDone`)
+    - 완료된 Flow만 카운트 (`sessionCount`)
     - 완료 처리 로직에서 현재 세션만 처리 (중복 카운트 방지)
   - **휴식 기능**:
     - "휴식" 버튼 클릭 → 추천 휴식 / 자유 휴식 선택
     - 추천 휴식: 집중 시간(분) * 20%를 반올림한 분 단위 (0분 가능, 카운트다운)
     - 자유 휴식: 무제한 카운트업 (`MM:SS` 형식)
-  - **세션 히스토리** (`sessionHistory`):
-    - 각 세션의 `focusMs`와 `breakMs` 저장 (`SessionRecord[]`)
-    - `startBreak`에서 MIN_FLOW_MS 이상인 세션을 히스토리에 추가
-    - `resumeFocus`에서 마지막 세션의 `breakMs` 업데이트
-    - 완료 처리 로직에서 현재 세션을 히스토리에 추가/갱신 (MIN_FLOW_MS 기준)
+  - **세션(Session, `sessions`)**:
+    - 각 세션의 `sessionFocusSeconds`와 `breakSeconds` 저장 (`SessionRecord[]`, **초 단위**)
+    - `startBreak`는 휴식 진입만 수행 (세션 확정 없음)
+    - `resumeFocus`(또는 추천 휴식 종료 후 자동 집중 시작) 시 **세션 확정**
+      - `MIN_FLOW_MS` 이상일 때만 `sessions`에 추가
+      - 확정 시 `breakSeconds`까지 함께 기록
+    - 완료(✓) 버튼은 세션을 생성하지 않음
     - 집중 재개 후 `focusElapsedMs`는 0부터 새로 시작
-    - 완료된 태스크의 `sessionHistory`는 `pause` 상태로 유지 (통계 페이지에서 표시)
-    - 현재는 `localStorage`에 저장 (브라우저 새로고침/재실행 시에도 유지, 추후 서버 저장 예정)
+    - 완료된 태스크의 `sessions`는 `pause` 상태로 유지 (통계 페이지에서 표시)
+    - MVP에서 Session은 서버 저장 대상이며, localStorage는 복원/캐시 용도로 유지
   - **Dot 표시** (시간 아래 위치):
     - 완료된 Flow: 밝은 초록색 (`bg-emerald-400`)
     - 진행 중 Flow: 짧은 도트 (`w-2.5 h-2.5`) + 깜빡임 애니메이션 (`animate-pulse`)
@@ -267,8 +279,9 @@ src/
 #### 공통 기능
 - **일시정지/재개**: pause 상태로 저장, 언제든 재개 가능
   - **완료(✓)**: 기록 + 태스크 완료
-    - 일반 타이머: `MIN_FLOW_MS` 이상이면 Flow 카운트 증가 (`completeTodo`), 미만이면 시간만 기록 (`addFocus`)
-  - 뽀모도로: 자동 완료 시에만 Flow 카운트 증가
+    - 일반 타이머: 완료 버튼은 Session 생성하지 않음
+      - Session은 **휴식 종료 후 집중 재개 시점**에 확정 (MIN_FLOW_MS 기준)
+  - 뽀모도로: 자동 완료 시에만 Session 생성 (Flow 카운트 증가)
 - **브라우저 탭 타이틀**: 실행 중인 타이머 시간 표시 (`Flow: M:SS` / `휴식: M:SS`)
 - **timerMode 저장**: 사용자가 모드를 명시적으로 선택/시작할 때 `timerMode`를 DB에 저장 (기록 API는 모드를 변경하지 않음)
 - **타이머 충돌 방지**: 한 번에 하나의 타이머만 실행 가능 (모든 태스크에 적용)
@@ -303,10 +316,8 @@ src/
 - 새로고침해도 유지
 - 키(MSW): `flowmate/{clientId}/todos`, `flowmate/{clientId}/settings`
 - 타이머 상태: `flowmate/{clientId}/timer/v2/{todoId}`
-- 세션 히스토리: `flowmate/{clientId}/sessionHistory/{todoId}`
-- 레거시 분리 키: `flowmate/{clientId}/settings/pomodoroSession`, `flowmate/{clientId}/settings/automation`, `flowmate/{clientId}/settings/miniDays` → 결합 키로 마이그레이션
-- 레거시 키(`todo-flow/...`)는 최초 로드 시 `flowmate/...`로 마이그레이션
-- 참고: sessionHistory는 현재 localStorage에 저장되며, 서버 저장으로 이관 예정
+- 세션(Session) 기록: `flowmate/{clientId}/sessions/{todoId}`
+- 참고: Session은 MVP에서 서버 저장 대상이며, `sessions`는 복원/캐시 용도 (초 단위 저장)
 - 키 규칙은 `src/lib/storageKeys.ts`에서 관리
 
 ### 프로덕션

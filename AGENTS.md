@@ -9,8 +9,9 @@
   - `src/mocks/`: MSW 핸들러 및 목 서버
   - `src/lib/`: 공용 유틸/상수
 - `backend/`: Spring Boot 서비스 예정 (현재 비어 있음)
-- `docs/`: 기획/구현 문서 (운영/개발 컨텍스트는 `docs/codebase-analysis.md` 참고)
-  - `plan/`: PRD/API
+- `docs/`: 기획/구현 문서
+  - `apps/`: 앱별 문서 (frontend/backend/infra)
+  - `plan/`: PRD/API/Data Model
 - `infra/`: 배포/인프라 설정 (예정)
 - `images/`: 문서용 이미지 자산
 

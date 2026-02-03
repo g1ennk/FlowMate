@@ -20,8 +20,8 @@ Headers (MVP):
   "miniDay": 0,
   "dayOrder": 0,
   "isDone": false,
-  "pomodoroDone": 2,
-  "focusSeconds": 3000,
+  "sessionCount": 2,
+  "sessionFocusSeconds": 3000,
   "timerMode": "stopwatch",
   "createdAt": "2026-01-09T12:00:00Z",
   "updatedAt": "2026-01-09T12:10:00Z"
@@ -30,7 +30,8 @@ Headers (MVP):
 
 > miniDay: Day 0(미분류), Day 1~3(시간대)
 
-**참고**: `sessionHistory`는 **서버 저장 대상**이며 API 응답에는 포함하지 않습니다. 현재 MVP는 클라이언트에서 타이머 상태와 `sessionHistory`를 localStorage에 유지합니다.
+**참고**: `sessionFocusSeconds`는 **초 단위**입니다.  
+**참고**: **Session은 MVP에 포함된 서버 저장 대상**이며 API 응답에는 포함하지 않습니다. 타이머 상태는 클라이언트 localStorage에 유지합니다.
 
 ### PomodoroSessionSettings
 ```json
@@ -60,6 +61,7 @@ Headers (MVP):
 }
 ```
 > Day 0(미분류)는 고정이며 설정에 포함하지 않습니다.
+> 시간 구간은 연속일 필요가 없으며 각 구간은 start < end 조건을 만족해야 합니다.
 
 ### Settings (Combined)
 ```json
@@ -80,7 +82,10 @@ Headers (MVP):
 
 ### 2.1 List Todos
 - `GET /api/todos`
+- Query Parameters:
+  - `date` (optional): `YYYY-MM-DD` 형식. 특정 날짜의 Todo만 조회
 - Response 200: `{ "items": Todo[] }`
+- Note: date 미지정 시 전체 Todo 반환
 
 ### 2.2 Create Todo
 - `POST /api/todos`
@@ -96,7 +101,7 @@ Headers (MVP):
 - `PATCH /api/todos/{id}`
 - Body: 위 필드 중 일부(any subset)
 ```json
-{ "title": "string", "note": "string|null", "isDone": true, "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch"|"pomodoro"|null, "pomodoroDone": number }
+{ "title": "string", "note": "string|null", "isDone": true, "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch"|"pomodoro"|null, "sessionCount": number }
 ```
 - Response 200: `Todo`
 - Errors: 404 Not Found, 400 Validation Error
@@ -177,62 +182,85 @@ Headers (MVP):
 
 ---
 
-## 4. Timer Completion
+## 4. Sessions
 
-### 4.1 Complete a Pomodoro Flow
-- `POST /api/todos/{id}/pomodoro/complete`
+> Session API는 타이머 완료 시 집중/휴식 기록을 저장하는 단일 인터페이스입니다.
+> 뽀모도로/일반 타이머 구분 없이 Session 생성으로 통합됩니다.
+
+### 4.1 List Sessions
+- `GET /api/todos/{id}/sessions`
+- Response 200:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "todoId": "uuid",
+      "sessionFocusSeconds": 1500,
+      "breakSeconds": 300,
+      "sessionOrder": 1,
+      "createdAt": "2026-01-09T12:00:00Z"
+    }
+  ]
+}
+```
+> `sessionFocusSeconds`, `breakSeconds`는 **초 단위**입니다.
+
+### 4.2 Create Session
+- `POST /api/todos/{id}/sessions`
 - Body:
 ```json
-{ "durationSec": 1500 }
+{ "sessionFocusSeconds": 1500, "breakSeconds": 300 }
 ```
-- Behavior: `pomodoroDone += 1`, `focusSeconds += durationSec`, `updatedAt` 갱신
-- Response 200:
+- Behavior:
+  - Todo의 `sessionFocusSeconds += body.sessionFocusSeconds`
+  - Todo의 `sessionCount += 1`
+  - `sessionOrder`는 todo별로 자동 증가
+- Note: 뽀모도로 Flow 완료, 일반 타이머 Flow 완료 모두 이 API 사용
+- Response 201:
 ```json
 {
   "id": "uuid",
-  "pomodoroDone": 3,
-  "focusSeconds": 4500,
-  "updatedAt": "2026-01-09T12:20:00Z"
+  "todoId": "uuid",
+  "sessionFocusSeconds": 1500,
+  "breakSeconds": 300,
+  "sessionOrder": 3,
+  "createdAt": "2026-01-09T12:00:00Z"
 }
 ```
-- Errors: 404 Not Found, 400 Validation Error (durationSec 1~43200 권장)
- - Note: 완료/누적 API는 `timerMode`를 변경하지 않음 (모드는 `PATCH /api/todos/{id}`로 동기화)
 
-### 4.2 Add Focus Time (일반 타이머)
-- `POST /api/todos/{id}/focus/add`
-- Body:
-```json
-{ "durationSec": 900 }
-```
-- Behavior: `focusSeconds += durationSec` (pomodoroDone은 증가 안 함), `updatedAt` 갱신
-- Response 200:
-```json
-{
-  "id": "uuid",
-  "focusSeconds": 4500,
-  "updatedAt": "2026-01-09T12:20:00Z"
-}
-```
-- Errors: 404 Not Found, 400 Validation Error (durationSec 1~43200 권장)
-- Note: 일반 타이머(Stopwatch)는 시간만 누적하고 세션 횟수는 증가시키지 않음
-
-### 4.3 Reset Timer
-- `POST /api/todos/{id}/reset`
-- Body: `{}` (빈 객체)
-- Behavior: `focusSeconds=0`, `pomodoroDone=0`, `timerMode=null`
-- Response 200:
-```json
-{
-  "id": "uuid",
-  "focusSeconds": 0,
-  "pomodoroDone": 0,
-  "updatedAt": "2026-01-09T12:20:00Z"
-}
-```
+### 4.3 Delete Sessions (Todo 단위)
+- `DELETE /api/todos/{id}/sessions`
+- Behavior: 해당 Todo의 모든 Session 삭제 (Todo의 집계 값은 유지)
+- Response 204
 
 ---
 
-## 5. Error Format (권장)
+## 5. Timer Control
+
+### 5.1 Reset Timer
+- `POST /api/todos/{id}/reset`
+- Body: `{}` (빈 객체)
+- Behavior:
+  - `sessionFocusSeconds = 0`
+  - `sessionCount = 0`
+  - `timerMode = null`
+  - 해당 Todo의 모든 Session 삭제
+- Response 200:
+```json
+{
+  "id": "uuid",
+  "sessionFocusSeconds": 0,
+  "sessionCount": 0,
+  "timerMode": null,
+  "updatedAt": "2026-01-09T12:20:00Z"
+}
+```
+- Errors: 404 Not Found
+
+---
+
+## 6. Error Format (권장)
 - Status: 400 / 404 / 500
 ```json
 {
@@ -246,23 +274,22 @@ Headers (MVP):
 
 ---
 
-## 6. 변경 이력
+## 7. 변경 이력
 
-| 날짜       | 변경 내용                                                         |
-| ---------- | ----------------------------------------------------------------- |
-| 2026-01-09 | Todo에 `date` 필드 추가 (날짜별 관리)                             |
-| 2026-01-09 | AutomationSettings에 `autoStartBreak`, `autoStartSession` 추가    |
-| 2026-01-09 | `POST /api/todos/{id}/focus/add` API 추가 (일반 타이머 전용)      |
-| 2026-01-13 | 일반 타이머 세션 히스토리 추가 (`sessionHistory`)                 |
-| 2026-01-13 | Flow 개념 도입 (`MIN_FLOW_MS` 기준)                               |
-| 2026-01-13 | Todo에 `timerMode` 필드 추가 (타이머 모드 영구 저장)              |
-| 2026-01-13 | 통계 페이지 추가 (`/stats`)                                       |
-| 2026-01-13 | 홈 화면 시간 표시 개선 (추천 휴식 카운트다운, 자유 휴식 카운트업) |
-| 2026-01-13 | 뽀모도로 타이머에도 `sessionHistory` 추가                        |
-| 2026-01-22 | `sessionHistory`를 localStorage에 영구 저장으로 변경              |
-| 2026-01-24 | `POST /api/todos/{id}/reset` 추가 (타이머 기록 초기화)            |
-| 2026-02-02 | Settings 분리 (pomodoro-session, automation)                     |
-| 2026-02-02 | `GET /api/settings` 통합 조회 추가                                |
-| 2026-02-02 | `MiniDaysSettings` 서버 저장 엔드포인트 추가                     |
+| 날짜       | 변경 내용                                                              |
+|------------|------------------------------------------------------------------------|
+| 2026-01-09 | Todo에 `date` 필드 추가 (날짜별 관리)                                  |
+| 2026-01-09 | AutomationSettings에 `autoStartBreak`, `autoStartSession` 추가         |
+| 2026-01-13 | Flow 개념 도입 (`MIN_FLOW_MS` 기준)                                    |
+| 2026-01-13 | Todo에 `timerMode` 필드 추가 (타이머 모드 영구 저장)                   |
+| 2026-01-13 | 통계 페이지 추가 (`/stats`)                                            |
+| 2026-01-22 | 타이머 상태 localStorage 영구 저장으로 변경                            |
+| 2026-01-24 | `POST /api/todos/{id}/reset` 추가 (타이머 기록 초기화)                 |
 | 2026-01-29 | Todo에 `miniDay`, `dayOrder` 필드 추가 + `PUT /api/todos/reorder` 확장 |
-| 2026-01-31 | `sessionHistory` 서버 저장 정책 확정 (타이머 상태는 클라 유지)     |
+| 2026-01-31 | Session API 추가 (MVP)                                                 |
+| 2026-02-02 | Settings 분리 (pomodoro-session, automation, mini-days)                |
+| 2026-02-02 | `GET /api/settings` 통합 조회 추가                                     |
+| 2026-02-03 | Legacy API 정리: `pomodoro/complete`, `focus/add` 삭제 → Session API로 통합 |
+| 2026-02-03 | `GET /api/todos`에 date 쿼리 파라미터 추가                                   |
+| 2026-02-03 | Timer reset 응답에 `timerMode` 필드 포함                                   |
+| 2026-02-03 | Session payload는 초 단위(`sessionFocusSeconds`, `breakSeconds`)로 고정     |

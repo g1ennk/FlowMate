@@ -20,7 +20,7 @@
     - 일반 타이머: 끊김 없는 몰입을 위한 카운트업 타이머에, 필요할 때만 추천/자유 휴식을 붙여 일반 타이머와 뽀모도로를 유연하게 오가는 방식.
     - 뽀모도로 타이머: 사용자가 설정한 Flow 시간 / 휴식 시간 / 주기(cycle)를 타이머에 반영한다
 - Flow 1회 완료 시 Todo에 **집중 시간이 누적**된다
-- 하루를 Day 0~3 미니 데이로 나눠 계획/회고가 가능하다
+- 하루를 미니 데이 섹션(미분류/시간대 라벨)으로 나눠 계획/회고가 가능하다
 - MVP 수준에서 **단순하지만 확장 가능한 구조**를 갖는다
 
 ## 3. 비목표 (Non-Goals)
@@ -54,7 +54,7 @@
 - DB: MySQL(Prod, Dev), H2(Local)
 - 마이그레이션: Flyway
 
-> 사용자 개념은 내부적으로 `userId = "local"` 고정값을 사용한다.
+> MVP는 게스트 모드이며, 클라이언트에서 생성한 `X-Client-Id`를 userId로 사용한다.
 
 ## 5. 핵심 사용자 플로우
 
@@ -63,7 +63,7 @@
 3. 시스템은 사용자 설정을 불러오고, 타이머를 실행한다.
 4. 사용자는 상황에 따라 **뽀모도로(카운트다운)** 또는 **일반(카운트업)** 방식으로 집중을 진행한다.
 5. 집중이 진행되는 동안 사용자는 필요 시 **휴식** 또는 **완료**로 상태를 전환한다.
-6. 시스템은 완료된 집중 단위를 기준으로 **완료 횟수(pomodoroDone)**와 **집중 시간(focusSeconds)**을 누적한다.
+6. 시스템은 완료된 집중 단위를 기준으로 **완료 횟수(sessionCount)**와 **집중 시간(sessionFocusSeconds)**을 누적한다.
 7. 타이머는 설정과 사용자 선택에 따라 **집중 ↔ 휴식** 흐름을 반복한다.
 
 ## 6. 기능 요구사항
@@ -74,10 +74,10 @@
 - 메모 생성 / 수정 / 삭제
 - Todo 완료 체크 (홈에서 완료하거나, 타이머 환경에서 완료)
 - 캘린더 기반 날짜 선택/필터 (월/주 뷰)
-- 미니 데이(Day 0~3) 섹션으로 분리된 목록
-  - Day 0: 미분류, Day 1~3: 시간대 기반
-  - 드래그로 섹션 내 정렬 및 Day 간 이동
-  - 완료 항목도 해당 Day 섹션에 유지
+- 미니 데이 섹션으로 분리된 목록
+  - 미분류 + 시간대 라벨 기준 섹션 구성
+  - 드래그로 섹션 내 정렬 및 섹션 간 이동
+  - 완료 항목도 해당 섹션에 유지
 
 ### 6.2 타이머
 
@@ -86,17 +86,18 @@
 - 카운트업 방식 (00:00부터 시작)
 - **Flow 개념**: `MIN_FLOW_MS` 이상 집중 + 명시적 행동(휴식/완료)
     - 최소 집중 시간: `MIN_FLOW_MS` (현재 0분, 상수로 조정 가능)
-    - 완료된 Flow만 카운트 (`pomodoroDone`)
+    - 완료된 Flow만 카운트 (`sessionCount`)
     - 완료 시 현재 세션만 처리 (중복 카운트 방지)
 - **휴식 기능**:
     - "휴식" 버튼 클릭 → 추천 휴식 / 자유 휴식 선택
     - 추천 휴식: 집중 시간(분) * 20%를 반올림한 분 단위 (0분 가능, 카운트다운)
     - 자유 휴식: 무제한 카운트업
 - **세션 히스토리**:
-    - 각 세션의 집중 시간과 휴식 시간 저장
+    - 각 세션의 집중 시간과 휴식 시간 저장 (초 단위)
     - 휴식 시작 시 현재 집중 시간 저장
     - 집중 재개 시 마지막 세션의 휴식 시간 업데이트
     - 집중 재개 후 새로운 세션 시작 (0부터 카운트업)
+    - Session은 **MVP에서 서버 저장** (localStorage는 복원/캐시 용도)
 - Pause / Resume / Reset 지원 (Stop은 UI에 별도 버튼 없음)
 - 자동화 설정 적용: 일반 타이머는 `autoStartSession`만 적용 (추천 휴식 종료 시 자동 집중 시작). `autoStartBreak`는 뽀모도로 전용
 
@@ -108,7 +109,7 @@
     - Short Break
     - Long Break
 - 기본 규칙:
-    - Flow 완료 → pomodoroDone 증가
+    - Flow 완료 → sessionCount 증가
     - Flow 완료 횟수가 cycleEvery에 도달하면 Long Break
     - 그 외에는 Short Break
     - 긴 휴식 완료 후 자동으로 사이클 초기화 (`cycleCount = 0`)
@@ -136,121 +137,23 @@
 - longBreakMin: 15
 - cycleEvery: 4
 
-### 6.4 통계 (현재는 개발 용도로 쓰고, 추후 고급 통계 기능 때 본격적으로 구성할 예정)
+### 6.4 통계 (개발용)
 
-- `/stats`에서 기본 통계 확인
-    - 총 태스크, 완료율, 총 Flow/집중 시간
-    - 날짜별 태스크/완료/집중 시간 요약
-    - 세션 히스토리 기반 태스크 상세(집중/휴식 시간)
-- autoStartBreak: false
-- autoStartSession: false
+- `/stats`에서 기본 통계 확인 (개발/디버깅 용도)
+- 고급 통계 대시보드(기간/필터/내보내기)는 다음 버전에서 구현 예정
 
-검증 규칙:
-
-- flowMin: 1 ~ 90
-- breakMin: 1 ~ 90
-- longBreakMin: 1 ~ 90
-- cycleEvery: 1 ~ 10
-- autoStartBreak: boolean
-- autoStartSession: boolean
+검증/규격은 `docs/plan/api.md`에서 관리합니다.
 
 **참고**: 일반 타이머는 `autoStartSession`만 적용합니다 (`autoStartBreak` 미적용).
 
 ## 7. 데이터 모델
 
-### Todo
-
-- id (UUID)
-- title
-- note
-- isDone
-- pomodoroDone
-- focusSeconds
-- timerMode ('stopwatch' | 'pomodoro' | null) - 선택된 타이머 타입
-- createdAt
-- updatedAt
-- date
-- miniDay
-- dayOrder
-
-### Timer
-
-### SessionHistory
-
-- id?
-- breakMs
-- focusMs
-
-### PomodoroSessionSettings
-
-- breakMin
-- cycleEvery
-- flowMin
-- longBreakMin
-
-### AutomationSettings
-
-- autoStartBreak
-- autoStartSession
-
-### MiniDaysSettings
-
-- day1/2/3 라벨
-- day1/2/3 시간 범위
-- Day 0(미분류)는 고정, 설정에 포함하지 않음
+- 단일 소스: `docs/plan/data.md`
+- 본 문서에서는 상세 스키마를 반복하지 않음
 
 ## 8. API 요구사항
 
-### Todo
-
-- GET /api/todos
-- POST /api/todos
-- PATCH /api/todos/{id}
-- PUT /api/todos/reorder
-- DELETE /api/todos/{id}
-
-### Settings
-
-- GET /api/settings
-- GET /api/settings/pomodoro-session
-- PUT /api/settings/pomodoro-session
-- GET /api/settings/automation
-- PUT /api/settings/automation
-- GET /api/settings/mini-days
-- PUT /api/settings/mini-days
-
-### Pomodoro 완료 누적
-
-- POST /api/todos/{id}/pomodoro/complete
-    - request body:
-      ```json
-      {
-        "durationSec": number
-      }
-      ```
-    - 서버 동작:
-        - pomodoroDone += 1
-        - focusSeconds += durationSec
-
-### 일반 타이머 집중 누적
-
-- POST /api/todos/{id}/focus/add
-    - request body:
-      ```json
-      {
-        "durationSec": number
-      }
-      ```
-    - 서버 동작:
-        - focusSeconds += durationSec (pomodoroDone 증가 없음)
-
-### 타이머 기록 초기화
-
-- POST /api/todos/{id}/reset
-    - 서버 동작:
-        - focusSeconds = 0
-        - pomodoroDone = 0
-        - timerMode = null
+- 단일 소스: `docs/plan/api.md`
 
 ## 9. UI 구성
 
@@ -261,14 +164,15 @@
     - 각 Todo에 Start 버튼
 - /settings
     - Pomodoro 설정 화면
-- /stats: 개발용 통계 화면
+- /stats
+    - 개발용 통계 화면
 
 ## 10. 기술적 결정 사항
 
 - 타이머는 프론트엔드에서만 관리, endAt 기준으로 시간 계산
-- 서버는 결과 누적만 담당(`complete` 시 pomodoroDone/focusSeconds 증가)
+- 서버는 결과 누적만 담당 (Session 생성 시 sessionCount/sessionFocusSeconds 증가)
+- 클라이언트는 `sessions`를 **초 단위**로 localStorage에 저장 (타이머 복원/통계용)
 - 설정은 타이머 시작 시 스냅샷 적용
-- MVP는 인증 생략, userId 필드는 유지 (수정 필요)
 - MVP는 게스트 모드이며 `X-Client-Id`를 userId로 사용
 - 단일 활성 타이머를 권장(멀티 탭 동시 실행은 막거나 경고)
 
