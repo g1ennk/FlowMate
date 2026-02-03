@@ -107,6 +107,29 @@ export const TimerResetResponseSchema = z.object({
   updatedAt: z.string(),
 })
 
+export const ReviewTypeSchema = z.enum(['daily', 'weekly', 'monthly', 'yearly'])
+
+export const ReviewSchema = z.object({
+  id: z.string().uuid(),
+  type: ReviewTypeSchema,
+  periodStart: z.string(), // YYYY-MM-DD
+  periodEnd: z.string(), // YYYY-MM-DD
+  content: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
+export const ReviewUpsertSchema = z.object({
+  type: ReviewTypeSchema,
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  content: z.string(),
+})
+
+export const ReviewListSchema = z.object({
+  items: z.array(ReviewSchema),
+})
+
 export type Todo = z.infer<typeof TodoSchema>
 export type TodoList = z.infer<typeof TodoListSchema>
 export type TodoCreateInput = z.infer<typeof TodoCreateSchema>
@@ -123,3 +146,7 @@ export type SessionList = z.infer<typeof SessionListSchema>
 export type TimerResetResponse = z.infer<typeof TimerResetResponseSchema>
 export type TodoReorderItem = z.infer<typeof TodoReorderItemSchema>
 export type TodoReorderRequest = z.infer<typeof TodoReorderRequestSchema>
+export type ReviewType = z.infer<typeof ReviewTypeSchema>
+export type Review = z.infer<typeof ReviewSchema>
+export type ReviewUpsertInput = z.infer<typeof ReviewUpsertSchema>
+export type ReviewList = z.infer<typeof ReviewListSchema>

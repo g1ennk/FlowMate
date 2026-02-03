@@ -3,6 +3,8 @@ import type {
   AutomationSettings,
   MiniDaysSettings,
   PomodoroSessionSettings,
+  Review,
+  ReviewType,
   Todo,
 } from '../api/types'
 import { defaultMiniDaysSettings, normalizeMiniDaysSettings } from '../lib/miniDays'
@@ -21,6 +23,7 @@ type CombinedSettings = {
 
 const STORAGE_KEYS = {
   todos: storageKeys.todos,
+  reviews: storageKeys.reviews,
   settingsCombined: storageKeys.settings,
 }
 
@@ -49,6 +52,10 @@ const defaultCombinedSettings: CombinedSettings = {
   automation: defaultAutomationSettings,
   miniDays: defaultMiniDaysSettings,
 }
+
+type StoredReview = Review
+
+const REVIEW_TYPES: ReviewType[] = ['daily', 'weekly', 'monthly', 'yearly']
 
 function getClientId(request: Request) {
   return request.headers.get('X-Client-Id') || 'local'
@@ -121,11 +128,35 @@ function loadTodos(clientId: string): Todo[] {
       if (changed) saveTodos(clientId, normalized)
       return normalized
     }
+    return []
   } catch (e) {
     console.error('Failed to load todos from localStorage:', e)
   }
   return [] // 빈 상태로 시작
 }
+
+function loadReviews(clientId: string): StoredReview[] {
+  try {
+    const key = STORAGE_KEYS.reviews(clientId)
+    const stored = localStorage.getItem(key)
+    if (stored) {
+      return JSON.parse(stored) as StoredReview[]
+    }
+    return []
+  } catch (e) {
+    console.error('Failed to load reviews from localStorage:', e)
+  }
+  return []
+}
+
+function saveReviews(clientId: string, reviews: StoredReview[]) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.reviews(clientId), JSON.stringify(reviews))
+  } catch (e) {
+    console.error('Failed to save reviews to localStorage:', e)
+  }
+}
+
 
 function saveTodos(clientId: string, todos: Todo[]) {
   try {
@@ -248,6 +279,103 @@ export const handlers = [
     todos = [next, ...todos]
     saveTodos(clientId, todos)
     return HttpResponse.json(next, { status: 201 })
+  }),
+
+  http.get('/api/reviews', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const url = new URL(request.url)
+    const type = url.searchParams.get('type')
+    const periodStart = url.searchParams.get('periodStart')
+    const from = url.searchParams.get('from')
+    const to = url.searchParams.get('to')
+
+    if (!type || !REVIEW_TYPES.includes(type as ReviewType)) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'type and periodStart are required' } },
+        { status: 400 },
+      )
+    }
+
+    const reviews = loadReviews(clientId)
+    if (from && to) {
+      const items = reviews.filter(
+        (item) =>
+          item.type === type &&
+          item.periodStart >= from &&
+          item.periodStart <= to,
+      )
+      return HttpResponse.json({ items })
+    }
+
+    if (!periodStart) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'periodStart is required' } },
+        { status: 400 },
+      )
+    }
+
+    const review = reviews.find(
+      (item) => item.type === type && item.periodStart === periodStart,
+    )
+
+    return HttpResponse.json(review ?? null)
+  }),
+
+  http.put('/api/reviews', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const body = (await request.json()) as Partial<Review>
+
+    if (!body.type || !REVIEW_TYPES.includes(body.type) || !body.periodStart || !body.periodEnd) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'type and period range are required' } },
+        { status: 400 },
+      )
+    }
+
+    const content = typeof body.content === 'string' ? body.content : ''
+    const nowAt = now()
+    let reviews = loadReviews(clientId)
+    const existingIndex = reviews.findIndex(
+      (item) => item.type === body.type && item.periodStart === body.periodStart,
+    )
+
+    let next: StoredReview
+    if (existingIndex >= 0) {
+      const existing = reviews[existingIndex]
+      next = {
+        ...existing,
+        periodEnd: body.periodEnd,
+        content,
+        updatedAt: nowAt,
+      }
+      reviews = reviews.map((item, index) => (index === existingIndex ? next : item))
+    } else {
+      next = {
+        id: crypto.randomUUID(),
+        type: body.type,
+        periodStart: body.periodStart,
+        periodEnd: body.periodEnd,
+        content,
+        createdAt: nowAt,
+        updatedAt: nowAt,
+      }
+      reviews = [next, ...reviews]
+    }
+
+    saveReviews(clientId, reviews)
+    return HttpResponse.json(next)
+  }),
+
+  http.delete('/api/reviews/:id', async ({ params, request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const id = params.id as string
+    let reviews = loadReviews(clientId)
+    reviews = reviews.filter((item) => item.id !== id)
+    saveReviews(clientId, reviews)
+    return new HttpResponse(null, { status: 204 })
   }),
 
   http.patch('/api/todos/:id', async ({ params, request }) => {

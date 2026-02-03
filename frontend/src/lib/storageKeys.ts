@@ -5,6 +5,7 @@ export const storageKeys = {
   onboardingSeen: `${STORAGE_PREFIX}/onboarding/seen`,
   todos: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/todos`,
   settings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings`,
+  reviews: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/reviews`,
   pomodoroSessionSettings: (clientId: string) =>
     `${STORAGE_PREFIX}/${clientId}/settings/pomodoroSession`,
   automationSettings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings/automation`,

@@ -2,16 +2,27 @@ import { useMemo, useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
 import { formatDateKey } from './calendarUtils'
 
-type ViewMode = 'month' | 'week'
+export type ViewMode = 'day' | 'week' | 'month' | 'year'
 
 type CalendarProps = {
   selectedDate: Date
   onSelectDate: (date: Date) => void
   onMonthChange: (date: Date) => void
   markedDates?: Record<string, { done: number; total: number }>
+  viewModes?: ViewMode[]
+  defaultViewMode?: ViewMode
+  viewMode?: ViewMode
+  onViewModeChange?: (mode: ViewMode) => void
+  showIndicators?: boolean
 }
 
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일']
+const VIEW_LABELS: Record<ViewMode, string> = {
+  day: '일',
+  week: '주',
+  month: '월',
+  year: '연',
+}
 
 function getMonthDays(year: number, month: number) {
   const firstDay = new Date(year, month, 1)
@@ -70,34 +81,78 @@ export function Calendar({
   onSelectDate,
   onMonthChange,
   markedDates = {},
+  viewModes,
+  defaultViewMode,
+  viewMode: controlledViewMode,
+  onViewModeChange,
+  showIndicators = true,
 }: CalendarProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('month')
+  const allowedViewModes = viewModes && viewModes.length > 0
+    ? viewModes
+    : (['month', 'week'] as ViewMode[])
+  const fallbackMode = defaultViewMode && allowedViewModes.includes(defaultViewMode)
+    ? defaultViewMode
+    : allowedViewModes[0]
+  const [internalViewMode, setInternalViewMode] = useState<ViewMode>(fallbackMode)
+  const viewMode = controlledViewMode ?? internalViewMode
   const year = selectedDate.getFullYear()
   const month = selectedDate.getMonth()
 
   const monthDays = useMemo(() => getMonthDays(year, month), [year, month])
   const weekDays = useMemo(() => getWeekDays(selectedDate), [selectedDate])
+  const monthMarks = useMemo(() => {
+    if (viewMode !== 'year') return []
+    const stats = Array.from({ length: 12 }, () => ({ done: 0, total: 0 }))
+    Object.entries(markedDates).forEach(([dateKey, mark]) => {
+      const [y, m] = dateKey.split('-').map(Number)
+      if (y === year && Number.isFinite(m) && m >= 1 && m <= 12) {
+        stats[m - 1].done += mark.done
+        stats[m - 1].total += mark.total
+      }
+    })
+    return stats
+  }, [markedDates, viewMode, year])
 
   const days = viewMode === 'month' ? monthDays : weekDays
 
   const goToPrev = () => {
     if (viewMode === 'month') {
       onMonthChange(new Date(year, month - 1, 1))
-    } else {
+      return
+    }
+    if (viewMode === 'week') {
       const newDate = new Date(selectedDate)
       newDate.setDate(selectedDate.getDate() - 7)
       onMonthChange(newDate)
+      return
     }
+    if (viewMode === 'day') {
+      const newDate = new Date(selectedDate)
+      newDate.setDate(selectedDate.getDate() - 1)
+      onMonthChange(newDate)
+      return
+    }
+    onMonthChange(new Date(year - 1, 0, 1))
   }
 
   const goToNext = () => {
     if (viewMode === 'month') {
       onMonthChange(new Date(year, month + 1, 1))
-    } else {
+      return
+    }
+    if (viewMode === 'week') {
       const newDate = new Date(selectedDate)
       newDate.setDate(selectedDate.getDate() + 7)
       onMonthChange(newDate)
+      return
     }
+    if (viewMode === 'day') {
+      const newDate = new Date(selectedDate)
+      newDate.setDate(selectedDate.getDate() + 1)
+      onMonthChange(newDate)
+      return
+    }
+    onMonthChange(new Date(year + 1, 0, 1))
   }
 
   const goToToday = () => {
@@ -145,7 +200,7 @@ export function Calendar({
         <div className="col-span-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-gray-900">
-              {year}년 {month + 1}월
+              {viewMode === 'year' ? `${year}년` : `${year}년 ${month + 1}월`}
             </h2>
             {/* 오늘 버튼 */}
             <button
@@ -178,98 +233,143 @@ export function Calendar({
         {/* 오른쪽 영역 (월/주 버튼) - 일요일 열에 맞춤 */}
         <div className="flex items-center justify-center">
           <button
-            onClick={() => setViewMode(viewMode === 'month' ? 'week' : 'month')}
+            onClick={() => {
+              const currentIndex = allowedViewModes.indexOf(viewMode)
+              const nextIndex = currentIndex === -1
+                ? 0
+                : (currentIndex + 1) % allowedViewModes.length
+              const nextMode = allowedViewModes[nextIndex] ?? viewMode
+              if (!controlledViewMode) setInternalViewMode(nextMode)
+              onViewModeChange?.(nextMode)
+            }}
             className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
           >
-            {viewMode === 'month' ? '월' : '주'}
+            {VIEW_LABELS[viewMode]}
           </button>
         </div>
       </div>
 
-      {/* 요일 헤더 */}
-      <div className="mb-2 grid grid-cols-7 gap-1">
-        {WEEKDAYS.map((day, i) => (
-          <div
-            key={day}
-            className={`text-center text-xs font-medium ${
-              i === 5 ? 'text-blue-500' : i === 6 ? 'text-red-500' : 'text-gray-400'
-            }`}
-          >
-            {day}
+      {viewMode === 'year' ? (
+        <div className="grid grid-cols-3 gap-2">
+          {Array.from({ length: 12 }, (_, index) => {
+            const date = new Date(year, index, 1)
+            const isSelected = date.getMonth() === selectedDate.getMonth()
+            const mark = monthMarks[index]
+            const hasData = (mark?.total ?? 0) > 0
+            const isComplete = hasData && mark?.done === mark?.total
+            const indicator = isComplete
+              ? 'bg-emerald-400'
+              : hasData
+              ? 'bg-yellow-300'
+              : ''
+
+            return (
+              <button
+                key={String(index)}
+                onClick={() => {
+                  onSelectDate(date)
+                  onMonthChange(date)
+                }}
+                className={`flex flex-col items-center justify-center rounded-xl border border-gray-100 px-3 py-3 text-sm font-medium transition-all ${
+                  isSelected ? 'ring-2 ring-emerald-500 ring-offset-2' : 'hover:bg-gray-50'
+                }`}
+              >
+                <span className="text-gray-700">{index + 1}월</span>
+                {showIndicators && indicator && (
+                  <span className={`mt-2 h-2 w-2 rounded-full ${indicator}`} />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <>
+          {/* 요일 헤더 */}
+          <div className="mb-2 grid grid-cols-7 gap-1">
+            {WEEKDAYS.map((day, i) => (
+              <div
+                key={day}
+                className={`text-center text-xs font-medium ${
+                  i === 5 ? 'text-blue-500' : i === 6 ? 'text-red-500' : 'text-gray-400'
+                }`}
+              >
+                {day}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* 날짜 그리드 */}
-      <div className="grid grid-cols-7 gap-1">
-        {days.map((date, index) => {
-          if (!date) {
-            return <div key={`empty-${index}`} className="aspect-square" />
-          }
+          {/* 날짜 그리드 */}
+          <div className="grid grid-cols-7 gap-1">
+            {days.map((date, index) => {
+              if (!date) {
+                return <div key={`empty-${index}`} className="aspect-square" />
+              }
 
-          const dateKey = formatDateKey(date)
-          const mark = markedDates[dateKey]
-          const isSelected = isSameDay(date, selectedDate)
-          const isTodayDate = isToday(date)
-          const dayOfWeek = date.getDay()
-          const isSaturday = dayOfWeek === 6
-          const isSunday = dayOfWeek === 0
-          
-          // 배경색 결정
-          let bgColor = ''
-          if (mark && mark.total > 0) {
-            if (mark.done === mark.total) {
-              // 완료: 초록색
-              bgColor = 'bg-emerald-100'
-            } else {
-              // 미완료 (부분 완료 포함): 노란색
-              bgColor = 'bg-yellow-50'
-            }
-          }
-          
-          // 텍스트 색상 결정
-          let textColor = ''
-          if (isSelected) {
-            textColor = 'text-gray-900 font-semibold'
-          } else if (isSaturday) {
-            textColor = 'text-blue-500'
-          } else if (isSunday) {
-            textColor = 'text-red-500'
-          } else {
-            textColor = 'text-gray-700'
-          }
+              const dateKey = formatDateKey(date)
+              const mark = markedDates[dateKey]
+              const isSelected = isSameDay(date, selectedDate)
+              const isTodayDate = isToday(date)
+              const dayOfWeek = date.getDay()
+              const isSaturday = dayOfWeek === 6
+              const isSunday = dayOfWeek === 0
 
-          return (
-            <button
-              key={dateKey}
-              onClick={() => onSelectDate(date)}
-              className={`relative flex aspect-square flex-col items-center justify-center rounded-xl text-sm transition-colors ${bgColor} ${textColor} ${
-                isSelected ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-gray-200'
-              }`}
-            >
-              {/* 오늘 표시 */}
-              {isTodayDate && (
-                <span className="absolute top-0.5 text-[9px] font-semibold text-emerald-600">
-                  오늘
-                </span>
-              )}
-              <span className={isTodayDate ? 'mt-2' : ''}>{date.getDate()}</span>
-              {/* 진행도 표시: 남은 개수 또는 완료 체크 */}
-              {mark && mark.total > 0 && (
-                <span
-                  className={`mt-0.5 text-[10px] font-medium leading-none ${
-                    mark.done === mark.total
-                      ? 'text-emerald-600'
-                      : 'text-gray-500'
+              // 배경색 결정
+              let bgColor = ''
+              if (mark && mark.total > 0) {
+                if (mark.done === mark.total) {
+                  // 완료: 초록색
+                  bgColor = 'bg-emerald-100'
+                } else {
+                  // 미완료 (부분 완료 포함): 노란색
+                  bgColor = 'bg-yellow-50'
+                }
+              }
+
+              // 텍스트 색상 결정
+              let textColor = ''
+              if (isSelected) {
+                textColor = 'text-gray-900 font-semibold'
+              } else if (isSaturday) {
+                textColor = 'text-blue-500'
+              } else if (isSunday) {
+                textColor = 'text-red-500'
+              } else {
+                textColor = 'text-gray-700'
+              }
+
+              return (
+                <button
+                  key={dateKey}
+                  onClick={() => onSelectDate(date)}
+                  className={`relative flex aspect-square flex-col items-center justify-center rounded-xl text-sm transition-colors ${bgColor} ${textColor} ${
+                    isSelected ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-gray-200'
                   }`}
                 >
-                  {mark.done === mark.total ? '✓' : mark.total - mark.done}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
+                  {/* 오늘 표시 */}
+                  {isTodayDate && (
+                    <span className="absolute top-0.5 text-[9px] font-semibold text-emerald-600">
+                      오늘
+                    </span>
+                  )}
+                  <span className={isTodayDate ? 'mt-2' : ''}>{date.getDate()}</span>
+                  {/* 진행도 표시: 남은 개수 또는 완료 체크 */}
+                  {showIndicators && mark && mark.total > 0 && (
+                    <span
+                      className={`mt-0.5 text-[10px] font-medium leading-none ${
+                        mark.done === mark.total
+                          ? 'text-emerald-600'
+                          : 'text-gray-500'
+                      }`}
+                    >
+                      {mark.done === mark.total ? '✓' : mark.total - mark.done}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }

@@ -1,13 +1,20 @@
 import { Suspense } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CheckCircleIcon, SettingsIcon } from '../ui/Icons'
+import { CheckCircleIcon, DocumentIcon, SettingsIcon } from '../ui/Icons'
 
 const tabs = [
   {
     to: '/todos',
-    label: 'Todo',
+    label: '작업',
     icon: (active: boolean) => (
       <CheckCircleIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
+    ),
+  },
+  {
+    to: '/review',
+    label: '회고',
+    icon: (active: boolean) => (
+      <DocumentIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
     ),
   },
   {
