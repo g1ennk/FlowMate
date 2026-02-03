@@ -3,14 +3,12 @@ import type {
   AutomationSettings,
   MiniDaysSettings,
   PomodoroSessionSettings,
-  PomodoroSettings,
   Todo,
 } from '../api/types'
 import { defaultMiniDaysSettings, normalizeMiniDaysSettings } from '../lib/miniDays'
 import { storageKeys } from '../lib/storageKeys'
 
 type StoredTodo = Omit<Todo, 'miniDay' | 'dayOrder'> & {
-  order?: number
   miniDay?: number
   dayOrder?: number
 }
@@ -22,17 +20,8 @@ type CombinedSettings = {
 }
 
 const STORAGE_KEYS = {
-  legacyTodos: storageKeys.legacyTodos,
-  legacySettings: storageKeys.legacySettings,
-  legacyTodosByClient: storageKeys.legacyTodosByClient,
-  legacySettingsByClient: storageKeys.legacySettingsByClient,
   todos: storageKeys.todos,
   settingsCombined: storageKeys.settings,
-  pomodoroSessionSettings: storageKeys.pomodoroSessionSettings,
-  automationSettings: storageKeys.automationSettings,
-  miniDaysSettings: storageKeys.miniDaysSettings,
-  sharedMiniDaysSettings: storageKeys.sharedMiniDaysSettings,
-  legacyMiniDaysSettings: storageKeys.legacyMiniDaysSettings,
 }
 
 const now = () => new Date().toISOString()
@@ -71,13 +60,17 @@ function normalizeTodos(input: StoredTodo[]) {
 
   for (const todo of input) {
     const miniDay = todo.miniDay ?? 0
-    const dayOrder = todo.dayOrder ?? todo.order ?? 0
+    const dayOrder = todo.dayOrder ?? 0
     if (todo.miniDay === undefined) changed = true
     if (todo.dayOrder === undefined) changed = true
-    if (todo.order !== undefined) changed = true
+    const sessionCount = todo.sessionCount ?? 0
+    const sessionFocusSeconds = todo.sessionFocusSeconds ?? 0
+    if (todo.sessionCount === undefined) changed = true
+    if (todo.sessionFocusSeconds === undefined) changed = true
+
     const key = `${todo.date}::${todo.isDone ? 'done' : 'active'}::${miniDay}`
     const bucket = groups.get(key)
-    const withDefaults = { ...todo, miniDay, dayOrder }
+    const withDefaults = { ...todo, miniDay, dayOrder, sessionCount, sessionFocusSeconds }
     if (bucket) {
       bucket.push(withDefaults)
     } else {
@@ -99,19 +92,15 @@ function normalizeTodos(input: StoredTodo[]) {
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       )
       sorted.forEach((todo, index) => {
-        const { order: legacyOrder, ...rest } = todo
-        void legacyOrder
         if (todo.dayOrder !== index) changed = true
-        normalized.push({ ...rest, dayOrder: index } as Todo)
+        normalized.push({ ...todo, dayOrder: index } as Todo)
       })
       continue
     }
 
     for (const todo of group) {
-      const { order: legacyOrder, ...rest } = todo
-      void legacyOrder
       normalized.push({
-        ...rest,
+        ...todo,
         dayOrder: todo.dayOrder as number,
       } as Todo)
     }
@@ -125,23 +114,7 @@ function normalizeTodos(input: StoredTodo[]) {
 function loadTodos(clientId: string): Todo[] {
   try {
     const key = STORAGE_KEYS.todos(clientId)
-    let stored = localStorage.getItem(key)
-    if (!stored) {
-      const legacyClientKey = STORAGE_KEYS.legacyTodosByClient(clientId)
-      const legacyClient = localStorage.getItem(legacyClientKey)
-      if (legacyClient) {
-        localStorage.setItem(key, legacyClient)
-        localStorage.removeItem(legacyClientKey)
-        stored = legacyClient
-      } else {
-        const legacy = localStorage.getItem(STORAGE_KEYS.legacyTodos)
-        if (legacy) {
-          localStorage.setItem(key, legacy)
-          localStorage.removeItem(STORAGE_KEYS.legacyTodos)
-          stored = legacy
-        }
-      }
-    }
+    const stored = localStorage.getItem(key)
     if (stored) {
       const parsed = JSON.parse(stored) as StoredTodo[]
       const { todos: normalized, changed } = normalizeTodos(parsed)
@@ -179,26 +152,6 @@ function normalizeCombinedSettings(input?: Partial<CombinedSettings> | null): Co
   }
 }
 
-function loadLegacyPomodoroSettings(clientId: string) {
-  const candidates = [STORAGE_KEYS.legacySettingsByClient(clientId), STORAGE_KEYS.legacySettings]
-  for (const key of candidates) {
-    const stored = localStorage.getItem(key)
-    if (stored) {
-      return { settings: JSON.parse(stored) as PomodoroSettings, key }
-    }
-  }
-  return null
-}
-
-function loadLegacyMiniDays() {
-  const legacyKeys = [STORAGE_KEYS.sharedMiniDaysSettings, STORAGE_KEYS.legacyMiniDaysSettings]
-  for (const key of legacyKeys) {
-    const legacy = localStorage.getItem(key)
-    if (legacy) return { settings: JSON.parse(legacy) as MiniDaysSettings, key }
-  }
-  return null
-}
-
 function saveCombinedSettings(clientId: string, settings: CombinedSettings) {
   try {
     localStorage.setItem(
@@ -216,70 +169,7 @@ function loadCombinedSettings(clientId: string): CombinedSettings {
   if (stored) {
     return normalizeCombinedSettings(JSON.parse(stored) as CombinedSettings)
   }
-
-  let hydrated: Partial<CombinedSettings> | null = null
-  let shouldMigrate = false
-
-  const legacyCombined = loadLegacyPomodoroSettings(clientId)
-  if (legacyCombined) {
-    hydrated = hydrated ?? {}
-    hydrated.pomodoroSession = {
-      flowMin: legacyCombined.settings.flowMin,
-      breakMin: legacyCombined.settings.breakMin,
-      longBreakMin: legacyCombined.settings.longBreakMin,
-      cycleEvery: legacyCombined.settings.cycleEvery,
-    }
-    hydrated.automation = {
-      autoStartBreak:
-        legacyCombined.settings.autoStartBreak ?? defaultAutomationSettings.autoStartBreak,
-      autoStartSession:
-        legacyCombined.settings.autoStartSession ?? defaultAutomationSettings.autoStartSession,
-    }
-    localStorage.removeItem(legacyCombined.key)
-    shouldMigrate = true
-  }
-
-  const splitSession = localStorage.getItem(STORAGE_KEYS.pomodoroSessionSettings(clientId))
-  if (splitSession) {
-    hydrated = hydrated ?? {}
-    hydrated.pomodoroSession = JSON.parse(splitSession) as PomodoroSessionSettings
-    localStorage.removeItem(STORAGE_KEYS.pomodoroSessionSettings(clientId))
-    shouldMigrate = true
-  }
-
-  const splitAutomation = localStorage.getItem(STORAGE_KEYS.automationSettings(clientId))
-  if (splitAutomation) {
-    hydrated = hydrated ?? {}
-    hydrated.automation = JSON.parse(splitAutomation) as AutomationSettings
-    localStorage.removeItem(STORAGE_KEYS.automationSettings(clientId))
-    shouldMigrate = true
-  }
-
-  let miniDaysFromSplit: MiniDaysSettings | null = null
-  const splitMiniDays = localStorage.getItem(STORAGE_KEYS.miniDaysSettings(clientId))
-  if (splitMiniDays) {
-    miniDaysFromSplit = JSON.parse(splitMiniDays) as MiniDaysSettings
-    localStorage.removeItem(STORAGE_KEYS.miniDaysSettings(clientId))
-    shouldMigrate = true
-  }
-
-  const legacyMiniDays = miniDaysFromSplit ? null : loadLegacyMiniDays()
-  if (legacyMiniDays) {
-    miniDaysFromSplit = legacyMiniDays.settings
-    localStorage.removeItem(legacyMiniDays.key)
-    shouldMigrate = true
-  }
-
-  if (miniDaysFromSplit) {
-    hydrated = hydrated ?? {}
-    hydrated.miniDays = miniDaysFromSplit
-  }
-
-  if (!hydrated) return defaultCombinedSettings
-
-  const normalized = normalizeCombinedSettings(hydrated)
-  if (shouldMigrate) saveCombinedSettings(clientId, normalized)
-  return normalized
+  return defaultCombinedSettings
 }
 
 function loadPomodoroSessionSettings(clientId: string): PomodoroSessionSettings {
@@ -313,7 +203,15 @@ export const handlers = [
   http.get('/api/todos', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)
-    const todos = loadTodos(clientId)
+    const url = new URL(request.url)
+    const dateParam = url.searchParams.get('date')
+    let todos = loadTodos(clientId)
+
+    // date 쿼리 파라미터가 있으면 해당 날짜만 필터링
+    if (dateParam) {
+      todos = todos.filter((todo) => todo.date === dateParam)
+    }
+
     return HttpResponse.json({ items: todos })
   }),
 
@@ -341,8 +239,8 @@ export const handlers = [
       miniDay,
       dayOrder: nextDayOrder,
       isDone: false,
-      pomodoroDone: 0,
-      focusSeconds: 0,
+      sessionCount: 0,
+      sessionFocusSeconds: 0,
       timerMode: null, // 아직 타이머 타입 선택 안함
       createdAt: now(),
       updatedAt: now(),
@@ -438,76 +336,55 @@ export const handlers = [
     return HttpResponse.json(null, { status: 204 })
   }),
 
-  // 뽀모도로 완료 (횟수 + 시간)
-  http.post('/api/todos/:id/pomodoro/complete', async ({ params, request }) => {
+  // Session API (뽀모도로/일반 타이머 통합)
+  http.post('/api/todos/:id/sessions', async ({ params, request }) => {
     await delay(latency)
     const clientId = getClientId(request)
-    const id = params.id as string
-    const body = (await request.json()) as { durationSec?: number }
-    if (!body.durationSec || body.durationSec < 1 || body.durationSec > 43_200) {
+    const todoId = params.id as string
+    const body = (await request.json()) as { sessionFocusSeconds?: number; breakSeconds?: number }
+
+    // Validation
+    if (
+      body.sessionFocusSeconds === undefined ||
+      body.sessionFocusSeconds < 0 ||
+      body.sessionFocusSeconds > 43_200
+    ) {
       return HttpResponse.json(
-        { error: { code: 'VALIDATION_ERROR', message: 'durationSec invalid' } },
+        { error: { code: 'VALIDATION_ERROR', message: 'sessionFocusSeconds invalid' } },
         { status: 400 },
       )
     }
+
     let todos = loadTodos(clientId)
-    const existing = todos.find((t) => t.id === id)
+    const existing = todos.find((t) => t.id === todoId)
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
     }
-    // 주의: 기록 API는 timerMode를 변경하지 않습니다.
-    // 모드 변경은 사용자가 명시적으로 선택했을 때 PATCH /api/todos/:id 로만 수행합니다.
+
+    // Todo 업데이트: sessionCount += 1, sessionFocusSeconds += sessionFocusSeconds
     const updated: Todo = {
       ...existing,
-      pomodoroDone: existing.pomodoroDone + 1,
-      focusSeconds: existing.focusSeconds + body.durationSec,
+      sessionCount: existing.sessionCount + 1, // sessionCount 역할
+      sessionFocusSeconds: existing.sessionFocusSeconds + body.sessionFocusSeconds,
       updatedAt: now(),
     }
-    todos = todos.map((t) => (t.id === id ? updated : t))
+    todos = todos.map((t) => (t.id === todoId ? updated : t))
     saveTodos(clientId, todos)
-    return HttpResponse.json({
-      id,
-      pomodoroDone: updated.pomodoroDone,
-      focusSeconds: updated.focusSeconds,
-      updatedAt: updated.updatedAt,
-    })
+
+    // Session 응답
+    const session = {
+      id: crypto.randomUUID(),
+      todoId,
+      sessionFocusSeconds: body.sessionFocusSeconds,
+      breakSeconds: body.breakSeconds ?? 0,
+      sessionOrder: updated.sessionCount,
+      createdAt: now(),
+    }
+
+    return HttpResponse.json(session, { status: 201 })
   }),
 
-  // 일반 타이머 - 시간만 추가 (횟수 증가 X)
-  http.post('/api/todos/:id/focus/add', async ({ params, request }) => {
-    await delay(latency)
-    const clientId = getClientId(request)
-    const id = params.id as string
-    const body = (await request.json()) as { durationSec?: number }
-    if (!body.durationSec || body.durationSec < 1 || body.durationSec > 43_200) {
-      return HttpResponse.json(
-        { error: { code: 'VALIDATION_ERROR', message: 'durationSec invalid' } },
-        { status: 400 },
-      )
-    }
-    let todos = loadTodos(clientId)
-    const existing = todos.find((t) => t.id === id)
-    if (!existing) {
-      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
-    }
-    // 주의: 기록 API는 timerMode를 변경하지 않습니다.
-    // 모드 변경은 사용자가 명시적으로 선택했을 때 PATCH /api/todos/:id 로만 수행합니다.
-    const updated: Todo = {
-      ...existing,
-      // pomodoroDone은 증가시키지 않음
-      focusSeconds: existing.focusSeconds + body.durationSec,
-      updatedAt: now(),
-    }
-    todos = todos.map((t) => (t.id === id ? updated : t))
-    saveTodos(clientId, todos)
-    return HttpResponse.json({
-      id,
-      focusSeconds: updated.focusSeconds,
-      updatedAt: updated.updatedAt,
-    })
-  }),
-
-  // 타이머 리셋 (focusSeconds와 pomodoroDone 초기화)
+  // 타이머 리셋 (sessionFocusSeconds와 sessionCount 초기화)
   http.post('/api/todos/:id/reset', async ({ params, request }) => {
     await delay(latency)
     const clientId = getClientId(request)
@@ -519,8 +396,8 @@ export const handlers = [
     }
     const updated: Todo = {
       ...existing,
-      focusSeconds: 0,
-      pomodoroDone: 0,
+      sessionFocusSeconds: 0,
+      sessionCount: 0,
       timerMode: null, // 타이머 모드도 초기화
       updatedAt: now(),
     }
@@ -528,8 +405,9 @@ export const handlers = [
     saveTodos(clientId, todos)
     return HttpResponse.json({
       id,
-      focusSeconds: 0,
-      pomodoroDone: 0,
+      sessionFocusSeconds: 0,
+      sessionCount: 0,
+      timerMode: null,
       updatedAt: updated.updatedAt,
     })
   }),

@@ -12,14 +12,6 @@ describe('getClientId', () => {
     expect(getClientId()).toBe('existing-id')
   })
 
-  it('migrates legacy client id', () => {
-    localStorage.setItem(storageKeys.legacyClientId, 'legacy-id')
-    const id = getClientId()
-    expect(id).toBe('legacy-id')
-    expect(localStorage.getItem(storageKeys.clientId)).toBe('legacy-id')
-    expect(localStorage.getItem(storageKeys.legacyClientId)).toBeNull()
-  })
-
   it('creates and stores a new client id', () => {
     const id = getClientId()
     expect(id).toBeTruthy()
