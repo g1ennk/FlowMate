@@ -27,7 +27,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
 
   const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
   const initialMs = timer.initialFocusMs ?? 0
-  const currentSessionMs = currentFocusMs - initialMs
 
   let currentBreakMs = timer.breakElapsedMs ?? 0
   if (
@@ -42,15 +41,35 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
   const isInBreak =
     timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
 
-  if (isInBreak && newSessions.length > 0) {
+  const recordedMs = newSessions.reduce(
+    (sum, session) => sum + session.sessionFocusSeconds * 1000,
+    0,
+  )
+  const baselineMs = Math.max(initialMs, recordedMs)
+  const currentSessionMs = Math.max(0, currentFocusMs - baselineMs)
+  const currentSessionSec = Math.round(currentSessionMs / 1000)
+  const currentBreakSec = Math.round(currentBreakMs / 1000)
+
+  const hasRecordedSession =
+    currentSessionMs <= 0 ||
+    (isInBreak &&
+      timer.breakCompleted &&
+      newSessions.length > 0 &&
+      newSessions[newSessions.length - 1].sessionFocusSeconds === currentSessionSec)
+
+  if (!hasRecordedSession && currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
+    newSessions.push({
+      sessionFocusSeconds: currentSessionSec,
+      breakSeconds: isInBreak ? currentBreakSec : 0,
+    })
+  } else if (isInBreak && newSessions.length > 0 && hasRecordedSession) {
     newSessions[newSessions.length - 1] = {
       ...newSessions[newSessions.length - 1],
-      breakSeconds: Math.round(currentBreakMs / 1000),
+      breakSeconds: currentBreakSec,
     }
   }
 
   const totalFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
-  const currentSessionSec = Math.round(currentSessionMs / 1000)
 
   if (debug) {
     console.log('[일반 타이머 완료]', {
@@ -70,13 +89,14 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
     })
   }
 
-  const hasBreakUpdate =
-    newSessions.length > 0 &&
-    newSessions.length === timer.sessions.length &&
-    newSessions[newSessions.length - 1]?.breakSeconds !==
-      timer.sessions[timer.sessions.length - 1]?.breakSeconds
+  const sessionsChanged =
+    newSessions.length !== timer.sessions.length ||
+    (newSessions.length > 0 &&
+      timer.sessions.length > 0 &&
+      newSessions[newSessions.length - 1]?.breakSeconds !==
+        timer.sessions[timer.sessions.length - 1]?.breakSeconds)
 
-  if (hasBreakUpdate) {
+  if (sessionsChanged) {
     updateSessions(todoId, newSessions)
   }
 }
