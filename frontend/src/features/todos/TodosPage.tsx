@@ -23,8 +23,10 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
+  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useTimerStore } from '../timer/timerStore'
 import { Calendar } from '../../ui/Calendar'
 import { formatDateKey } from '../../ui/calendarUtils'
@@ -40,7 +42,7 @@ import {
   TrashIcon,
   ClockIcon,
   DocumentIcon,
-  MoreVerticalIcon,
+  ChevronRightIcon,
 } from '../../ui/Icons'
 import { SortableTodoItem } from './components/SortableTodoItem'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
@@ -50,6 +52,7 @@ import { getTimerInfo } from '../timer/useTimerInfo'
 import { formatTimerHoursMinutes } from './todoTimerDisplay'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
 import { useMiniDaysSettings } from '../settings/hooks'
+import { getDefaultMiniDayForDate } from './miniDayUtils'
 import type { Todo, TodoReorderItem } from '../../api/types'
 
 // === 스키마 ===
@@ -58,36 +61,32 @@ const createSchema = z.object({
 })
 type CreateForm = z.infer<typeof createSchema>
 
-type DropContainerId = `day-${number}-${'active' | 'done'}`
+type DropContainerId = `day-${number}`
 
 const getTodoOrder = (todo: { dayOrder?: number }) => todo.dayOrder ?? 0
 
-type GroupedTodos = {
-  active: Record<number, Todo[]>
-  done: Record<number, Todo[]>
-}
+type GroupedTodos = Record<number, Todo[]>
 
 type ContainerItems = Record<DropContainerId, string[]>
 
 type RectLike = { top: number; height: number }
 
 const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): GroupedTodos => {
-  const active: Record<number, Todo[]> = {}
-  const done: Record<number, Todo[]> = {}
+  const grouped: Record<number, Todo[]> = {}
   daySections.forEach((section) => {
-    active[section.id] = []
-    done[section.id] = []
+    grouped[section.id] = []
   })
 
   for (const todo of list) {
     const miniDay = todo.miniDay ?? 0
-    const target = todo.isDone ? done : active
-    if (!target[miniDay]) target[miniDay] = []
-    target[miniDay].push(todo)
+    if (!grouped[miniDay]) grouped[miniDay] = []
+    grouped[miniDay].push(todo)
   }
 
-  const sortTodos = (list: Todo[]) =>
-    [...list].sort((a, b) => {
+  const sortTodos = (items: Todo[]) =>
+    [...items].sort((a, b) => {
+      const doneDiff = Number(a.isDone) - Number(b.isDone)
+      if (doneDiff !== 0) return doneDiff
       const aOrder = getTodoOrder(a)
       const bOrder = getTodoOrder(b)
       if (aOrder !== bOrder) return aOrder - bOrder
@@ -95,12 +94,21 @@ const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): Gr
     })
 
   daySections.forEach((section) => {
-    active[section.id] = sortTodos(active[section.id])
-    done[section.id] = sortTodos(done[section.id])
+    grouped[section.id] = sortTodos(grouped[section.id])
   })
 
-  return { active, done }
+  return grouped
 }
+
+const addSpacer = (items: string[], id: string, index: number) => {
+  if (items.includes(id)) return items
+  const next = [...items]
+  const safeIndex = Math.max(0, Math.min(index, next.length))
+  next.splice(safeIndex, 0, id)
+  return next
+}
+
+const removeSpacer = (items: string[], id: string) => items.filter((item) => item !== id)
 
 const resolveActiveRect = (rect: unknown): RectLike | null => {
   const raw = (rect as { current?: unknown })?.current ?? rect
@@ -116,16 +124,12 @@ const resolveActiveRect = (rect: unknown): RectLike | null => {
 const getNextDayOrder = (list: Array<{ dayOrder?: number }>) =>
   list.length === 0 ? 0 : Math.max(...list.map((todo) => todo.dayOrder ?? 0)) + 1
 
-const getContainerId = (miniDay: number, isDone: boolean): DropContainerId =>
-  `day-${miniDay}-${isDone ? 'done' : 'active'}`
+const getContainerId = (miniDay: number): DropContainerId => `day-${miniDay}`
 
 const parseContainerId = (id: DropContainerId) => {
   const parts = id.split('-')
   const parsedMiniDay = Number(parts[1])
-  return {
-    miniDay: Number.isNaN(parsedMiniDay) ? 0 : parsedMiniDay,
-    isDone: parts[2] === 'done',
-  }
+  return Number.isNaN(parsedMiniDay) ? 0 : parsedMiniDay
 }
 
 const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
@@ -144,24 +148,6 @@ const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
   return true
 }
 
-function DroppableList({
-  id,
-  children,
-}: {
-  id: DropContainerId
-  children: ReactNode
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id })
-  return (
-    <div
-      ref={setNodeRef}
-      className={`min-h-[44px] space-y-1 rounded-lg py-1 transition-colors ${isOver ? 'bg-emerald-50/40' : ''}`}
-    >
-      {children}
-    </div>
-  )
-}
-
 function ActiveSectionDrop({
   id,
   className,
@@ -176,6 +162,26 @@ function ActiveSectionDrop({
     <section ref={setNodeRef} className={className}>
       {typeof children === 'function' ? children(isOver) : children}
     </section>
+  )
+}
+
+function SortableInput({
+  id,
+  children,
+}: {
+  id: string
+  children: ReactNode
+}) {
+  const { setNodeRef, transform, transition } = useSortable({ id, disabled: true })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children}
+    </div>
   )
 }
 
@@ -229,6 +235,7 @@ function TodosPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const isSubmittingRef = useRef(false)
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const openSectionTimeoutRef = useRef<number | null>(null)
 
   // 폼
   const {
@@ -246,6 +253,16 @@ function TodosPage() {
   const todosForSelectedDate = useMemo(() => {
     return (data?.items ?? []).filter((t) => t.date === selectedDateKey)
   }, [data?.items, selectedDateKey])
+
+  const defaultOpenId = useMemo(
+    () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings),
+    [selectedDate, miniDaysSettings],
+  )
+  const [openSections, setOpenSections] = useState<Record<number, boolean>>({ [defaultOpenId]: true })
+
+  useEffect(() => {
+    setOpenSections({ [defaultOpenId]: true })
+  }, [defaultOpenId])
 
   const markedDates = useMemo(() => {
     const marks: Record<string, { done: number; total: number }> = {}
@@ -266,10 +283,8 @@ function TodosPage() {
   const buildContainerItems = useCallback((grouped: GroupedTodos): ContainerItems => {
     const result = {} as ContainerItems
     for (const section of daySections) {
-      const activeId = getContainerId(section.id, false)
-      const doneId = getContainerId(section.id, true)
-      result[activeId] = (grouped.active[section.id] ?? []).map((t) => t.id)
-      result[doneId] = (grouped.done[section.id] ?? []).map((t) => t.id)
+      const containerId = getContainerId(section.id)
+      result[containerId] = (grouped[section.id] ?? []).map((t) => t.id)
     }
     return result
   }, [daySections])
@@ -280,6 +295,7 @@ function TodosPage() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const clonedItemsRef = useRef<ContainerItems | null>(null)
   const dragOriginContainerRef = useRef<DropContainerId | null>(null)
+  const isAllOpen = daySections.every((section) => openSections[section.id])
 
   const todoById = useMemo(() => {
     const map = new Map<string, Todo>()
@@ -302,20 +318,38 @@ function TodosPage() {
 
   const getTodosForContainer = (containerId: DropContainerId): Todo[] => {
     const ids = containerItems[containerId] ?? []
-    const { miniDay, isDone } = parseContainerId(containerId)
+    const miniDay = parseContainerId(containerId)
     const items: Todo[] = []
     ids.forEach((id, index) => {
+      if (id === `input-${miniDay}`) return
       const base = todoById.get(id)
       if (!base) return
       items.push({
         ...base,
         miniDay,
-        isDone,
         dayOrder: index,
       })
     })
     return items
   }
+
+  const normalizeContainerItems = useCallback((items: ContainerItems) => {
+    const next = { ...items }
+    for (const [cid, ids] of Object.entries(items) as Array<[DropContainerId, string[]]>) {
+      const activeIds: string[] = []
+      const doneIds: string[] = []
+      ids.forEach((id) => {
+        const todo = todoById.get(id)
+        if (todo?.isDone) {
+          doneIds.push(id)
+        } else {
+          activeIds.push(id)
+        }
+      })
+      next[cid] = [...activeIds, ...doneIds]
+    }
+    return next
+  }, [todoById])
 
   // Keep local DnD state in sync with server data when not dragging
   useEffect(() => {
@@ -323,6 +357,44 @@ function TodosPage() {
     const next = buildContainerItems(groupedTodos)
     setContainerItems((prev) => (areContainerItemsEqual(prev, next) ? prev : next))
   }, [activeDragId, groupedTodos, buildContainerItems])
+
+  useEffect(() => {
+    if (activeDragId) return
+
+    if (inputDay === null) {
+      setContainerItems((prev) => {
+        const next = { ...prev }
+        let changed = false
+        for (const section of daySections) {
+          const key = getContainerId(section.id)
+          const current = next[key] ?? []
+          const cleaned = current.filter((id) => !id.startsWith('input-'))
+          if (cleaned.length !== current.length) {
+            next[key] = cleaned
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+      return
+    }
+
+    const containerId = getContainerId(inputDay)
+    const activeIds = (containerItems[containerId] ?? []).filter((id) => {
+      const todo = todoById.get(id)
+      return !!todo && !todo.isDone
+    })
+    const spacerIndex = activeIds.length === 0 ? 0 : activeIds.length
+    const spacerId = `input-${inputDay}`
+    setContainerItems((prev) => {
+      const current = prev[containerId] ?? []
+      const nextItems = addSpacer(removeSpacer(current, spacerId), spacerId, spacerIndex)
+      if (current.length === nextItems.length && current.every((value, index) => value === nextItems[index])) {
+        return prev
+      }
+      return { ...prev, [containerId]: nextItems }
+    })
+  }, [activeDragId, containerItems, inputDay, todoById, daySections])
 
 
   // 타이머 상태
@@ -403,10 +475,8 @@ function TodosPage() {
 
   const blockFocusStats = useMemo(() => {
     const totals: Record<number, number> = {}
-    const doneTotals: Record<number, number> = {}
     daySections.forEach((section) => {
       totals[section.id] = 0
-      doneTotals[section.id] = 0
     })
 
     for (const todo of todosForSelectedDate) {
@@ -418,13 +488,10 @@ function TodosPage() {
           ? sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
           : todo.sessionFocusSeconds
       totals[miniDay] = (totals[miniDay] ?? 0) + sessionFocusSeconds
-      if (todo.isDone) {
-        doneTotals[miniDay] = (doneTotals[miniDay] ?? 0) + sessionFocusSeconds
-      }
     }
 
     const totalAll = daySections.reduce((sum, section) => sum + (totals[section.id] ?? 0), 0)
-    return { totals, doneTotals, totalAll }
+    return { totals, totalAll }
   }, [daySections, todosForSelectedDate, timers])
 
   const getTodoTimerProps = (todo: { id: string }) => {
@@ -448,6 +515,7 @@ function TodosPage() {
   const handleDragOver = (event: DragOverEvent) => {
     if (!event.over) return
     const activeId = String(event.active.id)
+    if (activeId.startsWith('input-')) return
     const overId = String(event.over.id)
     const isOverContainer = overId.startsWith('day-')
     const activeRect = resolveActiveRect(event.active.rect)
@@ -459,12 +527,15 @@ function TodosPage() {
     const overContainer = findContainerFor(overId)
     if (!activeContainer || !overContainer) return
 
-    if (activeContainer === overContainer) return
+    const overMiniDay = parseContainerId(overContainer as DropContainerId)
+    if (!openSections[overMiniDay]) {
+      if (openSectionTimeoutRef.current) window.clearTimeout(openSectionTimeoutRef.current)
+      openSectionTimeoutRef.current = window.setTimeout(() => {
+        setOpenSections((prev) => (prev[overMiniDay] ? prev : { ...prev, [overMiniDay]: true }))
+      }, 200)
+    }
 
-    // Disallow active <-> done moves
-    const from = parseContainerId(activeContainer)
-    const to = parseContainerId(overContainer)
-    if (from.isDone !== to.isDone) return
+    if (activeContainer === overContainer) return
 
     setContainerItems((prev) => {
       const next = { ...prev }
@@ -489,6 +560,10 @@ function TodosPage() {
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (openSectionTimeoutRef.current) {
+      window.clearTimeout(openSectionTimeoutRef.current)
+      openSectionTimeoutRef.current = null
+    }
     if (!event.over) {
       setActiveDragId(null)
       clonedItemsRef.current = null
@@ -497,6 +572,12 @@ function TodosPage() {
     }
 
     const activeId = String(event.active.id)
+    if (activeId.startsWith('input-')) {
+      setActiveDragId(null)
+      clonedItemsRef.current = null
+      dragOriginContainerRef.current = null
+      return
+    }
     const overId = String(event.over.id)
     const isOverContainer = overId.startsWith('day-')
     const activeRect = resolveActiveRect(event.active.rect)
@@ -507,16 +588,6 @@ function TodosPage() {
     const activeContainer = findContainerFor(activeId)
     const overContainer = findContainerFor(overId)
     if (!activeContainer || !overContainer) {
-      setActiveDragId(null)
-      clonedItemsRef.current = null
-      dragOriginContainerRef.current = null
-      return
-    }
-
-    // Disallow active <-> done moves
-    const from = parseContainerId(activeContainer)
-    const to = parseContainerId(overContainer)
-    if (from.isDone !== to.isDone) {
       setActiveDragId(null)
       clonedItemsRef.current = null
       dragOriginContainerRef.current = null
@@ -576,9 +647,25 @@ function TodosPage() {
       return next
     })()
 
+    const normalizedSnapshot = normalizeContainerItems(snapshot)
+    if (inputDay !== null) {
+      const containerId = getContainerId(inputDay)
+      const spacerId = `input-${inputDay}`
+      const activeIds = (normalizedSnapshot[containerId] ?? []).filter((id) => {
+        const todo = todoById.get(id)
+        return !!todo && !todo.isDone
+      })
+      const spacerIndex = activeIds.length === 0 ? 0 : activeIds.length
+      normalizedSnapshot[containerId] = addSpacer(
+        removeSpacer(normalizedSnapshot[containerId] ?? [], spacerId),
+        spacerId,
+        spacerIndex,
+      )
+    }
+
     const buildReorderItemsFor = (containerId: DropContainerId): TodoReorderItem[] => {
-      const ids = snapshot[containerId] ?? []
-      const { miniDay } = parseContainerId(containerId)
+      const ids = (normalizedSnapshot[containerId] ?? []).filter((id) => todoById.has(id))
+      const miniDay = parseContainerId(containerId)
       return ids.map((id, index) => ({
         id,
         dayOrder: index,
@@ -596,12 +683,17 @@ function TodosPage() {
       reorderTodos.mutate({ items: reorderItems })
     }
 
+    setContainerItems(normalizedSnapshot)
     setActiveDragId(null)
     clonedItemsRef.current = null
     dragOriginContainerRef.current = null
   }
 
   const handleDragCancel = () => {
+    if (openSectionTimeoutRef.current) {
+      window.clearTimeout(openSectionTimeoutRef.current)
+      openSectionTimeoutRef.current = null
+    }
     if (clonedItemsRef.current) {
       setContainerItems(clonedItemsRef.current)
     }
@@ -635,6 +727,26 @@ function TodosPage() {
               </span>
             )}
           </div>
+          <button
+            onClick={() => {
+              if (isAllOpen) {
+                setOpenSections({})
+                setInputDay(null)
+                return
+              }
+              const next: Record<number, boolean> = {}
+              daySections.forEach((sectionItem) => {
+                next[sectionItem.id] = true
+              })
+              setOpenSections(next)
+            }}
+            className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-600"
+          >
+            <span>{isAllOpen ? '모두 접기' : '모두 펼침'}</span>
+            <ChevronRightIcon
+              className={`h-3 w-3 transition-transform ${isAllOpen ? '-rotate-90' : 'rotate-90'}`}
+            />
+          </button>
         </div>
 
         {/* 로딩 */}
@@ -652,268 +764,311 @@ function TodosPage() {
           >
             <div className="space-y-6">
               {daySections.map((section, index) => {
-                const activeTodos = getTodosForContainer(getContainerId(section.id, false))
-                const doneTodos = getTodosForContainer(getContainerId(section.id, true))
-                const activeContainerId = getContainerId(section.id, false)
-                const doneContainerId = getContainerId(section.id, true)
-                const isInputOpen = inputDay === section.id
-                const nextDoneOrder = getNextDayOrder(groupedTodos.done[section.id] ?? [])
-                const nextActiveOrder = getNextDayOrder(groupedTodos.active[section.id] ?? [])
+                const sectionTodos = getTodosForContainer(getContainerId(section.id))
+                const containerId = getContainerId(section.id)
+                const isSectionOpen = openSections[section.id] ?? false
+                const activeTodos = sectionTodos.filter((todo) => !todo.isDone)
+                const doneTodos = sectionTodos.filter((todo) => todo.isDone)
+                const totalCount = activeTodos.length + doneTodos.length
+                const nextActiveOrder = getNextDayOrder(activeTodos)
+                const nextDoneOrder = getNextDayOrder(doneTodos)
                 const dayFocus = blockFocusStats.totals[section.id] ?? 0
-                const doneFocus = blockFocusStats.doneTotals[section.id] ?? 0
-                const emptyMessage = doneTodos.length > 0
-                  ? '할 일을 다 하셨어요!'
-                  : section.id === 0
-                      ? '아직 분류되지 않은 할 일이 없어요.'
-                      : `아직 ${section.title}에 할 일이 없어요.`
+                const shouldShowInput = inputDay === section.id
+                const inputId = shouldShowInput ? `input-${section.id}` : null
+                const inputAtTop = shouldShowInput && activeTodos.length === 0
+                const inputBetween = shouldShowInput && activeTodos.length > 0
+                const sortableIds = [
+                  ...(inputAtTop && inputId ? [inputId] : []),
+                  ...activeTodos.map((todo) => todo.id),
+                  ...(inputBetween && inputId ? [inputId] : []),
+                  ...doneTodos.map((todo) => todo.id),
+                ]
+
+                const renderInput = () => (
+                  <div className="rounded-xl p-2">
+                    <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+                      <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent" />
+                      <textarea
+                        {...register('title')}
+                        ref={(e) => {
+                          register('title').ref(e)
+                          inputRef.current = e
+                          if (e) {
+                            e.style.height = 'auto'
+                            e.style.height = `${e.scrollHeight}px`
+                          }
+                        }}
+                        placeholder="할 일을 입력하세요"
+                        autoFocus
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Escape') {
+                            reset()
+                            setInputDay(null)
+                            if (inputRef.current) {
+                              inputRef.current.style.height = 'auto'
+                            }
+                            return
+                          }
+
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            if (isSubmittingRef.current) return
+
+                            const title = getValues('title')
+                            if (title?.trim()) {
+                              isSubmittingRef.current = true
+                              try {
+                                await actions.handleCreate(title, section.id, nextActiveOrder)
+                                reset()
+                                setTimeout(() => {
+                                  if (inputRef.current) {
+                                    inputRef.current.focus()
+                                    inputRef.current.style.height = 'auto'
+                                    inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
+                                  }
+                                }, 0)
+                              } catch (err) {
+                                toast.error('추가 실패', { id: 'todo-create-failed' })
+                                console.error(err)
+                              } finally {
+                                isSubmittingRef.current = false
+                              }
+                            }
+                          }
+                        }}
+                        onChange={(e) => {
+                          register('title').onChange(e)
+                          e.target.style.height = 'auto'
+                          e.target.style.height = `${e.target.scrollHeight}px`
+                        }}
+                        onBlur={async () => {
+                          if (isSubmittingRef.current) return
+                          const title = getValues('title')
+                          if (title?.trim()) {
+                            isSubmittingRef.current = true
+                            try {
+                              await actions.handleCreate(title, section.id, nextActiveOrder)
+                              reset()
+                            } catch (err) {
+                              toast.error('추가 실패', { id: 'todo-create-failed' })
+                              console.error(err)
+                            } finally {
+                              isSubmittingRef.current = false
+                            }
+                          } else {
+                            reset()
+                          }
+                          setInputDay(null)
+                        }}
+                        className="w-full bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]"
+                        rows={1}
+                      />
+                    </div>
+                  </div>
+                )
 
                 return (
                   <section
                     key={section.id}
                     className={`${index === 0 ? '' : 'border-t border-gray-100 pt-5'} space-y-2`}
                   >
-                    <ActiveSectionDrop id={activeContainerId} className="space-y-2 pb-3">
+                    <ActiveSectionDrop id={containerId} className="space-y-2 pb-3">
                       {(isActiveOver) => (
                         <>
-                          <div className="flex items-center justify-between">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-sm font-semibold text-gray-900">
-                                {section.title}
-                              </h3>
-                              {section.range && <span className="text-xs text-gray-400">{section.range}</span>}
-                              {dayFocus > 0 && (
-                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                  Flow · {formatTimerHoursMinutes(dayFocus)}
-                                </span>
-                              )}
-                            </div>
+                          <div className="grid grid-cols-[20px_1fr_28px] items-start gap-2 px-2">
                             <button
                               onClick={() =>
-                                setInputDay((current) => (current === section.id ? null : section.id))
+                                setOpenSections((prev) => ({
+                                  ...prev,
+                                  [section.id]: !prev[section.id],
+                                }))
                               }
-                              className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors"
+                              className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
                             >
-                              <PlusIcon className="h-4 w-4" />
+                              <ChevronRightIcon
+                                className={`h-3 w-3 transition-transform ${
+                                  isSectionOpen ? 'rotate-90' : ''
+                                }`}
+                              />
+                            </button>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-sm font-semibold text-gray-900">
+                                  {section.title}
+                                </h3>
+                                <span className="text-xs text-gray-400">
+                                  {doneTodos.length}/{totalCount}
+                                </span>
+                                {dayFocus > 0 && (
+                                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                    Flow · {formatTimerHoursMinutes(dayFocus)}
+                                  </span>
+                                )}
+                              </div>
+                              {section.range && <span className="text-xs text-gray-400">{section.range}</span>}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setOpenSections((prev) => ({ ...prev, [section.id]: true }))
+                                setInputDay((current) => (current === section.id ? null : section.id))
+                                setTimeout(() => {
+                                  if (inputRef.current) {
+                                    inputRef.current.focus()
+                                    inputRef.current.style.height = 'auto'
+                                    inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
+                                  }
+                                }, 0)
+                              }}
+                              className="mt-0.5 flex h-7 w-7 items-center justify-center justify-self-end rounded-full text-emerald-500 transition-colors hover:bg-emerald-50"
+                            >
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
+                                <PlusIcon className="h-3 w-3" />
+                              </span>
                             </button>
                           </div>
+                          {isSectionOpen && (
+                            <>
+                              <div
+                                className={`min-h-[44px] space-y-1 rounded-lg py-1 transition-colors ${isActiveOver ? 'bg-emerald-50/40' : ''}`}
+                              >
+                                <SortableContext
+                                  id={containerId}
+                                  items={sortableIds}
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  {inputAtTop && inputId && (
+                                    <SortableInput id={inputId}>
+                                      {renderInput()}
+                                    </SortableInput>
+                                  )}
+                                  {activeTodos.map((todo) => {
+                                    const {
+                                      timer,
+                                      isActiveTimer,
+                                      activeTimerElapsedMs,
+                                      activeTimerRemainingMs,
+                                      activeTimerPhase,
+                                      breakElapsedMs,
+                                      breakTargetMs,
+                                      isBreakPhase,
+                                      flexiblePhase,
+                                      sessions,
+                                      initialFocusMs,
+                                    } = getTodoTimerProps(todo)
 
-                          <div
-                            className={`min-h-[44px] space-y-1 rounded-lg py-1 transition-colors ${isActiveOver ? 'bg-emerald-50/40' : ''}`}
-                          >
-                            {activeTodos.length === 0 && !isInputOpen && (
-                              <p className="px-2 py-1 text-xs text-gray-400 pointer-events-none">
-                                {emptyMessage}
-                              </p>
-                            )}
-                            <SortableContext
-                              id={activeContainerId}
-                              items={activeTodos.map((t) => t.id)}
-                              strategy={verticalListSortingStrategy}
-                            >
-                              {activeTodos.map((todo) => {
-                                const {
-                                  timer,
-                                  isActiveTimer,
-                                  activeTimerElapsedMs,
-                                  activeTimerRemainingMs,
-                                  activeTimerPhase,
-                                  breakElapsedMs,
-                                  breakTargetMs,
-                                  isBreakPhase,
-                                  flexiblePhase,
-                                  sessions,
-                                  initialFocusMs,
-                                } = getTodoTimerProps(todo)
-
-                                return (
-                                  <SortableTodoItem
-                                    key={todo.id}
-                                    id={todo.id}
-                                    title={todo.title}
-                                    note={todo.note}
-                                    sessionCount={todo.sessionCount}
-                                    sessionFocusSeconds={todo.sessionFocusSeconds}
-                                    isDone={todo.isDone}
-                                    isEditing={actions.editingId === todo.id}
-                                    editingTitle={actions.editingTitle}
-                                    onEditingTitleChange={actions.setEditingTitle}
-                                    onToggle={() =>
-                                      actions.handleToggleDone(todo.id, !todo.isDone, nextDoneOrder)
-                                    }
-                                    onEdit={() => actions.handleEdit(todo.id, todo.title)}
-                                    onSaveEdit={actions.handleSaveEdit}
-                                    onCancelEdit={actions.handleCancelEdit}
-                                    onDelete={() => actions.handleDelete(todo.id)}
-                                    onOpenMenu={() => actions.setSelectedTodo(todo)}
-                                    onOpenTimer={() => {
-                                      const modeToUse = timer?.mode || todo.timerMode || null
-                                      actions.handleOpenTimer(todo, modeToUse)
-                                    }}
-                                    onOpenNote={() => actions.handleOpenNote(todo)}
-                                    isActiveTimer={isActiveTimer}
-                                    activeTimerMode={timer?.mode}
-                                    activeTimerElapsedMs={activeTimerElapsedMs}
-                                    activeTimerRemainingMs={activeTimerRemainingMs}
-                                    activeTimerPhase={activeTimerPhase}
-                                    breakElapsedMs={breakElapsedMs}
-                                    breakTargetMs={breakTargetMs}
-                                    isBreakPhase={isBreakPhase}
-                                    flexiblePhase={flexiblePhase}
-                                    sessions={sessions}
-                                    initialFocusMs={initialFocusMs}
-                                  />
-                                )
-                              })}
-                            </SortableContext>
-
-                            {isInputOpen && (
-                              <div className="rounded-xl p-2">
-                                <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
-                                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
-                                  <textarea
-                                    {...register('title')}
-                                    ref={(e) => {
-                                      register('title').ref(e)
-                                      inputRef.current = e
-                                      if (e) {
-                                        e.style.height = 'auto'
-                                        e.style.height = `${e.scrollHeight}px`
-                                      }
-                                    }}
-                                    placeholder="할 일 입력"
-                                    autoFocus
-                                    onKeyDown={async (e) => {
-                                      if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault()
-                                        if (isSubmittingRef.current) return
-
-                                        const title = getValues('title')
-                                        if (title?.trim()) {
-                                          isSubmittingRef.current = true
-                                          try {
-                                            await actions.handleCreate(title, section.id, nextActiveOrder)
-                                            reset()
-                                            setTimeout(() => {
-                                              if (inputRef.current) {
-                                                inputRef.current.focus()
-                                                inputRef.current.style.height = 'auto'
-                                                inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
-                                              }
-                                            }, 0)
-                                          } catch (err) {
-                                            toast.error('추가 실패', { id: 'todo-create-failed' })
-                                            console.error(err)
-                                          } finally {
-                                            isSubmittingRef.current = false
-                                          }
+                                    return (
+                                      <SortableTodoItem
+                                        key={todo.id}
+                                        id={todo.id}
+                                        title={todo.title}
+                                        note={todo.note}
+                                        sessionCount={todo.sessionCount}
+                                        sessionFocusSeconds={todo.sessionFocusSeconds}
+                                        isDone={todo.isDone}
+                                        isEditing={actions.editingId === todo.id}
+                                        editingTitle={actions.editingTitle}
+                                        onEditingTitleChange={actions.setEditingTitle}
+                                        onToggle={() =>
+                                          actions.handleToggleDone(
+                                            todo.id,
+                                            !todo.isDone,
+                                            !todo.isDone ? nextDoneOrder : nextActiveOrder,
+                                          )
                                         }
-                                      }
-                                    }}
-                                    onChange={(e) => {
-                                      register('title').onChange(e)
-                                      e.target.style.height = 'auto'
-                                      e.target.style.height = `${e.target.scrollHeight}px`
-                                    }}
-                                    onBlur={async () => {
-                                      if (isSubmittingRef.current) return
+                                        onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                                        onSaveEdit={actions.handleSaveEdit}
+                                        onCancelEdit={actions.handleCancelEdit}
+                                        onDelete={() => actions.handleDelete(todo.id)}
+                                        onOpenMenu={() => actions.setSelectedTodo(todo)}
+                                        onOpenTimer={() => {
+                                          const modeToUse = timer?.mode || todo.timerMode || null
+                                          actions.handleOpenTimer(todo, modeToUse)
+                                        }}
+                                        onOpenNote={() => actions.handleOpenNote(todo)}
+                                        isActiveTimer={isActiveTimer}
+                                        activeTimerMode={timer?.mode}
+                                        activeTimerElapsedMs={activeTimerElapsedMs}
+                                        activeTimerRemainingMs={activeTimerRemainingMs}
+                                        activeTimerPhase={activeTimerPhase}
+                                        breakElapsedMs={breakElapsedMs}
+                                        breakTargetMs={breakTargetMs}
+                                        isBreakPhase={isBreakPhase}
+                                        flexiblePhase={flexiblePhase}
+                                        sessions={sessions}
+                                        initialFocusMs={initialFocusMs}
+                                      />
+                                    )
+                                  })}
+                                  {inputBetween && inputId && (
+                                    <SortableInput id={inputId}>
+                                      {renderInput()}
+                                    </SortableInput>
+                                  )}
+                                  {doneTodos.map((todo) => {
+                                    const {
+                                      timer,
+                                      isActiveTimer,
+                                      activeTimerElapsedMs,
+                                      activeTimerRemainingMs,
+                                      activeTimerPhase,
+                                      breakElapsedMs,
+                                      breakTargetMs,
+                                      isBreakPhase,
+                                      flexiblePhase,
+                                      sessions,
+                                      initialFocusMs,
+                                    } = getTodoTimerProps(todo)
 
-                                      const title = getValues('title')
-                                      if (title?.trim()) {
-                                        isSubmittingRef.current = true
-                                        try {
-                                          await actions.handleCreate(title, section.id, nextActiveOrder)
-                                          reset()
-                                          setInputDay(null)
-                                        } catch (err) {
-                                          toast.error('추가 실패', { id: 'todo-create-failed' })
-                                          console.error(err)
-                                        } finally {
-                                          isSubmittingRef.current = false
+                                    return (
+                                      <SortableTodoItem
+                                        key={todo.id}
+                                        id={todo.id}
+                                        title={todo.title}
+                                        note={todo.note}
+                                        sessionCount={todo.sessionCount}
+                                        sessionFocusSeconds={todo.sessionFocusSeconds}
+                                        isDone={todo.isDone}
+                                        isEditing={actions.editingId === todo.id}
+                                        editingTitle={actions.editingTitle}
+                                        onEditingTitleChange={actions.setEditingTitle}
+                                        onToggle={() =>
+                                          actions.handleToggleDone(
+                                            todo.id,
+                                            !todo.isDone,
+                                            !todo.isDone ? nextDoneOrder : nextActiveOrder,
+                                          )
                                         }
-                                      } else {
-                                        setInputDay(null)
-                                      }
-                                    }}
-                                    className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]"
-                                    rows={1}
-                                  />
-                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-300 opacity-50">
-                                    <MoreVerticalIcon className="h-4 w-4" />
-                                  </div>
-                                </div>
+                                        onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                                        onSaveEdit={actions.handleSaveEdit}
+                                        onCancelEdit={actions.handleCancelEdit}
+                                        onDelete={() => actions.handleDelete(todo.id)}
+                                        onOpenMenu={() => actions.setSelectedTodo(todo)}
+                                        onOpenTimer={() => {
+                                          const modeToUse = timer?.mode || todo.timerMode || null
+                                          actions.handleOpenTimer(todo, modeToUse)
+                                        }}
+                                        onOpenNote={() => actions.handleOpenNote(todo)}
+                                        isActiveTimer={isActiveTimer}
+                                        activeTimerMode={timer?.mode}
+                                        activeTimerElapsedMs={activeTimerElapsedMs}
+                                        activeTimerRemainingMs={activeTimerRemainingMs}
+                                        activeTimerPhase={activeTimerPhase}
+                                        breakElapsedMs={breakElapsedMs}
+                                        breakTargetMs={breakTargetMs}
+                                        isBreakPhase={isBreakPhase}
+                                        flexiblePhase={flexiblePhase}
+                                        sessions={sessions}
+                                        initialFocusMs={initialFocusMs}
+                                      />
+                                    )
+                                  })}
+                                </SortableContext>
                               </div>
-                            )}
-                          </div>
+                            </>
+                          )}
                         </>
                       )}
                     </ActiveSectionDrop>
-                    {doneTodos.length > 0 && (
-                      <div className="space-y-1">
-                        {activeTodos.length > 0 && (
-                          <div className="py-2">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-medium text-gray-400">
-                                완료됨{doneFocus > 0 ? ` · ${formatTimerHoursMinutes(doneFocus)}` : ''}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        <DroppableList id={doneContainerId}>
-                          <SortableContext
-                            id={doneContainerId}
-                            items={doneTodos.map((t) => t.id)}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            {doneTodos.map((todo) => {
-                              const {
-                                timer,
-                                isActiveTimer,
-                                activeTimerElapsedMs,
-                                activeTimerRemainingMs,
-                                activeTimerPhase,
-                                sessions,
-                                initialFocusMs,
-                              } = getTodoTimerProps(todo)
-
-                              return (
-                                <SortableTodoItem
-                                  key={todo.id}
-                                  id={todo.id}
-                                  title={todo.title}
-                                  note={todo.note}
-                                  sessionCount={todo.sessionCount}
-                                  sessionFocusSeconds={todo.sessionFocusSeconds}
-                                  isDone={todo.isDone}
-                                  isEditing={actions.editingId === todo.id}
-                                  editingTitle={actions.editingTitle}
-                                  onEditingTitleChange={actions.setEditingTitle}
-                                  onToggle={() =>
-                                    actions.handleToggleDone(todo.id, !todo.isDone, nextActiveOrder)
-                                  }
-                                  onEdit={() => actions.handleEdit(todo.id, todo.title)}
-                                  onSaveEdit={actions.handleSaveEdit}
-                                  onCancelEdit={actions.handleCancelEdit}
-                                  onDelete={() => actions.handleDelete(todo.id)}
-                                  onOpenMenu={() => actions.setSelectedTodo(todo)}
-                                  onOpenTimer={() => {
-                                    const modeToUse = timer?.mode || todo.timerMode || null
-                                    actions.handleOpenTimer(todo, modeToUse)
-                                  }}
-                                  onOpenNote={() => actions.handleOpenNote(todo)}
-                                  isActiveTimer={isActiveTimer}
-                                  activeTimerMode={timer?.mode}
-                                  activeTimerElapsedMs={activeTimerElapsedMs}
-                                  activeTimerRemainingMs={activeTimerRemainingMs}
-                                  activeTimerPhase={activeTimerPhase}
-                                  sessions={sessions}
-                                  initialFocusMs={initialFocusMs}
-                                />
-                              )
-                            })}
-                          </SortableContext>
-                        </DroppableList>
-                      </div>
-                    )}
                   </section>
                 )
               })}
