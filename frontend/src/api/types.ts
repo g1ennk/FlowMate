@@ -8,8 +8,8 @@ export const TodoSchema = z.object({
   miniDay: z.number().int().min(0).max(3).optional(),
   dayOrder: z.number().int().optional(),
   isDone: z.boolean(),
-  pomodoroDone: z.number().int(),
-  focusSeconds: z.number().int(),
+  sessionCount: z.number().int(),
+  sessionFocusSeconds: z.number().int(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(), // 선택된 타이머 타입
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -34,7 +34,7 @@ export const TodoPatchSchema = z.object({
   miniDay: z.number().int().min(0).max(3).optional(),
   dayOrder: z.number().int().optional(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable().optional(),
-  pomodoroDone: z.number().int().optional(),
+  sessionCount: z.number().int().optional(),
 })
 
 export const TodoReorderItemSchema = z.object({
@@ -79,33 +79,31 @@ export const SettingsSchema = z.object({
   miniDays: MiniDaysSettingsSchema,
 })
 
-export const PomodoroCompleteRequestSchema = z.object({
-  durationSec: z.number().int().min(1).max(43_200),
+// Session API
+export const SessionCreateRequestSchema = z.object({
+  sessionFocusSeconds: z.number().int().min(0).max(43_200),
+  breakSeconds: z.number().int().min(0).max(43_200).optional(),
 })
 
-export const PomodoroCompleteResponseSchema = z.object({
+export const SessionSchema = z.object({
   id: z.string().uuid(),
-  pomodoroDone: z.number().int(),
-  focusSeconds: z.number().int(),
-  updatedAt: z.string(),
+  todoId: z.string().uuid(),
+  sessionFocusSeconds: z.number().int(),
+  breakSeconds: z.number().int(),
+  sessionOrder: z.number().int(),
+  createdAt: z.string(),
 })
 
-// 일반 타이머용 (시간만 추가, 횟수 X)
-export const FocusAddRequestSchema = z.object({
-  durationSec: z.number().int().min(1).max(43_200),
+export const SessionListSchema = z.object({
+  items: z.array(SessionSchema),
 })
 
-export const FocusAddResponseSchema = z.object({
-  id: z.string().uuid(),
-  focusSeconds: z.number().int(),
-  updatedAt: z.string(),
-})
-
-// 타이머 리셋용 (focusSeconds와 pomodoroDone 초기화)
+// 타이머 리셋용 (sessionFocusSeconds와 sessionCount 초기화)
 export const TimerResetResponseSchema = z.object({
   id: z.string().uuid(),
-  focusSeconds: z.number().int(),
-  pomodoroDone: z.number().int(),
+  sessionFocusSeconds: z.number().int(),
+  sessionCount: z.number().int(),
+  timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(),
   updatedAt: z.string(),
 })
 
@@ -119,10 +117,9 @@ export type AutomationSettings = z.infer<typeof AutomationSettingsSchema>
 export type PomodoroSettings = z.infer<typeof PomodoroSettingsSchema>
 export type MiniDaysSettings = z.infer<typeof MiniDaysSettingsSchema>
 export type Settings = z.infer<typeof SettingsSchema>
-export type PomodoroCompleteRequest = z.infer<typeof PomodoroCompleteRequestSchema>
-export type PomodoroCompleteResponse = z.infer<typeof PomodoroCompleteResponseSchema>
-export type FocusAddRequest = z.infer<typeof FocusAddRequestSchema>
-export type FocusAddResponse = z.infer<typeof FocusAddResponseSchema>
+export type SessionCreateRequest = z.infer<typeof SessionCreateRequestSchema>
+export type Session = z.infer<typeof SessionSchema>
+export type SessionList = z.infer<typeof SessionListSchema>
 export type TimerResetResponse = z.infer<typeof TimerResetResponseSchema>
 export type TodoReorderItem = z.infer<typeof TodoReorderItemSchema>
 export type TodoReorderRequest = z.infer<typeof TodoReorderRequestSchema>

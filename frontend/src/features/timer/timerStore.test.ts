@@ -176,22 +176,22 @@ describe('timerStore', () => {
           phase: 'flow',
           cycleCount: 0,
           endAt: Date.now() + 1000,
-          sessionHistory: [],
+          sessions: [],
         },
       },
       autoCompletedTodos: new Set(),
     })
 
     const timer = useTimerStore.getState().getTimer('todo-1')
-    expect(timer?.sessionHistory.length).toBe(0)
+    expect(timer?.sessions.length).toBe(0)
 
     useTimerStore.getState().skipToNext('todo-1')
     const afterSkip = useTimerStore.getState().getTimer('todo-1')
     expect(afterSkip?.phase).toBe('short')
     expect(afterSkip?.status).toBe('running')
     expect(afterSkip?.cycleCount).toBe(1)
-    // 스킵 시 sessionHistory에 기록되지 않음
-    expect(afterSkip?.sessionHistory.length).toBe(0)
+    // 스킵 시 sessions에 기록되지 않음
+    expect(afterSkip?.sessions.length).toBe(0)
   })
 
   it('skipToNext from break transitions to flow phase', () => {
@@ -205,22 +205,22 @@ describe('timerStore', () => {
           phase: 'short',
           cycleCount: 1,
           endAt: Date.now() + 1000,
-          sessionHistory: [{ focusMs: 60000, breakMs: 0 }], // 기존 세션 1개
+          sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0 }], // 기존 세션 1개
         },
       },
       autoCompletedTodos: new Set(),
     })
 
     const timer = useTimerStore.getState().getTimer('todo-1')
-    expect(timer?.sessionHistory.length).toBe(1)
+    expect(timer?.sessions.length).toBe(1)
 
     useTimerStore.getState().skipToNext('todo-1')
     const afterSkip = useTimerStore.getState().getTimer('todo-1')
     expect(afterSkip?.phase).toBe('flow')
     expect(afterSkip?.status).toBe('running')
-    // 스킵 시 sessionHistory가 변경되지 않음 (기존 세션 유지)
-    expect(afterSkip?.sessionHistory.length).toBe(1)
-    expect(afterSkip?.sessionHistory[0]).toEqual({ focusMs: 60000, breakMs: 0 })
+    // 스킵 시 sessions가 변경되지 않음 (기존 세션 유지)
+    expect(afterSkip?.sessions.length).toBe(1)
+    expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 0 })
   })
 
 })

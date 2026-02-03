@@ -193,30 +193,33 @@ function TodosPage() {
   const selectedDateKey = formatDateKey(selectedDate)
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
 
-  const daySections = useMemo(
-    () => [
-      { id: 0, label: 'Day 0', title: '미분류', range: '' },
+  const daySections = useMemo(() => {
+    const formatRange = (start: string, end: string) => {
+      const trimmedStart = start.trim()
+      const trimmedEnd = end.trim()
+      if (!trimmedStart || !trimmedEnd) return ''
+      return `${trimmedStart}–${trimmedEnd}`
+    }
+
+    return [
+      { id: 0, title: '미분류', range: '' },
       {
         id: 1,
-        label: 'Day 1',
         title: miniDaysSettings.day1.label,
-        range: `${miniDaysSettings.day1.start}–${miniDaysSettings.day1.end}`,
+        range: formatRange(miniDaysSettings.day1.start, miniDaysSettings.day1.end),
       },
       {
         id: 2,
-        label: 'Day 2',
         title: miniDaysSettings.day2.label,
-        range: `${miniDaysSettings.day2.start}–${miniDaysSettings.day2.end}`,
+        range: formatRange(miniDaysSettings.day2.start, miniDaysSettings.day2.end),
       },
       {
         id: 3,
-        label: 'Day 3',
         title: miniDaysSettings.day3.label,
-        range: `${miniDaysSettings.day3.start}–${miniDaysSettings.day3.end}`,
+        range: formatRange(miniDaysSettings.day3.start, miniDaysSettings.day3.end),
       },
-    ],
-    [miniDaysSettings],
-  )
+    ]
+  }, [miniDaysSettings])
 
   // Todo 액션 훅
   const actions = useTodoActions(selectedDateKey)
@@ -409,14 +412,14 @@ function TodosPage() {
     for (const todo of todosForSelectedDate) {
       const miniDay = todo.miniDay ?? 0
       const timer = timers[todo.id]
-      const sessionHistory = timer?.sessionHistory ?? []
-      const focusSeconds =
-        sessionHistory.length > 0
-          ? Math.floor(sessionHistory.reduce((s, session) => s + session.focusMs, 0) / 1000)
-          : todo.focusSeconds
-      totals[miniDay] = (totals[miniDay] ?? 0) + focusSeconds
+      const sessions = timer?.sessions ?? []
+      const sessionFocusSeconds =
+        sessions.length > 0
+          ? sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
+          : todo.sessionFocusSeconds
+      totals[miniDay] = (totals[miniDay] ?? 0) + sessionFocusSeconds
       if (todo.isDone) {
-        doneTotals[miniDay] = (doneTotals[miniDay] ?? 0) + focusSeconds
+        doneTotals[miniDay] = (doneTotals[miniDay] ?? 0) + sessionFocusSeconds
       }
     }
 
@@ -430,7 +433,7 @@ function TodosPage() {
     return {
       timer,
       ...info,
-      sessionHistory: timer?.sessionHistory ?? [],
+      sessions: timer?.sessions ?? [],
       initialFocusMs: timer?.initialFocusMs ?? 0,
     }
   }
@@ -658,10 +661,11 @@ function TodosPage() {
                 const nextActiveOrder = getNextDayOrder(groupedTodos.active[section.id] ?? [])
                 const dayFocus = blockFocusStats.totals[section.id] ?? 0
                 const doneFocus = blockFocusStats.doneTotals[section.id] ?? 0
-                const emptyMessage =
-                  section.id === 0
-                    ? '아직 분류되지 않은 할 일이 없어요'
-                    : `아직 ${section.title}에 할 일이 없어요`
+                const emptyMessage = doneTodos.length > 0
+                  ? '할 일을 다 하셨어요!'
+                  : section.id === 0
+                      ? '아직 분류되지 않은 할 일이 없어요.'
+                      : `아직 ${section.title}에 할 일이 없어요.`
 
                 return (
                   <section
@@ -674,7 +678,7 @@ function TodosPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="text-sm font-semibold text-gray-900">
-                                {section.label} · {section.title}
+                                {section.title}
                               </h3>
                               {section.range && <span className="text-xs text-gray-400">{section.range}</span>}
                               {dayFocus > 0 && (
@@ -696,7 +700,7 @@ function TodosPage() {
                           <div
                             className={`min-h-[44px] space-y-1 rounded-lg py-1 transition-colors ${isActiveOver ? 'bg-emerald-50/40' : ''}`}
                           >
-                            {activeTodos.length === 0 && doneTodos.length === 0 && !isInputOpen && (
+                            {activeTodos.length === 0 && !isInputOpen && (
                               <p className="px-2 py-1 text-xs text-gray-400 pointer-events-none">
                                 {emptyMessage}
                               </p>
@@ -717,7 +721,7 @@ function TodosPage() {
                                   breakTargetMs,
                                   isBreakPhase,
                                   flexiblePhase,
-                                  sessionHistory,
+                                  sessions,
                                   initialFocusMs,
                                 } = getTodoTimerProps(todo)
 
@@ -727,8 +731,8 @@ function TodosPage() {
                                     id={todo.id}
                                     title={todo.title}
                                     note={todo.note}
-                                    pomodoroDone={todo.pomodoroDone}
-                                    focusSeconds={todo.focusSeconds}
+                                    sessionCount={todo.sessionCount}
+                                    sessionFocusSeconds={todo.sessionFocusSeconds}
                                     isDone={todo.isDone}
                                     isEditing={actions.editingId === todo.id}
                                     editingTitle={actions.editingTitle}
@@ -755,7 +759,7 @@ function TodosPage() {
                                     breakTargetMs={breakTargetMs}
                                     isBreakPhase={isBreakPhase}
                                     flexiblePhase={flexiblePhase}
-                                    sessionHistory={sessionHistory}
+                                    sessions={sessions}
                                     initialFocusMs={initialFocusMs}
                                   />
                                 )
@@ -867,7 +871,7 @@ function TodosPage() {
                                 activeTimerElapsedMs,
                                 activeTimerRemainingMs,
                                 activeTimerPhase,
-                                sessionHistory,
+                                sessions,
                                 initialFocusMs,
                               } = getTodoTimerProps(todo)
 
@@ -877,8 +881,8 @@ function TodosPage() {
                                   id={todo.id}
                                   title={todo.title}
                                   note={todo.note}
-                                  pomodoroDone={todo.pomodoroDone}
-                                  focusSeconds={todo.focusSeconds}
+                                  sessionCount={todo.sessionCount}
+                                  sessionFocusSeconds={todo.sessionFocusSeconds}
                                   isDone={todo.isDone}
                                   isEditing={actions.editingId === todo.id}
                                   editingTitle={actions.editingTitle}
@@ -901,7 +905,7 @@ function TodosPage() {
                                   activeTimerElapsedMs={activeTimerElapsedMs}
                                   activeTimerRemainingMs={activeTimerRemainingMs}
                                   activeTimerPhase={activeTimerPhase}
-                                  sessionHistory={sessionHistory}
+                                  sessions={sessions}
                                   initialFocusMs={initialFocusMs}
                                 />
                               )
@@ -1088,8 +1092,8 @@ function TodosPage() {
         onClose={actions.handleCloseTimer}
         todoId={actions.timerTodo?.id ?? ''}
         todoTitle={actions.timerTodo?.title ?? ''}
-        pomodoroDone={actions.timerTodo?.pomodoroDone ?? 0}
-        focusSeconds={actions.timerTodo?.focusSeconds ?? 0}
+        sessionCount={actions.timerTodo?.sessionCount ?? 0}
+        sessionFocusSeconds={actions.timerTodo?.sessionFocusSeconds ?? 0}
         initialMode={actions.timerMode ?? undefined}
         isDone={actions.timerTodo?.isDone ?? false}
       />

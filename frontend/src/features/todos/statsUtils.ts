@@ -7,7 +7,7 @@ export type DateStats = {
   tasks: number
   completed: number
   flows: number
-  focusSeconds: number
+  sessionFocusSeconds: number
 }
 
 export type ModeStats = {
@@ -43,14 +43,13 @@ export type TaskDetail = {
   isDone: boolean
   note: string | null
   timerMode: 'pomodoro' | 'stopwatch' | null
-  pomodoroDone: number
-  focusSeconds: number
+  sessionCount: number
+  sessionFocusSeconds: number
   focusTime: string
   createdAt: string
   updatedAt: string
   completionDuration: string | null
   hasNote: boolean
-  sessionCount: number
   totalSessionFocusMs: number
   totalSessionBreakMs: number
   totalElapsedTime: string
@@ -121,16 +120,19 @@ export function buildStats(
 ): StatsResult {
   const totalTasks = todos.length
   const completedTasks = todos.filter((t) => t.isDone).length
-  const totalFlows = todos.reduce((sum, t) => sum + t.pomodoroDone, 0)
+  const totalFlows = todos.reduce((sum, t) => sum + t.sessionCount, 0)
 
   const totalFocusSeconds = todos.reduce((sum, todo) => {
     const timer = timers[todo.id]
-    const sessionHistory = timer?.sessionHistory ?? []
-    if (sessionHistory.length > 0) {
-      const totalSessionFocusMs = sessionHistory.reduce((s, session) => s + session.focusMs, 0)
-      return sum + Math.floor(totalSessionFocusMs / 1000)
+    const sessions = timer?.sessions ?? []
+    if (sessions.length > 0) {
+      const totalSessionFocusSeconds = sessions.reduce(
+        (s, session) => s + session.sessionFocusSeconds,
+        0,
+      )
+      return sum + totalSessionFocusSeconds
     }
-    return sum + todo.focusSeconds
+    return sum + todo.sessionFocusSeconds
   }, 0)
 
   const modeStats: ModeStats = {
@@ -162,10 +164,10 @@ export function buildStats(
   const avgFlowsPerTask = totalTasks > 0 ? (totalFlows / totalTasks).toFixed(1) : '0'
   const maxFocusTime = todos.reduce((max, todo) => {
     const timer = timers[todo.id]
-    const sessionHistory = timer?.sessionHistory ?? []
-    const effectiveFocusSeconds = sessionHistory.length > 0
-      ? Math.floor(sessionHistory.reduce((s, session) => s + session.focusMs, 0) / 1000)
-      : todo.focusSeconds
+    const sessions = timer?.sessions ?? []
+    const effectiveFocusSeconds = sessions.length > 0
+      ? sessions.reduce((s, session) => s + session.sessionFocusSeconds, 0)
+      : todo.sessionFocusSeconds
     return Math.max(max, effectiveFocusSeconds)
   }, 0)
   const tasksWithNotes = todos.filter((t) => t.note && t.note.trim().length > 0).length
@@ -178,20 +180,20 @@ export function buildStats(
       tasks: 0,
       completed: 0,
       flows: 0,
-      focusSeconds: 0,
+      sessionFocusSeconds: 0,
     }
     const timer = timers[todo.id]
-    const sessionHistory = timer?.sessionHistory ?? []
-    const effectiveFocusSeconds = sessionHistory.length > 0
-      ? Math.floor(sessionHistory.reduce((s, session) => s + session.focusMs, 0) / 1000)
-      : todo.focusSeconds
+    const sessions = timer?.sessions ?? []
+    const effectiveFocusSeconds = sessions.length > 0
+      ? sessions.reduce((s, session) => s + session.sessionFocusSeconds, 0)
+      : todo.sessionFocusSeconds
 
     dateMap.set(todo.date, {
       date: todo.date,
       tasks: existing.tasks + 1,
       completed: existing.completed + (todo.isDone ? 1 : 0),
-      flows: existing.flows + todo.pomodoroDone,
-      focusSeconds: existing.focusSeconds + effectiveFocusSeconds,
+      flows: existing.flows + todo.sessionCount,
+      sessionFocusSeconds: existing.sessionFocusSeconds + effectiveFocusSeconds,
     })
   }
 
@@ -223,31 +225,40 @@ export function buildStats(
   const taskDetails = todos
     .map((todo) => {
       const timer = timers[todo.id]
-      const sessionHistory = timer?.sessionHistory ?? []
+      const sessions = timer?.sessions ?? []
       const completionDuration = todo.isDone && todo.createdAt && todo.updatedAt
         ? formatDuration(todo.createdAt, todo.updatedAt)
         : null
 
-      const totalSessionFocusMs = sessionHistory.reduce((sum, s) => sum + s.focusMs, 0)
-      const totalSessionBreakMs = sessionHistory.reduce((sum, s) => sum + s.breakMs, 0)
+      const totalSessionFocusSeconds = sessions.reduce(
+        (sum, s) => sum + s.sessionFocusSeconds,
+        0,
+      )
+      const totalSessionBreakSeconds = sessions.reduce((sum, s) => sum + s.breakSeconds, 0)
+      const totalSessionFocusMs = totalSessionFocusSeconds * 1000
+      const totalSessionBreakMs = totalSessionBreakSeconds * 1000
       const totalElapsedMs = totalSessionFocusMs + totalSessionBreakMs
       const totalElapsedTime = formatMs(totalElapsedMs)
       const totalBreakTime = formatMs(totalSessionBreakMs)
 
-      const effectiveFocusSeconds = sessionHistory.length > 0
-        ? Math.floor(totalSessionFocusMs / 1000)
-        : todo.focusSeconds
+      const effectiveFocusSeconds = sessions.length > 0
+        ? totalSessionFocusSeconds
+        : todo.sessionFocusSeconds
       const focusTime = formatTime(effectiveFocusSeconds)
 
-      const sessionDetails = sessionHistory
-        .filter((session) => session.focusMs >= MIN_FLOW_MS)
-        .map((session, index) => ({
-          flowNumber: index + 1,
-          focusMs: session.focusMs,
-          breakMs: session.breakMs,
-          focusTime: formatMs(session.focusMs),
-          breakTime: formatMs(session.breakMs),
-        }))
+      const sessionDetails = sessions
+        .filter((session) => session.sessionFocusSeconds * 1000 >= MIN_FLOW_MS)
+        .map((session, index) => {
+          const focusMs = session.sessionFocusSeconds * 1000
+          const breakMs = session.breakSeconds * 1000
+          return {
+            flowNumber: index + 1,
+            focusMs,
+            breakMs,
+            focusTime: formatMs(focusMs),
+            breakTime: formatMs(breakMs),
+          }
+        })
 
       const effectiveTimerMode = (timer && timer.status !== 'idle') ? timer.mode : todo.timerMode
 
@@ -258,14 +269,13 @@ export function buildStats(
         isDone: todo.isDone,
         note: todo.note,
         timerMode: effectiveTimerMode,
-        pomodoroDone: todo.pomodoroDone,
-        focusSeconds: effectiveFocusSeconds,
+        sessionCount: sessions.length || todo.sessionCount,
+        sessionFocusSeconds: effectiveFocusSeconds,
         focusTime,
         createdAt: todo.createdAt,
         updatedAt: todo.updatedAt,
         completionDuration,
         hasNote: !!(todo.note && todo.note.trim().length > 0),
-        sessionCount: sessionHistory.length,
         totalSessionFocusMs,
         totalSessionBreakMs,
         totalElapsedTime,

@@ -1,47 +1,48 @@
-type SessionRecord = { focusMs: number; breakMs: number }
+type SessionRecord = { sessionFocusSeconds: number; breakSeconds: number }
 
 type TodoTimerDisplayArgs = {
   isDone: boolean
-  focusSeconds: number
+  sessionFocusSeconds: number
   isActiveTimer?: boolean
   activeTimerElapsedMs?: number
   activeTimerRemainingMs?: number
   breakElapsedMs?: number
   breakTargetMs?: number
   flexiblePhase?: 'focus' | 'break_suggested' | 'break_free' | null
-  sessionHistory?: SessionRecord[]
+  sessions?: SessionRecord[]
   initialFocusMs?: number
 }
 
 export function getTodoDisplayTimeSeconds({
   isDone,
-  focusSeconds,
+  sessionFocusSeconds,
   isActiveTimer,
   activeTimerElapsedMs,
   activeTimerRemainingMs,
   breakElapsedMs,
   breakTargetMs,
   flexiblePhase,
-  sessionHistory = [],
+  sessions = [],
   initialFocusMs = 0,
 }: TodoTimerDisplayArgs) {
   let displayTimeSeconds: number
 
-  let sessionHistoryFocusSeconds: number | null = null
-  if (sessionHistory.length > 0) {
-    const sessionHistoryTotalMs = sessionHistory.reduce((sum, s) => sum + s.focusMs, 0)
+  let sessionsFocusSeconds: number | null = null
+  if (sessions.length > 0) {
+    const sessionsTotalSeconds = sessions.reduce((sum, s) => sum + s.sessionFocusSeconds, 0)
 
     if (activeTimerElapsedMs !== undefined && isActiveTimer) {
-      const currentSessionFocusMs = Math.max(0, activeTimerElapsedMs - initialFocusMs)
-      const totalAccumulatedMs = sessionHistoryTotalMs + currentSessionFocusMs
-      sessionHistoryFocusSeconds = Math.floor(totalAccumulatedMs / 1000)
+      const currentSessionSeconds = Math.floor(
+        Math.max(0, activeTimerElapsedMs - initialFocusMs) / 1000,
+      )
+      sessionsFocusSeconds = sessionsTotalSeconds + currentSessionSeconds
     } else {
-      sessionHistoryFocusSeconds = Math.floor(sessionHistoryTotalMs / 1000)
+      sessionsFocusSeconds = sessionsTotalSeconds
     }
   }
 
   if (isDone) {
-    displayTimeSeconds = sessionHistoryFocusSeconds ?? focusSeconds
+    displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds
   } else if (isActiveTimer) {
     if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
       if (breakElapsedMs >= breakTargetMs) {
@@ -56,16 +57,16 @@ export function getTodoDisplayTimeSeconds({
     } else if (activeTimerRemainingMs !== undefined) {
       displayTimeSeconds = Math.ceil(activeTimerRemainingMs / 1000)
     } else if (activeTimerElapsedMs !== undefined) {
-      if (sessionHistory.length > 0) {
-        displayTimeSeconds = sessionHistoryFocusSeconds ?? Math.floor(activeTimerElapsedMs / 1000)
+      if (sessions.length > 0) {
+        displayTimeSeconds = sessionsFocusSeconds ?? Math.floor(activeTimerElapsedMs / 1000)
       } else {
         displayTimeSeconds = Math.floor(activeTimerElapsedMs / 1000)
       }
     } else {
-      displayTimeSeconds = sessionHistoryFocusSeconds ?? focusSeconds
+      displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds
     }
   } else {
-    displayTimeSeconds = sessionHistoryFocusSeconds ?? focusSeconds
+    displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds
   }
 
   return displayTimeSeconds

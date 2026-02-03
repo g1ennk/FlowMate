@@ -10,8 +10,8 @@ import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDispl
 export type TodoItemProps = {
   title: string
   note?: string | null
-  pomodoroDone: number
-  focusSeconds: number
+  sessionCount: number
+  sessionFocusSeconds: number
   isDone: boolean
   isEditing: boolean
   editingTitle: string
@@ -34,15 +34,15 @@ export type TodoItemProps = {
   breakTargetMs?: number // 추천 휴식 목표 시간 (카운트다운용)
   isBreakPhase?: boolean // 휴식 중인지 여부
   flexiblePhase?: 'focus' | 'break_suggested' | 'break_free' | null // 일반 타이머 phase
-  sessionHistory?: Array<{ focusMs: number; breakMs: number }> // 세션 히스토리 (집중 시간 계산용)
+  sessions?: Array<{ sessionFocusSeconds: number; breakSeconds: number }> // 세션 기록 (집중 시간 계산용)
   initialFocusMs?: number // 현재 세션의 시작점 (정확한 계산용)
 }
 
 export function TodoItem({
   title,
   note,
-  pomodoroDone,
-  focusSeconds,
+  sessionCount,
+  sessionFocusSeconds,
   isDone,
   isEditing,
   editingTitle,
@@ -62,7 +62,7 @@ export function TodoItem({
   breakTargetMs,
   isBreakPhase,
   flexiblePhase,
-  sessionHistory = [],
+  sessions = [],
   initialFocusMs = 0,
 }: TodoItemProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -88,19 +88,19 @@ export function TodoItem({
 
   const totalFocusSeconds = getTodoDisplayTimeSeconds({
     isDone,
-    focusSeconds,
+    sessionFocusSeconds,
     isActiveTimer,
     activeTimerElapsedMs,
     activeTimerRemainingMs,
     breakElapsedMs,
     breakTargetMs,
     flexiblePhase,
-    sessionHistory,
+    sessions,
     initialFocusMs,
   })
 
   const focusTimeDisplay = formatTimerSeconds(totalFocusSeconds)
-  const shouldShowTimerButton = !!isActiveTimer || pomodoroDone > 0 || totalFocusSeconds > 0
+  const shouldShowTimerButton = !!isActiveTimer || sessionCount > 0 || totalFocusSeconds > 0
   const shouldShowTimerTime = totalFocusSeconds > 0 || !!isActiveTimer
 
   // 편집 모드

@@ -6,8 +6,8 @@ export type TimerMode = 'pomodoro' | 'stopwatch'
 export type FlexiblePhase = 'focus' | 'break_suggested' | 'break_free'
 
 export type SessionRecord = {
-  focusMs: number
-  breakMs: number
+  sessionFocusSeconds: number
+  breakSeconds: number
 }
 
 export type SingleTimerState = {
@@ -30,5 +30,5 @@ export type SingleTimerState = {
   breakCompleted: boolean
   focusStartedAt: number | null
   breakStartedAt: number | null
-  sessionHistory: SessionRecord[]
+  sessions: SessionRecord[]
 }

@@ -1,17 +1,13 @@
 import { api } from './http'
 import {
-  FocusAddRequestSchema,
-  FocusAddResponseSchema,
-  PomodoroCompleteRequestSchema,
-  PomodoroCompleteResponseSchema,
+  SessionCreateRequestSchema,
+  SessionSchema,
   TimerResetResponseSchema,
   TodoReorderRequestSchema,
   TodoListSchema,
   TodoSchema,
-  type FocusAddRequest,
-  type FocusAddResponse,
-  type PomodoroCompleteRequest,
-  type PomodoroCompleteResponse,
+  type Session,
+  type SessionCreateRequest,
   type TimerResetResponse,
   type Todo,
   type TodoCreateInput,
@@ -21,28 +17,22 @@ import {
 } from './types'
 
 export const todoApi = {
-  list: (): Promise<TodoList> => api.get('/todos', TodoListSchema),
+  list: (date?: string): Promise<TodoList> =>
+    api.get(date ? `/todos?date=${date}` : '/todos', TodoListSchema),
   create: (body: TodoCreateInput): Promise<Todo> => api.post('/todos', body, TodoSchema),
   update: (id: string, body: TodoPatchInput): Promise<Todo> =>
     api.patch(`/todos/${id}`, body, TodoSchema),
   remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`),
   reorder: (body: TodoReorderRequest): Promise<TodoList> =>
     api.put('/todos/reorder', TodoReorderRequestSchema.parse(body), TodoListSchema),
-  // 뽀모도로 완료 (횟수 + 시간)
-  complete: (id: string, body: PomodoroCompleteRequest): Promise<PomodoroCompleteResponse> =>
+  // Session API (뽀모도로/일반 타이머 통합)
+  createSession: (todoId: string, body: SessionCreateRequest): Promise<Session> =>
     api.post(
-      `/todos/${id}/pomodoro/complete`,
-      PomodoroCompleteRequestSchema.parse(body),
-      PomodoroCompleteResponseSchema,
+      `/todos/${todoId}/sessions`,
+      SessionCreateRequestSchema.parse(body),
+      SessionSchema,
     ),
-  // 일반 타이머 (시간만 추가)
-  addFocus: (id: string, body: FocusAddRequest): Promise<FocusAddResponse> =>
-    api.post(
-      `/todos/${id}/focus/add`,
-      FocusAddRequestSchema.parse(body),
-      FocusAddResponseSchema,
-    ),
-  // 타이머 리셋 (focusSeconds와 pomodoroDone 초기화)
+  // 타이머 리셋 (sessionFocusSeconds와 sessionCount 초기화 + 모든 Session 삭제)
   resetTimer: (id: string): Promise<TimerResetResponse> =>
     api.post(`/todos/${id}/reset`, {}, TimerResetResponseSchema),
 }

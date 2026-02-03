@@ -136,7 +136,7 @@ export function StatsPage() {
           {stats.dateStats.length === 0 ? (
             <p className="text-center text-gray-500">데이터가 없습니다</p>
           ) : (
-            stats.dateStats.map(({ date, tasks, completed, flows, focusSeconds }) => (
+            stats.dateStats.map(({ date, tasks, completed, flows, sessionFocusSeconds }) => (
               <div key={date} className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
                 <div className="flex-1">
                   <p className="font-medium text-gray-900">{date}</p>
@@ -144,7 +144,7 @@ export function StatsPage() {
                     <span>태스크: {tasks}</span>
                     <span>완료: {completed}</span>
                     <span>Flow: {flows}</span>
-                    <span>Flow: {formatTime(focusSeconds)}</span>
+                    <span>Flow: {formatTime(sessionFocusSeconds)}</span>
                   </div>
                 </div>
               </div>
@@ -191,7 +191,7 @@ export function StatsPage() {
                   </div>
                   <div>
                     <span className="text-gray-500">Flow 세션:</span>
-                    <span className="ml-2 font-medium text-blue-600">{task.pomodoroDone}개</span>
+                    <span className="ml-2 font-medium text-blue-600">{task.sessionCount}개</span>
                   </div>
                   <div>
                     <span className="text-gray-500">Flow 시간:</span>

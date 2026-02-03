@@ -28,14 +28,14 @@ export function ActiveTimerTitle() {
 
     const displaySeconds = getTodoDisplayTimeSeconds({
       isDone: todo?.isDone ?? false,
-      focusSeconds: todo?.focusSeconds ?? 0,
+      sessionFocusSeconds: todo?.sessionFocusSeconds ?? 0,
       isActiveTimer: timerInfo.isActiveTimer,
       activeTimerElapsedMs: timerInfo.activeTimerElapsedMs,
       activeTimerRemainingMs: timerInfo.activeTimerRemainingMs,
       breakElapsedMs: timerInfo.breakElapsedMs,
       breakTargetMs: timerInfo.breakTargetMs,
       flexiblePhase: timerInfo.flexiblePhase,
-      sessionHistory: timer.sessionHistory ?? [],
+      sessions: timer.sessions ?? [],
       initialFocusMs: timer.initialFocusMs ?? 0,
     })
 

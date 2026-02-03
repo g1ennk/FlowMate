@@ -1,10 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { todoApi } from '../../api/todos'
 import {
-  type FocusAddRequest,
-  type FocusAddResponse,
-  type PomodoroCompleteRequest,
-  type PomodoroCompleteResponse,
+  type Session,
+  type SessionCreateRequest,
   type TimerResetResponse,
   type TodoCreateInput,
   type TodoList,
@@ -86,35 +84,19 @@ export function useReorderTodos() {
   })
 }
 
-// 뽀모도로 완료 (횟수 + 시간)
-export function useCompleteTodo() {
+// Session 생성 (뽀모도로/일반 타이머 통합)
+export function useCreateSession() {
   const qc = useQueryClient()
-  return useMutation<PomodoroCompleteResponse, unknown, { id: string; body: PomodoroCompleteRequest }>(
-    {
-      mutationFn: ({ id, body }) => todoApi.complete(id, body),
-      onSuccess: (_, { id }) => {
-        qc.invalidateQueries({ queryKey: queryKeys.todos() })
-        qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
-      },
+  return useMutation<Session, unknown, { todoId: string; body: SessionCreateRequest }>({
+    mutationFn: ({ todoId, body }) => todoApi.createSession(todoId, body),
+    onSuccess: (_, { todoId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.todos() })
+      qc.invalidateQueries({ queryKey: queryKeys.todo(todoId) })
     },
-  )
+  })
 }
 
-// 일반 타이머 (시간만 추가, 횟수 X)
-export function useAddFocus() {
-  const qc = useQueryClient()
-  return useMutation<FocusAddResponse, unknown, { id: string; body: FocusAddRequest }>(
-    {
-      mutationFn: ({ id, body }) => todoApi.addFocus(id, body),
-      onSuccess: (_, { id }) => {
-        qc.invalidateQueries({ queryKey: queryKeys.todos() })
-        qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
-      },
-    },
-  )
-}
-
-// 타이머 리셋 (focusSeconds와 pomodoroDone 초기화)
+// 타이머 리셋 (sessionFocusSeconds와 sessionCount 초기화)
 export function useResetTimer() {
   const qc = useQueryClient()
   return useMutation<TimerResetResponse, unknown, string>(
@@ -127,7 +109,7 @@ export function useResetTimer() {
           return {
             items: old.items.map((todo) =>
               todo.id === id
-                ? { ...todo, focusSeconds: 0, pomodoroDone: 0, timerMode: null }
+                ? { ...todo, sessionFocusSeconds: 0, sessionCount: 0, timerMode: null }
                 : todo
             ),
           }

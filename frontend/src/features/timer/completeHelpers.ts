@@ -1,9 +1,9 @@
-import type { PomodoroSettings, FocusAddResponse, PomodoroCompleteResponse } from '../../api/types'
+import type { PomodoroSettings, Session, SessionCreateRequest } from '../../api/types'
 import { MIN_FLOW_MS } from '../../lib/constants'
 import type { SessionRecord, SingleTimerState, TimerMode } from './timerStore'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 
-type CompleteTodoArgs = { id: string; body: { durationSec: number } }
+type CreateSessionArgs = { todoId: string; body: SessionCreateRequest }
 type UpdateTodoArgs = {
   id: string
   patch: { isDone: boolean; timerMode: TimerMode | null; dayOrder?: number }
@@ -15,17 +15,15 @@ type CompletionDeps = {
   settings?: PomodoroSettings
   pause: (todoId: string) => void
   getTimer: (todoId: string) => SingleTimerState | undefined
-  updateSessionHistory: (todoId: string, sessionHistory: SessionRecord[]) => void
-  updateInitialFocusMs: (todoId: string, newInitialFocusMs: number) => void
-  completeTodo: (args: CompleteTodoArgs) => Promise<PomodoroCompleteResponse>
-  addFocus: (args: CompleteTodoArgs) => Promise<FocusAddResponse>
+  updateSessions: (todoId: string, sessions: SessionRecord[]) => void
+  createSession: (args: CreateSessionArgs) => Promise<Session>
   updateTodo: (args: UpdateTodoArgs) => Promise<unknown>
   nextOrder?: number
   debug?: boolean
 }
 
 async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) {
-  const { todoId, completeTodo, addFocus, updateInitialFocusMs, updateSessionHistory, debug } = deps
+  const { todoId, updateSessions, debug } = deps
 
   const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
   const initialMs = timer.initialFocusMs ?? 0
@@ -40,33 +38,18 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
     currentBreakMs = timer.breakElapsedMs + delta
   }
 
-  const newSessionHistory = [...timer.sessionHistory]
+  const newSessions = [...timer.sessions]
+  const isInBreak =
+    timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
 
-  if (currentSessionMs >= MIN_FLOW_MS) {
-    const isInFocus = timer.flexiblePhase === 'focus' || !timer.flexiblePhase
-    const isInBreak =
-      timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
-
-    if (isInFocus) {
-      newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
-    } else if (isInBreak && newSessionHistory.length > 0) {
-      newSessionHistory[newSessionHistory.length - 1] = {
-        ...newSessionHistory[newSessionHistory.length - 1],
-        breakMs: currentBreakMs,
-      }
-    } else {
-      newSessionHistory.push({ focusMs: currentSessionMs, breakMs: 0 })
-    }
-  } else if (newSessionHistory.length > 0) {
-    newSessionHistory[newSessionHistory.length - 1] = {
-      ...newSessionHistory[newSessionHistory.length - 1],
-      breakMs: currentBreakMs,
+  if (isInBreak && newSessions.length > 0) {
+    newSessions[newSessions.length - 1] = {
+      ...newSessions[newSessions.length - 1],
+      breakSeconds: Math.round(currentBreakMs / 1000),
     }
   }
 
-  const totalFocusMs = newSessionHistory.reduce((sum, session) => sum + session.focusMs, 0)
-  const totalFocusSec = Math.round(totalFocusMs / 1000)
-
+  const totalFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
   const currentSessionSec = Math.round(currentSessionMs / 1000)
 
   if (debug) {
@@ -75,40 +58,26 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
       initialMs,
       currentSessionMs,
       currentSessionMsSeconds: Math.round(currentSessionMs / 1000),
-      totalFocusMs,
       totalFocusSec,
       currentSessionSec,
       MIN_FLOW_MS,
       MIN_FLOW_MSSeconds: Math.round(MIN_FLOW_MS / 1000),
-      oldSessionHistoryLength: timer.sessionHistory.length,
-      newSessionHistoryLength: newSessionHistory.length,
-      oldSessionHistory: timer.sessionHistory,
-      newSessionHistory: newSessionHistory,
+      oldSessionsLength: timer.sessions.length,
+      newSessionsLength: newSessions.length,
+      oldSessions: timer.sessions,
+      newSessions,
       isValid: currentSessionMs >= MIN_FLOW_MS,
     })
   }
 
-  if (currentSessionSec > 0) {
-    const isCurrentSessionValid = currentSessionMs >= MIN_FLOW_MS
-
-    if (isCurrentSessionValid) {
-      const response = await completeTodo({ id: todoId, body: { durationSec: currentSessionSec } })
-      updateInitialFocusMs(todoId, response.focusSeconds * 1000)
-    } else {
-      const response = await addFocus({ id: todoId, body: { durationSec: currentSessionSec } })
-      updateInitialFocusMs(todoId, response.focusSeconds * 1000)
-    }
-  }
-
-  const hasNewSession = newSessionHistory.length > timer.sessionHistory.length
   const hasBreakUpdate =
-    newSessionHistory.length > 0 &&
-    newSessionHistory.length === timer.sessionHistory.length &&
-    newSessionHistory[newSessionHistory.length - 1]?.breakMs !==
-      timer.sessionHistory[timer.sessionHistory.length - 1]?.breakMs
+    newSessions.length > 0 &&
+    newSessions.length === timer.sessions.length &&
+    newSessions[newSessions.length - 1]?.breakSeconds !==
+      timer.sessions[timer.sessions.length - 1]?.breakSeconds
 
-  if (hasNewSession || hasBreakUpdate || newSessionHistory.length > 0) {
-    updateSessionHistory(todoId, newSessionHistory)
+  if (hasBreakUpdate) {
+    updateSessions(todoId, newSessions)
   }
 }
 
@@ -117,7 +86,7 @@ async function completePomodoro(
   timer: SingleTimerState,
   settings?: PomodoroSettings,
 ) {
-  const { todoId, completeTodo, addFocus, updateSessionHistory } = deps
+  const { todoId, createSession, updateSessions } = deps
 
   if (timer.phase !== 'flow') {
     return
@@ -129,19 +98,21 @@ async function completePomodoro(
   const elapsedMs = plannedMs - remaining
   const elapsedSec = Math.round(elapsedMs / 1000)
 
-  const newSessionHistory = [...timer.sessionHistory]
+  const newSessions = [...timer.sessions]
 
   if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
-    newSessionHistory.push({ focusMs: elapsedMs, breakMs: 0 })
-    updateSessionHistory(todoId, newSessionHistory)
+    newSessions.push({ sessionFocusSeconds: elapsedSec, breakSeconds: 0 })
+    updateSessions(todoId, newSessions)
   }
 
   if (elapsedSec > 0) {
-    if (remaining < 5000) {
-      await completeTodo({ id: todoId, body: { durationSec: elapsedSec } })
-    } else {
-      await addFocus({ id: todoId, body: { durationSec: elapsedSec } })
-    }
+    await createSession({
+      todoId,
+      body: {
+        sessionFocusSeconds: elapsedSec,
+        breakSeconds: 0,
+      },
+    })
   }
 }
 

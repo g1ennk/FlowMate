@@ -4,8 +4,7 @@ import {
   useCreateTodo,
   useDeleteTodo,
   useUpdateTodo,
-  useAddFocus,
-  useCompleteTodo,
+  useCreateSession,
 } from './hooks'
 import type { Todo } from '../../api/types'
 import { useTimerStore, type TimerMode } from '../timer/timerStore'
@@ -20,8 +19,7 @@ export function useTodoActions(selectedDateKey: string) {
   const createTodo = useCreateTodo()
   const updateTodo = useUpdateTodo()
   const deleteTodo = useDeleteTodo()
-  const addFocus = useAddFocus()
-  const completeTodo = useCompleteTodo()
+  const createSession = useCreateSession()
 
   const { data: settings } = usePomodoroSettings()
 
@@ -30,8 +28,7 @@ export function useTodoActions(selectedDateKey: string) {
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
   const timers = useTimerStore((s) => s.timers)
-  const updateSessionHistory = useTimerStore((s) => s.updateSessionHistory)
-  const updateInitialFocusMs = useTimerStore((s) => s.updateInitialFocusMs)
+  const updateSessions = useTimerStore((s) => s.updateSessions)
 
   // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -73,10 +70,8 @@ export function useTodoActions(selectedDateKey: string) {
           settings: settings ?? undefined,
           pause,
           getTimer,
-          updateSessionHistory,
-          updateInitialFocusMs,
-          completeTodo: completeTodo.mutateAsync,
-          addFocus: addFocus.mutateAsync,
+          updateSessions,
+          createSession: createSession.mutateAsync,
           updateTodo: updateTodo.mutateAsync,
           nextOrder,
         })
@@ -85,7 +80,7 @@ export function useTodoActions(selectedDateKey: string) {
       }
     } else {
       // 미완료로 변경하는 경우, 타이머 상태는 유지 (일시정지 상태로)
-      // reset을 호출하지 않아서 이전 기록(sessionHistory, timerMode 등)이 유지됨
+      // reset을 호출하지 않아서 이전 기록(sessions, timerMode 등)이 유지됨
       const timer = getTimer(id)
       if (timer && timer.status === 'running') {
         // 실행 중이면 일시정지만
@@ -105,7 +100,7 @@ export function useTodoActions(selectedDateKey: string) {
   }
 
   const handleDelete = (id: string) => {
-    // 타이머 상태 및 sessionHistory 완전 삭제
+    // 타이머 상태 및 sessions 완전 삭제
     reset(id)
     // Todo 삭제
     deleteTodo.mutate(id)

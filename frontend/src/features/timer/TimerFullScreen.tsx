@@ -5,7 +5,7 @@ import { PHASE_LABELS, MIN_FLOW_MS } from '../../lib/constants'
 import { MINUTE_MS } from '../../lib/time'
 import type { TodoList } from '../../api/types'
 import { usePomodoroSettings } from '../settings/hooks'
-import { useAddFocus, useCompleteTodo, useResetTimer, useUpdateTodo } from '../todos/hooks'
+import { useCreateSession, useResetTimer, useUpdateTodo } from '../todos/hooks'
 import { toast } from 'react-hot-toast'
 import {
   ChevronLeftIcon,
@@ -26,8 +26,8 @@ type TimerFullScreenProps = {
   onClose: () => void
   todoId: string
   todoTitle: string
-  focusSeconds: number
-  pomodoroDone: number
+  sessionFocusSeconds: number
+  sessionCount: number
   initialMode?: 'stopwatch' | 'pomodoro'
   isDone?: boolean
 }
@@ -35,7 +35,7 @@ type TimerFullScreenProps = {
 // time formatters are extracted to timerFormat.ts
 
 export function TimerFullScreen(props: TimerFullScreenProps) {
-  const { isOpen, onClose, todoId, todoTitle, focusSeconds, pomodoroDone, initialMode, isDone = false } = props
+  const { isOpen, onClose, todoId, todoTitle, sessionFocusSeconds, sessionCount, initialMode, isDone = false } = props
   const [mounted, setMounted] = useState(false)
   const [selectedMode, setSelectedMode] = useState<'stopwatch' | 'pomodoro' | null>(null)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
@@ -45,8 +45,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
 
   const { data: settings } = usePomodoroSettings()
-  const completeTodo = useCompleteTodo() // 뽀모도로용 (횟수 + 시간)
-  const addFocus = useAddFocus() // 일반 타이머용 (시간만)
+  const createSession = useCreateSession() // Session API (뽀모도로/일반 타이머 통합)
   const updateTodo = useUpdateTodo()
   const resetTimer = useResetTimer() // 타이머 리셋용 (기록 삭제)
   const queryClient = useQueryClient()
@@ -57,7 +56,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const pause = useTimerStore((s) => s.pause)
   const resume = useTimerStore((s) => s.resume)
   const reset = useTimerStore((s) => s.reset)
-  const updateInitialFocusMs = useTimerStore((s) => s.updateInitialFocusMs)
   const skipToNext = useTimerStore((s) => s.skipToNext)
   const autoCompletedTodos = useTimerStore((s) => s.autoCompletedTodos)
   const getTimer = useTimerStore((s) => s.getTimer)
@@ -65,13 +63,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const startBreak = useTimerStore((s) => s.startBreak)
   const resumeFocus = useTimerStore((s) => s.resumeFocus)
   const calculateBreakSuggestion = useTimerStore((s) => s.calculateBreakSuggestion)
-  const updateSessionHistory = useTimerStore((s) => s.updateSessionHistory)
+  const updateSessions = useTimerStore((s) => s.updateSessions)
 
   // Global ticker is installed in AppProviders
 
   // 열릴 때 상태 초기화
   // 타이머 초기화 (isOpen이 true로 변경될 때만)
   const hasInitializedRef = useRef(false)
+  const pomodoroInitKeyRef = useRef<string | null>(null)
   
   useEffect(() => {
     if (isOpen && !hasInitializedRef.current) {
@@ -85,7 +84,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         reset(todoId)
         setSelectedMode(initialMode)
         if (initialMode === 'stopwatch') {
-          initStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
+          initStopwatch(todoId, sessionFocusSeconds * 1000, settings ?? undefined)
         } else if (initialMode === 'pomodoro' && settings) {
           initPomodoro(todoId, settings)
         }
@@ -100,7 +99,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         if (modeToUse) {
           setSelectedMode(modeToUse)
           if (modeToUse === 'stopwatch') {
-            initStopwatch(todoId, focusSeconds * 1000, settings ?? undefined)
+            initStopwatch(todoId, sessionFocusSeconds * 1000, settings ?? undefined)
           } else if (modeToUse === 'pomodoro' && settings) {
             initPomodoro(todoId, settings)
           }
@@ -112,19 +111,66 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       setMounted(true)
     } else if (!isOpen) {
       hasInitializedRef.current = false
-        setMounted(false)
+      pomodoroInitKeyRef.current = null
+      setMounted(false)
       setSelectedMode(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, todoId, initialMode])
 
   useEffect(() => {
-    if (!isOpen || !settings) return
+    if (!isOpen || !settings || !todoId) return
     if (selectedMode !== 'pomodoro') return
+    const initKey = `${todoId}:${selectedMode}`
+    if (pomodoroInitKeyRef.current === initKey) return
     const currentTimer = getTimer(todoId)
-    if (currentTimer && currentTimer.mode === 'pomodoro' && currentTimer.status !== 'idle') return
+    if (currentTimer && currentTimer.mode === 'pomodoro') {
+      pomodoroInitKeyRef.current = initKey
+      return
+    }
     initPomodoro(todoId, settings)
+    pomodoroInitKeyRef.current = initKey
   }, [isOpen, settings, selectedMode, todoId, getTimer, initPomodoro])
+
+  const sessionSyncBaselineRef = useRef(false)
+  const lastSyncedSessionsRef = useRef(0)
+
+  useEffect(() => {
+    if (!isOpen) {
+      sessionSyncBaselineRef.current = false
+      lastSyncedSessionsRef.current = 0
+      return
+    }
+
+    if (!timer || timer.mode !== 'stopwatch') return
+    const sessions = timer.sessions ?? []
+
+    if (!sessionSyncBaselineRef.current) {
+      lastSyncedSessionsRef.current = sessions.length
+      sessionSyncBaselineRef.current = true
+      return
+    }
+
+    if (sessions.length < lastSyncedSessionsRef.current) {
+      lastSyncedSessionsRef.current = sessions.length
+      return
+    }
+
+    if (sessions.length <= lastSyncedSessionsRef.current) return
+
+    const newSessions = sessions.slice(lastSyncedSessionsRef.current)
+    lastSyncedSessionsRef.current = sessions.length
+
+    newSessions.forEach((session) => {
+      createSession.mutate({
+        todoId,
+        body: {
+          sessionFocusSeconds: session.sessionFocusSeconds,
+          breakSeconds: session.breakSeconds,
+        },
+      })
+    })
+  }, [isOpen, timer, todoId, createSession])
 
   // 휴식에서 집중으로 전환될 때만 showTotalTime을 전체 누적(true)로 리셋
   const prevFlexiblePhaseRef = useRef<string | null>(null)
@@ -159,15 +205,15 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     if (!t || t.mode !== 'pomodoro') return
 
     // 중복 호출 방지: 진행 중이면 스킵
-    if (completeTodo.isPending) return
+    if (createSession.isPending) return
 
     // Flow 완료 시간 계산
     const plannedMs = settings.flowMin * MINUTE_MS
-    const durationSec = Math.round(plannedMs / 1000)
+    const sessionFocusSeconds = Math.round(plannedMs / 1000)
 
-    // API 호출: pomodoroDone 증가 + focusSeconds 증가
-    completeTodo.mutate(
-      { id: todoId, body: { durationSec } },
+    // API 호출: Session 생성 (sessionCount += 1, sessionFocusSeconds += sec)
+    createSession.mutate(
+      { todoId, body: { sessionFocusSeconds, breakSeconds: 0 } },
       {
         onSuccess: () => {
           // 처리 완료 후 Set에서 제거
@@ -175,7 +221,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         },
       }
     )
-  }, [todoId, autoCompletedTodos, settings, completeTodo, getTimer, clearAutoCompleted])
+  }, [todoId, autoCompletedTodos, settings, createSession, getTimer, clearAutoCompleted])
 
   // 닫을 때 타이머 처리
   const handleClose = async () => {
@@ -226,10 +272,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       settings: settings ?? undefined,
       pause,
       getTimer,
-      updateSessionHistory,
-      updateInitialFocusMs,
-      completeTodo: completeTodo.mutateAsync,
-      addFocus: addFocus.mutateAsync,
+      updateSessions,
+      createSession: createSession.mutateAsync,
       updateTodo: updateTodo.mutateAsync,
       nextOrder: getNextDoneOrder(),
       debug: timer.mode === 'stopwatch',
@@ -241,31 +285,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   // 일반 타이머에서 휴식 버튼 클릭 시
   const handleStartBreak = async (targetMs: number | null) => {
     if (!timer) return
-    
-    // 현재까지 집중한 시간 계산 (startBreak 호출 전에 미리 계산)
-    let currentFocusMs = timer.focusElapsedMs ?? 0
-    
-    // 실행 중이면 현재까지의 시간을 추가로 계산
-    if (timer.status === 'running' && timer.focusStartedAt) {
-      const delta = Date.now() - timer.focusStartedAt
-      currentFocusMs = timer.focusElapsedMs + delta
-    }
-    
-    const initialMs = timer.initialFocusMs ?? 0
-    const additionalMs = currentFocusMs - initialMs
-    const additionalSec = Math.round(additionalMs / 1000)
-    
+
     // 먼저 휴식으로 전환 (타이머 상태 변경)
-    // startBreak 내부에서 MIN_FLOW_MS 체크 후 sessionHistory에 추가됨
+    // 세션 확정은 휴식 종료 시점에 수행
     startBreak(todoId, targetMs)
     setShowBreakSelection(false)
-    
-    // 시간만 기록 (Flow 카운트는 완료 시에만)
-    if (additionalSec > 0) {
-      const response = await addFocus.mutateAsync({ id: todoId, body: { durationSec: additionalSec } })
-      const newFocusMs = response.focusSeconds * 1000
-      updateInitialFocusMs(todoId, newFocusMs)
-    }
   }
 
   const isRunning = timer?.status === 'running'
@@ -341,10 +365,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
             {/* 타이머 숫자 - 클릭으로 전환 */}
               {(() => {
-                const sessionHistory = timer?.sessionHistory ?? []
+                const sessions = timer?.sessions ?? []
                 
-                // sessionHistory의 모든 세션의 집중 시간만 합산 (breakMs는 제외)
-                const sessionHistoryTotalMs = sessionHistory.reduce((sum, session) => sum + session.focusMs, 0)
+                // sessions의 모든 세션의 집중 시간만 합산 (breakSeconds는 제외)
+                const sessionsTotalSeconds = sessions.reduce(
+                  (sum, session) => sum + session.sessionFocusSeconds,
+                  0,
+                )
+                const sessionsTotalMs = sessionsTotalSeconds * 1000
                 
                 // 현재 세션의 집중 시간만 계산 (실시간 반영, 휴식 시간 제외)
                 // focusElapsedMs는 누적값이므로, initialFocusMs를 빼야 현재 세션의 순수 집중 시간이 나옴
@@ -354,12 +382,12 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs) // 현재 세션의 집중 시간만
                 
                 // 전체 누적 집중 시간 = 이전 세션들의 집중 시간 + 현재 세션의 집중 시간
-                // 타이머가 시작되기 전이거나 sessionHistory가 비어있으면 DB의 focusSeconds 사용
-                // 주의: breakMs는 포함하지 않음! 집중 시간만 합산!
-                let totalAccumulatedMs = sessionHistoryTotalMs + currentSessionFocusMs
-                // 초기화 화면 (타이머가 시작되지 않았거나 sessionHistory가 비어있을 때) DB 값 사용
-                if (totalAccumulatedMs === 0 && focusSeconds > 0) {
-                  totalAccumulatedMs = focusSeconds * 1000
+                // 타이머가 시작되기 전이거나 sessions가 비어있으면 DB의 sessionFocusSeconds 사용
+                // 주의: breakSeconds는 포함하지 않음! 집중 시간만 합산!
+                let totalAccumulatedMs = sessionsTotalMs + currentSessionFocusMs
+                // 초기화 화면 (타이머가 시작되지 않았거나 sessions가 비어있을 때) DB 값 사용
+                if (totalAccumulatedMs === 0 && sessionFocusSeconds > 0) {
+                  totalAccumulatedMs = sessionFocusSeconds * 1000
                 }
                 
                 // 표시할 시간 (디폴트: 전체 누적)
@@ -383,17 +411,17 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 )
               })()}
 
-              {/* 세션 dots - 일반: sessionHistory 기반 (세션이 늘어나면 도트도 늘어남) */}
+              {/* 세션 dots - 일반: sessions 기반 (세션이 늘어나면 도트도 늘어남) */}
               <div className="mb-8 flex items-center justify-center gap-2.5">
                 {(() => {
-                  const sessionHistory = timer?.sessionHistory ?? []
+                  const sessions = timer?.sessions ?? []
                   
                   // 실제로 시작했는지 (running 상태이거나, paused 상태에서 시간이 진행된 경우)
                   const hasStarted = timer?.status === 'running' || (timer?.status === 'paused' && (timer?.focusElapsedMs ?? 0) > 0)
                   
-                  // 일반 타이머: sessionHistory.length + (현재 진행 중인 세션이 있으면 1)
+                  // 일반 타이머: sessions.length + (현재 진행 중인 세션이 있으면 1)
                   // 세션이 늘어나면 도트도 자동으로 늘어남
-                  const completedSessions = sessionHistory.length
+                  const completedSessions = sessions.length
                   const totalDots = completedSessions + (timer?.flexiblePhase === 'focus' && hasStarted ? 1 : 0)
                   
                   // 도트가 없으면 빈 공간
@@ -402,7 +430,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   }
                   
                   return Array.from({ length: totalDots }).map((_, i) => {
-                    const isActuallyCompleted = i < completedSessions  // 실제로 완료된 Flow (sessionHistory에 있는 세션)
+                    const isActuallyCompleted = i < completedSessions  // 실제로 완료된 Flow (sessions에 있는 세션)
                     const isCurrent = i === completedSessions && timer?.flexiblePhase === 'focus'  // 현재 진행 중
                     
                     return (
@@ -458,7 +486,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 {!isDone && (
                   <button
                     onClick={() => setShowCompleteModal(true)}
-                    disabled={addFocus.isPending || updateTodo.isPending}
+                    disabled={createSession.isPending || updateTodo.isPending}
                     className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white">
@@ -525,13 +553,16 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 )
               })()}
 
-              {/* 세션 dots - 일반: 휴식 중에도 전체 세션 표시 (sessionHistory 기반) */}
+              {/* 세션 dots - 일반: 휴식 중에도 전체 세션 표시 (sessions 기반) */}
               <div className="mb-8 flex items-center justify-center gap-2.5">
                 {(() => {
-                  const sessionHistory = timer?.sessionHistory ?? []
-                  const completedSessions = sessionHistory.length
-                  // 휴식 중이므로 현재 세션도 완료된 것으로 간주 (sessionHistory에 이미 추가됨)
-                  const totalDots = Math.max(completedSessions, 1) // 최소 1개 이상
+                  const sessions = timer?.sessions ?? []
+                  const completedSessions = sessions.length
+                  const currentInitialMs = timer?.initialFocusMs ?? 0
+                  const focusElapsedMs = timer?.focusElapsedMs ?? 0
+                  const pendingSession = focusElapsedMs - currentInitialMs >= MIN_FLOW_MS
+                  // 휴식 중에는 현재 세션이 아직 확정되지 않았으므로 pending으로 표시
+                  const totalDots = Math.max(completedSessions + (pendingSession ? 1 : 0), 1) // 최소 1개 이상
                   const isInBreak = timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free'
                   const isRecommendedBreak = timer?.flexiblePhase === 'break_suggested' && timer?.breakTargetMs
                   
@@ -547,8 +578,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   const hasStarted = timer?.status === 'running' || (timer?.status === 'paused' && (timer?.breakElapsedMs ?? 0) > 0)
                   
                   return Array.from({ length: totalDots }).map((_, i) => {
-                    const isCompleted = i < completedSessions  // 완료된 Flow (sessionHistory에 있는 세션)
-                    const isCurrent = i === completedSessions - 1 && isInBreak && hasStarted  // 현재 진행 중인 휴식 (마지막 세션)
+                    const isCompleted = i < completedSessions  // 완료된 Flow (sessions에 있는 세션)
+                    const isCurrent = pendingSession && i === completedSessions && isInBreak && hasStarted  // 현재 진행 중인 휴식
                     
                     return (
                       <span
@@ -612,7 +643,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 {!isDone && (
                   <button
                     onClick={() => setShowCompleteModal(true)}
-                    disabled={addFocus.isPending || updateTodo.isPending}
+                    disabled={createSession.isPending || updateTodo.isPending}
                     className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-emerald-600">
@@ -659,7 +690,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 const totalDots = Math.max(settings?.cycleEvery ?? 4, currentCycle + (timer?.phase === 'flow' && hasStarted ? 1 : 0))
                 
                 return Array.from({ length: totalDots }).map((_, i) => {
-                const isActuallyCompleted = i < pomodoroDone  // 실제로 완료된 Flow
+                const isActuallyCompleted = i < sessionCount  // 실제로 완료된 Flow
                 const isSkipped = i < currentCycle && !isActuallyCompleted  // 스킵된 사이클
                 const isCurrent = i === currentCycle && timer?.phase === 'flow' && hasStarted  // 현재 진행 중 (시작 후에만)
                 
@@ -733,7 +764,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               {!isDone && (
                 <button
                   onClick={() => setShowCompleteModal(true)}
-                  disabled={addFocus.isPending || completeTodo.isPending || updateTodo.isPending}
+                  disabled={createSession.isPending || createSession.isPending || updateTodo.isPending}
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className={`flex h-14 w-14 items-center justify-center rounded-full ${
@@ -754,7 +785,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       {/* 완료 확인 모달 */}
       {showCompleteModal && (() => {
         // 일반 타이머: 총계 계산
-        const sessionHistory = timer?.sessionHistory ?? []
+        const sessions = timer?.sessions ?? []
         let totalSessions = 0
         let totalFocusMs = 0
         let totalFocusTime = ''
@@ -766,16 +797,17 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           const isCurrentSessionValid = currentSessionMs >= MIN_FLOW_MS
           
           // 총 세션 수 (히스토리에는 이미 MIN_FLOW_MS 이상인 세션만 포함됨 + 현재 세션)
-          totalSessions = sessionHistory.length + (isCurrentSessionValid ? 1 : 0)
+          totalSessions = sessions.length + (isCurrentSessionValid ? 1 : 0)
           
-          // 총 집중 시간 (ms) - 히스토리의 모든 세션 + 현재 세션 (유효한 경우만)
-          totalFocusMs = sessionHistory.reduce((sum, session) => sum + session.focusMs, 0) + 
-                        (isCurrentSessionValid ? currentSessionMs : 0)
+          // 총 집중 시간 (ms) - sessions의 모든 세션 + 현재 세션 (유효한 경우만)
+          totalFocusMs =
+            sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0) * 1000 +
+            (isCurrentSessionValid ? currentSessionMs : 0)
           
           totalFocusTime = formatMs(totalFocusMs)
         } else if (timer?.mode === 'pomodoro') {
           // 뽀모도로: 총계 계산
-          // 현재 Flow가 진행 중이면 포함 (Break 중이면 이미 sessionHistory에 포함됨)
+          // 현재 Flow가 진행 중이면 포함 (Break 중이면 이미 sessions에 포함됨)
           const isFlowInProgress = timer.phase === 'flow' && timer.status !== 'idle'
           let currentFlowMs = 0
           
@@ -787,10 +819,12 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           }
           
           // 총 세션 수 (히스토리 + 현재 Flow 진행 중이면 1)
-          totalSessions = sessionHistory.length + (isFlowInProgress ? 1 : 0)
+          totalSessions = sessions.length + (isFlowInProgress ? 1 : 0)
           
-          // 총 집중 시간 (ms) - 히스토리의 모든 세션 + 현재 Flow (있는 경우)
-          totalFocusMs = sessionHistory.reduce((sum, session) => sum + session.focusMs, 0) + currentFlowMs
+          // 총 집중 시간 (ms) - sessions의 모든 세션 + 현재 Flow (있는 경우)
+          totalFocusMs =
+            sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0) * 1000 +
+            currentFlowMs
           
           totalFocusTime = formatMs(totalFocusMs)
         }
@@ -862,7 +896,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 onClick={async () => {
                   setShowResetModal(false)
                   
-                  // DB에서 기록 삭제 (focusSeconds, pomodoroDone, timerMode 초기화)
+                  // DB에서 기록 삭제 (sessionFocusSeconds, sessionCount, timerMode 초기화)
                   await resetTimer.mutateAsync(todoId)
                   
                   // 타이머 완전히 제거 (store에서 타이머 자체를 삭제)
