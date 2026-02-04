@@ -26,25 +26,27 @@ export function TimeflowChart({ title, data, onBarSelect }: TimeflowChartProps) 
       : data.length <= 31
         ? 'gap-1'
         : 'gap-1'
-  const trackHeightClass = data.length <= 12 ? 'h-32' : 'h-28'
+  const trackHeightClass = data.length <= 12 ? 'h-28' : 'h-24'
   const labelClass = data.length <= 12 ? 'text-xs' : 'text-[10px]'
 
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
         {activeItem && (
-          <span className="text-xs font-semibold text-emerald-600">
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
             {formatFocusTime(activeItem.seconds)}
           </span>
         )}
       </div>
       <div
-        className={`mt-5 flex items-end ${gapClass}`}
+        className={`mt-4 flex items-end ${gapClass}`}
         onMouseLeave={() => setActiveIndex(null)}
       >
         {data.length === 0 && (
-          <p className="text-sm text-gray-400">표시할 데이터가 없습니다.</p>
+          <p className="w-full rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center text-xs text-gray-400">
+            아직 표시할 집중 기록이 없습니다.
+          </p>
         )}
         {data.map((item, index) => {
           const ratio = max > 0 ? Math.round((item.seconds / max) * 100) : 0

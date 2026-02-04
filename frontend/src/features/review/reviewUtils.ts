@@ -11,6 +11,7 @@ import type {
 } from './reviewTypes'
 
 const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
+const WEEKDAY_SHORT_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 
 const toStartOfDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -52,6 +53,14 @@ export function formatFocusTime(seconds: number): string {
     return `${minutes}분`
   }
   return '0분'
+}
+
+export function formatTaskDateLabel(dateKey: string): string {
+  const date = parseDateKey(dateKey)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const weekday = WEEKDAY_SHORT_LABELS[date.getDay()] ?? ''
+  return `${month}.${day} (${weekday})`
 }
 
 export function getPeriodRange(type: PeriodType, baseDate: Date): PeriodRange {
