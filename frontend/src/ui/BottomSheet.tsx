@@ -87,9 +87,12 @@ export function BottomSheet({
         {title && (
           <div className="relative border-b border-gray-100 px-5 pb-3">
             <h3 className={`text-center text-base font-semibold text-gray-900 truncate ${titleClassName}`}>{title}</h3>
-            {headerAction ? (
-              <div className="absolute right-4 top-1/2 -translate-y-1/2">{headerAction}</div>
-            ) : showCloseButton ? (
+            {headerAction && (
+              <div className={`absolute top-1/2 -translate-y-1/2 ${showCloseButton ? 'right-12' : 'right-4'}`}>
+                {headerAction}
+              </div>
+            )}
+            {showCloseButton && (
               <button
                 type="button"
                 aria-label={closeButtonAriaLabel}
@@ -98,7 +101,7 @@ export function BottomSheet({
               >
                 <CloseIcon className="h-4 w-4" />
               </button>
-            ) : null}
+            )}
           </div>
         )}
 

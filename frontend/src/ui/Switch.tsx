@@ -8,11 +8,11 @@ type SwitchProps = {
 
 export function Switch({ checked, onChange, disabled, label, description }: SwitchProps) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-4">
+    <label className="flex cursor-pointer items-center justify-between gap-3">
       {(label || description) && (
         <div className="flex-1">
-          {label && <span className="text-sm text-gray-900">{label}</span>}
-          {description && <p className="text-xs text-gray-400">{description}</p>}
+          {label && <span className="text-sm font-medium text-gray-900">{label}</span>}
+          {description && <p className="mt-0.5 text-xs text-gray-500">{description}</p>}
         </div>
       )}
       <button
