@@ -29,6 +29,7 @@ src/
 │   ├── http.ts            # fetch 래퍼
 │   ├── todos.ts           # Todo API
 │   ├── settings.ts        # Settings API
+│   ├── reviews.ts         # Review API
 │   └── types.ts           # Zod 스키마 & 타입
 ├── app/                    # 앱 설정
 │   ├── App.tsx            # 레이아웃 & 네비게이션
@@ -43,7 +44,12 @@ src/
 │   │   │   └── SortableTodoItem.tsx
 │   │   ├── hooks.ts       # useTodos, useCreateTodo 등
 │   │   ├── useTodoActions.ts  # 핸들러 훅
-│   │   └── statsUtils.ts  # 통계 계산/포맷 유틸
+│   │   └── todoTimerDisplay.ts # 타이머 표시 유틸
+│   ├── review/            # 회고 기능
+│   │   ├── ReviewPage.tsx
+│   │   ├── components/
+│   │   ├── hooks.ts
+│   │   └── reviewUtils.ts
 │   ├── timer/             # 타이머 기능
 │   │   ├── TimerFullScreen.tsx
 │   │   ├── timerStore.ts      # Zustand 스토어 (로직/액션)
@@ -87,7 +93,8 @@ src/
 | 경로                 | 페이지               | 설명               |
 | -------------------- | -------------------- | ------------------ |
 | `/todos`    | TodosPage            | 캘린더 + Todo 목록 |
-| `/stats`    | StatsPage            | 통계 페이지        |
+| `/review`   | ReviewPage           | 회고(통계+일기)    |
+| `/stats`    | -                    | `/review`로 리다이렉트 |
 | `/settings` | PomodoroSettingsPage | 타이머 설정        |
 
 - 타이머는 풀스크린 오버레이 (`TimerFullScreen`)로 구현
@@ -112,6 +119,9 @@ src/
 - `useUpdatePomodoroSettings` - 세션/자동화 분리 업데이트
 - `useMiniDaysSettings` - MiniDays 설정 조회
 - `useSettings` - 통합 Settings 조회(옵션)
+- `useReview` - 회고(일기) 조회
+- `useUpsertReview` - 회고 저장/수정
+- `usePeriodStats` - 기간별 회고 통계 계산
 
 ### 클라이언트 상태 (Zustand)
 - `timerStore` - 타이머 상태 관리
@@ -139,9 +149,9 @@ src/
 ## 5. 주요 기능
 
 ### 캘린더
-- 월간/주간 뷰 전환
+- 일/주/월/연 뷰 전환 (화면별로 허용 모드 지정 가능)
 - 스와이프로 월/주 이동
-- 날짜별 진행도 표시 (남은 개수 / 완료 체크)
+- 날짜별 진행도 표시 (남은 개수 / 완료 체크) 토글 가능
 - 오늘 버튼
 
 ### Todo
@@ -152,8 +162,10 @@ src/
   - UI에는 Day 숫자 대신 라벨만 노출
 - 라벨/시간 범위는 miniDays 설정에서 로드 (기본: 오전/오후/저녁, 설정 UI에서 수정 가능)
 - 드래그로 순서 변경 및 섹션 간 이동 (@dnd-kit)
-- 완료된 Todo는 해당 섹션의 완료 그룹에 유지
-  - 완료된 항목을 다른 섹션 위에 드롭하면 완료 상태로 해당 섹션에 이동
+- 완료된 Todo는 **항상 섹션 하단**으로 정렬 (완료/미완료 UI 분리 없음)
+  - 완료/미완료 전환 시 자동 재정렬
+- 섹션 라벨 **옆에 완료/전체 카운트** 표시 (예: `4/5`)
+- 시간 범위는 라벨 아래에 표시
 - 메모 기능
   - 순서는 `dayOrder`로 관리되며, 드래그 시 `PUT /api/todos/reorder`로 저장
   - 각 Todo는 `miniDay`(0~3)로 섹션을 결정
@@ -164,31 +176,22 @@ src/
 - 계산: Session(`sessions`) 합계 우선, 없으면 `sessionFocusSeconds` 사용
 - 섹션 헤더 옆에 **해당 섹션 기준 Flow 합계** 표시  
   - 표기: `Flow · ?시간 ?분`
-- 완료 섹션 헤더 옆에 **완료된 태스크 기준 Flow 합계** 표시  
-  - 표기: `완료됨 · ?시간 ?분`
 
 #### 태스크 추가 방법
 **입력 필드 열기:**
 - 각 섹션의 `+` 버튼 클릭
-- 해당 섹션 맨 아래에 인라인 입력 필드 표시
+- 기본 위치: **미완료 리스트 아래 (완료 리스트 위)**
+- 단, **모두 완료된 섹션**에서는 입력 필드가 **맨 위**에 표시
 
 **태스크 추가:**
 1. **Enter 키로 추가**
-   - 태스크 추가 후 입력 필드 초기화
-   - 입력 필드 유지 (연속 입력 가능)
+   - 태스크 추가 후 입력 필드 유지 (연속 입력 가능)
    - 자동 포커스 유지
-   - 여러 태스크를 빠르게 추가할 때 유용
-
-2. **다른 곳 클릭 (blur)으로 추가**
-   - 태스크 추가 후 입력 필드 닫힘
-   - 한 번만 추가할 때 유용
-
-3. **빈 상태에서 다른 곳 클릭**
-   - 태스크 추가 안 됨
-   - 입력 필드만 닫힘
-
-**중복 방지:**
-- `isSubmittingRef` 플래그로 Enter와 blur 동시 발생 시 중복 POST 요청 방지
+2. **다른 곳 클릭 (blur)**
+   - 입력한 내용으로 태스크 추가
+   - 입력값이 비어 있으면 닫힘
+3. **Escape**
+   - 입력 내용 초기화 + 입력 필드 닫힘
 
 ### 설정 (Pomodoro)
 - **경로**: `/settings`
@@ -205,19 +208,24 @@ src/
   - 미분류 섹션은 고정
   - 시간 구간은 연속일 필요가 없으며 공백을 허용
 
-### 통계 페이지
-- **경로**: `/stats`
-- **기능**:
-  - 전체 통계: 총 태스크, 완료 태스크, Flow 세션, 집중 시간
-  - 날짜별 통계: 날짜별 태스크, 완료, Flow, 집중 시간
-  - 태스크별 상세 정보:
-    - 타이머 모드, Flow 세션 수, 집중 시간, 휴식 시간, 전체 걸린 시간
-    - 세션 상세: 각 Flow별 집중 시간과 휴식 시간
-  - 진행 중인 타이머 정보
+### 회고 페이지
+- **경로**: `/review` (`/stats`는 `/review`로 리다이렉트)
+- **현재 범위**: **일간/주간/월간/연간 회고 활성화**
+- **구성**:
+  - 캘린더: day/week/month/year 뷰
+  - 요약 카드: 집중 시간, Flow 세션, 완료 태스크
+  - 흐름 차트:
+    - 일간: miniDay 기준 분포
+    - 주간: 요일별 분포
+    - 월간: 주차별 분포
+    - 연간: 월별 분포
+- 회고 카드: BottomSheet로 회고 작성/보기
+  - 저장/삭제는 모달 상단 액션으로 수행 (자동 저장 없음)
+  - 회고 모달 내: miniDay 라벨별 **완료/미완료** 2열 리스트
 - **데이터 소스**:
-- Session(`sessions`) 기반 집중 시간 계산 (일반 타이머)
-- `sessionFocusSeconds`, `sessionCount` (뽀모도로 또는 Session 미존재 시)
-> Note: MVP에서는 하단 탭에서 통계 탭을 숨김. 필요 시 URL로 직접 접근.
+  - Session(`sessions`) 기반 집중 시간 계산 (일반 타이머)
+  - `sessionFocusSeconds`, `sessionCount` (뽀모도로 또는 Session 미존재 시)
+  - 회고 일기는 Review API(`GET/PUT/DELETE /api/reviews`)로 저장
 
 #### 태스크 편집
 - 태스크 제목 클릭 시 인라인 편집 모드
