@@ -223,4 +223,49 @@ describe('timerStore', () => {
     expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 0 })
   })
 
+  it('does not add session on extra break completion and confirms once on resumeFocus', () => {
+    const breakTargetMs = 10_000
+    const start = new Date('2026-01-09T00:00:00Z').getTime()
+
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'stopwatch',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'flow',
+          flexiblePhase: 'break_suggested',
+          focusElapsedMs: 12_000,
+          initialFocusMs: 0,
+          breakElapsedMs: 9_500,
+          breakTargetMs,
+          breakCompleted: false,
+          breakStartedAt: start,
+          sessions: [],
+        },
+      },
+      autoCompletedTodos: new Set(),
+    })
+
+    vi.setSystemTime(new Date(start + 1_000))
+    useTimerStore.getState().tick()
+
+    const afterBreakComplete = useTimerStore.getState().getTimer('todo-1')
+    expect(afterBreakComplete?.breakCompleted).toBe(true)
+    expect(afterBreakComplete?.flexiblePhase).toBe('break_suggested')
+    expect(afterBreakComplete?.sessions).toHaveLength(0)
+
+    vi.setSystemTime(new Date(start + 3_000))
+    useTimerStore.getState().tick()
+    const afterExtraBreak = useTimerStore.getState().getTimer('todo-1')
+    expect(afterExtraBreak?.sessions).toHaveLength(0)
+
+    useTimerStore.getState().resumeFocus('todo-1')
+    const afterResumeFocus = useTimerStore.getState().getTimer('todo-1')
+
+    expect(afterResumeFocus?.sessions).toHaveLength(1)
+    expect(afterResumeFocus?.sessions[0]?.sessionFocusSeconds).toBe(12)
+    expect(afterResumeFocus?.flexiblePhase).toBe('focus')
+  })
 })

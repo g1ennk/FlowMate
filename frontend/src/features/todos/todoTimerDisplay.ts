@@ -1,3 +1,9 @@
+import {
+  getCurrentSessionFocusMs,
+  getSessionsTotalFocusMs,
+  getTotalAccumulatedFocusMs,
+} from '../../lib/stopwatchMetrics'
+
 type SessionRecord = { sessionFocusSeconds: number; breakSeconds: number }
 
 type TodoTimerDisplayArgs = {
@@ -27,21 +33,17 @@ export function getTodoDisplayTimeSeconds({
 }: TodoTimerDisplayArgs) {
   let displayTimeSeconds: number
 
-  let sessionsFocusSeconds: number | null = null
-  if (sessions.length > 0) {
-    const sessionsTotalSeconds = sessions.reduce((sum, s) => sum + s.sessionFocusSeconds, 0)
-
-    if (activeTimerElapsedMs !== undefined && isActiveTimer) {
-      const currentSessionSeconds = Math.floor(
-        Math.max(0, activeTimerElapsedMs - initialFocusMs) / 1000,
+  const sessionsTotalMs = getSessionsTotalFocusMs(sessions)
+  const sessionsFocusSeconds = sessions.length > 0 ? Math.floor(sessionsTotalMs / 1000) : null
+  const accumulatedFocusSeconds =
+    sessions.length > 0 && activeTimerElapsedMs !== undefined && isActiveTimer
+      ? Math.floor(
+        getTotalAccumulatedFocusMs(activeTimerElapsedMs, initialFocusMs, sessions) / 1000,
       )
-      sessionsFocusSeconds = sessionsTotalSeconds + currentSessionSeconds
-    } else {
-      sessionsFocusSeconds = sessionsTotalSeconds
-    }
-  }
+      : sessionsFocusSeconds
 
   if (isDone) {
+    // 완료된 항목은 확정 세션 합계를 우선 사용해 이중 집계를 방지한다.
     displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds
   } else if (isActiveTimer) {
     if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
@@ -58,9 +60,10 @@ export function getTodoDisplayTimeSeconds({
       displayTimeSeconds = Math.ceil(activeTimerRemainingMs / 1000)
     } else if (activeTimerElapsedMs !== undefined) {
       if (sessions.length > 0) {
-        displayTimeSeconds = sessionsFocusSeconds ?? Math.floor(activeTimerElapsedMs / 1000)
+        displayTimeSeconds = accumulatedFocusSeconds ?? Math.floor(activeTimerElapsedMs / 1000)
       } else {
-        displayTimeSeconds = Math.floor(activeTimerElapsedMs / 1000)
+        const currentSessionMs = getCurrentSessionFocusMs(activeTimerElapsedMs, initialFocusMs, [])
+        displayTimeSeconds = Math.floor(currentSessionMs / 1000)
       }
     } else {
       displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds

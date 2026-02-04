@@ -20,6 +20,11 @@ import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 import { completeTaskFromTimer } from './completeHelpers'
 import { formatCountdown, formatMs, formatStopwatch } from './timerFormat'
 import { queryKeys } from '../../lib/queryKeys'
+import {
+  getCurrentSessionFocusMs,
+  getSessionsTotalFocusMs,
+  getTotalAccumulatedFocusMs,
+} from '../../lib/stopwatchMetrics'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -366,25 +371,12 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             {/* 타이머 숫자 - 클릭으로 전환 */}
               {(() => {
                 const sessions = timer?.sessions ?? []
-                
-                // sessions의 모든 세션의 집중 시간만 합산 (breakSeconds는 제외)
-                const sessionsTotalSeconds = sessions.reduce(
-                  (sum, session) => sum + session.sessionFocusSeconds,
-                  0,
-                )
-                const sessionsTotalMs = sessionsTotalSeconds * 1000
-                
-                // 현재 세션의 집중 시간만 계산 (실시간 반영, 휴식 시간 제외)
-                // focusElapsedMs는 누적값이므로, initialFocusMs를 빼야 현재 세션의 순수 집중 시간이 나옴
-                // 일시정지 상태에서는 delta를 더하지 않음
-                const currentSessionMs = timer?.focusElapsedMs ?? 0
+
+                const currentFocusMs = timer?.focusElapsedMs ?? 0
                 const initialMs = timer?.initialFocusMs ?? 0
-                const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs) // 현재 세션의 집중 시간만
-                
-                // 전체 누적 집중 시간 = 이전 세션들의 집중 시간 + 현재 세션의 집중 시간
-                // 타이머가 시작되기 전이거나 sessions가 비어있으면 DB의 sessionFocusSeconds 사용
-                // 주의: breakSeconds는 포함하지 않음! 집중 시간만 합산!
-                let totalAccumulatedMs = sessionsTotalMs + currentSessionFocusMs
+                const currentSessionFocusMs = getCurrentSessionFocusMs(currentFocusMs, initialMs, sessions)
+
+                let totalAccumulatedMs = getTotalAccumulatedFocusMs(currentFocusMs, initialMs, sessions)
                 // 초기화 화면 (타이머가 시작되지 않았거나 sessions가 비어있을 때) DB 값 사용
                 if (totalAccumulatedMs === 0 && sessionFocusSeconds > 0) {
                   totalAccumulatedMs = sessionFocusSeconds * 1000
@@ -560,7 +552,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   const completedSessions = sessions.length
                   const currentInitialMs = timer?.initialFocusMs ?? 0
                   const focusElapsedMs = timer?.focusElapsedMs ?? 0
-                  const pendingSession = focusElapsedMs - currentInitialMs >= MIN_FLOW_MS
+                  const pendingSession =
+                    getCurrentSessionFocusMs(focusElapsedMs, currentInitialMs, sessions) >= MIN_FLOW_MS
                   // 휴식 중에는 현재 세션이 아직 확정되지 않았으므로 pending으로 표시
                   const totalDots = Math.max(completedSessions + (pendingSession ? 1 : 0), 1) // 최소 1개 이상
                   const isInBreak = timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free'
@@ -793,16 +786,15 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         if (timer?.mode === 'stopwatch') {
           const currentFocusMs = timer?.focusElapsedMs ?? 0
           const initialMs = timer?.initialFocusMs ?? 0
-          const currentSessionMs = currentFocusMs - initialMs
+          const sessionsTotalMs = getSessionsTotalFocusMs(sessions)
+          const currentSessionMs = getCurrentSessionFocusMs(currentFocusMs, initialMs, sessions)
           const isCurrentSessionValid = currentSessionMs >= MIN_FLOW_MS
           
           // 총 세션 수 (히스토리에는 이미 MIN_FLOW_MS 이상인 세션만 포함됨 + 현재 세션)
           totalSessions = sessions.length + (isCurrentSessionValid ? 1 : 0)
           
           // 총 집중 시간 (ms) - sessions의 모든 세션 + 현재 세션 (유효한 경우만)
-          totalFocusMs =
-            sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0) * 1000 +
-            (isCurrentSessionValid ? currentSessionMs : 0)
+          totalFocusMs = sessionsTotalMs + (isCurrentSessionValid ? currentSessionMs : 0)
           
           totalFocusTime = formatMs(totalFocusMs)
         } else if (timer?.mode === 'pomodoro') {
@@ -919,14 +911,15 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       {/* 휴식 선택 바텀시트 */}
       {showBreakSelection && timer && (() => {
         // 현재 세션의 집중 시간 계산 (전체 누적이 아닌 현재 Flow만)
-        let currentSessionMs = timer.focusElapsedMs ?? 0
+        let currentFocusMs = timer.focusElapsedMs ?? 0
         if (timer.status === 'running' && timer.focusStartedAt) {
           // running 상태일 때는 실시간 delta 추가
           const delta = Date.now() - timer.focusStartedAt
-          currentSessionMs = currentSessionMs + delta
+          currentFocusMs = currentFocusMs + delta
         }
+        const sessions = timer.sessions ?? []
         const initialMs = timer.initialFocusMs ?? 0
-        const currentSessionFocusMs = Math.max(0, currentSessionMs - initialMs) // 현재 세션의 집중 시간만
+        const currentSessionFocusMs = getCurrentSessionFocusMs(currentFocusMs, initialMs, sessions)
         
         return (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">

@@ -466,16 +466,26 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                 // 뽀모도로 설정의 autoStartSession에 따라 자동 집중 시작
                 const autoStartSession = timer.settingsSnapshot?.autoStartSession ?? false
                 
-                // 휴식 종료 시점에 세션 확정
-                const newSessions = [...timer.sessions]
                 const currentInitialMs = timer.initialFocusMs ?? 0
                 const focusElapsedMs = timer.focusElapsedMs ?? 0
-                const currentSessionMs = focusElapsedMs - currentInitialMs
-                if (currentSessionMs >= MIN_FLOW_MS) {
-                  newSessions.push({
-                    sessionFocusSeconds: Math.round(currentSessionMs / 1000),
-                    breakSeconds: Math.round(newBreakElapsed / 1000),
-                  })
+                const recordedMs = timer.sessions.reduce(
+                  (sum, session) => sum + session.sessionFocusSeconds * 1000,
+                  0,
+                )
+                const baselineMs = Math.max(currentInitialMs, recordedMs)
+                const currentSessionMs = Math.max(0, focusElapsedMs - baselineMs)
+                const currentSessionSec = Math.round(currentSessionMs / 1000)
+                const currentBreakSec = Math.round(newBreakElapsed / 1000)
+
+                let newSessions = timer.sessions
+                if (autoStartSession && currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
+                  newSessions = [
+                    ...timer.sessions,
+                    {
+                      sessionFocusSeconds: currentSessionSec,
+                      breakSeconds: currentBreakSec,
+                    },
+                  ]
                 }
                 if (autoStartSession) {
                   // 자동으로 집중 시작
@@ -495,13 +505,12 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     sessions: newSessions,
                   })
                 } else {
-                  // 추가 휴식 카운트업 유지 (사용자가 수동으로 집중 시작/완료)
+                  // 추가 휴식 카운트업 유지 (세션 확정은 resumeFocus/완료 시점에 수행)
                   updateTimer(todoId, {
                     breakElapsedMs: newBreakElapsed,
                     breakCompleted: true,
                     status: 'running',
                     breakStartedAt: Date.now(),
-                    sessions: newSessions,
                   })
                 }
                 
@@ -755,13 +764,20 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       // 현재 세션 확정 (휴식 종료 시점에 세션 카운트)
       const currentInitialMs = timer.initialFocusMs ?? 0
       const focusElapsedMs = timer.focusElapsedMs ?? 0
-      const currentSessionMs = focusElapsedMs - currentInitialMs
+      const recordedMs = timer.sessions.reduce(
+        (sum, session) => sum + session.sessionFocusSeconds * 1000,
+        0,
+      )
+      const baselineMs = Math.max(currentInitialMs, recordedMs)
+      const currentSessionMs = Math.max(0, focusElapsedMs - baselineMs)
+      const currentSessionSec = Math.round(currentSessionMs / 1000)
+      const currentBreakSec = Math.round(newBreakElapsed / 1000)
 
       const newSessions = [...timer.sessions]
-      if (currentSessionMs >= MIN_FLOW_MS) {
+      if (currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
         newSessions.push({
-          sessionFocusSeconds: Math.round(currentSessionMs / 1000),
-          breakSeconds: Math.round(newBreakElapsed / 1000),
+          sessionFocusSeconds: currentSessionSec,
+          breakSeconds: currentBreakSec,
         })
       }
       
