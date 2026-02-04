@@ -4,7 +4,7 @@ import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
 import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
 import { Switch } from '../../ui/Switch'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
-import { useMiniDaysSettings, usePomodoroSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
+import { useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
 import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
 
 const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
@@ -128,8 +128,7 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
 }
 
 function PomodoroSettingsPage() {
-  const { data, isLoading } = usePomodoroSettings()
-  const { data: miniDaysData } = useMiniDaysSettings()
+  const { data: settingsData, isLoading } = useSettings()
   const updateSettings = useUpdatePomodoroSettings()
   const updateMiniDays = useUpdateMiniDaysSettings()
   const [overrides, setOverrides] = useState<Partial<PomodoroSettings>>({})
@@ -143,7 +142,18 @@ function PomodoroSettingsPage() {
     minute: number
     is24: boolean
   }>({ period: 'am', hour: 6, minute: 0, is24: false })
-  const miniDaysBase = miniDaysData ?? defaultMiniDaysSettings
+  const data = useMemo(
+    () =>
+      settingsData
+        ? {
+            ...settingsData.pomodoroSession,
+            autoStartBreak: settingsData.automation.autoStartBreak ?? false,
+            autoStartSession: settingsData.automation.autoStartSession ?? false,
+          }
+        : undefined,
+    [settingsData],
+  )
+  const miniDaysBase = settingsData?.miniDays ?? defaultMiniDaysSettings
 
   const values = useMemo(
     () => ({
@@ -160,8 +170,7 @@ function PomodoroSettingsPage() {
 
   const commitSettings = (next: Partial<PomodoroSettings>) => {
     setOverrides((prev) => ({ ...prev, ...next }))
-    const updated = { ...values, ...next }
-    updateSettings.mutate(updated, {
+    updateSettings.mutate(next, {
       onSuccess: () => toast.success('저장됨', { id: 'settings-saved' }),
     })
   }

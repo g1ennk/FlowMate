@@ -19,8 +19,7 @@ import {
 } from './reviewUtils'
 import { formatDateKey } from '../../ui/calendarUtils'
 
-// const PERIODS: PeriodType[] = ['daily', 'weekly', 'monthly', 'yearly']
-const PERIODS: PeriodType[] = ['daily']
+const PERIODS: PeriodType[] = ['daily', 'weekly', 'monthly']
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/
 
 const resolvePeriod = (value: string | null): PeriodType =>
@@ -31,31 +30,27 @@ const resolveDateKey = (value: string | null) =>
 
 const PERIOD_VIEW_MODES: Partial<Record<PeriodType, ViewMode>> = {
   daily: 'day',
-  // weekly: 'week',
-  // monthly: 'month',
-  // yearly: 'year',
+  weekly: 'week',
+  monthly: 'month',
 }
 
 const VIEW_MODE_PERIODS: Partial<Record<ViewMode, PeriodType>> = {
   day: 'daily',
-  // week: 'weekly',
-  // month: 'monthly',
-  // year: 'yearly',
+  week: 'weekly',
+  month: 'monthly',
 }
 
 const getChartTitle = (type: PeriodType) => {
   if (type === 'daily') return '시간대별 흐름'
-  // if (type === 'weekly') return '요일별 흐름'
-  // if (type === 'monthly') return '주차별 흐름'
-  // return '월별 흐름'
+  if (type === 'weekly') return '요일별 흐름'
+  if (type === 'monthly') return '주차별 흐름'
   return '시간대별 흐름'
 }
 
 const getDiaryTitle = (type: PeriodType) => {
   if (type === 'daily') return '오늘 회고'
-  // if (type === 'weekly') return '주간 회고'
-  // if (type === 'monthly') return '월간 회고'
-  // return '연간 회고'
+  if (type === 'weekly') return '주간 회고'
+  if (type === 'monthly') return '월간 회고'
   return '오늘 회고'
 }
 
@@ -110,7 +105,6 @@ export function ReviewPage() {
   const range = reviewRange
 
   const miniDayGroups = useMemo<MiniDayGroup[]>(() => {
-    if (period !== 'daily') return []
     const groups = [
       { id: 0, label: '미분류' },
       { id: 1, label: miniDaysSettings.day1.label },
@@ -123,7 +117,7 @@ export function ReviewPage() {
       completed: stats.completedTodos.filter((item) => (item.miniDay ?? 0) === group.id),
       incomplete: stats.incompleteTodos.filter((item) => (item.miniDay ?? 0) === group.id),
     }))
-  }, [period, miniDaysSettings, stats.completedTodos, stats.incompleteTodos])
+  }, [miniDaysSettings, stats.completedTodos, stats.incompleteTodos])
 
   if (isLoading) {
     return (
@@ -140,7 +134,7 @@ export function ReviewPage() {
         onSelectDate={handleSelectDate}
         onMonthChange={handleSelectDate}
         markedDates={markedDates}
-        viewModes={['day']}
+        viewModes={['day', 'week', 'month']}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
         showIndicators
