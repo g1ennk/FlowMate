@@ -2,41 +2,49 @@ import type { TaskItem } from '../reviewTypes'
 import { TimelineTaskItem } from './TimelineTaskItem'
 
 type DailyTaskListProps = {
-  completedTasks: TaskItem[]
-  incompleteTasks: TaskItem[]
+  tasks: TaskItem[]
+  miniDayLabels: Array<{ id: number; label: string }>
   onSelectTask?: (task: TaskItem) => void
 }
 
 export function DailyTaskList({
-  completedTasks,
-  incompleteTasks,
+  tasks,
+  miniDayLabels,
   onSelectTask,
 }: DailyTaskListProps) {
-  const hasCompleted = completedTasks.length > 0
-  const hasIncomplete = incompleteTasks.length > 0
+  const hasTasks = tasks.length > 0
+  const miniDayGroups = miniDayLabels
+    .map((group) => ({
+      ...group,
+      items: tasks.filter((item) => (item.miniDay ?? 0) === group.id),
+    }))
+    .filter((group) => group.items.length > 0)
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm">
       <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-        {!hasCompleted && !hasIncomplete && (
+        {!hasTasks && (
           <p className="text-sm text-gray-400">표시할 태스크가 없어요.</p>
         )}
 
-        {hasCompleted && (
-          <div className="space-y-1.5">
-            {completedTasks.map((item) => (
-              <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
-            ))}
-          </div>
-        )}
-
-        {hasIncomplete && (
-          <div className="space-y-1.5">
-            {incompleteTasks.map((item) => (
-              <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
-            ))}
-          </div>
-        )}
+        {miniDayGroups.map((group) => {
+          const completed = group.items.filter((item) => item.isDone)
+          const incomplete = group.items.filter((item) => !item.isDone)
+          return (
+            <div key={group.id} className="space-y-1.5">
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+                <span>{group.label}</span>
+                <div className="h-px flex-1 bg-gray-100" />
+              </div>
+              {completed.map((item) => (
+                <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
+              ))}
+              {incomplete.map((item) => (
+                <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
+              ))}
+            </div>
+          )
+        })}
       </div>
     </section>
   )

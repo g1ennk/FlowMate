@@ -7,6 +7,7 @@ import { TimelineTaskItem } from './TimelineTaskItem'
 type TimelineListProps = {
   groups: TimelineGroupData[]
   viewMode: 'weekly' | 'monthly'
+  miniDayLabels: Array<{ id: number; label: string }>
   onSelectTask?: (task: TaskItem) => void
 }
 
@@ -35,7 +36,32 @@ const groupItemsByDate = (
     .map(([dateKey, items]) => ({ dateKey, ...items }))
 }
 
-export function TimelineList({ groups, viewMode, onSelectTask }: TimelineListProps) {
+const buildMiniDaySections = (
+  completed: TaskItem[],
+  incomplete: TaskItem[],
+  miniDayLabels: Array<{ id: number; label: string }>,
+) => {
+  return miniDayLabels
+    .map((group) => {
+      const doneItems = completed.filter((item) => (item.miniDay ?? 0) === group.id)
+      const incompleteItems = incomplete.filter((item) => (item.miniDay ?? 0) === group.id)
+      return {
+        id: group.id,
+        label: group.label,
+        completed: doneItems,
+        incomplete: incompleteItems,
+        hasItems: doneItems.length + incompleteItems.length > 0,
+      }
+    })
+    .filter((group) => group.hasItems)
+}
+
+export function TimelineList({
+  groups,
+  viewMode,
+  miniDayLabels,
+  onSelectTask,
+}: TimelineListProps) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
     () => new Set(groups.map((group) => group.key)),
   )
@@ -84,37 +110,56 @@ export function TimelineList({ groups, viewMode, onSelectTask }: TimelineListPro
                       <span>{formatMonthDayLabel(dateGroup.dateKey)}</span>
                       <div className="h-px flex-1 bg-gray-100" />
                     </div>
-                    {dateGroup.completed.map((item) => (
-                      <TimelineTaskItem
-                        key={item.id}
-                        item={item}
-                        onSelect={onSelectTask}
-                      />
-                    ))}
-                    {dateGroup.incomplete.map((item) => (
-                      <TimelineTaskItem
-                        key={item.id}
-                        item={item}
-                        onSelect={onSelectTask}
-                      />
+                    {buildMiniDaySections(
+                      dateGroup.completed,
+                      dateGroup.incomplete,
+                      miniDayLabels,
+                    ).map((miniDayGroup) => (
+                      <div key={miniDayGroup.id} className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+                          <span>{miniDayGroup.label}</span>
+                          <div className="h-px flex-1 bg-gray-100" />
+                        </div>
+                        {miniDayGroup.completed.map((item) => (
+                          <TimelineTaskItem
+                            key={item.id}
+                            item={item}
+                            onSelect={onSelectTask}
+                          />
+                        ))}
+                        {miniDayGroup.incomplete.map((item) => (
+                          <TimelineTaskItem
+                            key={item.id}
+                            item={item}
+                            onSelect={onSelectTask}
+                          />
+                        ))}
+                      </div>
                     ))}
                   </div>
                 ))}
               </div>
             )}
 
-            {!showMonthly && hasCompleted && (
+            {!showMonthly && (hasCompleted || hasIncomplete) && (
               <div className="space-y-1.5">
-                {group.completedTasks.map((item) => (
-                  <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
-                ))}
-              </div>
-            )}
-
-            {!showMonthly && hasIncomplete && (
-              <div className="space-y-1.5">
-                {group.incompleteTasks.map((item) => (
-                  <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
+                {buildMiniDaySections(
+                  group.completedTasks,
+                  group.incompleteTasks,
+                  miniDayLabels,
+                ).map((miniDayGroup) => (
+                  <div key={miniDayGroup.id} className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+                      <span>{miniDayGroup.label}</span>
+                      <div className="h-px flex-1 bg-gray-100" />
+                    </div>
+                    {miniDayGroup.completed.map((item) => (
+                      <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
+                    ))}
+                    {miniDayGroup.incomplete.map((item) => (
+                      <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
+                    ))}
+                  </div>
                 ))}
               </div>
             )}

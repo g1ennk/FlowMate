@@ -5,3 +5,4 @@ node_modules/
 *.iml
 frontend/dist/
 frontend/.vite/
+.claude

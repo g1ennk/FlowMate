@@ -4,6 +4,7 @@ import { formatDateKey } from '../../ui/calendarUtils'
 import { useTodos } from '../todos/hooks'
 import { useTimerStore } from '../timer/timerStore'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
+import { useMiniDaysSettings } from '../settings/hooks'
 import { StatsSummary } from './components/StatsSummary'
 import { PeriodNavigator } from './components/PeriodNavigator'
 import { PeriodTabs } from './components/PeriodTabs'
@@ -32,6 +33,7 @@ const getDiaryTitle = (type: ReturnType<typeof getReviewRouteState>['period']) =
 
 export function ReviewPage() {
   const { data, isLoading } = useTodos()
+  const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
   const timers = useTimerStore((state) => state.timers)
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedTask, setSelectedTask] = useState<null | TaskItem>(null)
@@ -54,7 +56,7 @@ export function ReviewPage() {
     timers,
     period,
     baseDate,
-    defaultMiniDaysSettings,
+    miniDaysSettings,
   )
 
   const reviewRange = getPeriodRange(period, baseDate)
@@ -63,10 +65,17 @@ export function ReviewPage() {
   const currentWeekStartKey = getPeriodRange('weekly', today).startKey
   const currentMonthStartKey = getPeriodRange('monthly', today).startKey
   const tasksByDate = buildTasksByDate(data?.items ?? [], timers, reviewRange)
+  const dailyTasks = period === 'daily' ? tasksByDate[reviewRange.startKey] ?? [] : []
   const weeklyGroups =
     period === 'weekly' ? buildDailyGroups(tasksByDate, reviewRange) : []
   const monthlyGroups =
     period === 'monthly' ? buildWeeklyGroups(tasksByDate, reviewRange) : []
+  const miniDayLabels = [
+    { id: 0, label: '미분류' },
+    { id: 1, label: miniDaysSettings.day1.label },
+    { id: 2, label: miniDaysSettings.day2.label },
+    { id: 3, label: miniDaysSettings.day3.label },
+  ]
 
   const handlePeriodChange = (nextPeriod: typeof period) => {
     setSearchParams({ period: nextPeriod, date: formatDateKey(new Date()) })
@@ -118,8 +127,8 @@ export function ReviewPage() {
 
       {period === 'daily' && (
         <DailyTaskList
-          completedTasks={stats.completedTodos}
-          incompleteTasks={stats.incompleteTodos}
+          tasks={dailyTasks}
+          miniDayLabels={miniDayLabels}
           onSelectTask={setSelectedTask}
         />
       )}
@@ -129,6 +138,7 @@ export function ReviewPage() {
           key={`timeline-weekly-${reviewRange.startKey}`}
           viewMode="weekly"
           groups={weeklyGroups}
+          miniDayLabels={miniDayLabels}
           onSelectTask={setSelectedTask}
         />
       )}
@@ -138,6 +148,7 @@ export function ReviewPage() {
           key={`timeline-monthly-${reviewRange.startKey}`}
           viewMode="monthly"
           groups={monthlyGroups}
+          miniDayLabels={miniDayLabels}
           onSelectTask={setSelectedTask}
         />
       )}
