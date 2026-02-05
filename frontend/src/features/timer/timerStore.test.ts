@@ -236,7 +236,7 @@ describe('timerStore', () => {
           status: 'running',
           phase: 'flow',
           flexiblePhase: 'break_suggested',
-          focusElapsedMs: 12_000,
+          focusElapsedMs: 72_000,
           initialFocusMs: 0,
           breakElapsedMs: 9_500,
           breakTargetMs,
@@ -265,7 +265,7 @@ describe('timerStore', () => {
     const afterResumeFocus = useTimerStore.getState().getTimer('todo-1')
 
     expect(afterResumeFocus?.sessions).toHaveLength(1)
-    expect(afterResumeFocus?.sessions[0]?.sessionFocusSeconds).toBe(12)
+    expect(afterResumeFocus?.sessions[0]?.sessionFocusSeconds).toBe(72)
     expect(afterResumeFocus?.flexiblePhase).toBe('focus')
   })
 })

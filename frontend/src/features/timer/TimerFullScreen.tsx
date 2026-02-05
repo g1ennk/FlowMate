@@ -62,9 +62,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const resume = useTimerStore((s) => s.resume)
   const reset = useTimerStore((s) => s.reset)
   const skipToNext = useTimerStore((s) => s.skipToNext)
-  const autoCompletedTodos = useTimerStore((s) => s.autoCompletedTodos)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const clearAutoCompleted = useTimerStore((s) => s.clearAutoCompleted)
   const startBreak = useTimerStore((s) => s.startBreak)
   const resumeFocus = useTimerStore((s) => s.resumeFocus)
   const calculateBreakSuggestion = useTimerStore((s) => s.calculateBreakSuggestion)
@@ -137,46 +135,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     pomodoroInitKeyRef.current = initKey
   }, [isOpen, settings, selectedMode, todoId, getTimer, initPomodoro])
 
-  const sessionSyncBaselineRef = useRef(false)
-  const lastSyncedSessionsRef = useRef(0)
-
-  useEffect(() => {
-    if (!isOpen) {
-      sessionSyncBaselineRef.current = false
-      lastSyncedSessionsRef.current = 0
-      return
-    }
-
-    if (!timer || timer.mode !== 'stopwatch') return
-    const sessions = timer.sessions ?? []
-
-    if (!sessionSyncBaselineRef.current) {
-      lastSyncedSessionsRef.current = sessions.length
-      sessionSyncBaselineRef.current = true
-      return
-    }
-
-    if (sessions.length < lastSyncedSessionsRef.current) {
-      lastSyncedSessionsRef.current = sessions.length
-      return
-    }
-
-    if (sessions.length <= lastSyncedSessionsRef.current) return
-
-    const newSessions = sessions.slice(lastSyncedSessionsRef.current)
-    lastSyncedSessionsRef.current = sessions.length
-
-    newSessions.forEach((session) => {
-      createSession.mutate({
-        todoId,
-        body: {
-          sessionFocusSeconds: session.sessionFocusSeconds,
-          breakSeconds: session.breakSeconds,
-        },
-      })
-    })
-  }, [isOpen, timer, todoId, createSession])
-
   // 휴식에서 집중으로 전환될 때만 showTotalTime을 전체 누적(true)로 리셋
   const prevFlexiblePhaseRef = useRef<string | null>(null)
   useEffect(() => {
@@ -201,32 +159,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     prevFlexiblePhaseRef.current = currentPhase ?? null
   }, [timer?.flexiblePhase, timer?.mode, timer?.breakCompleted])
 
-  // Flow 자동 완료 감지 (뽀모도로 세션 카운트 증가)
-  useEffect(() => {
-    if (!settings) return
-    if (!autoCompletedTodos.has(todoId)) return
-
-    const t = getTimer(todoId)
-    if (!t || t.mode !== 'pomodoro') return
-
-    // 중복 호출 방지: 진행 중이면 스킵
-    if (createSession.isPending) return
-
-    // Flow 완료 시간 계산
-    const plannedMs = settings.flowMin * MINUTE_MS
-    const sessionFocusSeconds = Math.round(plannedMs / 1000)
-
-    // API 호출: Session 생성 (sessionCount += 1, sessionFocusSeconds += sec)
-    createSession.mutate(
-      { todoId, body: { sessionFocusSeconds, breakSeconds: 0 } },
-      {
-        onSuccess: () => {
-          // 처리 완료 후 Set에서 제거
-          clearAutoCompleted(todoId)
-        },
-      }
-    )
-  }, [todoId, autoCompletedTodos, settings, createSession, getTimer, clearAutoCompleted])
 
   // 닫을 때 타이머 처리
   const handleClose = async () => {

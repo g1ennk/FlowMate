@@ -9,7 +9,6 @@ import {
   loadSessions,
   removePersisted,
   savePersisted,
-  saveSessions,
 } from './timerPersistence'
 
 export type { FlexiblePhase, SessionRecord, SingleTimerState, TimerMode, TimerPhase, TimerStatus } from './timerTypes'
@@ -74,11 +73,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     if (!timer) return
     
     const updated = { ...timer, ...updates }
-    
-    // sessions가 업데이트되었으면 localStorage에 저장
-    if (updates.sessions !== undefined) {
-      saveSessions(todoId, updated.sessions)
-    }
     
     set((state) => ({
       timers: { ...state.timers, [todoId]: updated }

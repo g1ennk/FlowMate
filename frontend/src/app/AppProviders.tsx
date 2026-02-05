@@ -6,6 +6,7 @@ import { Toaster } from 'react-hot-toast'
 import { queryClient } from './queryClient'
 import { startMockWorker } from '../mocks/browser'
 import { useTimerTicker } from '../features/timer/useTimerTicker'
+import { useTimerSyncEffect } from '../features/timer/useTimerSyncEffect'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
 
 const mockEnabled =
@@ -35,6 +36,7 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <TimerSyncLayer />
       <ActiveTimerTitle />
       {children}
       <Toaster 
@@ -58,4 +60,9 @@ export function AppProviders({ children }: PropsWithChildren) {
       {import.meta.env.DEV ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
     </QueryClientProvider>
   )
+}
+
+function TimerSyncLayer() {
+  useTimerSyncEffect()
+  return null
 }
