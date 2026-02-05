@@ -1,27 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
-  PERIOD_VIEW_MODES,
   REVIEW_PERIODS,
-  VIEW_MODE_PERIODS,
   buildReviewQuery,
   getReviewRouteState,
   resolveReviewPeriod,
 } from './reviewRouteParams'
 
 describe('reviewRouteParams', () => {
-  it('supports yearly period and year view mode mapping', () => {
-    expect(REVIEW_PERIODS).toContain('yearly')
-    expect(PERIOD_VIEW_MODES.yearly).toBe('year')
-    expect(VIEW_MODE_PERIODS.year).toBe('yearly')
+  it('supports daily/weekly/monthly periods', () => {
+    expect(REVIEW_PERIODS).toEqual(['daily', 'weekly', 'monthly'])
   })
 
   it('parses route state from query params', () => {
-    const params = new URLSearchParams({ period: 'yearly', date: '2026-01-09' })
+    const params = new URLSearchParams({ period: 'monthly', date: '2026-01-09' })
     const state = getReviewRouteState(params)
 
-    expect(state.period).toBe('yearly')
+    expect(state.period).toBe('monthly')
     expect(state.dateKey).toBe('2026-01-09')
-    expect(state.viewMode).toBe('year')
   })
 
   it('falls back to daily for invalid period and builds query', () => {

@@ -107,7 +107,7 @@ export const TimerResetResponseSchema = z.object({
   updatedAt: z.string(),
 })
 
-export const ReviewTypeSchema = z.enum(['daily', 'weekly', 'monthly', 'yearly'])
+export const ReviewTypeSchema = z.enum(['daily', 'weekly', 'monthly'])
 
 export const ReviewSchema = z.object({
   id: z.string().uuid(),

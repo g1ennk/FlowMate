@@ -55,7 +55,7 @@ const defaultCombinedSettings: CombinedSettings = {
 
 type StoredReview = Review
 
-const REVIEW_TYPES: ReviewType[] = ['daily', 'weekly', 'monthly', 'yearly']
+const REVIEW_TYPES: ReviewType[] = ['daily', 'weekly', 'monthly']
 
 function getClientId(request: Request) {
   return request.headers.get('X-Client-Id') || 'local'

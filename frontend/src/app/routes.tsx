@@ -6,11 +6,6 @@ const TodosPage = lazy(() => import('../features/todos/TodosPage'))
 const ReviewPage = lazy(() =>
   import('../features/review/ReviewPage').then((module) => ({ default: module.ReviewPage }))
 )
-const ReviewDiaryPage = lazy(() =>
-  import('../features/review/ReviewDiaryPage').then((module) => ({
-    default: module.ReviewDiaryPage,
-  }))
-)
 const PomodoroSettingsPage = lazy(() => import('../features/settings/PomodoroSettingsPage'))
 const BoardingPage = lazy(() => import('../features/boarding/BoardingPage'))
 const NotFoundPage = lazy(() => import('./NotFoundPage'))
@@ -27,7 +22,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/todos" replace /> },
       { path: 'todos', element: <TodosPage /> },
       { path: 'review', element: <ReviewPage /> },
-      { path: 'review/diary', element: <ReviewDiaryPage /> },
+      { path: 'review/diary', element: <Navigate to="/review" replace /> },
       { path: 'stats', element: <Navigate to="/review" replace /> },
       { path: 'settings', element: <PomodoroSettingsPage /> },
       { path: 'settings/pomodoro', element: <Navigate to="/settings" replace /> },

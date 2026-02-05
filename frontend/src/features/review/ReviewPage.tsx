@@ -1,94 +1,85 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { formatDateKey } from '../../ui/calendarUtils'
 import { useTodos } from '../todos/hooks'
 import { useTimerStore } from '../timer/timerStore'
-import { useMiniDaysSettings } from '../settings/hooks'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
-import { Calendar } from '../../ui/Calendar'
 import { StatsSummary } from './components/StatsSummary'
-import { TimeflowChart } from './components/TimeflowChart'
-import { ReviewDiary } from './components/ReviewDiary'
-import { useReviewList } from './hooks'
-import type { MiniDayGroup } from './reviewTypes'
+import { PeriodNavigator } from './components/PeriodNavigator'
+import { PeriodTabs } from './components/PeriodTabs'
+import { DailyTaskList } from './components/DailyTaskList'
+import { TimelineList } from './components/TimelineList'
+import { ReviewTextarea } from './components/ReviewTextarea'
+import { SessionDetailSheet } from './components/SessionDetailSheet'
 import {
   buildPeriodStats,
-  getCalendarRange,
+  buildDailyGroups,
+  buildWeeklyGroups,
   getPeriodRange,
+  shiftBaseDate,
+  formatPeriodLabel,
+  buildTasksByDate,
 } from './reviewUtils'
-import { buildReviewQuery, getReviewRouteState, VIEW_MODE_PERIODS } from './reviewRouteParams'
+import { getReviewRouteState } from './reviewRouteParams'
 import { useReviewScrollMemory } from './useReviewScrollMemory'
-
-const getChartTitle = (type: ReturnType<typeof getReviewRouteState>['period']) => {
-  if (type === 'daily') return '시간대별 흐름'
-  if (type === 'weekly') return '요일별 흐름'
-  if (type === 'monthly') return '주차별 흐름'
-  return '월별 흐름'
-}
+import type { TaskItem } from './reviewTypes'
 
 const getDiaryTitle = (type: ReturnType<typeof getReviewRouteState>['period']) => {
   if (type === 'daily') return '오늘 회고'
   if (type === 'weekly') return '주간 회고'
-  if (type === 'monthly') return '월간 회고'
-  return '연간 회고'
+  return '월간 회고'
 }
 
 export function ReviewPage() {
-  const navigate = useNavigate()
   const { data, isLoading } = useTodos()
   const timers = useTimerStore((state) => state.timers)
-  const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [selectedTask, setSelectedTask] = useState<null | TaskItem>(null)
 
-  const { period, dateKey, baseDate, viewMode } = getReviewRouteState(searchParams)
+  const { period, dateKey, baseDate } = getReviewRouteState(searchParams)
   useReviewScrollMemory(`home:${period}:${dateKey}`)
+
+  const didInitRef = useRef(false)
+  useEffect(() => {
+    if (didInitRef.current) return
+    didInitRef.current = true
+    const todayKey = formatDateKey(new Date())
+    if (searchParams.get('date') !== todayKey) {
+      setSearchParams({ period, date: todayKey }, { replace: true })
+    }
+  }, [period, searchParams, setSearchParams])
 
   const stats = buildPeriodStats(
     data?.items ?? [],
     timers,
     period,
     baseDate,
-    miniDaysSettings,
+    defaultMiniDaysSettings,
   )
 
   const reviewRange = getPeriodRange(period, baseDate)
-  const calendarRange = getCalendarRange(viewMode, baseDate)
-  const { data: reviewList } = useReviewList(period, calendarRange.startKey, calendarRange.endKey)
+  const today = new Date()
+  const todayKey = formatDateKey(today)
+  const currentWeekStartKey = getPeriodRange('weekly', today).startKey
+  const currentMonthStartKey = getPeriodRange('monthly', today).startKey
+  const tasksByDate = buildTasksByDate(data?.items ?? [], timers, reviewRange)
+  const weeklyGroups =
+    period === 'weekly' ? buildDailyGroups(tasksByDate, reviewRange) : []
+  const monthlyGroups =
+    period === 'monthly' ? buildWeeklyGroups(tasksByDate, reviewRange) : []
 
-  const markedDates: Record<string, { done: number; total: number }> = {}
-  if (period !== 'yearly') {
-    for (const review of reviewList?.items ?? []) {
-      markedDates[review.periodStart] = { done: 1, total: 1 }
-    }
+  const handlePeriodChange = (nextPeriod: typeof period) => {
+    setSearchParams({ period: nextPeriod, date: formatDateKey(new Date()) })
   }
 
-  const hasYearlyReview =
-    period === 'yearly' &&
-    (reviewList?.items ?? []).some((item) => item.periodStart === reviewRange.startKey)
-  const groups = [
-    { id: 0, label: '미분류' },
-    { id: 1, label: miniDaysSettings.day1.label },
-    { id: 2, label: miniDaysSettings.day2.label },
-    { id: 3, label: miniDaysSettings.day3.label },
-  ]
-  const miniDayGroups: MiniDayGroup[] = groups.map((group) => ({
-    id: group.id,
-    label: group.label,
-    completed: stats.completedTodos.filter((item) => (item.miniDay ?? 0) === group.id),
-    incomplete: stats.incompleteTodos.filter((item) => (item.miniDay ?? 0) === group.id),
-  }))
-
-  const handleViewModeChange = (nextMode: keyof typeof VIEW_MODE_PERIODS) => {
-    const nextPeriod = VIEW_MODE_PERIODS[nextMode]
-    setSearchParams({ period: nextPeriod, date: dateKey })
+  const handlePrev = () => {
+    const nextDate = shiftBaseDate(period, baseDate, -1)
+    setSearchParams({ period, date: formatDateKey(nextDate) })
   }
 
-  const handleSelectDate = (nextDate: Date) => {
-    const nextKey = formatDateKey(nextDate)
-    setSearchParams({ period, date: nextKey })
-  }
-
-  const openDiaryPage = () => {
-    navigate(`/review/diary?${buildReviewQuery(period, dateKey)}`)
+  const handleNext = () => {
+    const nextDate = shiftBaseDate(period, baseDate, 1)
+    setSearchParams({ period, date: formatDateKey(nextDate) })
   }
 
   if (isLoading) {
@@ -101,22 +92,22 @@ export function ReviewPage() {
 
   return (
     <div className="space-y-4">
-      <Calendar
-        selectedDate={baseDate}
-        onSelectDate={handleSelectDate}
-        onMonthChange={handleSelectDate}
-        markedDates={markedDates}
-        viewModes={['day', 'week', 'month', 'year']}
-        viewMode={viewMode}
-        onViewModeChange={handleViewModeChange}
-        showIndicators
-      />
+      <PeriodTabs value={period} onChange={handlePeriodChange} />
 
-      {period === 'yearly' && hasYearlyReview && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-          연간 회고 작성됨
-        </div>
-      )}
+      <PeriodNavigator
+        label={formatPeriodLabel(period, baseDate)}
+        badge={
+          period === 'daily' && dateKey === todayKey
+            ? '오늘'
+            : period === 'weekly' && reviewRange.startKey === currentWeekStartKey
+              ? '이번 주'
+              : period === 'monthly' && reviewRange.startKey === currentMonthStartKey
+                ? '이번 달'
+                : undefined
+        }
+        onPrev={handlePrev}
+        onNext={handleNext}
+      />
 
       <StatsSummary
         totalFocusSeconds={stats.totalFocusSeconds}
@@ -125,17 +116,44 @@ export function ReviewPage() {
         comparison={stats.comparison}
       />
 
-      <TimeflowChart
-        title={getChartTitle(period)}
-        data={stats.distribution}
+      {period === 'daily' && (
+        <DailyTaskList
+          completedTasks={stats.completedTodos}
+          incompleteTasks={stats.incompleteTodos}
+          onSelectTask={setSelectedTask}
+        />
+      )}
+
+      {period === 'weekly' && (
+        <TimelineList
+          key={`timeline-weekly-${reviewRange.startKey}`}
+          viewMode="weekly"
+          groups={weeklyGroups}
+          onSelectTask={setSelectedTask}
+        />
+      )}
+
+      {period === 'monthly' && (
+        <TimelineList
+          key={`timeline-monthly-${reviewRange.startKey}`}
+          viewMode="monthly"
+          groups={monthlyGroups}
+          onSelectTask={setSelectedTask}
+        />
+      )}
+
+      <ReviewTextarea
+        key={`review-${period}-${reviewRange.startKey}`}
+        title={getDiaryTitle(period)}
+        periodType={period}
+        periodStart={reviewRange.startKey}
+        periodEnd={reviewRange.endKey}
       />
 
-      <ReviewDiary
-        title={getDiaryTitle(period)}
-        type={period}
-        periodStart={reviewRange.startKey}
-        miniDayGroups={miniDayGroups}
-        onOpen={openDiaryPage}
+      <SessionDetailSheet
+        task={selectedTask}
+        isOpen={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
       />
     </div>
   )

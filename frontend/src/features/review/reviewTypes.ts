@@ -1,6 +1,4 @@
-import type { ReviewType } from '../../api/types'
-
-export type PeriodType = ReviewType
+export type PeriodType = 'daily' | 'weekly' | 'monthly'
 
 export type DistributionBucket = {
   label: string
@@ -35,6 +33,14 @@ export type PeriodComparison = {
   focusDelta: number
   flowDelta: number
   completedDelta: number
+}
+
+export type TimelineGroupData = {
+  key: string
+  label: string
+  taskCount: number
+  completedTasks: TaskItem[]
+  incompleteTasks: TaskItem[]
 }
 
 export type PeriodRange = {

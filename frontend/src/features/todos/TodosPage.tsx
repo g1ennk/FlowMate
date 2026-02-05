@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { toast } from 'react-hot-toast'
@@ -132,6 +133,23 @@ const parseContainerId = (id: DropContainerId) => {
   return Number.isNaN(parsedMiniDay) ? 0 : parsedMiniDay
 }
 
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+const parseDateParam = (value: string | null) => {
+  if (!value || !DATE_KEY_RE.test(value)) return null
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const candidate = new Date(year, month - 1, day)
+  if (
+    candidate.getFullYear() !== year ||
+    candidate.getMonth() !== month - 1 ||
+    candidate.getDate() !== day
+  ) {
+    return null
+  }
+  return candidate
+}
+
 const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
   const aKeys = Object.keys(a)
   const bKeys = Object.keys(b)
@@ -191,6 +209,8 @@ function TodosPage() {
   const store = useTimerStore()
   const timers = useTimerStore((s) => s.timers)
   const reorderTodos = useReorderTodos()
+  const [searchParams] = useSearchParams()
+  const dateParam = searchParams.get('date')
 
   // Global ticker is installed in AppProviders
 
@@ -198,6 +218,13 @@ function TodosPage() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const selectedDateKey = formatDateKey(selectedDate)
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
+
+  useEffect(() => {
+    const nextDate = parseDateParam(dateParam)
+    if (nextDate) {
+      setSelectedDate(nextDate)
+    }
+  }, [dateParam])
 
   const daySections = useMemo(() => {
     const formatRange = (start: string, end: string) => {

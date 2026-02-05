@@ -7,7 +7,7 @@
 - **User(게스트)**: 로그인 전 MVP는 `X-Client-Id`를 userId로 사용
 - **Todo**: 날짜 기반 할 일 + 타이머 누적
 - **Session (MVP)**: 완료된 집중/휴식 기록(서버 저장 대상)
-- **Review (MVP)**: 기간별 회고 (일일/주간/월간/연간)
+- **Review (MVP)**: 기간별 회고 (일일/주간/월간)
 - **Settings**: 사용자 단위 환경설정(세션/자동화/미니데이)
 
 ### 관계
@@ -76,7 +76,7 @@ MiniDays
 
 - `id`
 - `userId`
-- `type` (`daily` | `weekly` | `monthly` | `yearly`)
+- `type` (`daily` | `weekly` | `monthly`)
 - `periodStart` (YYYY-MM-DD)
 - `periodEnd` (YYYY-MM-DD)
 - `content` (텍스트)
@@ -167,7 +167,7 @@ CREATE TABLE reviews
 (
     id           VARCHAR(36) PRIMARY KEY,
     user_id      VARCHAR(255) NOT NULL,
-    type         VARCHAR(20)  NOT NULL, -- daily/weekly/monthly/yearly
+    type         VARCHAR(20)  NOT NULL, -- daily/weekly/monthly
     period_start DATE         NOT NULL,
     period_end   DATE         NOT NULL,
     content      TEXT         NOT NULL,

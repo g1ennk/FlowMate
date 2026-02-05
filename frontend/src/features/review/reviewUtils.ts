@@ -8,6 +8,7 @@ import type {
   PeriodStats,
   PeriodType,
   TaskItem,
+  TimelineGroupData,
 } from './reviewTypes'
 
 const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
@@ -32,9 +33,6 @@ const endOfWeek = (date: Date) => addDays(startOfWeek(date), 6)
 
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
 const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0)
-const startOfYear = (date: Date) => new Date(date.getFullYear(), 0, 1)
-const endOfYear = (date: Date) => new Date(date.getFullYear(), 11, 31)
-
 export function parseDateKey(value: string): Date {
   const [year, month, day] = value.split('-').map(Number)
   if (!year || !month || !day) return toStartOfDay(new Date())
@@ -63,6 +61,12 @@ export function formatTaskDateLabel(dateKey: string): string {
   return `${month}.${day} (${weekday})`
 }
 
+export function formatMonthDayLabel(dateKey: string): string {
+  const date = parseDateKey(dateKey)
+  const weekday = WEEKDAY_SHORT_LABELS[date.getDay()] ?? ''
+  return `${date.getMonth() + 1}/${date.getDate()}(${weekday})`
+}
+
 export function getPeriodRange(type: PeriodType, baseDate: Date): PeriodRange {
   let start: Date
   let end: Date
@@ -77,31 +81,8 @@ export function getPeriodRange(type: PeriodType, baseDate: Date): PeriodRange {
     start = startOfMonth(baseDate)
     end = endOfMonth(baseDate)
   } else {
-    start = startOfYear(baseDate)
-    end = endOfYear(baseDate)
-  }
-
-  return {
-    start,
-    end,
-    startKey: formatDateKey(start),
-    endKey: formatDateKey(end),
-  }
-}
-
-export function getCalendarRange(mode: 'day' | 'week' | 'month' | 'year', baseDate: Date): PeriodRange {
-  let start: Date
-  let end: Date
-
-  if (mode === 'day' || mode === 'week') {
-    start = startOfWeek(baseDate)
-    end = endOfWeek(baseDate)
-  } else if (mode === 'month') {
     start = startOfMonth(baseDate)
     end = endOfMonth(baseDate)
-  } else {
-    start = startOfYear(baseDate)
-    end = endOfYear(baseDate)
   }
 
   return {
@@ -116,7 +97,7 @@ export function shiftBaseDate(type: PeriodType, baseDate: Date, delta: number) {
   if (type === 'daily') return addDays(baseDate, delta)
   if (type === 'weekly') return addDays(baseDate, delta * 7)
   if (type === 'monthly') return new Date(baseDate.getFullYear(), baseDate.getMonth() + delta, 1)
-  return new Date(baseDate.getFullYear() + delta, 0, 1)
+  return new Date(baseDate.getFullYear(), baseDate.getMonth() + delta, 1)
 }
 
 export function formatPeriodLabel(type: PeriodType, baseDate: Date) {
@@ -152,6 +133,7 @@ export function formatPeriodLabel(type: PeriodType, baseDate: Date) {
 
   return baseDate.toLocaleDateString('ko-KR', {
     year: 'numeric',
+    month: 'long',
   })
 }
 
@@ -177,18 +159,42 @@ const getEffectiveFlowCount = (
   return todo.sessionCount
 }
 
+const getTodoMiniDay = (todo: Todo) => (typeof todo.miniDay === 'number' ? todo.miniDay : 0)
+const getTodoDayOrder = (todo: Todo) => (typeof todo.dayOrder === 'number' ? todo.dayOrder : 0)
+const getTodoCreatedAt = (todo: Todo) => new Date(todo.createdAt).getTime()
+
+const compareTodoOrder = (a: Todo, b: Todo) => {
+  const miniDayDiff = getTodoMiniDay(a) - getTodoMiniDay(b)
+  if (miniDayDiff !== 0) return miniDayDiff
+  const orderDiff = getTodoDayOrder(a) - getTodoDayOrder(b)
+  if (orderDiff !== 0) return orderDiff
+  return getTodoCreatedAt(a) - getTodoCreatedAt(b)
+}
+
+const sortTodosByOrder = (todos: Todo[]) => [...todos].sort(compareTodoOrder)
+
 const isDateKeyInRange = (value: string, startKey: string, endKey: string) =>
   value >= startKey && value <= endKey
+
+const getEffectiveIsDone = (
+  todo: Todo,
+  timers: Record<string, SingleTimerState>,
+) => {
+  const timer = timers[todo.id]
+  if (timer?.status === 'running') return false
+  return todo.isDone
+}
 
 const buildTaskItem = (
   todo: Todo,
   focusSeconds: number,
   flowCount: number,
+  isDoneOverride?: boolean,
 ): TaskItem => ({
   id: todo.id,
   title: todo.title,
   date: todo.date,
-  isDone: todo.isDone,
+  isDone: typeof isDoneOverride === 'boolean' ? isDoneOverride : todo.isDone,
   focusSeconds,
   focusTime: formatFocusTime(focusSeconds),
   flowCount,
@@ -262,17 +268,7 @@ const buildDistribution = (
     })
   }
 
-  return Array.from({ length: 12 }, (_, index) => {
-    const monthStart = new Date(range.start.getFullYear(), index, 1)
-    const monthEnd = endOfMonth(monthStart)
-    const startKey = formatDateKey(monthStart)
-    const endKey = formatDateKey(monthEnd)
-    const seconds = todos.reduce((sum, todo) => {
-      if (!isDateKeyInRange(todo.date, startKey, endKey)) return sum
-      return sum + (focusById.get(todo.id) ?? 0)
-    }, 0)
-    return { label: `${index + 1}월`, seconds, startKey, endKey }
-  })
+  return []
 }
 
 const withPeak = (items: DistributionBucket[]) => {
@@ -296,7 +292,7 @@ const buildTotals = (
     (acc, todo) => {
       acc.totalFocusSeconds += getEffectiveFocusSeconds(todo, timers)
       acc.totalFlows += getEffectiveFlowCount(todo, timers)
-      if (todo.isDone) acc.completedCount += 1
+      if (getEffectiveIsDone(todo, timers)) acc.completedCount += 1
       return acc
     },
     { totalFocusSeconds: 0, totalFlows: 0, completedCount: 0 },
@@ -344,8 +340,14 @@ export function buildPeriodStats(
     flowById.set(todo.id, flowCount)
   })
 
-  const taskItems = periodTodos.map((todo) =>
-    buildTaskItem(todo, focusById.get(todo.id) ?? 0, flowById.get(todo.id) ?? 0),
+  const orderedTodos = sortTodosByOrder(periodTodos)
+  const taskItems = orderedTodos.map((todo) =>
+    buildTaskItem(
+      todo,
+      focusById.get(todo.id) ?? 0,
+      flowById.get(todo.id) ?? 0,
+      getEffectiveIsDone(todo, timers),
+    ),
   )
 
   const totalFocusSeconds = taskItems.reduce(
@@ -353,7 +355,7 @@ export function buildPeriodStats(
     0,
   )
   const totalFlows = taskItems.reduce((sum, item) => sum + item.flowCount, 0)
-  const completedCount = periodTodos.filter((todo) => todo.isDone).length
+  const completedCount = periodTodos.filter((todo) => getEffectiveIsDone(todo, timers)).length
 
   const highlight = taskItems.reduce<TaskItem | null>((best, item) => {
     if (!best || item.focusSeconds > best.focusSeconds) return item
@@ -363,34 +365,33 @@ export function buildPeriodStats(
   const highlightTask =
     highlight && highlight.focusSeconds > 0 ? highlight : null
 
-  const sortByFocus = (a: Todo, b: Todo) => {
-    const focusA = focusById.get(a.id) ?? 0
-    const focusB = focusById.get(b.id) ?? 0
-    if (focusA !== focusB) return focusB - focusA
-    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  }
-
-  const completedTodos = periodTodos
-    .filter((todo) => todo.isDone)
-    .sort(sortByFocus)
+  const completedTodos = orderedTodos
+    .filter((todo) => getEffectiveIsDone(todo, timers))
     .map((todo) =>
-      buildTaskItem(todo, focusById.get(todo.id) ?? 0, flowById.get(todo.id) ?? 0),
+      buildTaskItem(
+        todo,
+        focusById.get(todo.id) ?? 0,
+        flowById.get(todo.id) ?? 0,
+        true,
+      ),
     )
 
-  const incompleteTodos = periodTodos
-    .filter((todo) => !todo.isDone)
-    .sort(sortByFocus)
+  const incompleteTodos = orderedTodos
+    .filter((todo) => !getEffectiveIsDone(todo, timers))
     .map((todo) =>
-      buildTaskItem(todo, focusById.get(todo.id) ?? 0, flowById.get(todo.id) ?? 0),
+      buildTaskItem(
+        todo,
+        focusById.get(todo.id) ?? 0,
+        flowById.get(todo.id) ?? 0,
+        false,
+      ),
     )
 
   const distribution = withPeak(
     buildDistribution(type, periodTodos, range, miniDaysSettings, focusById),
   )
 
-  const comparison = type === 'daily'
-    ? undefined
-    : buildComparison(todos, timers, type, baseDate)
+  const comparison = buildComparison(todos, timers, type, baseDate)
 
   return {
     range,
@@ -403,4 +404,114 @@ export function buildPeriodStats(
     distribution,
     comparison,
   }
+}
+
+export function buildTasksByDate(
+  todos: Todo[],
+  timers: Record<string, SingleTimerState>,
+  range: PeriodRange,
+): Record<string, TaskItem[]> {
+  const periodTodos = todos.filter((todo) =>
+    isDateKeyInRange(todo.date, range.startKey, range.endKey),
+  )
+  const orderedTodos = sortTodosByOrder(periodTodos)
+  const result: Record<string, TaskItem[]> = {}
+
+  orderedTodos.forEach((todo) => {
+    const focusSeconds = getEffectiveFocusSeconds(todo, timers)
+    const flowCount = getEffectiveFlowCount(todo, timers)
+    const item = buildTaskItem(
+      todo,
+      focusSeconds,
+      flowCount,
+      getEffectiveIsDone(todo, timers),
+    )
+    if (!result[item.date]) result[item.date] = []
+    result[item.date].push(item)
+  })
+
+  return result
+}
+
+export function formatDailyGroupLabel(dateKey: string): string {
+  const date = parseDateKey(dateKey)
+  const weekday = WEEKDAY_SHORT_LABELS[date.getDay()] ?? ''
+  return `${date.getMonth() + 1}/${date.getDate()} (${weekday})`
+}
+
+export function formatWeeklyGroupLabel(
+  weekNum: number,
+  startKey: string,
+  endKey: string,
+): string {
+  return `${weekNum}주차 (${formatMonthDayLabel(startKey)} - ${formatMonthDayLabel(endKey)})`
+}
+
+export function buildDailyGroups(
+  tasksByDate: Record<string, TaskItem[]>,
+  range: PeriodRange,
+): TimelineGroupData[] {
+  const groups: TimelineGroupData[] = []
+  let cursor = range.start
+
+  while (cursor <= range.end) {
+    const dateKey = formatDateKey(cursor)
+    const items = tasksByDate[dateKey] ?? []
+    const completedTasks = items.filter((item) => item.isDone)
+    const incompleteTasks = items.filter((item) => !item.isDone)
+
+    groups.push({
+      key: `daily-${dateKey}`,
+      label: formatDailyGroupLabel(dateKey),
+      taskCount: completedTasks.length + incompleteTasks.length,
+      completedTasks,
+      incompleteTasks,
+    })
+
+    cursor = addDays(cursor, 1)
+  }
+
+  return groups
+}
+
+export function buildWeeklyGroups(
+  tasksByDate: Record<string, TaskItem[]>,
+  range: PeriodRange,
+): TimelineGroupData[] {
+  const groups: TimelineGroupData[] = []
+  const monthStart = range.start
+  const monthEnd = range.end
+  let cursor = startOfWeek(monthStart)
+  let weekNum = 1
+
+  while (cursor <= monthEnd) {
+    const weekStart = cursor
+    const weekEnd = addDays(cursor, 6)
+    const startKey = formatDateKey(weekStart)
+    const endKey = formatDateKey(weekEnd)
+    const weekItems: TaskItem[] = []
+
+    for (let i = 0; i < 7; i += 1) {
+      const day = addDays(weekStart, i)
+      const dayKey = formatDateKey(day)
+      const items = tasksByDate[dayKey] ?? []
+      weekItems.push(...items)
+    }
+
+    const completedTasks = weekItems.filter((item) => item.isDone)
+    const incompleteTasks = weekItems.filter((item) => !item.isDone)
+
+    groups.push({
+      key: `weekly-${startKey}-${weekNum}`,
+      label: formatWeeklyGroupLabel(weekNum, startKey, endKey),
+      taskCount: completedTasks.length + incompleteTasks.length,
+      completedTasks,
+      incompleteTasks,
+    })
+
+    weekNum += 1
+    cursor = addDays(cursor, 7)
+  }
+
+  return groups
 }

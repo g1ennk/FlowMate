@@ -27,26 +27,28 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
       onClose={onClose}
       title="세션 상세"
       showCloseButton
+      showHeaderDivider={false}
       contentClassName="space-y-4"
     >
-      <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+      <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3">
         <p className="text-sm font-semibold text-gray-900">{task.title}</p>
-        <p className="mt-1 text-xs text-gray-500">{task.date}</p>
-        <div className="mt-3 flex items-center justify-between">
+        <p className="mt-1 text-xs text-gray-400">{task.date}</p>
+        <div className="mt-3 grid grid-cols-3 gap-3">
           <div>
-            <p className="text-xs text-gray-500">총 집중</p>
-            <p className="text-lg font-semibold text-gray-900">{focusLabel}</p>
+            <p className="text-[11px] text-gray-400">총 집중</p>
+            <p className="mt-1 text-base font-semibold text-gray-900">{focusLabel}</p>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-500">Flow</p>
-            <p className="text-lg font-semibold text-emerald-600">{task.flowCount}회</p>
+          <div>
+            <p className="text-[11px] text-gray-400">Flow</p>
+            <p className="mt-1 text-base font-semibold text-emerald-600">{task.flowCount}회</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400">휴식</p>
+            <p className="mt-1 text-base font-semibold text-gray-900">
+              {totalBreakSeconds > 0 ? formatFocusTime(totalBreakSeconds) : '-'}
+            </p>
           </div>
         </div>
-        {totalBreakSeconds > 0 && (
-          <p className="mt-2 text-xs text-gray-500">
-            휴식 {formatFocusTime(totalBreakSeconds)}
-          </p>
-        )}
       </div>
 
       <div className="space-y-2">
@@ -56,24 +58,26 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
             기록된 세션이 없어요.
           </div>
         ) : (
-          sessions.map((session, index) => (
-            <div
-              key={`${task.id}-session-${index}`}
-              className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2"
-            >
-              <div>
-                <p className="text-sm font-medium text-gray-900">Flow {index + 1}</p>
-                {session.breakSeconds > 0 && (
-                  <p className="text-xs text-gray-400">
-                    휴식 {formatFocusTime(session.breakSeconds)}
+          <div className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+            {sessions.map((session, index) => (
+              <div
+                key={`${task.id}-session-${index}`}
+                className="flex items-center justify-between px-3 py-2"
+              >
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-gray-900">Flow {index + 1}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {session.breakSeconds > 0
+                      ? `휴식 ${formatFocusTime(session.breakSeconds)}`
+                      : '휴식 없음'}
                   </p>
-                )}
+                </div>
+                <span className="text-sm font-semibold text-emerald-600">
+                  {formatFocusTime(session.sessionFocusSeconds)}
+                </span>
               </div>
-              <span className="text-sm font-semibold text-emerald-600">
-                {formatFocusTime(session.sessionFocusSeconds)}
-              </span>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </BottomSheet>

@@ -285,8 +285,8 @@ Headers (MVP):
 
 ### 5.2.1 Get Review (단건)
 - `GET /api/reviews?type={type}&periodStart=YYYY-MM-DD`
-  - `type`: `daily | weekly | monthly | yearly`
-  - Note: 현재 UI는 `daily, weekly, monthly, yearly`를 사용
+  - `type`: `daily | weekly | monthly`
+  - Note: 현재 UI는 `daily, weekly, monthly`를 사용
   - Response 200:
 ```json
 {

@@ -12,6 +12,7 @@ type BottomSheetProps = {
   titleClassName?: string
   hideHandle?: boolean
   showCloseButton?: boolean
+  showHeaderDivider?: boolean
   closeButtonAriaLabel?: string
   headerAction?: ReactNode
 }
@@ -26,6 +27,7 @@ export function BottomSheet({
   titleClassName = '',
   hideHandle = false,
   showCloseButton = false,
+  showHeaderDivider = true,
   closeButtonAriaLabel = 'Close',
   headerAction,
 }: BottomSheetProps) {
@@ -85,7 +87,11 @@ export function BottomSheet({
 
         {/* 타이틀 */}
         {title && (
-          <div className="relative border-b border-gray-100 px-5 pb-3">
+          <div
+            className={`relative px-5 pb-3 ${
+              showHeaderDivider ? 'border-b border-gray-100' : ''
+            }`}
+          >
             <h3 className={`text-center text-base font-semibold text-gray-900 truncate ${titleClassName}`}>{title}</h3>
             {headerAction && (
               <div className={`absolute top-1/2 -translate-y-1/2 ${showCloseButton ? 'right-12' : 'right-4'}`}>

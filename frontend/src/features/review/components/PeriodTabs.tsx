@@ -1,10 +1,9 @@
 import type { PeriodType } from '../reviewTypes'
 
 const TABS: Array<{ value: PeriodType; label: string }> = [
-  { value: 'daily', label: '오늘' },
+  { value: 'daily', label: '일일' },
   { value: 'weekly', label: '주간' },
   { value: 'monthly', label: '월간' },
-  { value: 'yearly', label: '연간' },
 ]
 
 type PeriodTabsProps = {
