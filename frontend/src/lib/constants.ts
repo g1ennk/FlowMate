@@ -5,5 +5,5 @@ export const PHASE_LABELS: Record<string, string> = {
 }
 
 // 타이머 관련 상수
-export const MIN_FLOW_MS = 0 // 최소 시간 제거
+export const MIN_FLOW_MS = 60_000 // 최소 1분 이상 집중해야 세션 인정
 

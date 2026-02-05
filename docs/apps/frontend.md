@@ -324,7 +324,8 @@ src/
 - localStorage에 데이터 저장
 - 새로고침해도 유지
 - 키(MSW): `flowmate/{clientId}/todos`, `flowmate/{clientId}/settings`
-- 타이머 상태: `flowmate/{clientId}/timer/v2/{todoId}`
+- 타이머 상태: `flowmate/{clientId}/timers`
+  - payload: `{ version: 1, activeId, items }` (todoId별 상태는 `items`에 저장)
 - 세션(Session) 기록: `flowmate/{clientId}/sessions/{todoId}`
 - 참고: Session은 MVP에서 서버 저장 대상이며, `sessions`는 복원/캐시 용도 (초 단위 저장)
 - 키 규칙은 `src/lib/storageKeys.ts`에서 관리

@@ -407,14 +407,21 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               <div className="mb-8 flex items-center justify-center gap-2.5">
                 {(() => {
                   const sessions = timer?.sessions ?? []
-                  
-                  // 실제로 시작했는지 (running 상태이거나, paused 상태에서 시간이 진행된 경우)
-                  const hasStarted = timer?.status === 'running' || (timer?.status === 'paused' && (timer?.focusElapsedMs ?? 0) > 0)
-                  
-                  // 일반 타이머: sessions.length + (현재 진행 중인 세션이 있으면 1)
-                  // 세션이 늘어나면 도트도 자동으로 늘어남
+                  const currentInitialMs = timer?.initialFocusMs ?? 0
+                  const focusElapsedMs = timer?.focusElapsedMs ?? 0
+                  const currentSessionFocusMs = getCurrentSessionFocusMs(
+                    focusElapsedMs,
+                    currentInitialMs,
+                    sessions,
+                  )
+
+                  const pendingSession =
+                    timer?.status === 'running' &&
+                    timer?.flexiblePhase === 'focus' &&
+                    currentSessionFocusMs >= MIN_FLOW_MS
+
                   const completedSessions = sessions.length
-                  const totalDots = completedSessions + (timer?.flexiblePhase === 'focus' && hasStarted ? 1 : 0)
+                  const totalDots = completedSessions + (pendingSession ? 1 : 0)
                   
                   // 도트가 없으면 빈 공간
                   if (totalDots === 0) {
@@ -423,7 +430,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   
                   return Array.from({ length: totalDots }).map((_, i) => {
                     const isActuallyCompleted = i < completedSessions  // 실제로 완료된 Flow (sessions에 있는 세션)
-                    const isCurrent = i === completedSessions && timer?.flexiblePhase === 'focus'  // 현재 진행 중
+                    const isCurrent = pendingSession && i === completedSessions  // 현재 진행 중
                     
                     return (
                       <span
@@ -431,7 +438,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                         className={`relative overflow-hidden rounded-full transition-all duration-500 ease-out ${
                           isActuallyCompleted
                             ? 'h-2.5 w-2.5 bg-emerald-400 shadow-sm'  // 완료된 Flow: 초록색
-                            : isCurrent && hasStarted
+                            : isCurrent
                                 ? 'h-2.5 w-2.5 bg-gray-700/80 shadow-sm animate-pulse'  // 진행 중: 짧은 도트 (카운트업, 프로그레스바 없음)
                                 : 'h-2.5 w-2.5 bg-gray-700/50'  // 시작 전 또는 예정: 동일한 회색
                         }`}
@@ -552,8 +559,13 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   const completedSessions = sessions.length
                   const currentInitialMs = timer?.initialFocusMs ?? 0
                   const focusElapsedMs = timer?.focusElapsedMs ?? 0
+                  const currentSessionFocusMs = getCurrentSessionFocusMs(
+                    focusElapsedMs,
+                    currentInitialMs,
+                    sessions,
+                  )
                   const pendingSession =
-                    getCurrentSessionFocusMs(focusElapsedMs, currentInitialMs, sessions) >= MIN_FLOW_MS
+                    timer?.status === 'running' && currentSessionFocusMs >= MIN_FLOW_MS
                   // 휴식 중에는 현재 세션이 아직 확정되지 않았으므로 pending으로 표시
                   const totalDots = Math.max(completedSessions + (pendingSession ? 1 : 0), 1) // 최소 1개 이상
                   const isInBreak = timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free'
@@ -568,7 +580,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   }
                   
                   // 실제로 시작했는지 (running 상태이거나, paused 상태에서 시간이 진행된 경우)
-                  const hasStarted = timer?.status === 'running' || (timer?.status === 'paused' && (timer?.breakElapsedMs ?? 0) > 0)
+                  const hasStarted = timer?.status === 'running'
                   
                   return Array.from({ length: totalDots }).map((_, i) => {
                     const isCompleted = i < completedSessions  // 완료된 Flow (sessions에 있는 세션)

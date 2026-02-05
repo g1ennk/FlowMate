@@ -11,6 +11,6 @@ export const storageKeys = {
   automationSettings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings/automation`,
   miniDaysSettings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings/miniDays`,
   sharedMiniDaysSettings: `${STORAGE_PREFIX}/settings/miniDays`,
-  timerPrefix: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/timer/v2/`,
+  timersKey: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/timers`,
   sessionsPrefix: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/sessions/`,
 }

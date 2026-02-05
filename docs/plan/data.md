@@ -18,6 +18,7 @@
 - User 1 : N Review
 
 > Timer 상태는 **클라이언트 localStorage**에만 저장.
+> 저장 키: `flowmate/{clientId}/timers` (payload에 `version`, `activeId`, `items` 포함)
 > Session은 **MVP에서 서버 저장** 대상으로 포함.
 
 ## 2) Logical Model (논리적 모델)
