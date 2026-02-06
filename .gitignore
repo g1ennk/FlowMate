@@ -6,5 +6,3 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 .claude
-/docs/plan/agent/
-/worktrees

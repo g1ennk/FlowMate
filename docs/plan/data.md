@@ -95,7 +95,7 @@ CREATE TABLE todos
     title                 VARCHAR(200) NOT NULL,
     note                  TEXT,
     date                  DATE         NOT NULL,
-    mini_day              TINYINT      NOT NULL DEFAULT 0, -- 0~3
+    mini_day              INT          NOT NULL DEFAULT 0, -- 0~3
     day_order             INT          NOT NULL DEFAULT 0,
     is_done               BOOLEAN      NOT NULL DEFAULT FALSE,
     session_count         INT          NOT NULL DEFAULT 0,
@@ -146,16 +146,16 @@ CREATE TABLE user_settings
 
     -- MiniDays (분 단위 저장)
     day1_label         VARCHAR(50) NOT NULL DEFAULT '오전',
-    day1_start_min     SMALLINT    NOT NULL DEFAULT 360,  -- 06:00
-    day1_end_min       SMALLINT    NOT NULL DEFAULT 720,  -- 12:00
+    day1_start_min     INT         NOT NULL DEFAULT 360,  -- 06:00
+    day1_end_min       INT         NOT NULL DEFAULT 720,  -- 12:00
 
     day2_label         VARCHAR(50) NOT NULL DEFAULT '오후',
-    day2_start_min     SMALLINT    NOT NULL DEFAULT 720,
-    day2_end_min       SMALLINT    NOT NULL DEFAULT 1080, -- 18:00
+    day2_start_min     INT         NOT NULL DEFAULT 720,
+    day2_end_min       INT         NOT NULL DEFAULT 1080, -- 18:00
 
     day3_label         VARCHAR(50) NOT NULL DEFAULT '저녁',
-    day3_start_min     SMALLINT    NOT NULL DEFAULT 1080,
-    day3_end_min       SMALLINT    NOT NULL DEFAULT 1440, -- 24:00
+    day3_start_min     INT         NOT NULL DEFAULT 1080,
+    day3_end_min       INT         NOT NULL DEFAULT 1440, -- 24:00
 
     updated_at         TIMESTAMP   NOT NULL
 );
