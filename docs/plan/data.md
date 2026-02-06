@@ -88,6 +88,7 @@ MiniDays
 ### 3.1 todos
 
 ```sql
+-- noinspection SqlNoDataSourceInspection,SqlResolve
 CREATE TABLE todos
 (
     id                    VARCHAR(36) PRIMARY KEY,
@@ -111,6 +112,7 @@ CREATE TABLE todos
 ### 3.2 todo_sessions
 
 ```sql
+-- noinspection SqlNoDataSourceInspection,SqlResolve
 CREATE TABLE todo_sessions
 (
     id                    VARCHAR(36) PRIMARY KEY,
@@ -130,6 +132,7 @@ CREATE TABLE todo_sessions
 ### 3.3 user_settings
 
 ```sql
+-- noinspection SqlNoDataSourceInspection,SqlResolve
 CREATE TABLE user_settings
 (
     user_id            VARCHAR(255) PRIMARY KEY,
@@ -164,6 +167,7 @@ CREATE TABLE user_settings
 ### 3.4 reviews
 
 ```sql
+-- noinspection SqlNoDataSourceInspection,SqlResolve
 CREATE TABLE reviews
 (
     id           VARCHAR(36) PRIMARY KEY,

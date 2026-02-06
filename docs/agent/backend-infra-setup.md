@@ -24,10 +24,6 @@ plugins {
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
-group = 'kr.io.flowmate'
-version = '0.0.1-SNAPSHOT'
-description = 'backend'
-
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -662,7 +658,6 @@ public class ClientIdResolver {
      *
      * @param request HTTP 요청
      * @return Client ID
-     * @throws IllegalArgumentException X-Client-Id 헤더가 없거나 빈 값인 경우
      */
     public String resolve(HttpServletRequest request) {
         String clientId = request.getHeader(HEADER_NAME);

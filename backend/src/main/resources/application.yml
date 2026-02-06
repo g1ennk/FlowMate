@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: backend
+
+  # Disable Open Session In View to avoid lazy loading during view rendering.
+  jpa:
+    open-in-view: false
+
+server:
+  port: 8080
