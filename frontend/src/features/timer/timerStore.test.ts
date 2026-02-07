@@ -165,7 +165,29 @@ describe('timerStore', () => {
     expect(timer?.status).toBe('waiting')
   })
 
-  it('skipToNext from flow transitions to break phase', () => {
+  it('break completion updates breakSeconds when elapsed meets minimum', () => {
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'pomodoro',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'short',
+          cycleCount: 1,
+          endAt: Date.now() - 1000,
+          sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0 }],
+        },
+      },
+      autoCompletedTodos: new Set(),
+    })
+
+    useTimerStore.getState().completePhase('todo-1')
+    const timer = useTimerStore.getState().getTimer('todo-1')
+    expect(timer?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 60 })
+  })
+
+  it('skipToNext from flow records session when elapsed meets minimum', () => {
     useTimerStore.setState({
       timers: {
         'todo-1': {
@@ -175,7 +197,7 @@ describe('timerStore', () => {
           status: 'running',
           phase: 'flow',
           cycleCount: 0,
-          endAt: Date.now() + 1000,
+          endAt: Date.now() - 1000,
           sessions: [],
         },
       },
@@ -190,7 +212,29 @@ describe('timerStore', () => {
     expect(afterSkip?.phase).toBe('short')
     expect(afterSkip?.status).toBe('running')
     expect(afterSkip?.cycleCount).toBe(1)
-    // 스킵 시 sessions에 기록되지 않음
+    expect(afterSkip?.sessions.length).toBe(1)
+    expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 0 })
+  })
+
+  it('skipToNext from flow does not record session when elapsed is below minimum', () => {
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'pomodoro',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'flow',
+          cycleCount: 0,
+          endAt: Date.now() + 30_000,
+          sessions: [],
+        },
+      },
+      autoCompletedTodos: new Set(),
+    })
+
+    useTimerStore.getState().skipToNext('todo-1')
+    const afterSkip = useTimerStore.getState().getTimer('todo-1')
     expect(afterSkip?.sessions.length).toBe(0)
   })
 
@@ -204,7 +248,7 @@ describe('timerStore', () => {
           status: 'running',
           phase: 'short',
           cycleCount: 1,
-          endAt: Date.now() + 1000,
+          endAt: Date.now() - 1000,
           sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0 }], // 기존 세션 1개
         },
       },
@@ -218,8 +262,29 @@ describe('timerStore', () => {
     const afterSkip = useTimerStore.getState().getTimer('todo-1')
     expect(afterSkip?.phase).toBe('flow')
     expect(afterSkip?.status).toBe('running')
-    // 스킵 시 sessions가 변경되지 않음 (기존 세션 유지)
     expect(afterSkip?.sessions.length).toBe(1)
+    expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 60 })
+  })
+
+  it('skipToNext from break does not update breakSeconds when elapsed is below minimum', () => {
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'pomodoro',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'short',
+          cycleCount: 1,
+          endAt: Date.now() + 30_000,
+          sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0 }],
+        },
+      },
+      autoCompletedTodos: new Set(),
+    })
+
+    useTimerStore.getState().skipToNext('todo-1')
+    const afterSkip = useTimerStore.getState().getTimer('todo-1')
     expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 0 })
   })
 

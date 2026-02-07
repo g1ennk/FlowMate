@@ -35,6 +35,7 @@
 - 카테고리(태그) 및 루틴
 - 집중 모드 배경음악(Lo-fi) 기능
 - 오늘하기 및 날짜 바꾸기 기능
+- 카테고리 자동 지정 ex) ps: 해시 개념 풀이 -> 카테고리 = ps, 해시 개념 풀이 = title
 
 ## 4. 기술 스택
 
@@ -89,7 +90,7 @@
 
 - 카운트업 방식 (00:00부터 시작)
 - **Flow 개념**: `MIN_FLOW_MS` 이상 집중 + 명시적 행동(휴식/완료)
-    - 최소 집중 시간: `MIN_FLOW_MS` (현재 0분, 상수로 조정 가능)
+    - 최소 집중 시간: `MIN_FLOW_MS` (현재 1분, 상수로 조정 가능)
     - 완료된 Flow만 카운트 (`sessionCount`)
     - 완료 시 현재 세션만 처리 (중복 카운트 방지)
 - **휴식 기능**:
@@ -113,10 +114,11 @@
     - Short Break
     - Long Break
 - 기본 규칙:
-    - Flow 완료 → sessionCount 증가
+    - Flow 인정 조건: 실제 경과가 `MIN_FLOW_MS`(현재 1분) 이상일 때만 sessionCount 증가
     - Flow 완료 횟수가 cycleEvery에 도달하면 Long Break
     - 그 외에는 Short Break
     - 긴 휴식 완료 후 자동으로 사이클 초기화 (`cycleCount = 0`)
+    - Break 반영 조건: 실제 휴식 경과가 `MIN_FLOW_MS`(현재 1분) 이상일 때만 마지막 세션의 `breakSeconds` 반영
 - 타이머는 **endAt 기준**으로 시간 계산을 한다
 - Pause / Resume / Reset 지원 (Stop은 UI에 별도 버튼 없음)
 - 자동화 설정:

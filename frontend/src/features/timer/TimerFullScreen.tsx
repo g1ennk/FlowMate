@@ -229,6 +229,38 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     setShowBreakSelection(false)
   }
 
+  const savePomodoroFlowSessionBeforeBreak = async () => {
+    if (!timer || timer.mode !== 'pomodoro' || timer.phase !== 'flow') {
+      return true
+    }
+
+    const plannedMs = getPlannedMsUtil(timer, settings)
+    const remainingMs =
+      timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
+    const elapsedMs = Math.max(0, plannedMs - remainingMs)
+    const elapsedSec = Math.round(elapsedMs / 1000)
+
+    if (elapsedMs < MIN_FLOW_MS || elapsedSec <= 0) {
+      return true
+    }
+
+    try {
+      await createSession.mutateAsync({
+        todoId,
+        body: {
+          sessionFocusSeconds: elapsedSec,
+          breakSeconds: 0,
+        },
+      })
+      return true
+    } catch {
+      toast.error('Flow 기록 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', {
+        id: 'pomodoro-break-session-save-failed',
+      })
+      return false
+    }
+  }
+
   const isRunning = timer?.status === 'running'
   const isActive = timer && timer.status !== 'idle'
   const effectiveMode: 'stopwatch' | 'pomodoro' | null = selectedMode ?? (timer?.mode ?? null)
@@ -678,8 +710,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
               {/* 휴식/집중 시작 버튼 */}
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (isFlow) {
+                    const canMoveToBreak = await savePomodoroFlowSessionBeforeBreak()
+                    if (!canMoveToBreak) return
                     // Flow → Break로 이동
                     skipToNext(todoId)
                   } else {

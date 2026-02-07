@@ -584,9 +584,12 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         )
       } else {
         // Break → Flow 자동 전환
-        // Break 완료 시 마지막 세션의 breakSeconds 업데이트
-        const breakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
-        const breakSeconds = Math.round(breakMs / 1000)
+        // Break 완료 시 실제 경과 시간을 기준으로 마지막 세션의 breakSeconds 업데이트
+        const plannedBreakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
+        const remainingMs =
+          timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
+        const elapsedBreakMs = Math.max(0, plannedBreakMs - remainingMs)
+        const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -cycleCount : 0
         transitionPhase(
           todoId, 
@@ -596,6 +599,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           cycleCountDelta,
           (currentHistory) => {
             if (currentHistory.length === 0) return currentHistory
+            if (elapsedBreakMs < MIN_FLOW_MS || breakSeconds <= 0) return currentHistory
             const updated = [...currentHistory]
             updated[updated.length - 1] = {
               ...updated[updated.length - 1],
@@ -619,19 +623,37 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const nextCycle = timer.cycleCount + 1
         const breakType = getBreakType(nextCycle, cycleEvery)
         const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
+        const plannedMs = flowMin * MINUTE
+        const remainingMs =
+          timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
+        const elapsedMs = Math.max(0, plannedMs - remainingMs)
+        const elapsedSec = Math.round(elapsedMs / 1000)
         
-        // Flow 스킵 시 sessions에 기록하지 않음 (완료가 아니므로)
+        // Flow에서 휴식으로 이동할 때, 최소 집중 시간을 넘긴 경우 현재 Flow를 세션으로 인정
         transitionPhase(
           todoId,
           breakType.phase,
           nextBreakDuration,
           true,
           1,
-          (currentHistory) => currentHistory // 스킵은 기록하지 않음
+          (currentHistory) => {
+            if (elapsedMs < MIN_FLOW_MS || elapsedSec <= 0) {
+              return currentHistory
+            }
+            return [
+              ...currentHistory,
+              { sessionFocusSeconds: elapsedSec, breakSeconds: 0 },
+            ]
+          },
         )
       } else {
         // Break → Flow 수동 스킵
-        // Break 스킵 시 sessions에 기록하지 않음 (완료가 아니므로)
+        // Break에서 Flow로 이동할 때, 최소 휴식 시간을 넘긴 경우 마지막 세션의 breakSeconds 반영
+        const plannedBreakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
+        const remainingMs =
+          timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
+        const elapsedBreakMs = Math.max(0, plannedBreakMs - remainingMs)
+        const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -timer.cycleCount : 0
         transitionPhase(
           todoId,
@@ -639,7 +661,16 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           flowMin,
           true,
           cycleCountDelta,
-          (currentHistory) => currentHistory // 스킵은 기록하지 않음
+          (currentHistory) => {
+            if (currentHistory.length === 0) return currentHistory
+            if (elapsedBreakMs < MIN_FLOW_MS || breakSeconds <= 0) return currentHistory
+            const updated = [...currentHistory]
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              breakSeconds,
+            }
+            return updated
+          },
         )
       }
     },

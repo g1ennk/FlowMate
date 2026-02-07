@@ -125,7 +125,7 @@ async function completePomodoro(
     updateSessions(todoId, newSessions)
   }
 
-  if (elapsedSec > 0) {
+  if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
     await createSession({
       todoId,
       body: {
