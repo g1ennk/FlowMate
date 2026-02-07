@@ -5,8 +5,8 @@ spring:
 
   datasource:
     url: jdbc:mysql://localhost:3306/flowmate?serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
-    username: flowmate
-    password: flowmate
+    username: ${DB_USERNAME:flowmate}
+    password: ${DB_PASSWORD:flowmate}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -26,3 +26,6 @@ logging:
   level:
     kr.io.flowmate: debug
     org.hibernate.SQL: debug
+
+cors:
+  allowed-origins: http://localhost:5173

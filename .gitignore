@@ -7,3 +7,5 @@ frontend/dist/
 frontend/.vite/
 .claude
 /docs/plan/agent/
+
+/backend/.env.local
