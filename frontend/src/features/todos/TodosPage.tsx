@@ -72,6 +72,13 @@ type ContainerItems = Record<DropContainerId, string[]>
 
 type RectLike = { top: number; height: number }
 
+const UNCLASSIFIED_MINI_DAY = 0
+
+const ensureUnclassifiedOpen = (sections: Record<number, boolean>): Record<number, boolean> => ({
+  ...sections,
+  [UNCLASSIFIED_MINI_DAY]: true,
+})
+
 const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): GroupedTodos => {
   const grouped: Record<number, Todo[]> = {}
   daySections.forEach((section) => {
@@ -285,10 +292,12 @@ function TodosPage() {
     () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings),
     [selectedDate, miniDaysSettings],
   )
-  const [openSections, setOpenSections] = useState<Record<number, boolean>>({ [defaultOpenId]: true })
+  const [openSections, setOpenSections] = useState<Record<number, boolean>>(
+    ensureUnclassifiedOpen({ [defaultOpenId]: true }),
+  )
 
   useEffect(() => {
-    setOpenSections({ [defaultOpenId]: true })
+    setOpenSections(ensureUnclassifiedOpen({ [defaultOpenId]: true }))
   }, [defaultOpenId])
 
   const markedDates = useMemo(() => {
@@ -322,6 +331,7 @@ function TodosPage() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const clonedItemsRef = useRef<ContainerItems | null>(null)
   const dragOriginContainerRef = useRef<DropContainerId | null>(null)
+  const lastDragOverKeyRef = useRef<string | null>(null)
   const isAllOpen = daySections.every((section) => openSections[section.id])
 
   const todoById = useMemo(() => {
@@ -537,6 +547,7 @@ function TodosPage() {
     setActiveDragId(id)
     clonedItemsRef.current = containerItems
     dragOriginContainerRef.current = findContainerFor(id)
+    lastDragOverKeyRef.current = null
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -554,11 +565,17 @@ function TodosPage() {
     const overContainer = findContainerFor(overId)
     if (!activeContainer || !overContainer) return
 
+    const dragOverKey = `${activeId}:${activeContainer}->${overContainer}:${overId}:${isBelowOverItem ? '1' : '0'}`
+    if (lastDragOverKeyRef.current === dragOverKey) return
+    lastDragOverKeyRef.current = dragOverKey
+
     const overMiniDay = parseContainerId(overContainer as DropContainerId)
     if (!openSections[overMiniDay]) {
       if (openSectionTimeoutRef.current) window.clearTimeout(openSectionTimeoutRef.current)
       openSectionTimeoutRef.current = window.setTimeout(() => {
-        setOpenSections((prev) => (prev[overMiniDay] ? prev : { ...prev, [overMiniDay]: true }))
+        setOpenSections((prev) =>
+          prev[overMiniDay] ? prev : ensureUnclassifiedOpen({ ...prev, [overMiniDay]: true }),
+        )
       }, 200)
     }
 
@@ -595,6 +612,7 @@ function TodosPage() {
       setActiveDragId(null)
       clonedItemsRef.current = null
       dragOriginContainerRef.current = null
+      lastDragOverKeyRef.current = null
       return
     }
 
@@ -603,6 +621,7 @@ function TodosPage() {
       setActiveDragId(null)
       clonedItemsRef.current = null
       dragOriginContainerRef.current = null
+      lastDragOverKeyRef.current = null
       return
     }
     const overId = String(event.over.id)
@@ -714,6 +733,7 @@ function TodosPage() {
     setActiveDragId(null)
     clonedItemsRef.current = null
     dragOriginContainerRef.current = null
+    lastDragOverKeyRef.current = null
   }
 
   const handleDragCancel = () => {
@@ -727,6 +747,7 @@ function TodosPage() {
     setActiveDragId(null)
     clonedItemsRef.current = null
     dragOriginContainerRef.current = null
+    lastDragOverKeyRef.current = null
   }
 
 
@@ -757,7 +778,7 @@ function TodosPage() {
           <button
             onClick={() => {
               if (isAllOpen) {
-                setOpenSections({})
+                setOpenSections(ensureUnclassifiedOpen({}))
                 setInputDay(null)
                 return
               }
@@ -765,7 +786,7 @@ function TodosPage() {
               daySections.forEach((sectionItem) => {
                 next[sectionItem.id] = true
               })
-              setOpenSections(next)
+              setOpenSections(ensureUnclassifiedOpen(next))
             }}
             className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-600"
           >
@@ -783,7 +804,7 @@ function TodosPage() {
           <DndContext
             sensors={sensors}
             collisionDetection={collisionDetectionStrategy}
-            measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
+            measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragCancel={handleDragCancel}
@@ -905,10 +926,13 @@ function TodosPage() {
                           <div className="grid grid-cols-[20px_1fr_28px] items-start gap-2 px-2">
                             <button
                               onClick={() =>
-                                setOpenSections((prev) => ({
-                                  ...prev,
-                                  [section.id]: !prev[section.id],
-                                }))
+                                setOpenSections((prev) => {
+                                  if (section.id === UNCLASSIFIED_MINI_DAY) return prev
+                                  return ensureUnclassifiedOpen({
+                                    ...prev,
+                                    [section.id]: !prev[section.id],
+                                  })
+                                })
                               }
                               className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
                             >
@@ -936,7 +960,9 @@ function TodosPage() {
                             </div>
                             <button
                               onClick={() => {
-                                setOpenSections((prev) => ({ ...prev, [section.id]: true }))
+                                setOpenSections((prev) =>
+                                  ensureUnclassifiedOpen({ ...prev, [section.id]: true }),
+                                )
                                 setInputDay((current) => (current === section.id ? null : section.id))
                                 setTimeout(() => {
                                   if (inputRef.current) {

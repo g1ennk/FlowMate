@@ -29,6 +29,7 @@ Headers (MVP):
 ```
 
 > miniDay: Day 0(미분류), Day 1~3(시간대)
+> `isDone` 키는 응답/요청 모두 고정 사용합니다. (`done` 아님)
 
 **참고**: `sessionFocusSeconds`는 **초 단위**입니다.  
 **참고**: **Session은 MVP에 포함된 서버 저장 대상**이며 API 응답에는 포함하지 않습니다. 타이머 상태는 클라이언트 localStorage에 유지합니다.
@@ -95,9 +96,14 @@ Headers (MVP):
 ```json
 { "title": "string", "note": "string|null", "date": "2026-01-09", "miniDay": 0, "dayOrder": 0 }
 ```
-- Validation: title 1~200, date는 선택(optional)이며 제공 시 YYYY-MM-DD format
+- Validation: 
+  - `title`: 1~200자 (required)
+  - `date`: YYYY-MM-DD 형식 (required, 프론트엔드가 캘린더 선택값 전달)
+  - `miniDay`: 0~3 (required, 프론트엔드가 섹션 선택값 전달)
+  - `dayOrder`: 0 이상 정수 (required, 프론트엔드가 자동 계산하여 전달)
 - Note:
-  - date 누락 시 서버에서 오늘 날짜로 기본값 적용
+  - 프론트엔드는 모든 필드를 항상 전달합니다
+  - 서버는 방어적으로 누락 시 기본값 처리 (date: 오늘, miniDay: 0, dayOrder: max+1)
   - 프론트는 일반적으로 선택 날짜를 전달하지만, API는 서버 기본값 경로를 유지
 - Response 201: `Todo`
 
@@ -105,8 +111,9 @@ Headers (MVP):
 - `PATCH /api/todos/{id}`
 - Body: 위 필드 중 일부(any subset)
 ```json
-{ "title": "string", "note": "string|null", "isDone": true, "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch"|"pomodoro"|null, "sessionCount": number }
+{ "title": "string", "note": "string|null", "isDone": true, "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch"|"pomodoro"|null }
 ```
+- Note: `sessionCount`와 `sessionFocusSeconds`는 직접 수정 불가능 (Session API를 통해서만 변경)
 - Response 200: `Todo`
 - Errors: 404 Not Found, 400 Validation Error
 
@@ -267,13 +274,20 @@ Headers (MVP):
   - `sessionCount = 0`
   - `timerMode = null`
   - 해당 Todo의 모든 Session 삭제
-- Response 200:
+- Response 200: `Todo` (전체 Todo 객체 반환)
 ```json
 {
   "id": "uuid",
-  "sessionFocusSeconds": 0,
+  "title": "회의",
+  "note": "팀 미팅",
+  "date": "2026-01-09",
+  "miniDay": 1,
+  "dayOrder": 0,
+  "isDone": false,
   "sessionCount": 0,
+  "sessionFocusSeconds": 0,
   "timerMode": null,
+  "createdAt": "2026-01-09T12:00:00Z",
   "updatedAt": "2026-01-09T12:20:00Z"
 }
 ```
