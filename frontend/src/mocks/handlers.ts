@@ -523,28 +523,6 @@ export const handlers = [
     return HttpResponse.json(session, { status: 201 })
   }),
 
-  // 타이머 리셋 (sessionFocusSeconds와 sessionCount 초기화)
-  http.post('/api/todos/:id/reset', async ({ params, request }) => {
-    await delay(latency)
-    const clientId = getClientId(request)
-    const id = params.id as string
-    let todos = loadTodos(clientId)
-    const existing = todos.find((t) => t.id === id)
-    if (!existing) {
-      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
-    }
-    const updated: Todo = {
-      ...existing,
-      sessionFocusSeconds: 0,
-      sessionCount: 0,
-      timerMode: null, // 타이머 모드도 초기화
-      updatedAt: now(),
-    }
-    todos = todos.map((t) => (t.id === id ? updated : t))
-    saveTodos(clientId, todos)
-    return HttpResponse.json(updated)
-  }),
-
   http.get('/api/settings', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)

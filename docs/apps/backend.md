@@ -40,7 +40,7 @@ kr.io.flowmate
 ```
 
 ## 엔드포인트 그룹
-- Todo: `/api/todos`, `/api/todos/{id}`, `/api/todos/reorder`, `/api/todos/{id}/reset`
+- Todo: `/api/todos`, `/api/todos/{id}`, `/api/todos/reorder`
 - Session: `/api/todos/{todoId}/sessions`
 - Settings: `/api/settings`, `/api/settings/pomodoro-session`, `/api/settings/automation`, `/api/settings/mini-days`
 - Review: `/api/reviews`

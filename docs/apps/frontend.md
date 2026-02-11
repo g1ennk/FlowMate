@@ -36,7 +36,7 @@ pnpm build
 
 ## API 연동 포인트
 - `src/api/http.ts`: 공통 fetch 래퍼, zod 파싱, 에러 표준화
-- `src/api/todos.ts`: Todo/Session/Reset API
+- `src/api/todos.ts`: Todo/Session API
 - `src/api/settings.ts`: Settings API
 - `src/api/reviews.ts`: Review API
 

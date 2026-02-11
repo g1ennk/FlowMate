@@ -30,7 +30,4 @@ export const todoApi = {
       SessionCreateRequestSchema.parse(body),
       SessionSchema,
     ),
-  // 타이머 리셋 (전체 Todo 반환)
-  resetTimer: (id: string): Promise<Todo> =>
-    api.post(`/todos/${id}/reset`, {}, TodoSchema),
 }

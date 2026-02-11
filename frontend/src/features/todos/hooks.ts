@@ -3,7 +3,6 @@ import { todoApi } from '../../api/todos'
 import {
   type Session,
   type SessionCreateRequest,
-  type Todo,
   type TodoCreateInput,
   type TodoList,
   type TodoPatchInput,
@@ -132,30 +131,4 @@ export function useCreateSession() {
       qc.invalidateQueries({ queryKey: queryKeys.todo(todoId) })
     },
   })
-}
-
-// 타이머 리셋 (sessionFocusSeconds와 sessionCount 초기화)
-export function useResetTimer() {
-  const qc = useQueryClient()
-  return useMutation<Todo, unknown, string>(
-    {
-      mutationFn: (id: string) => todoApi.resetTimer(id),
-      onSuccess: (_data, id) => {
-        // 즉시 캐시 업데이트 (UI 갱신)
-        qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
-          if (!old) return old
-          return {
-            items: old.items.map((todo) =>
-              todo.id === id
-                ? { ...todo, sessionFocusSeconds: 0, sessionCount: 0, timerMode: null }
-                : todo
-            ),
-          }
-        })
-        // 안전을 위한 재검증
-        qc.invalidateQueries({ queryKey: queryKeys.todos() })
-        qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
-      },
-    },
-  )
 }

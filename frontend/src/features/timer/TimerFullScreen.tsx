@@ -5,7 +5,7 @@ import { PHASE_LABELS, MIN_FLOW_MS } from '../../lib/constants'
 import { MINUTE_MS } from '../../lib/time'
 import type { TodoList } from '../../api/types'
 import { usePomodoroSettings } from '../settings/hooks'
-import { useCreateSession, useResetTimer, useUpdateTodo } from '../todos/hooks'
+import { useCreateSession, useUpdateTodo } from '../todos/hooks'
 import { toast } from 'react-hot-toast'
 import {
   ChevronLeftIcon,
@@ -52,7 +52,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const { data: settings } = usePomodoroSettings()
   const createSession = useCreateSession() // Session API (뽀모도로/일반 타이머 통합)
   const updateTodo = useUpdateTodo()
-  const resetTimer = useResetTimer() // 타이머 리셋용 (기록 삭제)
   const queryClient = useQueryClient()
   
   const timer = useTimer(todoId)
@@ -853,7 +852,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               타이머를 리셋하시겠습니까?
             </h3>
             <p className="mb-6 text-center text-sm text-gray-400">
-              모든 기록과 진행 상황이 삭제됩니다.
+              현재 실행 중인 타이머만 초기화됩니다.
             </p>
             <div className="flex gap-3">
               <button
@@ -863,21 +862,17 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 취소
               </button>
               <button
-                onClick={async () => {
+                onClick={() => {
                   setShowResetModal(false)
-                  
-                  // DB에서 기록 삭제 (sessionFocusSeconds, sessionCount, timerMode 초기화)
-                  await resetTimer.mutateAsync(todoId)
-                  
-                  // 타이머 완전히 제거 (store에서 타이머 자체를 삭제)
+
+                  // store에서 타이머 자체를 삭제
                   reset(todoId)
-                  
+
                   // 홈 화면으로 돌아가기
-                  toast.success('기록이 초기화되었습니다', { id: 'timer-reset' })
+                  toast.success('타이머가 초기화되었습니다', { id: 'timer-reset' })
                   onClose()
                 }}
-                disabled={resetTimer.isPending}
-                className="flex-1 rounded-full bg-red-600 py-3 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+                className="flex-1 rounded-full bg-red-600 py-3 text-sm font-medium text-white transition-colors hover:bg-red-500"
               >
                 확인
               </button>

@@ -260,44 +260,13 @@ Headers (MVP):
 - `DELETE /api/todos/{id}/sessions`
 - Behavior: 해당 Todo의 모든 Session 삭제 (Todo의 집계 값은 유지)
 - Response 204
-> 현재 프론트엔드에서는 이 엔드포인트를 호출하지 않습니다. (초기화는 `POST /api/todos/{id}/reset` 사용)
+> 현재 프론트엔드에서는 이 엔드포인트를 호출하지 않습니다. (세션 삭제 UI는 미구현)
 
 ---
 
-## 5. Timer Control
+## 5. Reviews (회고)
 
-### 5.1 Reset Timer
-- `POST /api/todos/{id}/reset`
-- Body: `{}` (빈 객체)
-- Behavior:
-  - `sessionFocusSeconds = 0`
-  - `sessionCount = 0`
-  - `timerMode = null`
-  - 해당 Todo의 모든 Session 삭제
-- Response 200: `Todo` (전체 Todo 객체 반환)
-```json
-{
-  "id": "uuid",
-  "title": "회의",
-  "note": "팀 미팅",
-  "date": "2026-01-09",
-  "miniDay": 1,
-  "dayOrder": 0,
-  "isDone": false,
-  "sessionCount": 0,
-  "sessionFocusSeconds": 0,
-  "timerMode": null,
-  "createdAt": "2026-01-09T12:00:00Z",
-  "updatedAt": "2026-01-09T12:20:00Z"
-}
-```
-- Errors: 404 Not Found
-
----
-
-### 5.2 Reviews (회고)
-
-### 5.2.1 Get Review (단건)
+### 5.1 Get Review (단건)
 - `GET /api/reviews?type={type}&periodStart=YYYY-MM-DD`
   - `type`: `daily | weekly | monthly`
   - Note: 현재 UI는 `daily, weekly, monthly`를 사용
@@ -315,7 +284,7 @@ Headers (MVP):
 ```
   - 데이터가 없으면 `null` 반환
 
-### 5.2.2 List Reviews (기간 목록)
+### 5.2 List Reviews (기간 목록)
 - `GET /api/reviews?type={type}&from=YYYY-MM-DD&to=YYYY-MM-DD`
   - Response 200:
 ```json
@@ -335,7 +304,7 @@ Headers (MVP):
 ```
   - Note: 리뷰 화면에서 단건 본문 + 캘린더 마킹을 위해 단건/목록 GET이 함께 호출될 수 있음
 
-### 5.2.3 Upsert Review
+### 5.3 Upsert Review
 - `PUT /api/reviews` (upsert)
   - Request:
 ```json
@@ -360,7 +329,7 @@ Headers (MVP):
 ```
   - Note: 회고 upsert는 `PUT`이며 `POST /api/reviews`는 사용하지 않음
 
-### 5.2.4 Delete Review
+### 5.4 Delete Review
 - `DELETE /api/reviews/{id}`
   - Response 204 No Content
 
