@@ -15,8 +15,7 @@ CREATE TABLE todos
     updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_todos_user_date ON todos (user_id, date); -- 사용자/날짜 조회 핫패스
-CREATE INDEX idx_todos_user_dayorder ON todos (user_id, date, is_done, mini_day, day_order); -- 완료상태, 섹션, 정렬 조회
+CREATE INDEX idx_todos_user_order ON todos (user_id, date, mini_day, day_order, created_at);
 
 CREATE TABLE todo_sessions
 (
