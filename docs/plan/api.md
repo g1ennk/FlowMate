@@ -103,8 +103,7 @@ Headers (MVP):
   - `dayOrder`: 0 이상 정수 (required, 프론트엔드가 자동 계산하여 전달)
 - Note:
   - 프론트엔드는 모든 필드를 항상 전달합니다
-  - 서버는 방어적으로 누락 시 기본값 처리 (date: 오늘, miniDay: 0, dayOrder: max+1)
-  - 프론트는 일반적으로 선택 날짜를 전달하지만, API는 서버 기본값 경로를 유지
+  - 서버는 전달된 값을 그대로 저장합니다
 - Response 201: `Todo`
 
 ### 2.3 Update Todo (partial)

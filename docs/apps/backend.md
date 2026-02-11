@@ -33,10 +33,10 @@ cd backend
 kr.io.flowmate
   config/
   common/error/
-  todo/{domain,dto,repo,service,web}
-  session/{domain,dto,repo,service,web}
-  settings/{domain,dto,repo,service,web}
-  review/{domain,dto,repo,service,web}
+  todo/{domain,dto,repository,service,controller}
+  session/{domain,dto,repository,service,controller}
+  settings/{domain,dto,repository,service,controller}
+  review/{domain,dto,repository,service,controller}
 ```
 
 ## 엔드포인트 그룹

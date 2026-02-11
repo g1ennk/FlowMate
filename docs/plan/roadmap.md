@@ -66,8 +66,7 @@
 - Flyway V1 마이그레이션 작성
   - 테이블 상세 스키마는 `docs/plan/data.md` 참고
 - 인덱스 설계
-  - `todos(user_id, date)`
-  - `todos(user_id, date, is_done, mini_day, day_order)`
+  - `todos(user_id, date, mini_day, day_order, created_at)`
 - JPA 엔티티/리포지토리 구현
 - Todo/Settings CRUD 구현 (Service 계층)
 **산출물**

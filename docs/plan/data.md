@@ -108,8 +108,7 @@ CREATE TABLE todos
     timer_mode            VARCHAR(20),                     -- 'stopwatch', 'pomodoro', null
     created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX                 idx_todos_user_date (user_id, date), -- 사용자/날짜 Todo 조회 핫패스
-    INDEX                 idx_todos_user_dayorder (user_id, date, is_done, mini_day, day_order) -- 섹션/완료상태/정렬 조회
+    INDEX                 idx_todos_user_order (user_id, date, mini_day, day_order, created_at) -- 목록 조회/정렬 공용 인덱스
 );
 ```
 

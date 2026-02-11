@@ -271,11 +271,8 @@ CREATE TABLE todos (
     PRIMARY KEY (id)
 );
 
--- 사용자/날짜별 Todo 조회 (핫패스)
-CREATE INDEX idx_todos_user_date ON todos (user_id, date);
-
--- 섹션/완료상태/정렬 조회
-CREATE INDEX idx_todos_user_dayorder ON todos (user_id, date, is_done, mini_day, day_order);
+-- 목록 조회/정렬 공용 인덱스
+CREATE INDEX idx_todos_user_order ON todos (user_id, date, mini_day, day_order, created_at);
 
 
 -- -------------------------------------------
