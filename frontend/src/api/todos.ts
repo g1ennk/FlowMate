@@ -2,13 +2,11 @@ import { api } from './http'
 import {
   SessionCreateRequestSchema,
   SessionSchema,
-  TimerResetResponseSchema,
   TodoReorderRequestSchema,
   TodoListSchema,
   TodoSchema,
   type Session,
   type SessionCreateRequest,
-  type TimerResetResponse,
   type Todo,
   type TodoCreateInput,
   type TodoList,
@@ -32,7 +30,7 @@ export const todoApi = {
       SessionCreateRequestSchema.parse(body),
       SessionSchema,
     ),
-  // 타이머 리셋 (sessionFocusSeconds와 sessionCount 초기화 + 모든 Session 삭제)
-  resetTimer: (id: string): Promise<TimerResetResponse> =>
-    api.post(`/todos/${id}/reset`, {}, TimerResetResponseSchema),
+  // 타이머 리셋 (전체 Todo 반환)
+  resetTimer: (id: string): Promise<Todo> =>
+    api.post(`/todos/${id}/reset`, {}, TodoSchema),
 }

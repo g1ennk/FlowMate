@@ -3,7 +3,7 @@ import { todoApi } from '../../api/todos'
 import {
   type Session,
   type SessionCreateRequest,
-  type TimerResetResponse,
+  type Todo,
   type TodoCreateInput,
   type TodoList,
   type TodoPatchInput,
@@ -31,7 +31,45 @@ export function useUpdateTodo() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: TodoPatchInput }) =>
       todoApi.update(id, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.todos() }),
+    onMutate: async ({ id, patch }) => {
+      // 진행 중인 refetch 취소
+      await qc.cancelQueries({ queryKey: queryKeys.todos() })
+
+      // 이전 데이터 백업
+      const previous = qc.getQueryData<TodoList>(queryKeys.todos())
+
+      // Optimistic update: 즉시 캐시 업데이트
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+        if (!old) return old
+        return {
+          items: old.items.map((todo) =>
+            todo.id === id
+              ? { ...todo, ...patch }
+              : todo
+          ),
+        }
+      })
+
+      return { previous }
+    },
+    onSuccess: (data, { id }) => {
+      // 서버 응답으로 해당 Todo만 정확히 업데이트
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+        if (!old) return old
+        return {
+          items: old.items.map((todo) =>
+            todo.id === id ? data : todo
+          ),
+        }
+      })
+    },
+    onError: (_err, _variables, context) => {
+      // 에러 발생 시 이전 데이터로 롤백
+      if (context?.previous) {
+        qc.setQueryData(queryKeys.todos(), context.previous)
+      }
+    },
+    // onSettled 제거! refetch하면 race condition 발생
   })
 }
 
@@ -99,7 +137,7 @@ export function useCreateSession() {
 // 타이머 리셋 (sessionFocusSeconds와 sessionCount 초기화)
 export function useResetTimer() {
   const qc = useQueryClient()
-  return useMutation<TimerResetResponse, unknown, string>(
+  return useMutation<Todo, unknown, string>(
     {
       mutationFn: (id: string) => todoApi.resetTimer(id),
       onSuccess: (_data, id) => {

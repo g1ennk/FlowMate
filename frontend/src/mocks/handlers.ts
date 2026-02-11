@@ -13,6 +13,7 @@ import { storageKeys } from '../lib/storageKeys'
 type StoredTodo = Omit<Todo, 'miniDay' | 'dayOrder'> & {
   miniDay?: number
   dayOrder?: number
+  done?: boolean
 }
 
 type CombinedSettings = {
@@ -68,16 +69,26 @@ function normalizeTodos(input: StoredTodo[]) {
   for (const todo of input) {
     const miniDay = todo.miniDay ?? 0
     const dayOrder = todo.dayOrder ?? 0
+    const legacyDone = typeof todo.done === 'boolean' ? todo.done : undefined
+    const isDone = typeof todo.isDone === 'boolean' ? todo.isDone : legacyDone ?? false
     if (todo.miniDay === undefined) changed = true
     if (todo.dayOrder === undefined) changed = true
+    if (todo.isDone === undefined || legacyDone !== undefined) changed = true
     const sessionCount = todo.sessionCount ?? 0
     const sessionFocusSeconds = todo.sessionFocusSeconds ?? 0
     if (todo.sessionCount === undefined) changed = true
     if (todo.sessionFocusSeconds === undefined) changed = true
 
-    const key = `${todo.date}::${todo.isDone ? 'done' : 'active'}::${miniDay}`
+    const key = `${todo.date}::${isDone ? 'done' : 'active'}::${miniDay}`
     const bucket = groups.get(key)
-    const withDefaults = { ...todo, miniDay, dayOrder, sessionCount, sessionFocusSeconds }
+    const withDefaults = {
+      ...todo,
+      isDone,
+      miniDay,
+      dayOrder,
+      sessionCount,
+      sessionFocusSeconds,
+    }
     if (bucket) {
       bucket.push(withDefaults)
     } else {
@@ -531,13 +542,7 @@ export const handlers = [
     }
     todos = todos.map((t) => (t.id === id ? updated : t))
     saveTodos(clientId, todos)
-    return HttpResponse.json({
-      id,
-      sessionFocusSeconds: 0,
-      sessionCount: 0,
-      timerMode: null,
-      updatedAt: updated.updatedAt,
-    })
+    return HttpResponse.json(updated)
   }),
 
   http.get('/api/settings', async ({ request }) => {

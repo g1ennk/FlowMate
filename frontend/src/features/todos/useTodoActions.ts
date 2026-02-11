@@ -49,13 +49,13 @@ export function useTodoActions(selectedDateKey: string) {
   const [timerErrorMessage, setTimerErrorMessage] = useState<string | null>(null)
 
   // === Todo CRUD ===
-  const handleCreate = async (title: string, miniDay: number = 0, dayOrder?: number) => {
+  const handleCreate = async (title: string, miniDay: number = 0, dayOrder: number) => {
     await createTodo.mutateAsync({
       title,
       note: null,
       date: selectedDateKey,
       miniDay,
-      ...(dayOrder === undefined ? {} : { dayOrder }),
+      dayOrder,
     })
   }
 
