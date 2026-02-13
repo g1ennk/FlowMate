@@ -64,16 +64,19 @@ export const PomodoroSessionSettingsSchema = z.object({
 })
 
 export const AutomationSettingsSchema = z.object({
-  autoStartBreak: z.boolean().optional(),
-  autoStartSession: z.boolean().optional(),
+  autoStartBreak: z.boolean(),
+  autoStartSession: z.boolean(),
 })
 
 export const PomodoroSettingsSchema = PomodoroSessionSettingsSchema.merge(AutomationSettingsSchema)
 
+const TIME_HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+const TIME_HH_MM_OR_24_RE = /^([01]\d|2[0-3]):[0-5]\d$|^24:00$/
+
 export const MiniDayRangeSchema = z.object({
-  label: z.string(),
-  start: z.string(),
-  end: z.string(),
+  label: z.string().trim().min(1).max(50),
+  start: z.string().regex(TIME_HH_MM_RE),
+  end: z.string().regex(TIME_HH_MM_OR_24_RE),
 })
 
 export const MiniDaysSettingsSchema = z.object({

@@ -25,8 +25,8 @@ export function useSettings() {
       return {
         ...settings,
         automation: {
-          autoStartBreak: settings.automation.autoStartBreak ?? false,
-          autoStartSession: settings.automation.autoStartSession ?? false,
+          autoStartBreak: settings.automation.autoStartBreak,
+          autoStartSession: settings.automation.autoStartSession,
         },
         miniDays: normalizeMiniDaysSettings(settings.miniDays),
       } satisfies Settings
@@ -63,8 +63,8 @@ export function usePomodoroSettings() {
     settings.data
       ? {
           ...settings.data.pomodoroSession,
-          autoStartBreak: settings.data.automation.autoStartBreak ?? false,
-          autoStartSession: settings.data.automation.autoStartSession ?? false,
+          autoStartBreak: settings.data.automation.autoStartBreak,
+          autoStartSession: settings.data.automation.autoStartSession,
         }
       : undefined
 
@@ -122,22 +122,22 @@ export function useUpdatePomodoroSettings() {
       return {
         session,
         automation: {
-          autoStartBreak: automation.autoStartBreak ?? false,
-          autoStartSession: automation.autoStartSession ?? false,
+          autoStartBreak: automation.autoStartBreak,
+          autoStartSession: automation.autoStartSession,
         },
       }
     },
     onSuccess: (data) => {
       qc.setQueryData(queryKeys.pomodoroSessionSettings(), data.session)
       qc.setQueryData(queryKeys.automationSettings(), {
-        autoStartBreak: data.automation.autoStartBreak ?? false,
-        autoStartSession: data.automation.autoStartSession ?? false,
+        autoStartBreak: data.automation.autoStartBreak,
+        autoStartSession: data.automation.autoStartSession,
       })
       qc.setQueryData<Settings>(queryKeys.settings(), (old) => ({
         pomodoroSession: data.session,
         automation: {
-          autoStartBreak: data.automation.autoStartBreak ?? false,
-          autoStartSession: data.automation.autoStartSession ?? false,
+          autoStartBreak: data.automation.autoStartBreak,
+          autoStartSession: data.automation.autoStartSession,
         },
         miniDays: normalizeMiniDaysSettings(old?.miniDays ?? defaultMiniDaysSettings),
       }))

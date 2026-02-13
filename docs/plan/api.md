@@ -51,7 +51,7 @@ Headers (MVP):
   "autoStartSession": false
 }
 ```
-**참고**: `autoStartBreak`, `autoStartSession`는 응답에서 생략될 수 있으며, 프론트는 누락 시 `false`로 처리합니다.
+**참고**: `autoStartBreak`, `autoStartSession`는 항상 응답에 포함됩니다.
 
 ### MiniDaysSettings
 ```json
@@ -147,7 +147,7 @@ Headers (MVP):
 
 ### 3.1 Get Pomodoro Session Settings
 - `GET /api/settings/pomodoro-session`
-- Response 200: `PomodoroSessionSettings` (없으면 default 생성/반환)
+- Response 200: `PomodoroSessionSettings` (없으면 default 반환, DB 저장 안 함)
 
 ### 3.2 Update Pomodoro Session Settings
 - `PUT /api/settings/pomodoro-session`
@@ -166,8 +166,8 @@ Headers (MVP):
 
 ### 3.3 Get Automation Settings
 - `GET /api/settings/automation`
-- Response 200: `AutomationSettings` (없으면 default 생성/반환)
-- Note: 누락 시 `false`로 간주
+- Response 200: `AutomationSettings` (없으면 default 반환, DB 저장 안 함)
+- Note: 두 필드는 항상 반환됩니다.
 
 ### 3.4 Update Automation Settings
 - `PUT /api/settings/automation`
@@ -178,13 +178,13 @@ Headers (MVP):
   "autoStartSession": false
 }
 ```
-- Note: 누락 시 `false`로 처리
+- Validation: `autoStartBreak`, `autoStartSession` 모두 required(boolean)
 - Note: 클라이언트는 변경된 자동화 필드가 있을 때만 호출
 - Response 200: `AutomationSettings`
 
 ### 3.5 Get MiniDays Settings
 - `GET /api/settings/mini-days`
-- Response 200: `MiniDaysSettings` (없으면 default 생성/반환)
+- Response 200: `MiniDaysSettings` (없으면 default 반환, DB 저장 안 함)
 
 ### 3.6 Update MiniDays Settings
 - `PUT /api/settings/mini-days`
@@ -196,6 +196,11 @@ Headers (MVP):
   "day3": { "label": "저녁", "start": "18:00", "end": "24:00" }
 }
 ```
+- Validation:
+  - `label`: 공백 불가, 최대 50자
+  - `start`: `HH:mm` (`00:00`~`23:59`)
+  - `end`: `HH:mm` 또는 `24:00`
+  - 각 구간은 `start < end`
 - Response 200: `MiniDaysSettings`
 
 ### 3.7 PATCH vs PUT 기준

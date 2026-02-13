@@ -3,7 +3,7 @@ import { loadAllPersisted, loadSessions, savePersisted } from './timerPersistenc
 import { initialSingleTimerState } from './timerDefaults'
 import { storageKeys } from '../../lib/storageKeys'
 
-const clientId = 'client-123'
+const clientId = 'c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01'
 const todoId = 'todo-1'
 const sessions = [{ sessionFocusSeconds: 60, breakSeconds: 10 }]
 

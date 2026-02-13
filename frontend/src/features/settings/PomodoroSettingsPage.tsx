@@ -366,7 +366,7 @@ function PomodoroSettingsPage() {
   const startValueLabel = formatDisplayTime(miniDayEditor.start)
   const endValueLabel = formatDisplayTime(miniDayEditor.end)
   const startMinutes = parseTimeMinutes(miniDayEditor.start, false)
-  const endMinutes = parseTimeMinutes(miniDayEditor.end, activeMiniDay === 'day3')
+  const endMinutes = parseTimeMinutes(miniDayEditor.end, true)
   const hasValidRange = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
   const previewRange = miniDayEditor.start.trim() && miniDayEditor.end.trim()
     ? `${formatDisplayTime(miniDayEditor.start)} ~ ${formatDisplayTime(miniDayEditor.end)}`
@@ -381,7 +381,7 @@ function PomodoroSettingsPage() {
   const hourItems = HOUR_OPTIONS.map((hour) => ({ value: hour, label: `${hour}` }))
   const minuteItems = MINUTE_OPTIONS.map((minute) => ({ value: minute, label: minute.toString().padStart(2, '0') }))
   const periodItems = PERIOD_OPTIONS.map((period) => ({ value: period.value, label: period.label }))
-  const showEndOfDayOption = activeMiniDay === 'day3' && miniDayEditField === 'end'
+  const showEndOfDayOption = miniDayEditField === 'end'
 
   return (
     <div className="space-y-6">
