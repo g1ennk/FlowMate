@@ -54,6 +54,7 @@ const mocked = vi.hoisted(() => {
 
   return {
     settings,
+    settingsData: settings as typeof settings | undefined,
     timerState,
     timerStoreActions,
     mutate: vi.fn(),
@@ -64,7 +65,7 @@ const mocked = vi.hoisted(() => {
 })
 
 vi.mock('../settings/hooks', () => ({
-  usePomodoroSettings: () => ({ data: mocked.settings }),
+  usePomodoroSettings: () => ({ data: mocked.settingsData }),
 }))
 
 vi.mock('../todos/hooks', () => ({
@@ -93,6 +94,27 @@ vi.mock('./timerStore', () => ({
 
 describe('TimerFullScreen reset behavior', () => {
   beforeEach(() => {
+    mocked.settingsData = mocked.settings
+    Object.assign(mocked.timerState, {
+      mode: 'stopwatch',
+      phase: 'flow',
+      status: 'paused',
+      endAt: null,
+      remainingMs: null,
+      elapsedMs: 1_500_000,
+      initialFocusMs: 1_500_000,
+      cycleCount: 0,
+      settingsSnapshot: mocked.settings,
+      flexiblePhase: 'focus',
+      focusElapsedMs: 1_500_000,
+      breakElapsedMs: 0,
+      breakTargetMs: null,
+      breakCompleted: false,
+      focusStartedAt: null,
+      breakStartedAt: null,
+      sessions: [],
+    })
+
     mocked.timerStoreActions.initPomodoro.mockClear()
     mocked.timerStoreActions.initStopwatch.mockClear()
     mocked.timerStoreActions.pause.mockClear()
@@ -196,5 +218,64 @@ describe('TimerFullScreen reset behavior', () => {
     )
 
     expect(screen.getByText('현재 세션')).toBeInTheDocument()
+  })
+
+  it('re-initializes pomodoro on reset even when settings query is unavailable', () => {
+    mocked.settingsData = undefined
+    Object.assign(mocked.timerState, {
+      mode: 'pomodoro',
+      phase: 'flow',
+      status: 'paused',
+      remainingMs: 600_000,
+      endAt: null,
+      elapsedMs: 0,
+      initialFocusMs: 0,
+      settingsSnapshot: null,
+      flexiblePhase: null,
+      focusElapsedMs: 0,
+      breakElapsedMs: 0,
+      breakTargetMs: null,
+      breakCompleted: false,
+      focusStartedAt: null,
+      breakStartedAt: null,
+      sessions: [],
+    })
+
+    const onClose = vi.fn()
+    const queryClient = new QueryClient()
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <TimerFullScreen
+          isOpen
+          onClose={onClose}
+          todoId="todo-1"
+          todoTitle="타이머 테스트"
+          sessionFocusSeconds={1500}
+          sessionCount={3}
+          initialMode="pomodoro"
+          isDone={false}
+        />
+      </QueryClientProvider>,
+    )
+
+    // 서버 sessionCount=3이어도 타이머 상태(cycleCount=0)가 기준이라 초기 도트는 0이어야 한다.
+    expect(container.querySelectorAll('span.bg-emerald-400').length).toBe(0)
+
+    fireEvent.click(screen.getByTitle('전체 리셋'))
+    fireEvent.click(screen.getByRole('button', { name: '확인' }))
+
+    expect(mocked.timerStoreActions.reset).toHaveBeenCalledWith('todo-1')
+    expect(mocked.timerStoreActions.initPomodoro).toHaveBeenCalledWith(
+      'todo-1',
+      expect.objectContaining({
+        flowMin: 25,
+        breakMin: 5,
+        longBreakMin: 15,
+        cycleEvery: 4,
+      }),
+    )
+    expect(container.querySelectorAll('span.bg-emerald-400').length).toBe(0)
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

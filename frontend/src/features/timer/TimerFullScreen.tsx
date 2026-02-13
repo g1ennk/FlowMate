@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { PHASE_LABELS, MIN_FLOW_MS } from '../../lib/constants'
 import { MINUTE_MS } from '../../lib/time'
-import type { TodoList } from '../../api/types'
+import type { PomodoroSettings, TodoList } from '../../api/types'
 import { usePomodoroSettings } from '../settings/hooks'
 import { useCreateSession, useUpdateTodo } from '../todos/hooks'
 import { toast } from 'react-hot-toast'
@@ -37,10 +37,19 @@ type TimerFullScreenProps = {
   isDone?: boolean
 }
 
+const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
+  flowMin: 25,
+  breakMin: 5,
+  longBreakMin: 15,
+  cycleEvery: 4,
+  autoStartBreak: false,
+  autoStartSession: false,
+}
+
 // time formatters are extracted to timerFormat.ts
 
 export function TimerFullScreen(props: TimerFullScreenProps) {
-  const { isOpen, onClose, todoId, todoTitle, sessionFocusSeconds, sessionCount, initialMode, isDone = false } = props
+  const { isOpen, onClose, todoId, todoTitle, sessionFocusSeconds, initialMode, isDone = false } = props
   const [mounted, setMounted] = useState(false)
   const [selectedMode, setSelectedMode] = useState<'stopwatch' | 'pomodoro' | null>(null)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
@@ -49,7 +58,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [showTotalTime, setShowTotalTime] = useState(false) // 디폴트: 현재 세션(false) vs 전체 누적(true)
   const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
   const baseSessionFocusSeconds = sessionFocusSeconds
-  const baseSessionCount = sessionCount
 
   const { data: settings } = usePomodoroSettings()
   const createSession = useCreateSession()
@@ -610,7 +618,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             {/* 세션 dots - 뽀모: cycleCount 기반 (스킵 포함) */}
             <div className="mb-8 flex items-center justify-center gap-2.5">
               {(() => {
-                const currentDotIndex = baseSessionCount
+                const completedDotCount = timer?.cycleCount ?? 0
+                const currentDotIndex = completedDotCount
                 // 진행률 계산 (뽀모도로: plannedMs 기준)
                 const plannedMs = getPlannedMs()
                 const elapsedMs = plannedMs - remainingMs
@@ -620,11 +629,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 const shouldShowCurrentDot = timer?.phase === 'flow' && hasStarted
                 const totalDots = Math.max(
                   settings?.cycleEvery ?? 4,
-                  baseSessionCount + (shouldShowCurrentDot ? 1 : 0),
+                  completedDotCount + (shouldShowCurrentDot ? 1 : 0),
                 )
 
                 return Array.from({ length: totalDots }).map((_, i) => {
-                  const isActuallyCompleted = i < baseSessionCount  // 실제로 완료된 Flow
+                  const isActuallyCompleted = i < completedDotCount  // 실제로 완료된 Flow
                   const isCurrent = i === currentDotIndex && shouldShowCurrentDot // 현재 진행 중 (시작 후에만)
                 
                   return (
@@ -820,6 +829,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
                   // store에서 타이머 자체를 삭제
                   reset(todoId)
+                  pomodoroInitKeyRef.current = null
 
                   // 리셋 후에도 풀스크린 유지 + 초기 진입 상태로 재초기화
                   setShowTotalTime(false)
@@ -829,10 +839,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   if (effectiveMode === 'stopwatch') {
                     initStopwatch(todoId, sessionFocusSeconds * 1000, settings ?? undefined)
                   } else if (effectiveMode === 'pomodoro') {
-                    const pomodoroSettings = settings ?? timerBeforeReset?.settingsSnapshot
-                    if (pomodoroSettings) {
-                      initPomodoro(todoId, pomodoroSettings)
-                    }
+                    const pomodoroSettings =
+                      settings ??
+                      timerBeforeReset?.settingsSnapshot ??
+                      DEFAULT_POMODORO_SETTINGS
+                    initPomodoro(todoId, pomodoroSettings)
                   }
 
                   toast.success('타이머가 초기화되었습니다', { id: 'timer-reset' })

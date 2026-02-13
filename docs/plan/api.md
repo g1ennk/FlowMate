@@ -233,21 +233,34 @@ Headers (MVP):
 }
 ```
 > `sessionFocusSeconds`, `breakSeconds`는 **초 단위**입니다.
-> 현재 프론트엔드에서는 이 엔드포인트를 호출하지 않습니다. (스펙 유지)
+> 현재 프론트엔드 세션 상세(`SessionDetailSheet`)는 이 엔드포인트를 사용합니다.
 
 ### 4.2 Create Session
 - `POST /api/todos/{id}/sessions`
 - Body:
 ```json
-{ "sessionFocusSeconds": 1500, "breakSeconds": 300 }
+{ "sessionFocusSeconds": 1500, "breakSeconds": 300, "clientSessionId": "uuid-required" }
 ```
+- Validation (SessionCreateRequest DTO 기준):
+  - `sessionFocusSeconds`: required, 정수, `1..43200`
+  - `breakSeconds`: optional, 정수, `0..43200` (미전달 시 `0`)
+  - `clientSessionId`: required, 공백 불가, UUID 형식
 - Behavior:
-  - Todo의 `sessionFocusSeconds += body.sessionFocusSeconds`
-  - Todo의 `sessionCount += 1`
-  - `sessionOrder`는 todo별로 자동 증가
+  - 신규(`todoId + clientSessionId` 미존재):
+    - Todo의 `sessionFocusSeconds += body.sessionFocusSeconds`
+    - Todo의 `sessionCount += 1`
+    - `sessionOrder`는 todo별로 자동 증가
+    - `201 Created`
+  - 멱등 재요청(`todoId + clientSessionId` 존재):
+    - Todo 집계(`sessionCount`, `sessionFocusSeconds`)는 증가하지 않음
+    - 요청 `sessionFocusSeconds`가 기존 세션과 다르면 `400 Bad Request`
+    - 요청 `breakSeconds`가 기존 값보다 크면 `breakSeconds`를 증가 방향으로 보정
+    - `200 OK`
 - Note:
   - 뽀모도로 Flow 완료, 일반 타이머 세션 확정 시 이 API 사용
   - 휴식 시작 시점이 아니라 **세션 확정 시점**에 호출
+  - `clientSessionId`는 필수값이며, 서버 멱등 처리(중복 생성 방지) 키로 사용
+  - `breakSeconds`는 동일 `clientSessionId` 재전송으로 사후 보정(증가 방향) 가능
 - Response 201:
 ```json
 {
@@ -259,10 +272,13 @@ Headers (MVP):
   "createdAt": "2026-01-09T12:00:00Z"
 }
 ```
+- 멱등 재요청(동일 `todoId + clientSessionId`)은 `200`으로 기존/보정 세션을 반환할 수 있음
 
 ### 4.3 Delete Sessions (Todo 단위)
 - `DELETE /api/todos/{id}/sessions`
-- Behavior: 해당 Todo의 모든 Session 삭제 (Todo의 집계 값은 유지)
+- Behavior:
+  - 해당 Todo의 모든 Session 삭제
+  - Todo 집계(`sessionCount`, `sessionFocusSeconds`)를 즉시 `0`으로 동기화
 - Response 204
 > 현재 프론트엔드에서는 이 엔드포인트를 호출하지 않습니다. (세션 삭제 UI는 미구현)
 

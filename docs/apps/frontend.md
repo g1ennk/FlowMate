@@ -50,4 +50,8 @@ pnpm build
 ## 상태 관리 요약
 - 서버 상태: TanStack Query
 - 타이머 실행 상태(ms): Zustand + localStorage
-- 세션 기록(초): 백엔드 API로 저장
+- 세션 집계 정본: 서버 `todo.sessionFocusSeconds`, `todo.sessionCount`
+- 로컬 `timer.sessions`: UI 집계 정본이 아닌 동기화/런타임 보조 버퍼
+- 완료 처리 시: 캐시 집계를 즉시 반영(optimistic)하고, 서버 저장으로 최종 수렴
+- 세션 상세: `GET /api/todos/{id}/sessions` 서버 데이터 사용
+- 세션 생성 API 요청에는 `clientSessionId(UUID)`를 항상 포함해 멱등 전송을 보장

@@ -703,7 +703,7 @@ export const handlers = [
     await delay(latency)
     const clientId = getClientId(request)
     const todoId = params.id as string
-    const todos = loadTodos(clientId)
+    let todos = loadTodos(clientId)
     const existing = todos.find((t) => t.id === todoId)
     if (!existing) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
@@ -711,6 +711,16 @@ export const handlers = [
 
     const sessions = loadSessions(clientId).filter((session) => session.todoId !== todoId)
     saveSessions(clientId, sessions)
+
+    const updatedTodo: Todo = {
+      ...existing,
+      sessionCount: 0,
+      sessionFocusSeconds: 0,
+      updatedAt: now(),
+    }
+    todos = todos.map((todo) => (todo.id === todoId ? updatedTodo : todo))
+    saveTodos(clientId, todos)
+
     return new HttpResponse(null, { status: 204 })
   }),
 

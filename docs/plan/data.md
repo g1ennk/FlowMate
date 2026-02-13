@@ -34,7 +34,7 @@
 - `dayOrder`: int (0 이상)
 - `isDone`: boolean
 - `sessionCount`: int (완료된 Flow 횟수, 0 이상)
-- `sessionFocusSeconds`: int (초 단위, 0 이상)
+- `sessionFocusSeconds`: int (초 단위, 1 이상)
 - `timerMode`: enum (`stopwatch` | `pomodoro` | null)
 - `createdAt`, `updatedAt`: Instant
 
@@ -43,12 +43,14 @@
 - `id`: string (UUID, 36자)
 - `todoId`: string (UUID, 36자)
 - `userId`: string (UUID, 36자)
-- `sessionFocusSeconds`: int (초 단위, 0 이상)
+- `clientSessionId`: string (UUID, 36자, 멱등 키)
+- `sessionFocusSeconds`: int (초 단위, 1 이상)
 - `breakSeconds`: int (초 단위, 0 이상)
 - `sessionOrder`: int (같은 `todoId` 내 생성 순번, 중복 불가)
 - `createdAt`, `updatedAt`: Instant
 
-> 클라이언트 localStorage의 `sessions`는 복원/통계 목적의 경량 구조(`sessionFocusSeconds`, `breakSeconds`)만 저장하며, `sessionOrder`는 서버 레코드에서 관리한다.
+> 클라이언트 localStorage의 `sessions`는 `sessionFocusSeconds`, `breakSeconds`, `clientSessionId`를 저장하며, `sessionOrder`는 서버 레코드에서 관리한다.
+> 동일 `(todo_id, client_session_id)` 재전송 시 서버는 `session_count`, `session_focus_seconds` 집계는 유지하고, `break_seconds`만 증가 방향으로 보정할 수 있다.
 
 ### Settings (UserSettings)
 
@@ -121,6 +123,7 @@ CREATE TABLE todo_sessions
     id                    VARCHAR(36) PRIMARY KEY,
     todo_id               VARCHAR(36) NOT NULL,
     user_id               VARCHAR(36) NOT NULL,            -- X-Client-Id (UUID, 36자)
+    client_session_id     VARCHAR(36) NOT NULL,            -- 멱등 키 (클라이언트 생성 UUID)
     session_focus_seconds INT         NOT NULL DEFAULT 0,
     break_seconds         INT         NOT NULL DEFAULT 0,
     session_order         INT         NOT NULL,
@@ -132,6 +135,9 @@ CREATE TABLE todo_sessions
     
     CONSTRAINT uq_todo_sessions_order
         UNIQUE (todo_id, session_order),                 -- 같은 todo_id 내 session_order 중복 불가
+
+    CONSTRAINT uq_todo_sessions_client_session
+        UNIQUE (todo_id, client_session_id),             -- 같은 todo_id 내 client_session_id 중복 불가 (멱등)
     
     -- idx_sessions_todo는 uq_todo_sessions_order (todo_id, session_order)가 
     -- todo_id 단독 조회도 커버하므로 생략 (복합 인덱스의 왼쪽 prefix 활용)
@@ -237,14 +243,16 @@ User (clientId)
 - `mini_day`: 0~3 고정 (0=미분류, 1~3=시간대 라벨)
 - `day_order`: 0 이상 정수
 - `session_count`: 0 이상 정수 (완료된 Flow 횟수)
-- `session_focus_seconds`: 0 이상 정수 (초 단위)
+- `session_focus_seconds`: 1 이상 정수 (초 단위)
 - `title`: 1~200자 (NOT NULL)
 - `timer_mode`: 'stopwatch', 'pomodoro', null만 허용
 
 ### Session 테이블
 - `sessionOrder`: 같은 todo_id 내 중복 불가 (UNIQUE 제약)
-- `session_focus_seconds`: 0 이상 정수 (초 단위)
+- `client_session_id`: 같은 todo_id 내 중복 불가 (UNIQUE 제약, 멱등 키)
+- `session_focus_seconds`: 1 이상 정수 (초 단위)
 - `break_seconds`: 0 이상 정수 (초 단위)
+- 멱등 재요청 시 `break_seconds`는 감소 없이 증가 방향(`max`)으로만 갱신
 
 ### Settings 테이블
 - `flowMin`: 1~90 (기본값 25)
