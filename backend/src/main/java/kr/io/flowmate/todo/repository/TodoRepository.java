@@ -1,6 +1,9 @@
 package kr.io.flowmate.todo.repository;
 
 import kr.io.flowmate.todo.domain.Todo;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -22,5 +25,10 @@ public interface TodoRepository extends JpaRepository<Todo, String> {
 
     // 특정 Todo 조회
     Optional<Todo> findByIdAndUserId(String id, String userId);
+
+    // 세션 생성 시 순번 계산 레이스를 줄이기 위해 Todo 행을 잠근다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from Todo t where t.id = :id and t.userId = :userId")
+    Optional<Todo> findByIdAndUserIdForUpdate(String id, String userId);
 
 }

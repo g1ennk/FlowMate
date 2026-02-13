@@ -22,6 +22,7 @@ CREATE TABLE todo_sessions
     id                    VARCHAR(36) PRIMARY KEY,
     todo_id               VARCHAR(36) NOT NULL,
     user_id               VARCHAR(36) NOT NULL, -- X-Client-Id
+    client_session_id     VARCHAR(36) NOT NULL, -- 프론트 멱등 키
     session_focus_seconds INT         NOT NULL DEFAULT 0,
     break_seconds         INT         NOT NULL DEFAULT 0,
     session_order         INT         NOT NULL,
@@ -34,7 +35,11 @@ CREATE TABLE todo_sessions
 
     -- 세션 순서는 중복되면 안됨. (유니크 인덱스 가능성)
     CONSTRAINT uq_todo_sessions_order
-        UNIQUE (todo_id, session_order)
+        UNIQUE (todo_id, session_order),
+
+    -- 같은 todo에서 같은 client_session_id는 1회만 허용 (멱등)
+    CONSTRAINT uq_todo_sessions_client_session
+        UNIQUE (todo_id, client_session_id)
 );
 
 -- CREATE INDEX idx_sessions_todo ON todo_sessions (todo_id); -- 나중에 EXPLAIN이나 성능 보고 결정

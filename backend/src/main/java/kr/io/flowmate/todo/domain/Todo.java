@@ -103,6 +103,22 @@ public class Todo {
         this.timerMode = timerMode;
     }
 
+    // Session 생성 시 session_count를 1 증가시킨다.
+    public void incrementSessionCount() {
+        this.sessionCount++;
+    }
+
+    // Session 생성 시 집중 시간(초)을 누적한다.
+    public void addSessionFocusSeconds(int seconds) {
+        this.sessionFocusSeconds += seconds;
+    }
+
+    // Session 집계가 드리프트된 경우, 세션 테이블 기준값으로 동기화한다.
+    public void syncSessionAggregate(int sessionCount, int sessionFocusSeconds) {
+        this.sessionCount = Math.max(0, sessionCount);
+        this.sessionFocusSeconds = Math.max(0, sessionFocusSeconds);
+    }
+
     @PrePersist
     public void onCreate() {
         if (this.createdAt == null) {
