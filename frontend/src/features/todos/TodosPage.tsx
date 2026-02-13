@@ -72,13 +72,6 @@ type ContainerItems = Record<DropContainerId, string[]>
 
 type RectLike = { top: number; height: number }
 
-const UNCLASSIFIED_MINI_DAY = 0
-
-const ensureUnclassifiedOpen = (sections: Record<number, boolean>): Record<number, boolean> => ({
-  ...sections,
-  [UNCLASSIFIED_MINI_DAY]: true,
-})
-
 const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): GroupedTodos => {
   const grouped: Record<number, Todo[]> = {}
   daySections.forEach((section) => {
@@ -157,6 +150,11 @@ const parseDateParam = (value: string | null) => {
   return candidate
 }
 
+const buildDefaultOpenSections = (defaultOpenId: number): Record<number, boolean> => ({
+  0: true, // 미분류는 기본 진입 시 항상 펼침
+  [defaultOpenId]: true,
+})
+
 const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
   const aKeys = Object.keys(a)
   const bKeys = Object.keys(b)
@@ -214,7 +212,6 @@ function SortableInput({
 function TodosPage() {
   const { data, isLoading } = useTodos()
   const store = useTimerStore()
-  const timers = useTimerStore((s) => s.timers)
   const reorderTodos = useReorderTodos()
   const [searchParams] = useSearchParams()
   const dateParam = searchParams.get('date')
@@ -293,11 +290,11 @@ function TodosPage() {
     [selectedDate, miniDaysSettings],
   )
   const [openSections, setOpenSections] = useState<Record<number, boolean>>(
-    ensureUnclassifiedOpen({ [defaultOpenId]: true }),
+    buildDefaultOpenSections(defaultOpenId),
   )
 
   useEffect(() => {
-    setOpenSections(ensureUnclassifiedOpen({ [defaultOpenId]: true }))
+    setOpenSections(buildDefaultOpenSections(defaultOpenId))
   }, [defaultOpenId])
 
   const markedDates = useMemo(() => {
@@ -518,18 +515,12 @@ function TodosPage() {
 
     for (const todo of todosForSelectedDate) {
       const miniDay = todo.miniDay ?? 0
-      const timer = timers[todo.id]
-      const sessions = timer?.sessions ?? []
-      const sessionFocusSeconds =
-        sessions.length > 0
-          ? sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
-          : todo.sessionFocusSeconds
-      totals[miniDay] = (totals[miniDay] ?? 0) + sessionFocusSeconds
+      totals[miniDay] = (totals[miniDay] ?? 0) + todo.sessionFocusSeconds
     }
 
     const totalAll = daySections.reduce((sum, section) => sum + (totals[section.id] ?? 0), 0)
     return { totals, totalAll }
-  }, [daySections, todosForSelectedDate, timers])
+  }, [daySections, todosForSelectedDate])
 
   const getTodoTimerProps = (todo: { id: string }) => {
     const timer = store.getTimer(todo.id)
@@ -570,14 +561,14 @@ function TodosPage() {
     lastDragOverKeyRef.current = dragOverKey
 
     const overMiniDay = parseContainerId(overContainer as DropContainerId)
-    if (!openSections[overMiniDay]) {
-      if (openSectionTimeoutRef.current) window.clearTimeout(openSectionTimeoutRef.current)
-      openSectionTimeoutRef.current = window.setTimeout(() => {
-        setOpenSections((prev) =>
-          prev[overMiniDay] ? prev : ensureUnclassifiedOpen({ ...prev, [overMiniDay]: true }),
-        )
-      }, 200)
-    }
+      if (!openSections[overMiniDay]) {
+        if (openSectionTimeoutRef.current) window.clearTimeout(openSectionTimeoutRef.current)
+        openSectionTimeoutRef.current = window.setTimeout(() => {
+          setOpenSections((prev) =>
+            prev[overMiniDay] ? prev : { ...prev, [overMiniDay]: true },
+          )
+        }, 200)
+      }
 
     if (activeContainer === overContainer) return
 
@@ -778,7 +769,7 @@ function TodosPage() {
           <button
             onClick={() => {
               if (isAllOpen) {
-                setOpenSections(ensureUnclassifiedOpen({}))
+                setOpenSections({})
                 setInputDay(null)
                 return
               }
@@ -786,7 +777,7 @@ function TodosPage() {
               daySections.forEach((sectionItem) => {
                 next[sectionItem.id] = true
               })
-              setOpenSections(ensureUnclassifiedOpen(next))
+              setOpenSections(next)
             }}
             className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-600"
           >
@@ -927,11 +918,10 @@ function TodosPage() {
                             <button
                               onClick={() =>
                                 setOpenSections((prev) => {
-                                  if (section.id === UNCLASSIFIED_MINI_DAY) return prev
-                                  return ensureUnclassifiedOpen({
+                                  return {
                                     ...prev,
                                     [section.id]: !prev[section.id],
-                                  })
+                                  }
                                 })
                               }
                               className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
@@ -960,9 +950,7 @@ function TodosPage() {
                             </div>
                             <button
                               onClick={() => {
-                                setOpenSections((prev) =>
-                                  ensureUnclassifiedOpen({ ...prev, [section.id]: true }),
-                                )
+                                setOpenSections((prev) => ({ ...prev, [section.id]: true }))
                                 setInputDay((current) => (current === section.id ? null : section.id))
                                 setTimeout(() => {
                                   if (inputRef.current) {

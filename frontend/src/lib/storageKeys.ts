@@ -14,4 +14,5 @@ export const storageKeys = {
   timersKey: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/timers`,
   sessionsPrefix: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/sessions/`,
   sessionsSyncKey: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/sessions/sync`,
+  autoSessionsSyncKey: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/sessions/auto-sync`,
 }

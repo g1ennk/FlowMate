@@ -1,12 +1,14 @@
 import { api } from './http'
 import {
   SessionCreateRequestSchema,
+  SessionListSchema,
   SessionSchema,
   TodoReorderRequestSchema,
   TodoListSchema,
   TodoSchema,
   type Session,
   type SessionCreateRequest,
+  type SessionList,
   type Todo,
   type TodoCreateInput,
   type TodoList,
@@ -23,6 +25,8 @@ export const todoApi = {
   remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`),
   reorder: (body: TodoReorderRequest): Promise<TodoList> =>
     api.put('/todos/reorder', TodoReorderRequestSchema.parse(body), TodoListSchema),
+  listSessions: (todoId: string): Promise<SessionList> =>
+    api.get(`/todos/${todoId}/sessions`, SessionListSchema),
   // Session API (뽀모도로/일반 타이머 통합)
   createSession: (todoId: string, body: SessionCreateRequest): Promise<Session> =>
     api.post(

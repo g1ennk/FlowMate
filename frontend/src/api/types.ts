@@ -95,6 +95,7 @@ export const SettingsSchema = z.object({
 export const SessionCreateRequestSchema = z.object({
   sessionFocusSeconds: z.number().int().min(0).max(43_200),
   breakSeconds: z.number().int().min(0).max(43_200).optional(),
+  clientSessionId: z.string().uuid(),
 })
 
 export const SessionSchema = z.object({

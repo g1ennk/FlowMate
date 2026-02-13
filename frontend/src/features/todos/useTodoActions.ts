@@ -1,25 +1,29 @@
 import { useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import {
+  useCreateSession,
   useCreateTodo,
   useDeleteTodo,
   useUpdateTodo,
-  useCreateSession,
 } from './hooks'
 import type { Todo } from '../../api/types'
 import { useTimerStore, type TimerMode } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
 import { checkTimerConflict, getTimerConflictMessage } from '../timer/timerHelpers'
 import { completeTaskFromTimer } from '../timer/completeHelpers'
+import { applySessionAggregateDelta } from './sessionAggregateCache'
+import { normalizeSessionId } from '../../lib/sessionId'
 
 /**
  * Todo CRUD 및 타이머 관련 핸들러를 제공하는 커스텀 훅
  */
 export function useTodoActions(selectedDateKey: string) {
+  const queryClient = useQueryClient()
+  const createSession = useCreateSession()
   const createTodo = useCreateTodo()
   const updateTodo = useUpdateTodo()
   const deleteTodo = useDeleteTodo()
-  const createSession = useCreateSession()
 
   const { data: settings } = usePomodoroSettings()
 
@@ -71,7 +75,22 @@ export function useTodoActions(selectedDateKey: string) {
           pause,
           getTimer,
           updateSessions,
-          createSession: createSession.mutateAsync,
+          syncSessionsImmediately: async (sessions) => {
+            for (const session of sessions) {
+              if (session.sessionFocusSeconds <= 0) continue
+              await createSession.mutateAsync({
+                todoId: id,
+                body: {
+                  sessionFocusSeconds: session.sessionFocusSeconds,
+                  breakSeconds: session.breakSeconds,
+                  clientSessionId: normalizeSessionId(session.clientSessionId),
+                },
+              })
+            }
+          },
+          applySessionAggregateDelta: (delta) => {
+            applySessionAggregateDelta(queryClient, id, delta)
+          },
           updateTodo: updateTodo.mutateAsync,
           nextOrder,
         })

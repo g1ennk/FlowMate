@@ -16,6 +16,17 @@ type StoredTodo = Omit<Todo, 'miniDay' | 'dayOrder'> & {
   done?: boolean
 }
 
+type StoredSession = {
+  id: string
+  todoId: string
+  clientSessionId: string
+  sessionFocusSeconds: number
+  breakSeconds: number
+  sessionOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
 type CombinedSettings = {
   pomodoroSession: PomodoroSessionSettings
   automation: AutomationSettings
@@ -26,6 +37,7 @@ const STORAGE_KEYS = {
   todos: storageKeys.todos,
   reviews: storageKeys.reviews,
   settingsCombined: storageKeys.settings,
+  sessions: (clientId: string) => `${storageKeys.sessionsPrefix(clientId)}__mock_server`,
 }
 
 const now = () => new Date().toISOString()
@@ -34,6 +46,7 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 const latency = 200
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // 기본 설정 (Todo는 빈 상태)
 const defaultSessionSettings: PomodoroSessionSettings = {
@@ -158,6 +171,91 @@ function loadReviews(clientId: string): StoredReview[] {
     console.error('Failed to load reviews from localStorage:', e)
   }
   return []
+}
+
+function toSessionResponse(session: StoredSession) {
+  return {
+    id: session.id,
+    todoId: session.todoId,
+    sessionFocusSeconds: session.sessionFocusSeconds,
+    breakSeconds: session.breakSeconds,
+    sessionOrder: session.sessionOrder,
+    createdAt: session.createdAt,
+  }
+}
+
+function normalizeStoredSessions(input: unknown): StoredSession[] {
+  if (!Array.isArray(input)) return []
+
+  return input
+    .map((item): StoredSession | null => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as Record<string, unknown>
+      const id = raw.id
+      const todoId = raw.todoId
+      const clientSessionId = raw.clientSessionId
+      const sessionFocusSeconds = raw.sessionFocusSeconds
+      const breakSeconds = raw.breakSeconds
+      const sessionOrder = raw.sessionOrder
+      const createdAt = raw.createdAt
+      const updatedAt = raw.updatedAt
+
+      if (typeof id !== 'string' || !UUID_RE.test(id)) return null
+      if (typeof todoId !== 'string') return null
+      if (typeof clientSessionId !== 'string' || !UUID_RE.test(clientSessionId)) return null
+      if (
+        typeof sessionFocusSeconds !== 'number' ||
+        !Number.isInteger(sessionFocusSeconds) ||
+        sessionFocusSeconds < 0
+      ) {
+        return null
+      }
+      if (typeof breakSeconds !== 'number' || !Number.isInteger(breakSeconds) || breakSeconds < 0) {
+        return null
+      }
+      if (typeof sessionOrder !== 'number' || !Number.isInteger(sessionOrder) || sessionOrder <= 0) {
+        return null
+      }
+      if (typeof createdAt !== 'string' || typeof updatedAt !== 'string') return null
+
+      return {
+        id,
+        todoId,
+        clientSessionId,
+        sessionFocusSeconds,
+        breakSeconds,
+        sessionOrder,
+        createdAt,
+        updatedAt,
+      }
+    })
+    .filter((session): session is StoredSession => session !== null)
+}
+
+function loadSessions(clientId: string): StoredSession[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.sessions(clientId))
+    if (!stored) return []
+    const parsed = JSON.parse(stored) as unknown
+    const normalized = normalizeStoredSessions(parsed)
+
+    if (!Array.isArray(parsed) || normalized.length !== parsed.length) {
+      saveSessions(clientId, normalized)
+    }
+
+    return normalized
+  } catch (e) {
+    console.error('Failed to load sessions from localStorage:', e)
+  }
+  return []
+}
+
+function saveSessions(clientId: string, sessions: StoredSession[]) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.sessions(clientId), JSON.stringify(sessions))
+  } catch (e) {
+    console.error('Failed to save sessions to localStorage:', e)
+  }
 }
 
 function saveReviews(clientId: string, reviews: StoredReview[]) {
@@ -472,19 +570,44 @@ export const handlers = [
     }
     todos = todos.filter((t) => t.id !== id)
     saveTodos(clientId, todos)
+    const sessions = loadSessions(clientId).filter((session) => session.todoId !== id)
+    saveSessions(clientId, sessions)
     return HttpResponse.json(null, { status: 204 })
   }),
 
   // Session API (뽀모도로/일반 타이머 통합)
+  http.get('/api/todos/:id/sessions', async ({ params, request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const todoId = params.id as string
+    const todos = loadTodos(clientId)
+    const existing = todos.find((t) => t.id === todoId)
+    if (!existing) {
+      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
+    }
+
+    const sessions = loadSessions(clientId)
+      .filter((session) => session.todoId === todoId)
+      .sort((a, b) => a.sessionOrder - b.sessionOrder)
+      .map(toSessionResponse)
+
+    return HttpResponse.json({ items: sessions })
+  }),
+
   http.post('/api/todos/:id/sessions', async ({ params, request }) => {
     await delay(latency)
     const clientId = getClientId(request)
     const todoId = params.id as string
-    const body = (await request.json()) as { sessionFocusSeconds?: number; breakSeconds?: number }
+    const body = (await request.json()) as {
+      sessionFocusSeconds?: number
+      breakSeconds?: number
+      clientSessionId?: string
+    }
 
     // Validation
     if (
-      body.sessionFocusSeconds === undefined ||
+      typeof body.sessionFocusSeconds !== 'number' ||
+      !Number.isInteger(body.sessionFocusSeconds) ||
       body.sessionFocusSeconds < 0 ||
       body.sessionFocusSeconds > 43_200
     ) {
@@ -494,33 +617,101 @@ export const handlers = [
       )
     }
 
+    if (typeof body.clientSessionId !== 'string' || !UUID_RE.test(body.clientSessionId)) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'clientSessionId invalid' } },
+        { status: 400 },
+      )
+    }
+
+    if (
+      body.breakSeconds !== undefined &&
+      (
+        typeof body.breakSeconds !== 'number' ||
+        !Number.isInteger(body.breakSeconds) ||
+        body.breakSeconds < 0 ||
+        body.breakSeconds > 43_200
+      )
+    ) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'breakSeconds invalid' } },
+        { status: 400 },
+      )
+    }
+
     let todos = loadTodos(clientId)
-    const existing = todos.find((t) => t.id === todoId)
-    if (!existing) {
+    const existingTodo = todos.find((t) => t.id === todoId)
+    if (!existingTodo) {
       return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
     }
 
+    const clientSessionId = body.clientSessionId.trim()
+    let sessions = loadSessions(clientId)
+    const idempotentSession = sessions.find(
+      (session) => session.todoId === todoId && session.clientSessionId === clientSessionId,
+    )
+
+    if (idempotentSession) {
+      const nextBreakSeconds = body.breakSeconds ?? 0
+      if (nextBreakSeconds > idempotentSession.breakSeconds) {
+        const updatedSession: StoredSession = {
+          ...idempotentSession,
+          breakSeconds: nextBreakSeconds,
+          updatedAt: now(),
+        }
+        sessions = sessions.map((session) =>
+          session.id === updatedSession.id ? updatedSession : session,
+        )
+        saveSessions(clientId, sessions)
+        return HttpResponse.json(toSessionResponse(updatedSession), { status: 200 })
+      }
+      return HttpResponse.json(toSessionResponse(idempotentSession), { status: 200 })
+    }
+
+    const todoSessions = sessions.filter((session) => session.todoId === todoId)
+    const nextSessionOrder =
+      todoSessions.length === 0 ? 1 : Math.max(...todoSessions.map((session) => session.sessionOrder)) + 1
+
+    const createdAt = now()
+    const savedSession: StoredSession = {
+      id: crypto.randomUUID(),
+      todoId,
+      clientSessionId,
+      sessionFocusSeconds: body.sessionFocusSeconds,
+      breakSeconds: body.breakSeconds ?? 0,
+      sessionOrder: nextSessionOrder,
+      createdAt,
+      updatedAt: createdAt,
+    }
+    sessions = [...sessions, savedSession]
+    saveSessions(clientId, sessions)
+
     // Todo 업데이트: sessionCount += 1, sessionFocusSeconds += sessionFocusSeconds
     const updated: Todo = {
-      ...existing,
-      sessionCount: existing.sessionCount + 1, // sessionCount 역할
-      sessionFocusSeconds: existing.sessionFocusSeconds + body.sessionFocusSeconds,
+      ...existingTodo,
+      sessionCount: existingTodo.sessionCount + 1,
+      sessionFocusSeconds: existingTodo.sessionFocusSeconds + body.sessionFocusSeconds,
       updatedAt: now(),
     }
     todos = todos.map((t) => (t.id === todoId ? updated : t))
     saveTodos(clientId, todos)
 
-    // Session 응답
-    const session = {
-      id: crypto.randomUUID(),
-      todoId,
-      sessionFocusSeconds: body.sessionFocusSeconds,
-      breakSeconds: body.breakSeconds ?? 0,
-      sessionOrder: updated.sessionCount,
-      createdAt: now(),
+    return HttpResponse.json(toSessionResponse(savedSession), { status: 201 })
+  }),
+
+  http.delete('/api/todos/:id/sessions', async ({ params, request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const todoId = params.id as string
+    const todos = loadTodos(clientId)
+    const existing = todos.find((t) => t.id === todoId)
+    if (!existing) {
+      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
     }
 
-    return HttpResponse.json(session, { status: 201 })
+    const sessions = loadSessions(clientId).filter((session) => session.todoId !== todoId)
+    saveSessions(clientId, sessions)
+    return new HttpResponse(null, { status: 204 })
   }),
 
   http.get('/api/settings', async ({ request }) => {

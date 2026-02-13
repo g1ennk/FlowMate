@@ -41,9 +41,11 @@ export function CompletedTaskList({
                     <p className="mt-0.5 text-[11px] text-gray-400">{formatDateLabel(item.date)}</p>
                   )}
                 </div>
-                <span className="ml-2 shrink-0 text-[10px] font-semibold text-emerald-600">
-                  {item.focusTime}
-                </span>
+                {item.focusSeconds >= 60 && (
+                  <span className="ml-2 shrink-0 text-[10px] font-semibold text-emerald-600">
+                    {item.focusTime}
+                  </span>
+                )}
                 {hoverText && (
                   <span className="pointer-events-none absolute -top-8 right-2 z-10 max-w-64 rounded-md bg-gray-900 px-2 py-1 text-[10px] font-medium whitespace-pre-wrap text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     {hoverText}

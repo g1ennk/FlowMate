@@ -14,7 +14,6 @@ const baseSettings = {
 describe('completeTaskFromTimer (pomodoro)', () => {
   it('does not record flow when elapsed is below minimum', async () => {
     const updateSessions = vi.fn()
-    const createSession = vi.fn()
     const updateTodo = vi.fn().mockResolvedValue(undefined)
 
     await completeTaskFromTimer({
@@ -31,17 +30,14 @@ describe('completeTaskFromTimer (pomodoro)', () => {
       pause: vi.fn(),
       getTimer: vi.fn(),
       updateSessions,
-      createSession,
       updateTodo,
     })
 
     expect(updateSessions).not.toHaveBeenCalled()
-    expect(createSession).not.toHaveBeenCalled()
   })
 
   it('records flow when elapsed meets minimum', async () => {
     const updateSessions = vi.fn()
-    const createSession = vi.fn().mockResolvedValue(undefined)
     const updateTodo = vi.fn().mockResolvedValue(undefined)
 
     await completeTaskFromTimer({
@@ -58,11 +54,10 @@ describe('completeTaskFromTimer (pomodoro)', () => {
       pause: vi.fn(),
       getTimer: vi.fn(),
       updateSessions,
-      createSession,
       updateTodo,
     })
 
     expect(updateSessions).toHaveBeenCalledTimes(1)
-    expect(createSession).toHaveBeenCalledTimes(1)
+    expect(updateTodo).toHaveBeenCalledTimes(1)
   })
 })

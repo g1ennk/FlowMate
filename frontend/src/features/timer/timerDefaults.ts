@@ -19,5 +19,6 @@ export const initialSingleTimerState: SingleTimerState = {
   breakCompleted: false,
   focusStartedAt: null,
   breakStartedAt: null,
+  breakSessionPendingUpdate: false,
   sessions: [],
 }

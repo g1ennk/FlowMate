@@ -5,7 +5,13 @@ import { storageKeys } from '../../lib/storageKeys'
 
 const clientId = 'c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01'
 const todoId = 'todo-1'
-const sessions = [{ sessionFocusSeconds: 60, breakSeconds: 10 }]
+const sessions = [
+  {
+    sessionFocusSeconds: 60,
+    breakSeconds: 10,
+    clientSessionId: '11111111-1111-4111-8111-111111111111',
+  },
+]
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_ITEMS = 20
@@ -33,6 +39,43 @@ describe('timerPersistence', () => {
     const loaded = loadSessions(todoId)
 
     expect(loaded).toEqual(sessions)
+  })
+
+  it('normalizes legacy session records and persists migrated value', () => {
+    seedClientId()
+    const key = storageKeys.sessionsPrefix(clientId) + todoId
+    localStorage.setItem(
+      key,
+      JSON.stringify([
+        { sessionFocusSeconds: 60, breakSeconds: 10 },
+        { sessionFocusSeconds: 30 },
+        { sessionFocusSeconds: 'invalid' },
+      ]),
+    )
+
+    const loaded = loadSessions(todoId)
+    expect(loaded).toHaveLength(2)
+    expect(loaded[0]).toEqual(
+      expect.objectContaining({
+        sessionFocusSeconds: 60,
+        breakSeconds: 10,
+      }),
+    )
+    expect(loaded[1]).toEqual(
+      expect.objectContaining({
+        sessionFocusSeconds: 30,
+        breakSeconds: 0,
+      }),
+    )
+    expect(loaded[0]?.clientSessionId).toEqual(expect.any(String))
+    expect(loaded[1]?.clientSessionId).toEqual(expect.any(String))
+
+    const stored = JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{
+      clientSessionId?: string
+    }>
+    expect(stored).toHaveLength(2)
+    expect(stored[0]?.clientSessionId).toEqual(expect.any(String))
+    expect(stored[1]?.clientSessionId).toEqual(expect.any(String))
   })
 
   it('hydrates timer state with sessions when timer state exists', () => {
