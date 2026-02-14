@@ -608,7 +608,7 @@ export const handlers = [
     if (
       typeof body.sessionFocusSeconds !== 'number' ||
       !Number.isInteger(body.sessionFocusSeconds) ||
-      body.sessionFocusSeconds < 0 ||
+      body.sessionFocusSeconds < 1 ||
       body.sessionFocusSeconds > 43_200
     ) {
       return HttpResponse.json(
@@ -699,31 +699,6 @@ export const handlers = [
     return HttpResponse.json(toSessionResponse(savedSession), { status: 201 })
   }),
 
-  http.delete('/api/todos/:id/sessions', async ({ params, request }) => {
-    await delay(latency)
-    const clientId = getClientId(request)
-    const todoId = params.id as string
-    let todos = loadTodos(clientId)
-    const existing = todos.find((t) => t.id === todoId)
-    if (!existing) {
-      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
-    }
-
-    const sessions = loadSessions(clientId).filter((session) => session.todoId !== todoId)
-    saveSessions(clientId, sessions)
-
-    const updatedTodo: Todo = {
-      ...existing,
-      sessionCount: 0,
-      sessionFocusSeconds: 0,
-      updatedAt: now(),
-    }
-    todos = todos.map((todo) => (todo.id === todoId ? updatedTodo : todo))
-    saveTodos(clientId, todos)
-
-    return new HttpResponse(null, { status: 204 })
-  }),
-
   http.get('/api/settings', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)
@@ -734,26 +709,12 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/settings/pomodoro-session', async ({ request }) => {
-    await delay(latency)
-    const clientId = getClientId(request)
-    const settings = loadPomodoroSessionSettings(clientId)
-    return HttpResponse.json(settings)
-  }),
-
   http.put('/api/settings/pomodoro-session', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)
     const body = (await request.json()) as PomodoroSessionSettings
     const settings: PomodoroSessionSettings = { ...defaultSessionSettings, ...body }
     savePomodoroSessionSettings(clientId, settings)
-    return HttpResponse.json(settings)
-  }),
-
-  http.get('/api/settings/automation', async ({ request }) => {
-    await delay(latency)
-    const clientId = getClientId(request)
-    const settings = loadAutomationSettings(clientId)
     return HttpResponse.json(settings)
   }),
 

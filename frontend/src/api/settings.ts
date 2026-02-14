@@ -12,12 +12,8 @@ import {
 
 export const settingsApi = {
   getSettings: (): Promise<Settings> => api.get('/settings', SettingsSchema),
-  getSession: (): Promise<PomodoroSessionSettings> =>
-    api.get('/settings/pomodoro-session', PomodoroSessionSettingsSchema),
   updateSession: (body: PomodoroSessionSettings): Promise<PomodoroSessionSettings> =>
     api.put('/settings/pomodoro-session', body, PomodoroSessionSettingsSchema),
-  getAutomation: (): Promise<AutomationSettings> =>
-    api.get('/settings/automation', AutomationSettingsSchema),
   updateAutomation: (body: AutomationSettings): Promise<AutomationSettings> =>
     api.put('/settings/automation', body, AutomationSettingsSchema),
   getMiniDays: (): Promise<MiniDaysSettings> =>

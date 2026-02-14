@@ -44,14 +44,4 @@ public class SessionController {
         return ResponseEntity.status(status).body(result.session());
     }
 
-    @DeleteMapping
-    public ResponseEntity<Void> deleteAllSessions(
-            HttpServletRequest request,
-            @PathVariable String todoId
-    ) {
-        String userId = clientIdResolver.resolve(request);
-        sessionService.deleteAllSessions(userId, todoId);
-        return ResponseEntity.noContent().build();
-    }
-
 }

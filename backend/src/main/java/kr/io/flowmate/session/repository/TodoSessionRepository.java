@@ -32,6 +32,4 @@ public interface TodoSessionRepository extends JpaRepository<TodoSession, String
             """)
     SessionAggregate summarizeByTodoId(@Param("todoId") String todoId);
 
-    void deleteAllByTodoId(String todoId);
-
 }

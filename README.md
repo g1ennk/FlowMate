@@ -58,8 +58,8 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 
 ### Backend (추후 왜 선택했는지 자세히)
 
-- Framework: Spring Boot 3.x
-- Database: MySQL (Prod, Dev) / H2 (Local)
+- Framework: Spring Boot 4.0.x
+- Database: MySQL (Local, Dev, Prod)
 - Migration: Flyway
 
 ## 프로젝트 구조 (모노레포)
@@ -79,8 +79,8 @@ FlowMate/
 │   │   ├── lib/              # 공용 유틸/헬퍼
 │   │   └── mocks/            # MSW 핸들러
 │   └── ...
-├── backend/                  # Spring Boot 앱 (예정, 아직 폴더 없음)
-├── infra/                    # 인프라/배포 구성 (예정, 아직 폴더 없음)
+├── backend/                  # Spring Boot 앱
+├── infra/                    # 인프라/배포 구성
 ├── docs/                     # 문서
 │   ├── apps/                 # 앱별 문서
 │   │   ├── frontend.md    # 프론트엔드 가이드
@@ -97,6 +97,8 @@ FlowMate/
 
 - Node.js 22.12.0 (`.nvmrc` 기준)
 - pnpm 8+
+- Java 21
+- MySQL 8.x (local profile 기준)
 
 ### Frontend 실행
 
@@ -111,6 +113,21 @@ pnpm dev:mock
 
 # 브라우저에서 http://localhost:5173 접속
 ```
+
+### Backend 실행
+
+```bash
+cd backend
+
+# 테스트
+./gradlew test
+
+# 로컬 실행 (MySQL + Flyway)
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+- `local` 프로필은 MySQL을 사용합니다.
+- DB 계정 환경변수는 `DB_USERNAME`, `DB_PASSWORD`를 사용하며, 미지정 시 기본값은 `flowmate/flowmate`입니다.
 
 ### 유용한 스크립트
 
@@ -140,4 +157,9 @@ cd frontend
 
 # 단위 테스트 실행
 pnpm test
+
+cd ../backend
+
+# 백엔드 테스트 실행
+./gradlew test
 ```

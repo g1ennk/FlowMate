@@ -146,23 +146,6 @@ class SettingsServiceTest {
     }
 
     @Test
-    @DisplayName("getAutomation: 사용자 없을 때 기본값 반환 (DB 저장 안 함)")
-    void getAutomation_신규사용자_기본값반환() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        when(settingsRepository.findById(userId)).thenReturn(Optional.empty());
-
-        // when
-        AutomationSettingsResponse response = settingsService.getAutomation(userId);
-
-        // then
-        assertThat(response).isNotNull();
-        assertThat(response.isAutoStartBreak()).isFalse();
-        assertThat(response.isAutoStartSession()).isFalse();
-        verify(settingsRepository, never()).save(any());
-    }
-
-    @Test
     @DisplayName("updateAutomation: 첫 PUT 시 DB 생성")
     void updateAutomation_첫저장_DB생성() {
         // given

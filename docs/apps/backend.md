@@ -9,7 +9,7 @@
 - Java 21
 - Spring Boot 4.0.x
 - Spring Data JPA + Flyway
-- H2(local), MySQL(dev/prod)
+- MySQL(local/dev/prod)
 
 ## 실행
 ```bash
@@ -19,7 +19,7 @@ cd backend
 ```
 
 ## 프로파일
-- `local`: H2 in-memory, `ddl-auto=validate`, Flyway 활성화
+- `local`: MySQL + Flyway (`application-local.yml`)
 - `dev`: MySQL + Flyway
 - `prod`: MySQL + Flyway
 
@@ -40,10 +40,10 @@ kr.io.flowmate
 ```
 
 ## 엔드포인트 그룹
-- Todo: `/api/todos`, `/api/todos/{id}`, `/api/todos/reorder`
-- Session: `/api/todos/{todoId}/sessions`
-- Settings: `/api/settings`, `/api/settings/pomodoro-session`, `/api/settings/automation`, `/api/settings/mini-days`
-- Review: `/api/reviews`
+- Todo: `GET/POST /api/todos`, `PATCH/DELETE /api/todos/{id}`, `PUT /api/todos/reorder`
+- Session: `GET/POST /api/todos/{todoId}/sessions`
+- Settings: `GET /api/settings`, `PUT /api/settings/pomodoro-session`, `PUT /api/settings/automation`, `GET/PUT /api/settings/mini-days`
+- Review: `GET /api/reviews`(단건/목록), `PUT /api/reviews`, `DELETE /api/reviews/{id}`
 
 ## 테스트
 - 통합 테스트는 `backend/src/test/java/kr/io/flowmate` 하위에서 관리

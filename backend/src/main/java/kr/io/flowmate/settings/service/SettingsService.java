@@ -27,12 +27,6 @@ public class SettingsService {
         return SettingsResponse.from(settings);
     }
 
-    // 뽀모도로 세션
-    public PomodoroSessionSettingsResponse getPomodoro(String userId) {
-        UserSettings settings = getOrDefault(userId);
-        return PomodoroSessionSettingsResponse.from(settings);
-    }
-
     @Transactional
     public PomodoroSessionSettingsResponse updatePomodoro(String userId, PomodoroSessionSettingsRequest request) {
         UserSettings settings = getOrCreate(userId);
@@ -43,12 +37,6 @@ public class SettingsService {
                 request.getCycleEvery()
         ));
         return PomodoroSessionSettingsResponse.from(settings);
-    }
-
-    // 자동화
-    public AutomationSettingsResponse getAutomation(String userId) {
-        UserSettings settings = getOrDefault(userId);
-        return AutomationSettingsResponse.from(settings);
     }
 
     @Transactional

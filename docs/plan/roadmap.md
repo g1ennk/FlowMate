@@ -74,7 +74,7 @@
 - `db/migration/V1__init.sql`
 - CRUD 동작 확인 로그
 **완료 기준**
-- 로컬 MySQL/H2에서 마이그레이션 재현 가능
+- 로컬 MySQL에서 마이그레이션 재현 가능
 - CRUD API가 실제 DB를 읽고/쓴다
 
 ### Phase C — 인증/인가 베이스라인

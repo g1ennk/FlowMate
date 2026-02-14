@@ -143,13 +143,9 @@ Headers (MVP):
 
 ### 3.0.1 조회 전략 (현재 클라이언트)
 - 기본: `GET /api/settings` (통합 조회)
-- 분리 GET (`/pomodoro-session`, `/automation`, `/mini-days`)은 하위 리소스 직접 조회/디버깅 용도
+- `GET /api/settings/mini-days`는 Todo/Review 화면 라벨 조회에서 별도로 사용
 
-### 3.1 Get Pomodoro Session Settings
-- `GET /api/settings/pomodoro-session`
-- Response 200: `PomodoroSessionSettings` (없으면 default 반환, DB 저장 안 함)
-
-### 3.2 Update Pomodoro Session Settings
+### 3.1 Update Pomodoro Session Settings
 - `PUT /api/settings/pomodoro-session`
 - Body:
 ```json
@@ -164,12 +160,7 @@ Headers (MVP):
 - Note: 클라이언트는 변경된 세션 필드가 있을 때만 호출
 - Response 200: `PomodoroSessionSettings`
 
-### 3.3 Get Automation Settings
-- `GET /api/settings/automation`
-- Response 200: `AutomationSettings` (없으면 default 반환, DB 저장 안 함)
-- Note: 두 필드는 항상 반환됩니다.
-
-### 3.4 Update Automation Settings
+### 3.2 Update Automation Settings
 - `PUT /api/settings/automation`
 - Body:
 ```json
@@ -182,11 +173,11 @@ Headers (MVP):
 - Note: 클라이언트는 변경된 자동화 필드가 있을 때만 호출
 - Response 200: `AutomationSettings`
 
-### 3.5 Get MiniDays Settings
+### 3.3 Get MiniDays Settings
 - `GET /api/settings/mini-days`
 - Response 200: `MiniDaysSettings` (없으면 default 반환, DB 저장 안 함)
 
-### 3.6 Update MiniDays Settings
+### 3.4 Update MiniDays Settings
 - `PUT /api/settings/mini-days`
 - Body:
 ```json
@@ -203,7 +194,7 @@ Headers (MVP):
   - 각 구간은 `start < end`
 - Response 200: `MiniDaysSettings`
 
-### 3.7 PATCH vs PUT 기준
+### 3.5 PATCH vs PUT 기준
 - Todo는 일부 필드만 갱신하는 경우가 많아 `PATCH` 사용
 - Settings는 섹션 리소스(세션/자동화/미니데이) 전체 표현을 저장하므로 `PUT` 사용
 - 단, 현재 클라이언트 정책은 "변경된 섹션만 PUT"으로 최소 호출
@@ -216,7 +207,7 @@ Headers (MVP):
 > 뽀모도로/일반 타이머 구분 없이 Session 생성으로 통합됩니다.
 
 ### 4.1 List Sessions
-- `GET /api/todos/{id}/sessions`
+- `GET /api/todos/{todoId}/sessions`
 - Response 200:
 ```json
 {
@@ -236,7 +227,7 @@ Headers (MVP):
 > 현재 프론트엔드 세션 상세(`SessionDetailSheet`)는 이 엔드포인트를 사용합니다.
 
 ### 4.2 Create Session
-- `POST /api/todos/{id}/sessions`
+- `POST /api/todos/{todoId}/sessions`
 - Body:
 ```json
 { "sessionFocusSeconds": 1500, "breakSeconds": 300, "clientSessionId": "uuid-required" }
@@ -273,16 +264,6 @@ Headers (MVP):
 }
 ```
 - 멱등 재요청(동일 `todoId + clientSessionId`)은 `200`으로 기존/보정 세션을 반환할 수 있음
-
-### 4.3 Delete Sessions (Todo 단위)
-- `DELETE /api/todos/{id}/sessions`
-- Behavior:
-  - 해당 Todo의 모든 Session 삭제
-  - Todo 집계(`sessionCount`, `sessionFocusSeconds`)를 즉시 `0`으로 동기화
-- Response 204
-> 현재 프론트엔드에서는 이 엔드포인트를 호출하지 않습니다. (세션 삭제 UI는 미구현)
-
----
 
 ## 5. Reviews (회고)
 

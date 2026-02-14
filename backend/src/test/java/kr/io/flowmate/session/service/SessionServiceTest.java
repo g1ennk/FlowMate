@@ -322,28 +322,6 @@ class SessionServiceTest {
         assertThat(result.get(1).getSessionOrder()).isEqualTo(2);
     }
 
-    @Test
-    @DisplayName("deleteAllSessions: 세션 삭제 시 Todo 집계도 0으로 초기화")
-    void deleteAllSessions_세션삭제_집계초기화() {
-        // given
-        String userId = "11111111-1111-4111-8111-111111111111";
-        String todoId = "22222222-2222-4222-8222-222222222222";
-
-        Todo todo = Todo.create(userId, "집중", null, LocalDate.of(2026, 2, 13), 0, 0);
-        todo.incrementSessionCount();
-        todo.addSessionFocusSeconds(1500);
-
-        when(todoRepository.findByIdAndUserIdForUpdate(todoId, userId)).thenReturn(Optional.of(todo));
-
-        // when
-        sessionService.deleteAllSessions(userId, todoId);
-
-        // then
-        verify(sessionRepository).deleteAllByTodoId(todoId);
-        assertThat(todo.getSessionCount()).isEqualTo(0);
-        assertThat(todo.getSessionFocusSeconds()).isEqualTo(0);
-    }
-
     private SessionCreateRequest request(int focus, Integer rest, String clientSessionId) {
         SessionCreateRequest request = new SessionCreateRequest();
         request.setSessionFocusSeconds(focus);

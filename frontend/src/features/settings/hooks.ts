@@ -34,20 +34,6 @@ export function useSettings() {
   })
 }
 
-export function usePomodoroSessionSettings() {
-  return useQuery({
-    queryKey: queryKeys.pomodoroSessionSettings(),
-    queryFn: () => settingsApi.getSession(),
-  })
-}
-
-export function useAutomationSettings() {
-  return useQuery({
-    queryKey: queryKeys.automationSettings(),
-    queryFn: () => settingsApi.getAutomation(),
-  })
-}
-
 export function useMiniDaysSettings() {
   return useQuery({
     queryKey: queryKeys.miniDaysSettings(),

@@ -55,7 +55,7 @@
 - Spring Boot
 - Spring Web
 - Spring Data JPA
-- DB: MySQL(Prod, Dev), H2(Local)
+- DB: MySQL(Local, Dev, Prod)
 - 마이그레이션: Flyway
 
 > MVP는 게스트 모드이며, 클라이언트에서 생성한 `X-Client-Id`를 userId로 사용한다.

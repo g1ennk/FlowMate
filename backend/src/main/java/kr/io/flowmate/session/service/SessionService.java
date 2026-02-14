@@ -85,14 +85,6 @@ public class SessionService {
         return new CreateSessionResult(SessionResponse.from(saved), true);
     }
 
-    @Transactional
-    public void deleteAllSessions(String userId, String todoId) {
-        Todo todo = todoRepository.findByIdAndUserIdForUpdate(todoId, userId)
-                .orElseThrow(() -> new TodoNotFoundException(todoId));
-        sessionRepository.deleteAllByTodoId(todoId);
-        todo.syncSessionAggregate(0, 0);
-    }
-
     private Todo findTodoByIdAndUserId(String todoId, String userId) {
         return todoRepository.findByIdAndUserId(todoId, userId)
                 .orElseThrow(() -> new TodoNotFoundException(todoId));

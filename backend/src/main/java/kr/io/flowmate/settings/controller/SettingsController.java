@@ -31,14 +31,6 @@ public class SettingsController {
         return ResponseEntity.ok(settings);
     }
 
-    // 뽀모도로
-    @GetMapping("/pomodoro-session")
-    public ResponseEntity<PomodoroSessionSettingsResponse> getPomodoroSession(HttpServletRequest request) {
-        String userId = clientIdResolver.resolve(request);
-        PomodoroSessionSettingsResponse settings = settingsService.getPomodoro(userId);
-        return ResponseEntity.ok(settings);
-    }
-
     @PutMapping("/pomodoro-session")
     public ResponseEntity<PomodoroSessionSettingsResponse> updatePomodoroSession(
             HttpServletRequest request,
@@ -47,14 +39,6 @@ public class SettingsController {
         String userId = clientIdResolver.resolve(request);
         PomodoroSessionSettingsResponse updated = settingsService.updatePomodoro(userId, updateRequest);
         return ResponseEntity.ok(updated);
-    }
-
-    // 자동화
-    @GetMapping("/automation")
-    public ResponseEntity<AutomationSettingsResponse> getAutomation(HttpServletRequest request) {
-        String userId = clientIdResolver.resolve(request);
-        AutomationSettingsResponse settings = settingsService.getAutomation(userId);
-        return ResponseEntity.ok(settings);
     }
 
     @PutMapping("/automation")
