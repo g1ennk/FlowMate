@@ -34,7 +34,7 @@
 - `dayOrder`: int (0 이상)
 - `isDone`: boolean
 - `sessionCount`: int (완료된 Flow 횟수, 0 이상)
-- `sessionFocusSeconds`: int (초 단위, 1 이상)
+- `sessionFocusSeconds`: int (초 단위, 0 이상)
 - `timerMode`: enum (`stopwatch` | `pomodoro` | null)
 - `createdAt`, `updatedAt`: Instant
 
@@ -75,7 +75,7 @@ MiniDays
 
 - 설정 기본값은 DB/서비스/클라이언트 3중으로 보장한다.
   - DB: `NOT NULL DEFAULT`로 무결성 보장
-  - 서비스: 누락/구버전 데이터 정규화
+  - 서비스: 설정 미존재 사용자에 대해 기본값 조회 제공(`getOrDefault`) + 최초 변경 시 생성(`getOrCreate`)
   - 클라이언트: 초기 렌더 placeholder 용 기본값
 - 설정 데이터가 아직 없는 사용자에 대해서는 GET 시 기본값을 반환하고, 최초 변경(UPDATE/UPSERT) 시 영속 저장한다.
 
@@ -84,7 +84,7 @@ MiniDays
 - `id`: string (UUID, 36자)
 - `userId`: string (UUID, 36자)
 - `type`: enum (`daily` | `weekly` | `monthly`)
-- `periodStart`: LocalDate (YYYY-MM-DD, 정규화 필요)
+- `periodStart`: LocalDate (YYYY-MM-DD, 주기별 유효성 검증 대상)
 - `periodEnd`: LocalDate (YYYY-MM-DD)
 - `content`: string (텍스트)
 - `createdAt`, `updatedAt`: Instant
@@ -189,7 +189,7 @@ CREATE TABLE reviews
     id           VARCHAR(36) PRIMARY KEY,
     user_id      VARCHAR(36) NOT NULL,                    -- X-Client-Id (UUID, 36자)
     type         VARCHAR(20) NOT NULL,                    -- 'daily', 'weekly', 'monthly'
-    period_start DATE        NOT NULL,                    -- 정규화 필요 (아래 참고)
+    period_start DATE        NOT NULL,                    -- 주기별 유효성 검증 대상 (아래 참고)
     period_end   DATE        NOT NULL,
     content      TEXT        NOT NULL,
     created_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -202,10 +202,10 @@ CREATE TABLE reviews
 ```
 
 > `uniq_reviews_user_period (user_id, type, period_start)`는 동일 사용자-동일 기간 타입-동일 시작일 조합의 중복 회고를 방지한다.
-> 이 제약이 안정적으로 동작하려면 `period_start` 정규화가 필요하다.
-> - **daily**: 해당 일자
-> - **weekly**: 주 시작일(월요일)
-> - **monthly**: 월 시작일(1일)
+> 서버는 `period_start`를 정규화하지 않고, 타입별 유효성만 검증한다.
+> - **daily**: 임의 일자 허용
+> - **weekly**: 월요일만 허용
+> - **monthly**: 1일만 허용
 
 ### 3.5 Index 정책 (MVP)
 
@@ -243,14 +243,14 @@ User (clientId)
 - `mini_day`: 0~3 고정 (0=미분류, 1~3=시간대 라벨)
 - `day_order`: 0 이상 정수
 - `session_count`: 0 이상 정수 (완료된 Flow 횟수)
-- `session_focus_seconds`: 1 이상 정수 (초 단위)
+- `session_focus_seconds`: 0 이상 정수 (초 단위)
 - `title`: 1~200자 (NOT NULL)
 - `timer_mode`: 'stopwatch', 'pomodoro', null만 허용
 
 ### Session 테이블
 - `sessionOrder`: 같은 todo_id 내 중복 불가 (UNIQUE 제약)
 - `client_session_id`: 같은 todo_id 내 중복 불가 (UNIQUE 제약, 멱등 키)
-- `session_focus_seconds`: 1 이상 정수 (초 단위)
+- `session_focus_seconds`: DB 컬럼은 0 이상 저장 가능(기본값 0), API 입력 검증은 1 이상
 - `break_seconds`: 0 이상 정수 (초 단위)
 - 멱등 재요청 시 `break_seconds`는 감소 없이 증가 방향(`max`)으로만 갱신
 
@@ -265,10 +265,10 @@ User (clientId)
 ### Reviews 테이블
 - (user_id, type, period_start) 조합 중복 불가 (UNIQUE 제약)
 - `type`: 'daily', 'weekly', 'monthly'만 허용
-- `period_start` 정규화 규칙:
-  - **daily**: 해당 일자 (YYYY-MM-DD)
-  - **weekly**: 주 시작일 월요일 (ISO 8601)
-  - **monthly**: 월 시작일 1일 (YYYY-MM-01)
+- `period_start` 유효성 검증 규칙:
+  - **daily**: 임의 일자 허용 (YYYY-MM-DD)
+  - **weekly**: 월요일만 허용 (ISO 8601 주 시작일)
+  - **monthly**: 매월 1일만 허용 (YYYY-MM-01)
 
 ### 기타 규칙
 - Session은 **MVP 포함** (클라이언트는 `sessions`를 초 단위로 로컬 보관 + 서버 저장)
