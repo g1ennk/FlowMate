@@ -9,3 +9,8 @@ frontend/.vite/
 /docs/plan/agent/
 
 /backend/.env.local
+/backend/.env.dev
+/backend/.env.prod
+/infra/.env.local
+/infra/.env.dev
+/infra/.env.prod

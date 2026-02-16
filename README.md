@@ -16,6 +16,21 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 또한 FlowMate의 핵심은 ‘유연한 일반 타이머(카운트업)’입니다. 기존 뽀모도로의 카운트다운/알림이 오히려 몰입을 끊는 경험이 있었기 때문에, 사용자가 한 태스크를 끝까지 집중하다가 필요할 때만
 추천 휴식(가이드) 또는 자유 휴식(선택)을 추가하는 방식으로 설계했습니다. 이를 통해 일반 타이머처럼 자연스럽게 사용하면서도 상황에 따라 뽀모도로처럼 유연하게 활용할 수 있습니다.
 
+## 🗺️ 로드맵
+
+**현재 상태**: MVP 완성 (7.5/10), 배포 준비 중
+
+**다음 단계**:
+1. **긴급 패치** (1일): infra 설정 + 테스트 확인
+2. **배포** (3-5일): HTTPS URL 확보
+3. **운영** (3-5일): 모니터링 + 장애 대응
+4. **성능 최적화** (5-7일): 쿼리 튜닝 + 부하 테스트
+5. **차별화 확장** (7-14일): Elasticsearch/Kafka 등
+
+📋 **상세 로드맵**: [roadmap.md](docs/plan/roadmap.md)
+
+---
+
 ## 주요 기능 (v1)
 
 ### 핵심 요약
@@ -67,6 +82,7 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 ```txt
 FlowMate/
 ├── frontend/                 # React 앱
+│   ├── README.md            # 프론트엔드 개발 가이드
 │   ├── src/
 │   │   ├── api/              # API 클라이언트
 │   │   ├── app/              # 앱 설정 (라우터, 프로바이더)
@@ -78,16 +94,18 @@ FlowMate/
 │   │   ├── ui/               # 공통 UI 컴포넌트
 │   │   ├── lib/              # 공용 유틸/헬퍼
 │   │   └── mocks/            # MSW 핸들러
-│   └── ...
+│   └── package.json
 ├── backend/                  # Spring Boot 앱
+│   ├── README.md            # 백엔드 개발 가이드
+│   ├── src/
+│   └── build.gradle
 ├── infra/                    # 인프라/배포 구성
+│   ├── README.md            # 로컬 환경 가이드
+│   └── docker-compose.yml
 ├── docs/                     # 문서
-│   ├── apps/                 # 앱별 문서
-│   │   ├── frontend.md    # 프론트엔드 가이드
-│   │   ├── backend.md     # 백엔드 가이드
-│   │   └── infra.md       # 인프라/배포 초안
-│   ├── plan/                 # 기획 문서 (PRD/API/Data Model)
-│   ├── README.md             # 문서 인덱스
+│   ├── plan/                 # 기획/계약 문서 (PRD/API/Data Model)
+│   ├── agent/                # AI 작업 가이드/계획 문서
+│   └── engineering-log/      # 기술 학습 로그
 └── AGENTS.md                 # 기여자 가이드
 ```
 

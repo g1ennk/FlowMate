@@ -3,6 +3,7 @@ package kr.io.flowmate.todo.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -11,7 +12,8 @@ import lombok.Setter;
 @Setter
 public class TodoUpdateRequest {
 
-    @Size(min = 1, max = 200)
+    @NotBlank(message = "title must not be blank")
+    @Size(max = 200, message = "title must be at most 200 characters")
     private String title;
 
     @JsonProperty("note")
