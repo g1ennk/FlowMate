@@ -36,6 +36,7 @@
 - 집중 모드 배경음악(Lo-fi) 기능
 - 오늘하기 및 날짜 바꾸기 기능
 - 카테고리 자동 지정 ex) ps: 해시 개념 풀이 -> 카테고리 = ps, 해시 개념 풀이 = title
+- 세션 편집 기능
 
 ## 4. 기술 스택
 
@@ -54,7 +55,7 @@
 - Spring Boot
 - Spring Web
 - Spring Data JPA
-- DB: MySQL(Prod, Dev), H2(Local)
+- DB: MySQL(Local, Dev, Prod)
 - 마이그레이션: Flyway
 
 > MVP는 게스트 모드이며, 클라이언트에서 생성한 `X-Client-Id`를 userId로 사용한다.

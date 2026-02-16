@@ -17,7 +17,7 @@ const settingsAutoStart = {
 }
 
 beforeEach(() => {
-  useTimerStore.setState({ timers: {}, autoCompletedTodos: new Set() })
+  useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-01-09T00:00:00Z'))
   
@@ -105,7 +105,7 @@ describe('timerStore', () => {
           endAt: Date.now() + 1000,
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     useTimerStore.getState().completePhase('todo-1')
@@ -133,7 +133,7 @@ describe('timerStore', () => {
           endAt: Date.now() + 1000,
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     useTimerStore.getState().completePhase('todo-1')
@@ -156,7 +156,7 @@ describe('timerStore', () => {
           endAt: Date.now() + 1000,
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     useTimerStore.getState().completePhase('todo-1')
@@ -179,12 +179,72 @@ describe('timerStore', () => {
           sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0 }],
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     useTimerStore.getState().completePhase('todo-1')
     const timer = useTimerStore.getState().getTimer('todo-1')
-    expect(timer?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 60 })
+    expect(timer?.sessions[0]).toEqual(expect.objectContaining({ sessionFocusSeconds: 60, breakSeconds: 60 }))
+  })
+
+  it('break completion updates pending auto queue for already-queued session', () => {
+    const clientSessionId = '11111111-1111-4111-8111-111111111111'
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'pomodoro',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'short',
+          cycleCount: 1,
+          endAt: Date.now() - 1000,
+          sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0, clientSessionId }],
+        },
+      },
+      pendingAutoSessions: {
+        'todo-1': [{ sessionFocusSeconds: 60, breakSeconds: 0, clientSessionId }],
+      },
+    })
+
+    useTimerStore.getState().completePhase('todo-1')
+
+    const pending = useTimerStore.getState().pendingAutoSessions['todo-1']
+    expect(pending).toHaveLength(1)
+    expect(pending?.[0]).toEqual({
+      sessionFocusSeconds: 60,
+      breakSeconds: 60,
+      clientSessionId,
+    })
+  })
+
+  it('break completion re-queues session update when session was already acked', () => {
+    const clientSessionId = '11111111-1111-4111-8111-111111111111'
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'pomodoro',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'short',
+          cycleCount: 1,
+          endAt: Date.now() - 1000,
+          sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0, clientSessionId }],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().completePhase('todo-1')
+
+    const pending = useTimerStore.getState().pendingAutoSessions['todo-1']
+    expect(pending).toHaveLength(1)
+    expect(pending?.[0]).toEqual({
+      sessionFocusSeconds: 60,
+      breakSeconds: 60,
+      clientSessionId,
+    })
   })
 
   it('skipToNext from flow records session when elapsed meets minimum', () => {
@@ -201,7 +261,7 @@ describe('timerStore', () => {
           sessions: [],
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     const timer = useTimerStore.getState().getTimer('todo-1')
@@ -213,7 +273,7 @@ describe('timerStore', () => {
     expect(afterSkip?.status).toBe('running')
     expect(afterSkip?.cycleCount).toBe(1)
     expect(afterSkip?.sessions.length).toBe(1)
-    expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 0 })
+    expect(afterSkip?.sessions[0]).toEqual(expect.objectContaining({ sessionFocusSeconds: 60, breakSeconds: 0 }))
   })
 
   it('skipToNext from flow does not record session when elapsed is below minimum', () => {
@@ -230,7 +290,7 @@ describe('timerStore', () => {
           sessions: [],
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     useTimerStore.getState().skipToNext('todo-1')
@@ -252,7 +312,7 @@ describe('timerStore', () => {
           sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0 }], // 기존 세션 1개
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     const timer = useTimerStore.getState().getTimer('todo-1')
@@ -263,7 +323,7 @@ describe('timerStore', () => {
     expect(afterSkip?.phase).toBe('flow')
     expect(afterSkip?.status).toBe('running')
     expect(afterSkip?.sessions.length).toBe(1)
-    expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 60 })
+    expect(afterSkip?.sessions[0]).toEqual(expect.objectContaining({ sessionFocusSeconds: 60, breakSeconds: 60 }))
   })
 
   it('skipToNext from break does not update breakSeconds when elapsed is below minimum', () => {
@@ -280,12 +340,59 @@ describe('timerStore', () => {
           sessions: [{ sessionFocusSeconds: 60, breakSeconds: 0 }],
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     useTimerStore.getState().skipToNext('todo-1')
     const afterSkip = useTimerStore.getState().getTimer('todo-1')
-    expect(afterSkip?.sessions[0]).toEqual({ sessionFocusSeconds: 60, breakSeconds: 0 })
+    expect(afterSkip?.sessions[0]).toEqual(expect.objectContaining({ sessionFocusSeconds: 60, breakSeconds: 0 }))
+  })
+
+  it('queues auto-completed pomodoro sessions per todo', () => {
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'pomodoro',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'flow',
+          cycleCount: 0,
+          endAt: Date.now() - 1000,
+          sessions: [],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().completePhase('todo-1')
+    const pending = useTimerStore.getState().pendingAutoSessions['todo-1']
+    expect(pending).toHaveLength(1)
+    expect(pending?.[0]).toEqual(expect.objectContaining({
+      sessionFocusSeconds: 60,
+      breakSeconds: 0,
+    }))
+    expect(pending?.[0]?.clientSessionId).toEqual(expect.any(String))
+  })
+
+  it('ackAutoSession removes only one queued entry', () => {
+    useTimerStore.setState({
+      timers: {},
+      pendingAutoSessions: {
+        'todo-1': [
+          { sessionFocusSeconds: 60, breakSeconds: 0, clientSessionId: '11111111-1111-4111-8111-111111111111' },
+          { sessionFocusSeconds: 45, breakSeconds: 0, clientSessionId: '22222222-2222-4222-8222-222222222222' },
+        ],
+      },
+    })
+
+    useTimerStore.getState().ackAutoSession('todo-1')
+    expect(useTimerStore.getState().pendingAutoSessions['todo-1']).toEqual([
+      { sessionFocusSeconds: 45, breakSeconds: 0, clientSessionId: '22222222-2222-4222-8222-222222222222' },
+    ])
+
+    useTimerStore.getState().ackAutoSession('todo-1')
+    expect(useTimerStore.getState().pendingAutoSessions['todo-1']).toBeUndefined()
   })
 
   it('does not add session on extra break completion and confirms once on resumeFocus', () => {
@@ -310,7 +417,7 @@ describe('timerStore', () => {
           sessions: [],
         },
       },
-      autoCompletedTodos: new Set(),
+      pendingAutoSessions: {},
     })
 
     vi.setSystemTime(new Date(start + 1_000))
@@ -332,5 +439,47 @@ describe('timerStore', () => {
     expect(afterResumeFocus?.sessions).toHaveLength(1)
     expect(afterResumeFocus?.sessions[0]?.sessionFocusSeconds).toBe(72)
     expect(afterResumeFocus?.flexiblePhase).toBe('focus')
+  })
+
+  it('records session at focus end and finalizes breakSeconds on resumeFocus', () => {
+    const start = new Date('2026-01-09T10:00:00Z').getTime()
+
+    useTimerStore.setState({
+      timers: {
+        'todo-1': {
+          ...initialSingleTimerState,
+          mode: 'stopwatch',
+          settingsSnapshot: settings,
+          status: 'running',
+          phase: 'flow',
+          flexiblePhase: 'focus',
+          focusElapsedMs: 72_000,
+          initialFocusMs: 0,
+          focusStartedAt: start,
+          breakStartedAt: null,
+          sessions: [],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    vi.setSystemTime(new Date(start))
+    useTimerStore.getState().startBreak('todo-1', 60_000)
+
+    const afterStartBreak = useTimerStore.getState().getTimer('todo-1')
+    expect(afterStartBreak?.flexiblePhase).toBe('break_suggested')
+    expect(afterStartBreak?.sessions).toHaveLength(1)
+    expect(afterStartBreak?.sessions[0]?.sessionFocusSeconds).toBe(72)
+    expect(afterStartBreak?.sessions[0]?.breakSeconds).toBe(0)
+    expect(afterStartBreak?.breakSessionPendingUpdate).toBe(true)
+
+    vi.setSystemTime(new Date(start + 30_000))
+    useTimerStore.getState().resumeFocus('todo-1')
+
+    const afterResume = useTimerStore.getState().getTimer('todo-1')
+    expect(afterResume?.sessions).toHaveLength(1)
+    expect(afterResume?.sessions[0]?.breakSeconds).toBe(30)
+    expect(afterResume?.breakSessionPendingUpdate).toBe(false)
+    expect(afterResume?.flexiblePhase).toBe('focus')
   })
 })

@@ -150,6 +150,11 @@ const parseDateParam = (value: string | null) => {
   return candidate
 }
 
+const buildDefaultOpenSections = (defaultOpenId: number): Record<number, boolean> => ({
+  0: true, // 미분류는 기본 진입 시 항상 펼침
+  [defaultOpenId]: true,
+})
+
 const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
   const aKeys = Object.keys(a)
   const bKeys = Object.keys(b)
@@ -207,7 +212,6 @@ function SortableInput({
 function TodosPage() {
   const { data, isLoading } = useTodos()
   const store = useTimerStore()
-  const timers = useTimerStore((s) => s.timers)
   const reorderTodos = useReorderTodos()
   const [searchParams] = useSearchParams()
   const dateParam = searchParams.get('date')
@@ -285,10 +289,12 @@ function TodosPage() {
     () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings),
     [selectedDate, miniDaysSettings],
   )
-  const [openSections, setOpenSections] = useState<Record<number, boolean>>({ [defaultOpenId]: true })
+  const [openSections, setOpenSections] = useState<Record<number, boolean>>(
+    buildDefaultOpenSections(defaultOpenId),
+  )
 
   useEffect(() => {
-    setOpenSections({ [defaultOpenId]: true })
+    setOpenSections(buildDefaultOpenSections(defaultOpenId))
   }, [defaultOpenId])
 
   const markedDates = useMemo(() => {
@@ -322,6 +328,7 @@ function TodosPage() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const clonedItemsRef = useRef<ContainerItems | null>(null)
   const dragOriginContainerRef = useRef<DropContainerId | null>(null)
+  const lastDragOverKeyRef = useRef<string | null>(null)
   const isAllOpen = daySections.every((section) => openSections[section.id])
 
   const todoById = useMemo(() => {
@@ -508,18 +515,12 @@ function TodosPage() {
 
     for (const todo of todosForSelectedDate) {
       const miniDay = todo.miniDay ?? 0
-      const timer = timers[todo.id]
-      const sessions = timer?.sessions ?? []
-      const sessionFocusSeconds =
-        sessions.length > 0
-          ? sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
-          : todo.sessionFocusSeconds
-      totals[miniDay] = (totals[miniDay] ?? 0) + sessionFocusSeconds
+      totals[miniDay] = (totals[miniDay] ?? 0) + todo.sessionFocusSeconds
     }
 
     const totalAll = daySections.reduce((sum, section) => sum + (totals[section.id] ?? 0), 0)
     return { totals, totalAll }
-  }, [daySections, todosForSelectedDate, timers])
+  }, [daySections, todosForSelectedDate])
 
   const getTodoTimerProps = (todo: { id: string }) => {
     const timer = store.getTimer(todo.id)
@@ -537,6 +538,7 @@ function TodosPage() {
     setActiveDragId(id)
     clonedItemsRef.current = containerItems
     dragOriginContainerRef.current = findContainerFor(id)
+    lastDragOverKeyRef.current = null
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -554,13 +556,19 @@ function TodosPage() {
     const overContainer = findContainerFor(overId)
     if (!activeContainer || !overContainer) return
 
+    const dragOverKey = `${activeId}:${activeContainer}->${overContainer}:${overId}:${isBelowOverItem ? '1' : '0'}`
+    if (lastDragOverKeyRef.current === dragOverKey) return
+    lastDragOverKeyRef.current = dragOverKey
+
     const overMiniDay = parseContainerId(overContainer as DropContainerId)
-    if (!openSections[overMiniDay]) {
-      if (openSectionTimeoutRef.current) window.clearTimeout(openSectionTimeoutRef.current)
-      openSectionTimeoutRef.current = window.setTimeout(() => {
-        setOpenSections((prev) => (prev[overMiniDay] ? prev : { ...prev, [overMiniDay]: true }))
-      }, 200)
-    }
+      if (!openSections[overMiniDay]) {
+        if (openSectionTimeoutRef.current) window.clearTimeout(openSectionTimeoutRef.current)
+        openSectionTimeoutRef.current = window.setTimeout(() => {
+          setOpenSections((prev) =>
+            prev[overMiniDay] ? prev : { ...prev, [overMiniDay]: true },
+          )
+        }, 200)
+      }
 
     if (activeContainer === overContainer) return
 
@@ -595,6 +603,7 @@ function TodosPage() {
       setActiveDragId(null)
       clonedItemsRef.current = null
       dragOriginContainerRef.current = null
+      lastDragOverKeyRef.current = null
       return
     }
 
@@ -603,6 +612,7 @@ function TodosPage() {
       setActiveDragId(null)
       clonedItemsRef.current = null
       dragOriginContainerRef.current = null
+      lastDragOverKeyRef.current = null
       return
     }
     const overId = String(event.over.id)
@@ -714,6 +724,7 @@ function TodosPage() {
     setActiveDragId(null)
     clonedItemsRef.current = null
     dragOriginContainerRef.current = null
+    lastDragOverKeyRef.current = null
   }
 
   const handleDragCancel = () => {
@@ -727,6 +738,7 @@ function TodosPage() {
     setActiveDragId(null)
     clonedItemsRef.current = null
     dragOriginContainerRef.current = null
+    lastDragOverKeyRef.current = null
   }
 
 
@@ -783,7 +795,7 @@ function TodosPage() {
           <DndContext
             sensors={sensors}
             collisionDetection={collisionDetectionStrategy}
-            measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
+            measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragCancel={handleDragCancel}
@@ -905,10 +917,12 @@ function TodosPage() {
                           <div className="grid grid-cols-[20px_1fr_28px] items-start gap-2 px-2">
                             <button
                               onClick={() =>
-                                setOpenSections((prev) => ({
-                                  ...prev,
-                                  [section.id]: !prev[section.id],
-                                }))
+                                setOpenSections((prev) => {
+                                  return {
+                                    ...prev,
+                                    [section.id]: !prev[section.id],
+                                  }
+                                })
                               }
                               className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
                             >

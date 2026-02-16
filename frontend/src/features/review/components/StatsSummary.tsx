@@ -29,15 +29,18 @@ export function StatsSummary({
   comparison,
 }: StatsSummaryProps) {
   const focusDelta = comparison?.focusDelta
+  const hasFocus = totalFocusSeconds >= 60
 
   return (
     <section className="rounded-2xl bg-white p-2 shadow-sm">
       <div className="grid grid-cols-3 divide-x divide-gray-100">
         <div className="px-3 py-2">
           <p className="text-[11px] text-gray-500">집중</p>
-          <p className="mt-1 text-base font-semibold text-emerald-600">
-            {formatFocusTime(totalFocusSeconds)}
-          </p>
+          {hasFocus && (
+            <p className="mt-1 text-base font-semibold text-emerald-600">
+              {formatFocusTime(totalFocusSeconds)}
+            </p>
+          )}
           {focusDelta !== undefined && (
             <p className="mt-0.5 text-[10px]">
               {renderDelta(focusDelta, formatFocusTime)}

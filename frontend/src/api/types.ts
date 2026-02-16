@@ -1,19 +1,29 @@
 import { z } from 'zod'
 
-export const TodoSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string(),
-  note: z.string().nullable(),
-  date: z.string(), // YYYY-MM-DD
-  miniDay: z.number().int().min(0).max(3).optional(),
-  dayOrder: z.number().int().optional(),
-  isDone: z.boolean(),
-  sessionCount: z.number().int(),
-  sessionFocusSeconds: z.number().int(),
-  timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(), // 선택된 타이머 타입
-  createdAt: z.string(),
-  updatedAt: z.string(),
-})
+export const TodoSchema = z
+  .object({
+    id: z.string().uuid(),
+    title: z.string(),
+    note: z.string().nullable(),
+    date: z.string(), // YYYY-MM-DD
+    miniDay: z.number().int().min(0).max(3), // required (섹션 선택으로 항상 결정)
+    dayOrder: z.number().int(), // required (프론트엔드에서 항상 계산)
+    isDone: z.boolean().optional(),
+    done: z.boolean().optional(), // backward compatibility
+    sessionCount: z.number().int(),
+    sessionFocusSeconds: z.number().int(),
+    timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(), // 선택된 타이머 타입
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .refine((todo) => typeof todo.isDone === 'boolean' || typeof todo.done === 'boolean', {
+    message: 'Invalid input: expected boolean for isDone/done',
+    path: ['isDone'],
+  })
+  .transform(({ done, isDone, ...rest }) => ({
+    ...rest,
+    isDone: isDone ?? done ?? false,
+  }))
 
 export const TodoListSchema = z.object({
   items: z.array(TodoSchema),
@@ -22,9 +32,9 @@ export const TodoListSchema = z.object({
 export const TodoCreateSchema = z.object({
   title: z.string().min(1).max(200),
   note: z.string().nullable().optional(),
-  date: z.string().optional(), // YYYY-MM-DD, defaults to today
-  miniDay: z.number().int().min(0).max(3).optional(),
-  dayOrder: z.number().int().optional(),
+  date: z.string(), // YYYY-MM-DD (required, 프론트엔드가 캘린더 선택값 전달)
+  miniDay: z.number().int().min(0).max(3), // required (섹션 선택으로 결정)
+  dayOrder: z.number().int().min(0), // required (프론트엔드에서 자동 계산)
 })
 
 export const TodoPatchSchema = z.object({
@@ -32,15 +42,14 @@ export const TodoPatchSchema = z.object({
   note: z.string().nullable().optional(),
   isDone: z.boolean().optional(),
   miniDay: z.number().int().min(0).max(3).optional(),
-  dayOrder: z.number().int().optional(),
+  dayOrder: z.number().int().min(0).optional(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable().optional(),
-  sessionCount: z.number().int().optional(),
 })
 
 export const TodoReorderItemSchema = z.object({
   id: z.string().uuid(),
-  dayOrder: z.number().int(),
-  miniDay: z.number().int().min(0).max(3).optional(),
+  dayOrder: z.number().int().min(0),
+  miniDay: z.number().int().min(0).max(3), // required
 })
 
 export const TodoReorderRequestSchema = z.object({
@@ -55,16 +64,19 @@ export const PomodoroSessionSettingsSchema = z.object({
 })
 
 export const AutomationSettingsSchema = z.object({
-  autoStartBreak: z.boolean().optional(),
-  autoStartSession: z.boolean().optional(),
+  autoStartBreak: z.boolean(),
+  autoStartSession: z.boolean(),
 })
 
 export const PomodoroSettingsSchema = PomodoroSessionSettingsSchema.merge(AutomationSettingsSchema)
 
+const TIME_HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+const TIME_HH_MM_OR_24_RE = /^([01]\d|2[0-3]):[0-5]\d$|^24:00$/
+
 export const MiniDayRangeSchema = z.object({
-  label: z.string(),
-  start: z.string(),
-  end: z.string(),
+  label: z.string().trim().min(1).max(50),
+  start: z.string().regex(TIME_HH_MM_RE),
+  end: z.string().regex(TIME_HH_MM_OR_24_RE),
 })
 
 export const MiniDaysSettingsSchema = z.object({
@@ -81,8 +93,9 @@ export const SettingsSchema = z.object({
 
 // Session API
 export const SessionCreateRequestSchema = z.object({
-  sessionFocusSeconds: z.number().int().min(0).max(43_200),
+  sessionFocusSeconds: z.number().int().min(1).max(43_200),
   breakSeconds: z.number().int().min(0).max(43_200).optional(),
+  clientSessionId: z.string().uuid(),
 })
 
 export const SessionSchema = z.object({
@@ -96,15 +109,6 @@ export const SessionSchema = z.object({
 
 export const SessionListSchema = z.object({
   items: z.array(SessionSchema),
-})
-
-// 타이머 리셋용 (sessionFocusSeconds와 sessionCount 초기화)
-export const TimerResetResponseSchema = z.object({
-  id: z.string().uuid(),
-  sessionFocusSeconds: z.number().int(),
-  sessionCount: z.number().int(),
-  timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(),
-  updatedAt: z.string(),
 })
 
 export const ReviewTypeSchema = z.enum(['daily', 'weekly', 'monthly'])
@@ -143,7 +147,6 @@ export type Settings = z.infer<typeof SettingsSchema>
 export type SessionCreateRequest = z.infer<typeof SessionCreateRequestSchema>
 export type Session = z.infer<typeof SessionSchema>
 export type SessionList = z.infer<typeof SessionListSchema>
-export type TimerResetResponse = z.infer<typeof TimerResetResponseSchema>
 export type TodoReorderItem = z.infer<typeof TodoReorderItemSchema>
 export type TodoReorderRequest = z.infer<typeof TodoReorderRequestSchema>
 export type ReviewType = z.infer<typeof ReviewTypeSchema>

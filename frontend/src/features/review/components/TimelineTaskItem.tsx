@@ -9,7 +9,7 @@ type TimelineTaskItemProps = {
 
 export function TimelineTaskItem({ item, dateLabel, onSelect }: TimelineTaskItemProps) {
   const isDone = item.isDone
-  const timeLabel = item.focusSeconds > 0 ? item.focusTime : '-'
+  const timeLabel = item.focusSeconds >= 60 ? item.focusTime : '-'
 
   return (
     <button

@@ -33,7 +33,7 @@ export function TimeflowChart({ title, data, onBarSelect }: TimeflowChartProps) 
     <div className="rounded-2xl bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-        {activeItem && (
+        {activeItem && activeItem.seconds >= 60 && (
           <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
             {formatFocusTime(activeItem.seconds)}
           </span>
@@ -69,7 +69,7 @@ export function TimeflowChart({ title, data, onBarSelect }: TimeflowChartProps) 
                     onBarSelect?.(item, index)
                   }
                 }}
-                aria-label={`${item.label} ${formatFocusTime(item.seconds)}`}
+                aria-label={item.seconds >= 60 ? `${item.label} ${formatFocusTime(item.seconds)}` : item.label}
               >
                 <div
                   className="w-full rounded-full bg-emerald-500"

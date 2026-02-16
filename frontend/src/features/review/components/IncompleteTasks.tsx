@@ -41,7 +41,7 @@ export function IncompleteTasks({
                     <p className="mt-0.5 text-[11px] text-gray-400">{formatDateLabel(item.date)}</p>
                   )}
                 </div>
-                {item.focusSeconds > 0 && (
+                {item.focusSeconds >= 60 && (
                   <span className="ml-2 shrink-0 text-[10px] font-semibold text-gray-500">
                     {item.focusTime}
                   </span>

@@ -1,9 +1,9 @@
-import type { PomodoroSettings, Session, SessionCreateRequest } from '../../api/types'
+import type { PomodoroSettings } from '../../api/types'
 import { MIN_FLOW_MS } from '../../lib/constants'
 import type { SessionRecord, SingleTimerState, TimerMode } from './timerStore'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
+import { generateSessionId } from '../../lib/sessionId'
 
-type CreateSessionArgs = { todoId: string; body: SessionCreateRequest }
 type UpdateTodoArgs = {
   id: string
   patch: { isDone: boolean; timerMode: TimerMode | null; dayOrder?: number }
@@ -16,8 +16,9 @@ type CompletionDeps = {
   pause: (todoId: string) => void
   getTimer: (todoId: string) => SingleTimerState | undefined
   updateSessions: (todoId: string, sessions: SessionRecord[]) => void
-  createSession: (args: CreateSessionArgs) => Promise<Session>
   updateTodo: (args: UpdateTodoArgs) => Promise<unknown>
+  syncSessionsImmediately?: (sessions: SessionRecord[]) => Promise<void>
+  applySessionAggregateDelta?: (delta: { focusDeltaSeconds: number; sessionCountDelta: number }) => void
   nextOrder?: number
   debug?: boolean
 }
@@ -25,6 +26,8 @@ type CompletionDeps = {
 async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) {
   const { todoId, updateSessions, debug } = deps
 
+  const oldFocusSec = timer.sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
+  const oldSessionCount = timer.sessions.length
   const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
   const initialMs = timer.initialFocusMs ?? 0
 
@@ -38,6 +41,7 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
   }
 
   const newSessions = [...timer.sessions]
+  const immediateSyncTargets: SessionRecord[] = []
   const isInBreak =
     timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
 
@@ -49,24 +53,31 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
   const currentSessionMs = Math.max(0, currentFocusMs - baselineMs)
   const currentSessionSec = Math.round(currentSessionMs / 1000)
   const currentBreakSec = Math.round(currentBreakMs / 1000)
+  const shouldRecordCurrentSession = currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0
 
-  const hasRecordedSession =
-    currentSessionMs <= 0 ||
-    (isInBreak &&
-      timer.breakCompleted &&
-      newSessions.length > 0 &&
-      newSessions[newSessions.length - 1].sessionFocusSeconds === currentSessionSec)
-
-  if (!hasRecordedSession && currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
+  if (isInBreak) {
+    if (timer.breakSessionPendingUpdate && newSessions.length > 0) {
+      newSessions[newSessions.length - 1] = {
+        ...newSessions[newSessions.length - 1],
+        breakSeconds: currentBreakSec,
+      }
+      immediateSyncTargets.push(newSessions[newSessions.length - 1])
+    } else if (shouldRecordCurrentSession) {
+      // 호환성: 과거 상태(휴식 진입 시 미기록)라면 완료 시점에 보정 기록
+      newSessions.push({
+        sessionFocusSeconds: currentSessionSec,
+        breakSeconds: currentBreakSec,
+        clientSessionId: generateSessionId(),
+      })
+      immediateSyncTargets.push(newSessions[newSessions.length - 1])
+    }
+  } else if (shouldRecordCurrentSession) {
     newSessions.push({
       sessionFocusSeconds: currentSessionSec,
-      breakSeconds: isInBreak ? currentBreakSec : 0,
+      breakSeconds: 0,
+      clientSessionId: generateSessionId(),
     })
-  } else if (isInBreak && newSessions.length > 0 && hasRecordedSession) {
-    newSessions[newSessions.length - 1] = {
-      ...newSessions[newSessions.length - 1],
-      breakSeconds: currentBreakSec,
-    }
+    immediateSyncTargets.push(newSessions[newSessions.length - 1])
   }
 
   const totalFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
@@ -85,7 +96,7 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
       newSessionsLength: newSessions.length,
       oldSessions: timer.sessions,
       newSessions,
-      isValid: currentSessionMs >= MIN_FLOW_MS,
+      isValid: shouldRecordCurrentSession,
     })
   }
 
@@ -99,6 +110,24 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
   if (sessionsChanged) {
     updateSessions(todoId, newSessions)
   }
+
+  const focusDeltaSeconds = Math.max(0, totalFocusSec - oldFocusSec)
+  const sessionCountDelta = Math.max(0, newSessions.length - oldSessionCount)
+  if (focusDeltaSeconds > 0 || sessionCountDelta > 0) {
+    deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
+  }
+
+  if (immediateSyncTargets.length > 0) {
+    try {
+      await deps.syncSessionsImmediately?.(immediateSyncTargets)
+    } catch (error) {
+      // 즉시 동기화 실패 시에도 로컬 큐/주기 동기화로 eventually 반영되도록 완료 플로우는 유지한다.
+      console.error('[completeTaskFromTimer] Immediate stopwatch sync failed', {
+        todoId,
+        error,
+      })
+    }
+  }
 }
 
 async function completePomodoro(
@@ -106,7 +135,9 @@ async function completePomodoro(
   timer: SingleTimerState,
   settings?: PomodoroSettings,
 ) {
-  const { todoId, createSession, updateSessions } = deps
+  const { todoId, updateSessions } = deps
+  const oldFocusSec = timer.sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
+  const oldSessionCount = timer.sessions.length
 
   if (timer.phase !== 'flow') {
     return
@@ -121,18 +152,29 @@ async function completePomodoro(
   const newSessions = [...timer.sessions]
 
   if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
-    newSessions.push({ sessionFocusSeconds: elapsedSec, breakSeconds: 0 })
-    updateSessions(todoId, newSessions)
-  }
-
-  if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
-    await createSession({
-      todoId,
-      body: {
-        sessionFocusSeconds: elapsedSec,
-        breakSeconds: 0,
-      },
+    newSessions.push({
+      sessionFocusSeconds: elapsedSec,
+      breakSeconds: 0,
+      clientSessionId: generateSessionId(),
     })
+    updateSessions(todoId, newSessions)
+
+    const newFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
+    const focusDeltaSeconds = Math.max(0, newFocusSec - oldFocusSec)
+    const sessionCountDelta = Math.max(0, newSessions.length - oldSessionCount)
+    if (focusDeltaSeconds > 0 || sessionCountDelta > 0) {
+      deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
+    }
+
+    try {
+      await deps.syncSessionsImmediately?.([newSessions[newSessions.length - 1]])
+    } catch (error) {
+      // 즉시 동기화 실패 시에도 로컬 큐/주기 동기화로 eventually 반영되도록 완료 플로우는 유지한다.
+      console.error('[completeTaskFromTimer] Immediate pomodoro sync failed', {
+        todoId,
+        error,
+      })
+    }
   }
 }
 

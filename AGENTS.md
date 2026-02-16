@@ -2,17 +2,24 @@
 
 ## 프로젝트 구조 & 모듈 구성
 - `frontend/`: React + TypeScript 앱
+  - `README.md`: 프론트엔드 개발/실행 가이드
   - `src/app/`: 앱 셸, 라우트, 프로바이더
   - `src/features/`: 도메인 단위 모듈 (`todos`, `timer`, `settings` 등)
   - `src/ui/`: 공통 UI 컴포넌트
   - `src/api/`: API 클라이언트와 타입
   - `src/mocks/`: MSW 핸들러 및 목 서버
   - `src/lib/`: 공용 유틸/상수
-- `backend/`: Spring Boot 서비스 예정 (현재 비어 있음)
-- `docs/`: 기획/구현 문서
-  - `apps/`: 앱별 문서 (frontend/backend/infra)
-  - `plan/`: PRD/API/Data Model
-- `infra/`: 배포/인프라 설정 (예정)
+- `backend/`: Spring Boot API 서버
+  - `README.md`: 백엔드 개발/실행 가이드
+  - `src/main/java/kr/io/flowmate`: 도메인 모듈 (`todo`, `session`, `settings`, `review`)
+  - `src/main/resources/db/migration`: Flyway 마이그레이션
+- `infra/`: 로컬 인프라 구성 (Docker Compose)
+  - `README.md`: 로컬 MySQL 실행/관리 가이드
+  - `docker-compose*.yml`: MySQL 컨테이너 설정
+- `docs/`: 문서
+  - `plan/`: PRD/API/Data Model (정본)
+  - `agent/`: AI 작업 계획/가이드
+  - `engineering-log/`: 기술 학습/결정 기록
 - `images/`: 문서용 이미지 자산
 
 ## 빌드/테스트/개발 명령어
@@ -26,6 +33,11 @@
 - `pnpm lint`: ESLint 실행
 - `pnpm test`: Vitest 1회 실행 (CI용)
 - `pnpm test:watch`: Vitest watch 모드
+
+`backend/`에서 실행:
+- `./gradlew test`: 테스트 실행
+- `./gradlew bootRun --args='--spring.profiles.active=local'`: 로컬 실행
+- `./gradlew clean test bootJar`: 클린 테스트 + 패키징
 
 ## 코딩 스타일 & 네이밍 규칙
 - TypeScript + React, 스타일은 Tailwind 사용.

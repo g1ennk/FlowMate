@@ -31,6 +31,9 @@ export function validateMiniDaysSettings(settings: MiniDaysSettings): MiniDaysEr
   if (!label1) errors.day1 = '라벨을 입력해주세요'
   if (!label2) errors.day2 = '라벨을 입력해주세요'
   if (!label3) errors.day3 = '라벨을 입력해주세요'
+  if (label1.length > 50) errors.day1 = '라벨은 50자 이하여야 해요'
+  if (label2.length > 50) errors.day2 = '라벨은 50자 이하여야 해요'
+  if (label3.length > 50) errors.day3 = '라벨은 50자 이하여야 해요'
 
   const day1StartRaw = settings.day1.start.trim()
   const day1EndRaw = settings.day1.end.trim()
@@ -40,9 +43,9 @@ export function validateMiniDaysSettings(settings: MiniDaysSettings): MiniDaysEr
   const day3EndRaw = settings.day3.end.trim()
 
   const day1Start = day1StartRaw ? parseTime(day1StartRaw, false) : null
-  const day1End = day1EndRaw ? parseTime(day1EndRaw, false) : null
+  const day1End = day1EndRaw ? parseTime(day1EndRaw, true) : null
   const day2Start = day2StartRaw ? parseTime(day2StartRaw, false) : null
-  const day2End = day2EndRaw ? parseTime(day2EndRaw, false) : null
+  const day2End = day2EndRaw ? parseTime(day2EndRaw, true) : null
   const day3Start = day3StartRaw ? parseTime(day3StartRaw, false) : null
   const day3End = day3EndRaw ? parseTime(day3EndRaw, true) : null
 

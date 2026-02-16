@@ -139,23 +139,17 @@ export function formatPeriodLabel(type: PeriodType, baseDate: Date) {
 
 const getEffectiveFocusSeconds = (
   todo: Todo,
-  timers: Record<string, SingleTimerState>,
+  _timers: Record<string, SingleTimerState>,
 ) => {
-  const timer = timers[todo.id]
-  const sessions = timer?.sessions ?? []
-  if (sessions.length > 0) {
-    return sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
-  }
+  void _timers
   return todo.sessionFocusSeconds
 }
 
 const getEffectiveFlowCount = (
   todo: Todo,
-  timers: Record<string, SingleTimerState>,
+  _timers: Record<string, SingleTimerState>,
 ) => {
-  const timer = timers[todo.id]
-  const sessions = timer?.sessions ?? []
-  if (sessions.length > 0) return sessions.length
+  void _timers
   return todo.sessionCount
 }
 
@@ -363,7 +357,7 @@ export function buildPeriodStats(
   }, null)
 
   const highlightTask =
-    highlight && highlight.focusSeconds > 0 ? highlight : null
+    highlight && highlight.focusSeconds >= 60 ? highlight : null
 
   const completedTodos = orderedTodos
     .filter((todo) => getEffectiveIsDone(todo, timers))

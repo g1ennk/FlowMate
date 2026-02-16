@@ -1,9 +1,3 @@
-import {
-  getCurrentSessionFocusMs,
-  getSessionsTotalFocusMs,
-  getTotalAccumulatedFocusMs,
-} from '../../lib/stopwatchMetrics'
-
 type SessionRecord = { sessionFocusSeconds: number; breakSeconds: number }
 
 type TodoTimerDisplayArgs = {
@@ -31,48 +25,36 @@ export function getTodoDisplayTimeSeconds({
   sessions = [],
   initialFocusMs = 0,
 }: TodoTimerDisplayArgs) {
-  let displayTimeSeconds: number
+  void sessions
+  void initialFocusMs
 
-  const sessionsTotalMs = getSessionsTotalFocusMs(sessions)
-  const sessionsFocusSeconds = sessions.length > 0 ? Math.floor(sessionsTotalMs / 1000) : null
-  const accumulatedFocusSeconds =
-    sessions.length > 0 && activeTimerElapsedMs !== undefined && isActiveTimer
-      ? Math.floor(
-        getTotalAccumulatedFocusMs(activeTimerElapsedMs, initialFocusMs, sessions) / 1000,
-      )
-      : sessionsFocusSeconds
-
-  if (isDone) {
-    // 완료된 항목은 확정 세션 합계를 우선 사용해 이중 집계를 방지한다.
-    displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds
-  } else if (isActiveTimer) {
-    if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
-      if (breakElapsedMs >= breakTargetMs) {
-        const extraMs = breakElapsedMs - breakTargetMs
-        displayTimeSeconds = Math.floor(extraMs / 1000)
-      } else {
-        const remainingMs = Math.max(0, breakTargetMs - breakElapsedMs)
-        displayTimeSeconds = Math.ceil(remainingMs / 1000)
-      }
-    } else if (flexiblePhase === 'break_free' && breakElapsedMs !== undefined) {
-      displayTimeSeconds = Math.floor(breakElapsedMs / 1000)
-    } else if (activeTimerRemainingMs !== undefined) {
-      displayTimeSeconds = Math.ceil(activeTimerRemainingMs / 1000)
-    } else if (activeTimerElapsedMs !== undefined) {
-      if (sessions.length > 0) {
-        displayTimeSeconds = accumulatedFocusSeconds ?? Math.floor(activeTimerElapsedMs / 1000)
-      } else {
-        const currentSessionMs = getCurrentSessionFocusMs(activeTimerElapsedMs, initialFocusMs, [])
-        displayTimeSeconds = Math.floor(currentSessionMs / 1000)
-      }
-    } else {
-      displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds
-    }
-  } else {
-    displayTimeSeconds = sessionsFocusSeconds ?? sessionFocusSeconds
+  if (isDone || !isActiveTimer) {
+    return sessionFocusSeconds
   }
 
-  return displayTimeSeconds
+  if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
+    if (breakElapsedMs >= breakTargetMs) {
+      const extraMs = breakElapsedMs - breakTargetMs
+      return Math.floor(extraMs / 1000)
+    }
+    const remainingMs = Math.max(0, breakTargetMs - breakElapsedMs)
+    return Math.ceil(remainingMs / 1000)
+  }
+
+  if (flexiblePhase === 'break_free' && breakElapsedMs !== undefined) {
+    return Math.floor(breakElapsedMs / 1000)
+  }
+
+  if (activeTimerRemainingMs !== undefined) {
+    return Math.ceil(activeTimerRemainingMs / 1000)
+  }
+
+  if (activeTimerElapsedMs !== undefined) {
+    // 일반 타이머 집중 중: 서버 누적(base) + 현재 런타임이 반영된 elapsed 값을 표시
+    return Math.max(sessionFocusSeconds, Math.floor(activeTimerElapsedMs / 1000))
+  }
+
+  return sessionFocusSeconds
 }
 
 export function formatTimerSeconds(totalFocusSeconds: number) {

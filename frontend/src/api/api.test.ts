@@ -13,16 +13,18 @@ describe('api with msw', () => {
   })
 
   it('updates settings and returns persisted values', async () => {
-    const session = await settingsApi.getSession()
-    const updatedSession = await settingsApi.updateSession({ ...session, flowMin: session.flowMin + 1 })
-    expect(updatedSession.flowMin).toBe(session.flowMin + 1)
-
-    const automation = await settingsApi.getAutomation()
-    const updatedAutomation = await settingsApi.updateAutomation({
-      ...automation,
-      autoStartBreak: !automation.autoStartBreak,
+    const initial = await settingsApi.getSettings()
+    const updatedSession = await settingsApi.updateSession({
+      ...initial.pomodoroSession,
+      flowMin: initial.pomodoroSession.flowMin + 1,
     })
-    expect(updatedAutomation.autoStartBreak).toBe(!automation.autoStartBreak)
+    expect(updatedSession.flowMin).toBe(initial.pomodoroSession.flowMin + 1)
+
+    const updatedAutomation = await settingsApi.updateAutomation({
+      ...initial.automation,
+      autoStartBreak: !initial.automation.autoStartBreak,
+    })
+    expect(updatedAutomation.autoStartBreak).toBe(!initial.automation.autoStartBreak)
 
     const miniDays = await settingsApi.getMiniDays()
     const updatedMiniDays = await settingsApi.updateMiniDays({

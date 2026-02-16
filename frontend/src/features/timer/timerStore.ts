@@ -10,6 +10,13 @@ import {
   removePersisted,
   savePersisted,
 } from './timerPersistence'
+import {
+  clearSyncedCount,
+  readPendingAutoSessions,
+  type PendingPomodoroSession,
+  writePendingAutoSessions,
+} from './timerSyncService'
+import { generateSessionId, normalizeSessionId } from '../../lib/sessionId'
 
 export type { FlexiblePhase, SessionRecord, SingleTimerState, TimerMode, TimerPhase, TimerStatus } from './timerTypes'
 export { initialSingleTimerState } from './timerDefaults'
@@ -17,7 +24,7 @@ export { saveSessions } from './timerPersistence'
 
 type TimerState = {
   timers: Record<string, SingleTimerState>
-  autoCompletedTodos: Set<string> // 자동 완료된 todoId 추적 (Flow → Break 자동 전환)
+  pendingAutoSessions: Record<string, PendingPomodoroSession[]> // todo별 미동기화 pomodoro 세션 큐
 }
 
 type TimerActions = {
@@ -34,14 +41,14 @@ type TimerActions = {
   completePhase: (todoId: string) => void
   skipToNext: (todoId: string) => void
   getTimer: (todoId: string) => SingleTimerState | undefined
-  clearAutoCompleted: (todoId: string) => void
+  ackAutoSession: (todoId: string) => void
   restore: () => void
   syncWithNow: () => void
   // Flexible timer 액션
   startBreak: (todoId: string, targetMs: number | null) => void
   resumeFocus: (todoId: string) => void
   calculateBreakSuggestion: (focusMs: number) => { targetMs: number; targetMinutes: number; message: string }
-  // sessions 업데이트 (관심사 분리)
+  // sessions 업데이트 (집계 정본 아님: 동기화/런타임 보조 버퍼)
   updateSessions: (todoId: string, sessions: SessionRecord[]) => void
 }
 
@@ -80,6 +87,64 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     
     // 타이머 상태 저장 (sessions는 이미 localStorage에 저장됨)
     savePersisted(todoId, updated)
+  }
+
+  const setPendingAutoSessions = (
+    updater: (
+      current: Record<string, PendingPomodoroSession[]>,
+    ) => Record<string, PendingPomodoroSession[]>,
+  ) => {
+    const next = updater(get().pendingAutoSessions)
+    set({ pendingAutoSessions: next })
+    writePendingAutoSessions(next)
+  }
+
+  const enqueuePendingAutoSession = (todoId: string, session: PendingPomodoroSession) => {
+    const normalized: PendingPomodoroSession = {
+      sessionFocusSeconds: Math.max(0, Math.round(session.sessionFocusSeconds)),
+      breakSeconds: Math.max(0, Math.round(session.breakSeconds)),
+      clientSessionId: normalizeSessionId(session.clientSessionId),
+    }
+
+    if (normalized.sessionFocusSeconds <= 0) return
+
+    setPendingAutoSessions((current) => {
+      const existing = current[todoId] ?? []
+      const matchIndex = existing.findIndex(
+        (item) => item.clientSessionId === normalized.clientSessionId,
+      )
+
+      if (matchIndex === -1) {
+        return {
+          ...current,
+          [todoId]: [...existing, normalized],
+        }
+      }
+
+      const prev = existing[matchIndex]
+      const nextItem: PendingPomodoroSession = {
+        ...prev,
+        ...normalized,
+        // breakSeconds는 증가 방향으로만 보정한다.
+        breakSeconds: Math.max(prev.breakSeconds, normalized.breakSeconds),
+        sessionFocusSeconds: Math.max(prev.sessionFocusSeconds, normalized.sessionFocusSeconds),
+      }
+
+      if (
+        nextItem.sessionFocusSeconds === prev.sessionFocusSeconds &&
+        nextItem.breakSeconds === prev.breakSeconds &&
+        nextItem.clientSessionId === prev.clientSessionId
+      ) {
+        return current
+      }
+
+      const updated = [...existing]
+      updated[matchIndex] = nextItem
+      return {
+        ...current,
+        [todoId]: updated,
+      }
+    })
   }
 
   // 헬퍼: Phase 전환 (공통 로직)
@@ -125,7 +190,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
   return {
     timers: loadAllPersisted(),
-    autoCompletedTodos: new Set<string>(),
+    pendingAutoSessions: readPendingAutoSessions(),
 
     getTimer: (todoId) => get().timers[todoId],
 
@@ -167,6 +232,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         breakCompleted: false,
         focusStartedAt: null,
         breakStartedAt: null,
+        breakSessionPendingUpdate: false,
         sessions: existingSessions,  // 기존 sessions 유지
       }
       
@@ -198,6 +264,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         breakCompleted: false,
         focusStartedAt: null,
         breakStartedAt: null,
+        breakSessionPendingUpdate: false,
         sessions: existingSessions,
       }
 
@@ -240,6 +307,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           breakCompleted: false,
           focusStartedAt: Date.now(),
           breakStartedAt: null,
+          breakSessionPendingUpdate: false,
           sessions: existingSessions,  // 기존 sessions 유지
         })
         return
@@ -264,6 +332,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         breakCompleted: false,
         focusStartedAt: Date.now(),
         breakStartedAt: null,
+        breakSessionPendingUpdate: false,
         sessions: existingSessions,  // 기존 sessions 유지
       }
       
@@ -295,6 +364,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         breakCompleted: false,
         focusStartedAt: null,
         breakStartedAt: null,
+        breakSessionPendingUpdate: false,
         sessions: existingSessions,
       }
 
@@ -363,6 +433,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
             breakStartedAt: null,
             breakTargetMs: null,
             breakCompleted: false,
+            breakSessionPendingUpdate: false,
           })
         }
         return
@@ -411,10 +482,15 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       // 리셋 시 타이머를 완전히 제거 (초기화)
       const timers = { ...get().timers }
       delete timers[todoId]
-      
-      set({ timers })
+
+      const nextPending = { ...get().pendingAutoSessions }
+      delete nextPending[todoId]
+
+      set({ timers, pendingAutoSessions: nextPending })
+      writePendingAutoSessions(nextPending)
       
       removePersisted(todoId)
+      clearSyncedCount(todoId)
     },
 
     updateInitialFocusMs: (todoId, newInitialFocusMs) => {
@@ -472,14 +548,24 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                 const currentBreakSec = Math.round(newBreakElapsed / 1000)
 
                 let newSessions = timer.sessions
-                if (autoStartSession && currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
-                  newSessions = [
-                    ...timer.sessions,
-                    {
-                      sessionFocusSeconds: currentSessionSec,
+                if (autoStartSession) {
+                  if (timer.breakSessionPendingUpdate && timer.sessions.length > 0) {
+                    const lastIndex = timer.sessions.length - 1
+                    newSessions = [...timer.sessions]
+                    newSessions[lastIndex] = {
+                      ...newSessions[lastIndex],
                       breakSeconds: currentBreakSec,
-                    },
-                  ]
+                    }
+                  } else if (currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
+                    newSessions = [
+                      ...timer.sessions,
+                      {
+                        sessionFocusSeconds: currentSessionSec,
+                        breakSeconds: currentBreakSec,
+                        clientSessionId: generateSessionId(),
+                      },
+                    ]
+                  }
                 }
                 if (autoStartSession) {
                   // 자동으로 집중 시작
@@ -495,11 +581,12 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                     initialFocusMs: newInitialFocusMs,
                     breakTargetMs: null,
                     breakCompleted: false,
+                    breakSessionPendingUpdate: false,
                     status: 'running',
                     sessions: newSessions,
                   })
                 } else {
-                  // 추가 휴식 카운트업 유지 (세션 확정은 resumeFocus/완료 시점에 수행)
+                  // 추가 휴식 카운트업 유지 (이미 기록된 세션의 breakSeconds는 휴식 종료 시 반영)
                   updateTimer(todoId, {
                     breakElapsedMs: newBreakElapsed,
                     breakCompleted: true,
@@ -554,11 +641,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const { cycleEvery, breakMin, longBreakMin, flowMin, autoStartBreak, autoStartSession } = settingsSnapshot
       
       if (phase === 'flow') {
-        // Flow → Break 자동 전환: 자동 완료로 표시 (API 호출 필요)
-        set((state) => ({
-          autoCompletedTodos: new Set(state.autoCompletedTodos).add(todoId)
-        }))
-        
         const nextCycle = cycleCount + 1
         const breakType = getBreakType(nextCycle, cycleEvery)
         const breakDuration = breakType.isLong ? longBreakMin : breakMin
@@ -570,6 +652,16 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           : plannedMs
         const flowMs = Math.max(0, actualElapsedMs)
         const flowSeconds = Math.round(flowMs / 1000)
+        const completedSession: PendingPomodoroSession = {
+          sessionFocusSeconds: flowSeconds,
+          breakSeconds: 0,
+          clientSessionId: generateSessionId(),
+        }
+
+        // Flow → Break 자동 전환: 자동 완료 세션 큐에 적재 (todo별 누적)
+        if (flowSeconds > 0) {
+          enqueuePendingAutoSession(todoId, completedSession)
+        }
         
         transitionPhase(
           todoId, 
@@ -579,7 +671,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           1,
           (currentHistory) => [
             ...currentHistory,
-            { sessionFocusSeconds: flowSeconds, breakSeconds: 0 },
+            completedSession,
           ]
         )
       } else {
@@ -591,6 +683,16 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const elapsedBreakMs = Math.max(0, plannedBreakMs - remainingMs)
         const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -cycleCount : 0
+
+        if (timer.sessions.length > 0 && elapsedBreakMs >= MIN_FLOW_MS && breakSeconds > 0) {
+          const lastSession = timer.sessions[timer.sessions.length - 1]
+          enqueuePendingAutoSession(todoId, {
+            sessionFocusSeconds: lastSession.sessionFocusSeconds,
+            breakSeconds,
+            clientSessionId: lastSession.clientSessionId,
+          })
+        }
+
         transitionPhase(
           todoId, 
           'flow', 
@@ -628,6 +730,15 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
         const elapsedMs = Math.max(0, plannedMs - remainingMs)
         const elapsedSec = Math.round(elapsedMs / 1000)
+        const completedSession: PendingPomodoroSession = {
+          sessionFocusSeconds: elapsedSec,
+          breakSeconds: 0,
+          clientSessionId: generateSessionId(),
+        }
+
+        if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
+          enqueuePendingAutoSession(todoId, completedSession)
+        }
         
         // Flow에서 휴식으로 이동할 때, 최소 집중 시간을 넘긴 경우 현재 Flow를 세션으로 인정
         transitionPhase(
@@ -642,7 +753,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
             }
             return [
               ...currentHistory,
-              { sessionFocusSeconds: elapsedSec, breakSeconds: 0 },
+              completedSession,
             ]
           },
         )
@@ -655,6 +766,16 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const elapsedBreakMs = Math.max(0, plannedBreakMs - remainingMs)
         const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -timer.cycleCount : 0
+
+        if (timer.sessions.length > 0 && elapsedBreakMs >= MIN_FLOW_MS && breakSeconds > 0) {
+          const lastSession = timer.sessions[timer.sessions.length - 1]
+          enqueuePendingAutoSession(todoId, {
+            sessionFocusSeconds: lastSession.sessionFocusSeconds,
+            breakSeconds,
+            clientSessionId: lastSession.clientSessionId,
+          })
+        }
+
         transitionPhase(
           todoId,
           'flow',
@@ -731,11 +852,21 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       }
     },
 
-    clearAutoCompleted: (todoId) => {
-      set((state) => {
-        const newSet = new Set(state.autoCompletedTodos)
-        newSet.delete(todoId)
-        return { autoCompletedTodos: newSet }
+    ackAutoSession: (todoId) => {
+      setPendingAutoSessions((currentMap) => {
+        const current = currentMap[todoId]
+        if (!current || current.length === 0) return currentMap
+
+        const rest = current.slice(1)
+        const next = { ...currentMap }
+
+        if (rest.length === 0) {
+          delete next[todoId]
+        } else {
+          next[todoId] = rest
+        }
+
+        return next
       })
     },
 
@@ -756,18 +887,45 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         newFocusElapsed = timer.focusElapsedMs + delta
       }
       
+      const currentInitialMs = timer.initialFocusMs ?? 0
+      const recordedMs = timer.sessions.reduce(
+        (sum, session) => sum + session.sessionFocusSeconds * 1000,
+        0,
+      )
+      const baselineMs = Math.max(currentInitialMs, recordedMs)
+      const currentSessionMs = Math.max(0, newFocusElapsed - baselineMs)
+      const currentSessionSec = Math.round(currentSessionMs / 1000)
+
+      let newSessions = timer.sessions
+      let recordedAtBreakStart = false
+
+      // 정책: Focus 종료(휴식 진입) 시점에 세션을 즉시 기록한다.
+      if (currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
+        newSessions = [
+          ...timer.sessions,
+          {
+            sessionFocusSeconds: currentSessionSec,
+            breakSeconds: 0,
+            clientSessionId: generateSessionId(),
+          },
+        ]
+        recordedAtBreakStart = true
+      }
+
       // 휴식 시작
-      // 중요: 세션 확정은 휴식 종료(집중 재개) 시점에 수행
-      // 휴식은 사용자가 명시적으로 선택했으므로 즉시 시작
       updateTimer(todoId, {
         flexiblePhase: targetMs ? 'break_suggested' : 'break_free',
         focusElapsedMs: newFocusElapsed,
+        elapsedMs: newFocusElapsed,
+        initialFocusMs: newFocusElapsed,
         focusStartedAt: null,
         breakElapsedMs: 0,
         breakStartedAt: Date.now(),
         breakTargetMs: targetMs,
         breakCompleted: false,
+        breakSessionPendingUpdate: recordedAtBreakStart,
         status: 'running',
+        sessions: newSessions,
       })
     },
 
@@ -786,7 +944,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         newBreakElapsed = timer.breakElapsedMs + delta
       }
       
-      // 현재 세션 확정 (휴식 종료 시점에 세션 카운트)
+      // 휴식 종료 시 세션 보정/확정
       const currentInitialMs = timer.initialFocusMs ?? 0
       const focusElapsedMs = timer.focusElapsedMs ?? 0
       const recordedMs = timer.sessions.reduce(
@@ -799,10 +957,17 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const currentBreakSec = Math.round(newBreakElapsed / 1000)
 
       const newSessions = [...timer.sessions]
-      if (currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
+      if (timer.breakSessionPendingUpdate && newSessions.length > 0) {
+        const lastIndex = newSessions.length - 1
+        newSessions[lastIndex] = {
+          ...newSessions[lastIndex],
+          breakSeconds: currentBreakSec,
+        }
+      } else if (currentSessionMs >= MIN_FLOW_MS && currentSessionSec > 0) {
         newSessions.push({
           sessionFocusSeconds: currentSessionSec,
           breakSeconds: currentBreakSec,
+          clientSessionId: generateSessionId(),
         })
       }
       
@@ -833,6 +998,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         focusStartedAt,  // autoStartSession이 true면 즉시 시작, false면 대기
         breakTargetMs: null,
         breakCompleted: false,
+        breakSessionPendingUpdate: false,
         status: autoStartSession ? 'running' : 'waiting',  // autoStartSession에 따라 상태 결정
         sessions: newSessions,
       })
@@ -854,7 +1020,31 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     // sessions 업데이트 (관심사 분리: TimerFullScreen에서 직접 setState하지 않도록)
     updateSessions: (todoId, sessions) => {
-      updateTimer(todoId, { sessions })
+      const timer = get().timers[todoId]
+      if (!timer) return
+
+      const normalizedSessions = sessions.map((session) => ({
+        ...session,
+        clientSessionId: normalizeSessionId(session.clientSessionId),
+      }))
+
+      if (timer.mode === 'pomodoro' && normalizedSessions.length > timer.sessions.length) {
+        const appended = normalizedSessions.slice(timer.sessions.length).filter((session) => {
+          return session.sessionFocusSeconds > 0
+        })
+
+        if (appended.length > 0) {
+          setPendingAutoSessions((current) => {
+            const existing = current[todoId] ?? []
+            return {
+              ...current,
+              [todoId]: [...existing, ...appended],
+            }
+          })
+        }
+      }
+
+      updateTimer(todoId, { sessions: normalizedSessions })
     },
   }
 })

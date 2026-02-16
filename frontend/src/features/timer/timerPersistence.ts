@@ -2,6 +2,7 @@ import type { SingleTimerState, SessionRecord } from './timerTypes'
 import { initialSingleTimerState } from './timerDefaults'
 import { getClientId } from '../../lib/clientId'
 import { storageKeys } from '../../lib/storageKeys'
+import { normalizeSessionId } from '../../lib/sessionId'
 
 export type PersistedTimerState = Omit<SingleTimerState, 'sessions'>
 
@@ -31,6 +32,38 @@ function getClientKeys() {
 
 function getUpdatedAt(entry: { updatedAt?: number }) {
   return typeof entry.updatedAt === 'number' ? entry.updatedAt : 0
+}
+
+function normalizeSessionRecord(raw: unknown): SessionRecord | null {
+  if (!raw || typeof raw !== 'object') return null
+
+  const session = raw as Record<string, unknown>
+  const focus = session.sessionFocusSeconds
+  if (typeof focus !== 'number' || !Number.isFinite(focus)) return null
+
+  const breakSeconds = session.breakSeconds
+
+  return {
+    sessionFocusSeconds: Math.max(0, Math.round(focus)),
+    breakSeconds:
+      typeof breakSeconds === 'number' && Number.isFinite(breakSeconds)
+        ? Math.max(0, Math.round(breakSeconds))
+        : 0,
+    clientSessionId: normalizeSessionId(session.clientSessionId),
+  }
+}
+
+function isSameNormalizedSession(
+  raw: unknown,
+  normalized: SessionRecord,
+) {
+  if (!raw || typeof raw !== 'object') return false
+  const session = raw as Record<string, unknown>
+  return (
+    session.sessionFocusSeconds === normalized.sessionFocusSeconds &&
+    (session.breakSeconds ?? 0) === normalized.breakSeconds &&
+    session.clientSessionId === normalized.clientSessionId
+  )
 }
 
 function readPersistedTimers(): PersistedTimers {
@@ -150,9 +183,30 @@ export function loadSessions(todoId: string): SessionRecord[] {
     const { sessionsPrefix } = getClientKeys()
     const key = sessionsPrefix + todoId
     const raw = localStorage.getItem(key)
-    if (raw) {
-      return JSON.parse(raw) as SessionRecord[]
+    if (!raw) return []
+
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) {
+      saveSessions(todoId, [])
+      return []
     }
+
+    let changed = false
+    const normalized: SessionRecord[] = []
+
+    for (const item of parsed) {
+      const session = normalizeSessionRecord(item)
+      if (!session) {
+        changed = true
+        continue
+      }
+
+      normalized.push(session)
+      if (!isSameNormalizedSession(item, session)) changed = true
+    }
+
+    if (changed) saveSessions(todoId, normalized)
+    return normalized
   } catch (e) {
     console.error('Failed to load sessions from localStorage:', e)
   }
@@ -282,6 +336,7 @@ function hydrateState(persisted: PersistedTimerState, sessions: SessionRecord[] 
     breakElapsedMs,
     focusStartedAt,
     breakStartedAt,
+    breakSessionPendingUpdate: persisted.breakSessionPendingUpdate ?? false,
     sessions,
   }
 }
