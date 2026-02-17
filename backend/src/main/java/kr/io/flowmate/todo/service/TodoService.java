@@ -80,8 +80,11 @@ public class TodoService {
     public TodoResponse updateTodo(String userId, String todoId, TodoUpdateRequest request) {
         Todo todo = findTodoByIdAndUserId(todoId, userId);
 
-        // null이 아닌 필드만 수정
+        // null이 아닌 필드만 수정 (null = 변경 안 함, blank = 거부)
         if (request.getTitle() != null) {
+            if (request.getTitle().isBlank()) {
+                throw new IllegalArgumentException("title must not be blank");
+            }
             todo.updateTitle(request.getTitle());
         }
 

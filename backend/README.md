@@ -141,9 +141,9 @@ kr.io.flowmate
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "title is required",
+    "message": "validation failed",
     "fields": {
-      "title": "Required"
+      "title": "title must be at most 200 characters"
     }
   }
 }
@@ -181,6 +181,15 @@ kr.io.flowmate
 - `GET /api/reviews?type=daily&from=YYYY-MM-DD&to=YYYY-MM-DD`: 목록 조회
 - `PUT /api/reviews`: Upsert
 - `DELETE /api/reviews/{id}`: 삭제
+
+### Actuator (모니터링)
+- `GET /actuator/health`: 헬스 체크 (외부 노출)
+- `GET /actuator/metrics`: 메트릭 목록
+- `GET /actuator/prometheus`: Prometheus 형식 메트릭 (Grafana 수집용, Nginx에서 외부 차단)
+
+> **환경별 노출 범위:**
+> - Dev: `health, info, prometheus, metrics`
+> - Prod: `health, prometheus, metrics` (info 제외)
 
 ## 테스트
 

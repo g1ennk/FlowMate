@@ -3,7 +3,6 @@ package kr.io.flowmate.todo.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,7 +11,7 @@ import lombok.Setter;
 @Setter
 public class TodoUpdateRequest {
 
-    @NotBlank(message = "title must not be blank")
+    // PATCH는 부분 업데이트 → null이면 변경 안 함, 빈 문자열은 서비스에서 검증
     @Size(max = 200, message = "title must be at most 200 characters")
     private String title;
 

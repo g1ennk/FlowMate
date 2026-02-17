@@ -112,6 +112,9 @@ Headers (MVP):
 ```json
 { "title": "string", "note": "string|null", "isDone": true, "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch"|"pomodoro"|null }
 ```
+- Validation:
+  - `title`: 생략 가능 (null = 변경 안 함), 전달 시 1~200자 (빈 문자열 불가)
+  - 나머지 필드: 모두 optional, 생략 시 변경 안 함
 - Note: `sessionCount`와 `sessionFocusSeconds`는 직접 수정 불가능 (Session API를 통해서만 변경)
 - Response 200: `Todo`
 - Errors: 404 Not Found, 400 Validation Error
@@ -342,9 +345,9 @@ Headers (MVP):
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "title is required",
+    "message": "validation failed",
     "fields": {
-      "title": "Required"
+      "title": "title must be at most 200 characters"
     }
   }
 }
