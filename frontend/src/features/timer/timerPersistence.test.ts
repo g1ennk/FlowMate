@@ -1,18 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { loadAllPersisted, loadSessions, savePersisted } from './timerPersistence'
+import { loadAllPersisted, savePersisted } from './timerPersistence'
 import { initialSingleTimerState } from './timerDefaults'
 import { storageKeys } from '../../lib/storageKeys'
 
 const clientId = 'c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01'
 const todoId = 'todo-1'
-const sessions = [
-  {
-    sessionFocusSeconds: 60,
-    breakSeconds: 10,
-    clientSessionId: '11111111-1111-4111-8111-111111111111',
-  },
-]
-
 const TTL_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_ITEMS = 20
 
@@ -31,57 +23,10 @@ describe('timerPersistence', () => {
     localStorage.clear()
   })
 
-  it('loads sessions for a todo', () => {
+  it('hydrates timer state with empty sessions even when legacy session cache exists', () => {
     seedClientId()
-    const key = storageKeys.sessionsPrefix(clientId) + todoId
-    localStorage.setItem(key, JSON.stringify(sessions))
-
-    const loaded = loadSessions(todoId)
-
-    expect(loaded).toEqual(sessions)
-  })
-
-  it('normalizes legacy session records and persists migrated value', () => {
-    seedClientId()
-    const key = storageKeys.sessionsPrefix(clientId) + todoId
-    localStorage.setItem(
-      key,
-      JSON.stringify([
-        { sessionFocusSeconds: 60, breakSeconds: 10 },
-        { sessionFocusSeconds: 30 },
-        { sessionFocusSeconds: 'invalid' },
-      ]),
-    )
-
-    const loaded = loadSessions(todoId)
-    expect(loaded).toHaveLength(2)
-    expect(loaded[0]).toEqual(
-      expect.objectContaining({
-        sessionFocusSeconds: 60,
-        breakSeconds: 10,
-      }),
-    )
-    expect(loaded[1]).toEqual(
-      expect.objectContaining({
-        sessionFocusSeconds: 30,
-        breakSeconds: 0,
-      }),
-    )
-    expect(loaded[0]?.clientSessionId).toEqual(expect.any(String))
-    expect(loaded[1]?.clientSessionId).toEqual(expect.any(String))
-
-    const stored = JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{
-      clientSessionId?: string
-    }>
-    expect(stored).toHaveLength(2)
-    expect(stored[0]?.clientSessionId).toEqual(expect.any(String))
-    expect(stored[1]?.clientSessionId).toEqual(expect.any(String))
-  })
-
-  it('hydrates timer state with sessions when timer state exists', () => {
-    seedClientId()
-    const sessionsKey = storageKeys.sessionsPrefix(clientId) + todoId
-    localStorage.setItem(sessionsKey, JSON.stringify(sessions))
+    const legacySessionsKey = storageKeys.sessionsPrefix(clientId) + todoId
+    localStorage.setItem(legacySessionsKey, JSON.stringify([{ sessionFocusSeconds: 60, breakSeconds: 10 }]))
 
     const persisted = {
       ...getPersistedBase(),
@@ -102,17 +47,36 @@ describe('timerPersistence', () => {
 
     const timers = loadAllPersisted()
 
-    expect(timers[todoId]?.sessions).toEqual(sessions)
+    expect(timers[todoId]?.sessions).toEqual([])
+    expect(localStorage.getItem(legacySessionsKey)).toBeNull()
   })
 
-  it('does not create timer entry when only sessions exist', () => {
+  it('does not create timer entry when only legacy session cache exists', () => {
     seedClientId()
-    const sessionsKey = storageKeys.sessionsPrefix(clientId) + todoId
-    localStorage.setItem(sessionsKey, JSON.stringify(sessions))
+    const legacySessionsKey = storageKeys.sessionsPrefix(clientId) + todoId
+    localStorage.setItem(legacySessionsKey, JSON.stringify([{ sessionFocusSeconds: 60, breakSeconds: 10 }]))
 
     const timers = loadAllPersisted()
 
     expect(timers[todoId]).toBeUndefined()
+    expect(localStorage.getItem(legacySessionsKey)).toBeNull()
+  })
+
+  it('keeps sync metadata keys while removing legacy session cache', () => {
+    seedClientId()
+    const legacySessionsKey = storageKeys.sessionsPrefix(clientId) + todoId
+    const syncKey = storageKeys.sessionsSyncKey(clientId)
+    const autoSyncKey = storageKeys.autoSessionsSyncKey(clientId)
+
+    localStorage.setItem(legacySessionsKey, JSON.stringify([{ sessionFocusSeconds: 60, breakSeconds: 10 }]))
+    localStorage.setItem(syncKey, JSON.stringify({ [todoId]: { count: 1, signatures: [] } }))
+    localStorage.setItem(autoSyncKey, JSON.stringify({ [todoId]: [{ sessionFocusSeconds: 60, breakSeconds: 0 }] }))
+
+    loadAllPersisted()
+
+    expect(localStorage.getItem(legacySessionsKey)).toBeNull()
+    expect(localStorage.getItem(syncKey)).not.toBeNull()
+    expect(localStorage.getItem(autoSyncKey)).not.toBeNull()
   })
 
   it('prunes stale paused entries on save', () => {

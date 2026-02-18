@@ -1,8 +1,7 @@
-import type { SingleTimerState, SessionRecord } from './timerTypes'
+import type { SingleTimerState } from './timerTypes'
 import { initialSingleTimerState } from './timerDefaults'
 import { getClientId } from '../../lib/clientId'
 import { storageKeys } from '../../lib/storageKeys'
-import { normalizeSessionId } from '../../lib/sessionId'
 
 export type PersistedTimerState = Omit<SingleTimerState, 'sessions'>
 
@@ -26,7 +25,6 @@ function getClientKeys() {
   return {
     clientId,
     timersKey: storageKeys.timersKey(clientId),
-    sessionsPrefix: storageKeys.sessionsPrefix(clientId),
   }
 }
 
@@ -34,40 +32,31 @@ function getUpdatedAt(entry: { updatedAt?: number }) {
   return typeof entry.updatedAt === 'number' ? entry.updatedAt : 0
 }
 
-function normalizeSessionRecord(raw: unknown): SessionRecord | null {
-  if (!raw || typeof raw !== 'object') return null
+function clearLegacySessionStorage() {
+  if (typeof window === 'undefined') return
+  const { clientId } = getClientKeys()
+  const itemPrefix = storageKeys.sessionsPrefix(clientId)
+  const syncKey = storageKeys.sessionsSyncKey(clientId)
+  const autoSyncKey = storageKeys.autoSessionsSyncKey(clientId)
 
-  const session = raw as Record<string, unknown>
-  const focus = session.sessionFocusSeconds
-  if (typeof focus !== 'number' || !Number.isFinite(focus)) return null
+  try {
+    const legacyKeys: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key || !key.startsWith(itemPrefix)) continue
+      if (key === syncKey || key === autoSyncKey) continue
+      legacyKeys.push(key)
+    }
 
-  const breakSeconds = session.breakSeconds
-
-  return {
-    sessionFocusSeconds: Math.max(0, Math.round(focus)),
-    breakSeconds:
-      typeof breakSeconds === 'number' && Number.isFinite(breakSeconds)
-        ? Math.max(0, Math.round(breakSeconds))
-        : 0,
-    clientSessionId: normalizeSessionId(session.clientSessionId),
+    legacyKeys.forEach((key) => localStorage.removeItem(key))
+  } catch (e) {
+    console.error('Failed to clear legacy session cache from localStorage:', e)
   }
-}
-
-function isSameNormalizedSession(
-  raw: unknown,
-  normalized: SessionRecord,
-) {
-  if (!raw || typeof raw !== 'object') return false
-  const session = raw as Record<string, unknown>
-  return (
-    session.sessionFocusSeconds === normalized.sessionFocusSeconds &&
-    (session.breakSeconds ?? 0) === normalized.breakSeconds &&
-    session.clientSessionId === normalized.clientSessionId
-  )
 }
 
 function readPersistedTimers(): PersistedTimers {
   if (typeof window === 'undefined') return createEmptyPersisted()
+  clearLegacySessionStorage()
   const { timersKey } = getClientKeys()
   try {
     const raw = localStorage.getItem(timersKey)
@@ -160,59 +149,6 @@ function pruneTimers(data: PersistedTimers): PersistedTimers {
   return { ...data, items }
 }
 
-// sessions를 localStorage에 저장
-export function saveSessions(todoId: string, sessions: SessionRecord[]) {
-  if (typeof window === 'undefined') return
-  const { sessionsPrefix } = getClientKeys()
-  const key = sessionsPrefix + todoId
-  if (sessions.length === 0) {
-    localStorage.removeItem(key)
-    return
-  }
-  try {
-    localStorage.setItem(key, JSON.stringify(sessions))
-  } catch (e) {
-    console.error('Failed to save sessions to localStorage:', e)
-  }
-}
-
-// sessions를 localStorage에서 로드
-export function loadSessions(todoId: string): SessionRecord[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const { sessionsPrefix } = getClientKeys()
-    const key = sessionsPrefix + todoId
-    const raw = localStorage.getItem(key)
-    if (!raw) return []
-
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) {
-      saveSessions(todoId, [])
-      return []
-    }
-
-    let changed = false
-    const normalized: SessionRecord[] = []
-
-    for (const item of parsed) {
-      const session = normalizeSessionRecord(item)
-      if (!session) {
-        changed = true
-        continue
-      }
-
-      normalized.push(session)
-      if (!isSameNormalizedSession(item, session)) changed = true
-    }
-
-    if (changed) saveSessions(todoId, normalized)
-    return normalized
-  } catch (e) {
-    console.error('Failed to load sessions from localStorage:', e)
-  }
-  return []
-}
-
 export function loadAllPersisted(): Record<string, SingleTimerState> {
   if (typeof window === 'undefined') return {}
 
@@ -223,8 +159,7 @@ export function loadAllPersisted(): Record<string, SingleTimerState> {
     for (const [todoId, entry] of Object.entries(persisted.items)) {
       const { updatedAt: _updatedAt, ...timerState } = entry
       void _updatedAt
-      const sessions = loadSessions(todoId)
-      timers[todoId] = hydrateState(timerState, sessions)
+      timers[todoId] = hydrateState(timerState)
     }
   } catch {
     return {}
@@ -236,7 +171,8 @@ export function loadAllPersisted(): Record<string, SingleTimerState> {
 export function savePersisted(todoId: string, state: SingleTimerState) {
   if (typeof window === 'undefined') return
 
-  const { sessions, ...timerState } = state
+  const { sessions: _sessions, ...timerState } = state
+  void _sessions
   const current = readPersistedTimers()
 
   if (state.status === 'idle') {
@@ -254,7 +190,6 @@ export function savePersisted(todoId: string, state: SingleTimerState) {
 
   const next = normalizeActiveId(pruneTimers(current))
   writePersistedTimers(next)
-  saveSessions(todoId, sessions)
 }
 
 export function removePersisted(todoId: string) {
@@ -266,10 +201,9 @@ export function removePersisted(todoId: string) {
 
   const next = normalizeActiveId(pruneTimers(current))
   writePersistedTimers(next)
-  saveSessions(todoId, [])
 }
 
-function hydrateState(persisted: PersistedTimerState, sessions: SessionRecord[] = []): SingleTimerState {
+function hydrateState(persisted: PersistedTimerState): SingleTimerState {
   const now = Date.now()
   let endAt = persisted.endAt
   let remainingMs = persisted.remainingMs
@@ -283,7 +217,7 @@ function hydrateState(persisted: PersistedTimerState, sessions: SessionRecord[] 
   if (persisted.mode === 'pomodoro' && persisted.status === 'running' && endAt) {
     const left = endAt - now
     if (left <= 0) {
-      return { ...initialSingleTimerState, sessions }
+      return { ...initialSingleTimerState, sessions: [] }
     }
     remainingMs = left
   }
@@ -337,6 +271,6 @@ function hydrateState(persisted: PersistedTimerState, sessions: SessionRecord[] 
     focusStartedAt,
     breakStartedAt,
     breakSessionPendingUpdate: persisted.breakSessionPendingUpdate ?? false,
-    sessions,
+    sessions: [],
   }
 }

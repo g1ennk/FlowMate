@@ -6,7 +6,6 @@ import { checkTimerConflict, getTimerConflictMessage } from './timerHelpers'
 import type { SessionRecord, SingleTimerState, TimerPhase } from './timerTypes'
 import {
   loadAllPersisted,
-  loadSessions,
   removePersisted,
   savePersisted,
 } from './timerPersistence'
@@ -20,7 +19,6 @@ import { generateSessionId, normalizeSessionId } from '../../lib/sessionId'
 
 export type { FlexiblePhase, SessionRecord, SingleTimerState, TimerMode, TimerPhase, TimerStatus } from './timerTypes'
 export { initialSingleTimerState } from './timerDefaults'
-export { saveSessions } from './timerPersistence'
 
 type TimerState = {
   timers: Record<string, SingleTimerState>
@@ -210,8 +208,8 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       }
       
       const endAt = computeEndAt(settings.flowMin)
-      // 기존 sessions 유지 (localStorage에서 로드)
-      const existingSessions = existingTimer?.sessions ?? loadSessions(todoId)
+      // 기존 sessions 유지 (앱 메모리 상태 기준)
+      const existingSessions = existingTimer?.sessions ?? []
       
       const newTimer: SingleTimerState = {
         mode: 'pomodoro',
@@ -244,7 +242,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     initPomodoro: (todoId, settings) => {
       const existingTimer = get().timers[todoId]
-      const existingSessions = existingTimer?.sessions ?? loadSessions(todoId)
+      const existingSessions = existingTimer?.sessions ?? []
 
       const newTimer: SingleTimerState = {
         mode: 'pomodoro',
@@ -289,8 +287,8 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         return
       }
       
-      // 기존 sessions 유지 (localStorage에서 로드)
-      const existingSessions = existingTimer?.sessions ?? loadSessions(todoId)
+      // 기존 sessions 유지 (앱 메모리 상태 기준)
+      const existingSessions = existingTimer?.sessions ?? []
       
       // 기존 타이머가 있고 idle 상태면 업데이트, 없으면 새로 생성
       if (existingTimer && existingTimer.mode === 'stopwatch' && existingTimer.status === 'idle') {
@@ -344,7 +342,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     initStopwatch: (todoId, initialElapsedMs = 0, settings) => {
       const existingTimer = get().timers[todoId]
-      const existingSessions = existingTimer?.sessions ?? loadSessions(todoId)
+      const existingSessions = existingTimer?.sessions ?? []
 
       const newTimer: SingleTimerState = {
         mode: 'stopwatch',
