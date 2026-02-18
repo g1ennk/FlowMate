@@ -10,7 +10,7 @@
 ### 1-1. 메인 백엔드 서비스 (필수)
 - REST API + DB(MySQL) + 게스트 식별(`X-Client-Id`)
 - 표준 에러 응답 `{error:{code,message,fields}}`
-- 배포(HTTPS + Nginx/Proxy)
+- 배포(Frontend: S3+CloudFront, API: Nginx/Proxy + HTTPS)
 - 운영 흔적(로그/모니터링/알림 중 1개)
 
 ### 1-2. 개선 이력 (필수)
@@ -36,7 +36,7 @@
 - **인증/인가**: MVP는 게스트(`X-Client-Id`), 후속 소셜 로그인
 - **성능**: 날짜별/정렬 쿼리 인덱스 최적화
 - **안정성**: 에러 포맷/Validation 표준화
-- **운영**: docker-compose + HTTPS 배포
+- **운영**: docker-compose(API stack) + HTTPS 배포
 
 ---
 
@@ -94,16 +94,17 @@
 ### Phase D — 배포/운영 최소 구성
 **목표**: 실사용 URL + 최소 운영 루틴 확보  
 **상세 작업**
-- docker-compose(api + mysql) 작성
+- docker-compose(api + mysql + monitoring) 작성
 - 환경 변수 분리 (`.env`, dev/prod 프로파일)
-- Nginx Reverse Proxy + HTTPS 구성
+- Nginx API Reverse Proxy + HTTPS 구성
+- Frontend S3 + CloudFront 배포 파이프라인 구성
 - 로그 보존/로테이션 기본 설정
 **산출물**
 - 배포 문서
 - 운영 체크리스트(장애 대응 포함)
 **완료 기준**
-- docker-compose로 로컬 재현 가능
-- HTTPS URL로 접근 가능
+- API stack이 docker-compose로 재현 가능
+- Frontend/Backend가 각 도메인으로 HTTPS 접근 가능
 
 ### Phase E — 테스트/리팩토링
 **목표**: 핵심 규칙 회귀 방지  
@@ -141,7 +142,7 @@
 - [ ] miniDay/dayOrder 정렬 보존
 - [ ] 타이머 누적/리셋 동작
 - [ ] OpenAPI/ERD/Flyway 포함
-- [ ] docker-compose 로컬 실행
+- [ ] docker-compose API stack 실행
 - [ ] 배포 URL + 운영 문서
 
 ---

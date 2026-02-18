@@ -21,8 +21,8 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 **현재 상태**: MVP 완성 (7.5/10), 배포 준비 중
 
 **다음 단계**:
-1. **긴급 패치** (1일): infra 설정 + 테스트 확인
-2. **배포** (3-5일): HTTPS URL 확보
+1. **인프라 정합화** (1-2일): S3+CloudFront + API 전용 Nginx 기준 통일
+2. **배포 안정화** (3-5일): Dev/Prod 자동화 및 인증서 운영
 3. **운영** (3-5일): 모니터링 + 장애 대응
 4. **성능 최적화** (5-7일): 쿼리 튜닝 + 부하 테스트
 5. **차별화 확장** (7-14일): Elasticsearch/Kafka 등
@@ -77,6 +77,12 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 - Database: MySQL (Local, Dev, Prod)
 - Migration: Flyway
 
+### Deployment
+
+- Frontend: S3 + CloudFront
+- Backend API: EC2 + Docker Compose (Nginx API reverse proxy + Spring Boot + MySQL)
+- API Domain: `api.dev.flowmate.io`, `api.flowmate.io`
+
 ## 프로젝트 구조 (모노레포)
 
 ```txt
@@ -100,8 +106,11 @@ FlowMate/
 │   ├── src/
 │   └── build.gradle
 ├── infra/                    # 인프라/배포 구성
-│   ├── README.md            # 로컬 환경 가이드
-│   └── docker-compose.yml
+│   ├── README.md            # Dev/Prod 운영 가이드
+│   ├── dev/
+│   │   └── docker-compose.yml
+│   └── prod/
+│       └── docker-compose.yml
 ├── docs/                     # 문서
 │   ├── plan/                 # 기획/계약 문서 (PRD/API/Data Model)
 │   ├── agent/                # AI 작업 가이드/계획 문서

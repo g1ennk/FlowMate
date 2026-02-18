@@ -21,7 +21,7 @@ services:
       - --innodb-buffer-pool-size=512M
     volumes:
       - mysql-data-prod:/var/lib/mysql
-      - ../../shared/backups:/backups  # 백업 디렉토리
+      - ../../shared/backups:/backups
     networks:
       - flowmate-network
     healthcheck:
@@ -29,7 +29,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # Prod 환경에서는 외부 포트 노출 안 함 (보안)
 
   # Spring Boot Backend
   backend:
@@ -47,7 +46,6 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       CORS_ORIGINS: ${CORS_ORIGINS}
-      # JVM 옵션 (메모리 최적화)
       JAVA_OPTS: >-
         -Xms512m
         -Xmx1024m
@@ -72,7 +70,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Nginx (Frontend + Reverse Proxy + HTTPS)
+  # Nginx (API reverse proxy + HTTPS)
   nginx:
     image: nginx:1.27-alpine
     container_name: flowmate-nginx-prod
@@ -82,9 +80,8 @@ services:
       - "${NGINX_SSL_PORT:-443}:443"
     volumes:
       - ./config/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - frontend-dist:/usr/share/nginx/html:ro
-      - ../../shared/certbot/conf:/etc/letsencrypt:ro  # SSL 인증서
-      - ../../shared/certbot/www:/var/www/certbot:ro   # ACME Challenge
+      - ../../shared/certbot/conf:/etc/letsencrypt:ro
+      - ../../shared/certbot/www:/var/www/certbot:ro
     depends_on:
       - backend
     networks:
@@ -100,7 +97,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Certbot (Let's Encrypt SSL 인증서 갱신)
+  # Certbot (Let's Encrypt SSL certificate renewal)
   certbot:
     image: certbot/certbot:latest
     container_name: flowmate-certbot-prod
@@ -111,23 +108,7 @@ services:
     networks:
       - flowmate-network
 
-  # Frontend Builder (일회성 빌드 후 종료)
-  frontend-builder:
-    build:
-      context: ../../frontend
-      dockerfile: Dockerfile
-      target: builder
-      args:
-        - VITE_API_BASE_URL=${VITE_API_BASE_URL}
-        - VITE_USE_MOCK=${VITE_USE_MOCK:-false}
-    container_name: flowmate-frontend-builder-prod
-    volumes:
-      - frontend-dist:/app/dist
-    command: sh -c "pnpm build && cp -r /app/dist/* /app/dist/"
-    networks:
-      - flowmate-network
-
-  # Prometheus (메트릭 수집)
+  # Prometheus (metrics collection)
   prometheus:
     image: prom/prometheus:latest
     container_name: flowmate-prometheus-prod
@@ -135,7 +116,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'  # Prod는 30일 보관
+      - '--storage.tsdb.retention.time=30d'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
     volumes:
@@ -150,9 +131,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    # Prod 환경에서는 외부 포트 노출 안 함 (보안)
 
-  # Grafana (메트릭 시각화)
+  # Grafana (metrics visualization)
   grafana:
     image: grafana/grafana:latest
     container_name: flowmate-grafana-prod
@@ -174,9 +154,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    # Prod 환경에서는 외부 포트 노출 안 함 (Nginx 리버스 프록시 사용)
 
-  # Node Exporter (시스템 메트릭)
+  # Node Exporter (system metrics)
   node-exporter:
     image: prom/node-exporter:latest
     container_name: flowmate-node-exporter-prod
@@ -191,7 +170,6 @@ services:
       - /:/rootfs:ro
     networks:
       - flowmate-network
-    # Prod 환경에서는 외부 포트 노출 안 함 (Prometheus만 접근)
 
 networks:
   flowmate-network:
@@ -203,6 +181,4 @@ volumes:
   prometheus-data-prod:
     driver: local
   grafana-data-prod:
-    driver: local
-  frontend-dist:
     driver: local

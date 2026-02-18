@@ -12,6 +12,7 @@ frontend/.vite/
 /frontend/.env.local
 /infra/dev/.env
 /infra/prod/.env
+/shared/
 
 # 개인 학습/AI 작업 문서 (로컬 전용)
 /docs/agent/
