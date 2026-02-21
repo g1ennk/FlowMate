@@ -80,7 +80,7 @@ FlowMate는 이 경험을 바탕으로 Todo를 중심으로 태스크와 집중 
 ### Deployment
 
 - Frontend: S3 + CloudFront
-- Backend API: EC2 + Docker Compose (Nginx API reverse proxy + Spring Boot + MySQL)
+- Backend API: EC2 + Docker Compose (Spring Boot + MySQL) + Host Nginx/Certbot
 - API Domain: `api.dev.flowmate.io`, `api.flowmate.io`
 
 ## 프로젝트 구조 (모노레포)
