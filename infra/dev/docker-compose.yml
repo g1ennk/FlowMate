@@ -29,9 +29,7 @@ services:
 
   # Spring Boot Backend
   backend:
-    build:
-      context: ../../backend
-      dockerfile: Dockerfile
+    image: ${ECR_IMAGE_URI}
     container_name: flowmate-backend-dev
     restart: unless-stopped
     environment:
