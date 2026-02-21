@@ -29,7 +29,10 @@ const tabs = [
 function AppLayout() {
   return (
     <div className="flex min-h-dvh flex-col bg-gray-50">
-      <main className="flex-1 overflow-y-auto pb-16">
+      <main
+        className="flex-1 overflow-y-auto"
+        style={{ paddingBottom: 'calc(var(--bottom-nav-height) + var(--safe-bottom))' }}
+      >
         <div className="mx-auto w-full max-w-lg px-5 py-6">
           <Suspense
             fallback={
@@ -43,7 +46,13 @@ function AppLayout() {
         </div>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex h-16 items-center justify-around border-t border-gray-200 bg-white px-4">
+      <nav
+        className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white px-4"
+        style={{
+          height: 'calc(var(--bottom-nav-height) + var(--safe-bottom))',
+          paddingBottom: 'var(--safe-bottom)',
+        }}
+      >
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}

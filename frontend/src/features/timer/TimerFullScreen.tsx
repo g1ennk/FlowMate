@@ -291,9 +291,16 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       className={`fixed inset-0 z-[9999] flex flex-col ${
         getBackgroundColor()
       }`}
+      style={{ paddingBottom: 'var(--safe-bottom)' }}
     >
       {/* 헤더 */}
-      <header className="flex h-14 items-center justify-between px-4">
+      <header
+        className="flex items-center justify-between px-4"
+        style={{
+          minHeight: 'calc(56px + var(--safe-top))',
+          paddingTop: 'var(--safe-top)',
+        }}
+      >
         <button
           onClick={handleClose}
           className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-gray-800"

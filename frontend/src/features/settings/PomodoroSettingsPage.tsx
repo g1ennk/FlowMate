@@ -6,6 +6,7 @@ import { Switch } from '../../ui/Switch'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
 import { useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
 import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
+import { usePwaInstall } from '../pwa/usePwaInstall'
 
 const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
 const SHORT_BREAK_PRESETS = [5, 10, 15, 20, 30]
@@ -133,11 +134,13 @@ function PomodoroSettingsPage() {
   const { data: settingsData, isLoading } = useSettings()
   const updateSettings = useUpdatePomodoroSettings()
   const updateMiniDays = useUpdateMiniDaysSettings()
+  const { canInstall, isInstalled, isStandalone, isIos, promptInstall } = usePwaInstall()
   const [overrides, setOverrides] = useState<Partial<PomodoroSettings>>({})
   const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
   const [miniDayEditor, setMiniDayEditor] = useState<MiniDayRange>(defaultMiniDaysSettings.day1)
   const [miniDayEditField, setMiniDayEditField] = useState<'start' | 'end'>('start')
+  const [installCardDismissed, setInstallCardDismissed] = useState(false)
   const [timeDraft, setTimeDraft] = useState<{
     period: 'am' | 'pm'
     hour: number
@@ -382,6 +385,22 @@ function PomodoroSettingsPage() {
   const minuteItems = MINUTE_OPTIONS.map((minute) => ({ value: minute, label: minute.toString().padStart(2, '0') }))
   const periodItems = PERIOD_OPTIONS.map((period) => ({ value: period.value, label: period.label }))
   const showEndOfDayOption = miniDayEditField === 'end'
+  const shouldShowInstallCard =
+    !installCardDismissed &&
+    !isInstalled &&
+    !isStandalone &&
+    (canInstall || isIos)
+
+  const handleInstallApp = async () => {
+    const result = await promptInstall()
+    if (result === 'accepted') {
+      toast.success('앱 설치가 완료되었습니다', { id: 'pwa-install-accepted' })
+      return
+    }
+    if (result === 'dismissed') {
+      toast('설치를 취소했습니다', { id: 'pwa-install-dismissed' })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -454,6 +473,44 @@ function PomodoroSettingsPage() {
           미분류는 고정이며, 시간 구간은 연속일 필요가 없습니다.
         </p>
       </section>
+
+      {shouldShowInstallCard && (
+        <section>
+          <p className="mb-3 text-sm font-medium text-gray-500">앱 설치</p>
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            {canInstall ? (
+              <>
+                <p className="text-sm font-semibold text-gray-900">FlowMate 앱을 홈 화면에 설치하세요</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  앱처럼 실행하고 오프라인에서도 기본 화면을 열 수 있습니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleInstallApp}
+                  className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+                >
+                  앱 설치
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-gray-900">iPhone에서 앱처럼 사용하기</p>
+                <ol className="mt-2 space-y-1 pl-4 text-xs text-gray-600 list-decimal">
+                  <li>Safari 하단의 공유 버튼을 누르세요</li>
+                  <li>홈 화면에 추가를 선택하세요</li>
+                </ol>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setInstallCardDismissed(true)}
+              className="mt-3 text-xs font-medium text-gray-400 transition-colors hover:text-gray-600"
+            >
+              나중에
+            </button>
+          </div>
+        </section>
+      )}
 
       <p className="text-center text-xs text-gray-400">FlowMate v0.1.0</p>
 

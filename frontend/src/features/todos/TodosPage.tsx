@@ -1296,7 +1296,10 @@ function TodosPage() {
 
       {/* 타이머 에러 메시지 (하단 중앙 floating) */}
       {actions.timerErrorMessage && (
-        <div className="fixed bottom-20 left-0 right-0 z-[10000] flex justify-center px-6 pointer-events-none">
+        <div
+          className="fixed left-0 right-0 z-[10000] flex justify-center px-6 pointer-events-none"
+          style={{ bottom: 'calc(80px + var(--safe-bottom))' }}
+        >
           <div className="animate-fade-in rounded-2xl bg-gray-900 px-6 py-4 shadow-2xl pointer-events-auto">
             <p className="text-sm text-white font-medium">
               {actions.timerErrorMessage}

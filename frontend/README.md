@@ -45,6 +45,9 @@ pnpm dev:mock
 - `VITE_API_BASE_URL`: 백엔드 API URL
   - 로컬: `http://localhost:8080/api`
   - 프로덕션: 배포 URL
+- `VITE_ENABLE_PWA`: PWA 활성화 여부
+  - 기본값: 활성화(`true`)
+  - `0` 또는 `false`: 서비스워커 등록/생성 비활성화
 
 ## 디렉토리 구조
 

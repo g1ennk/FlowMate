@@ -1,52 +1,78 @@
 {
   "name": "Flow Mate",
   "short_name": "FlowMate",
+  "id": "/",
   "description": "할 일 관리와 뽀모도로 타이머를 결합한 생산성 앱",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#020617",
   "theme_color": "#10b981",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/favicon-16x16.png",
-      "sizes": "16x16",
-      "type": "image/png"
-    },
-    {
-      "src": "/favicon-32x32.png",
-      "sizes": "32x32",
-      "type": "image/png"
-    },
-    {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
+      "src": "/pwa/icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/apple-touch-icon.png",
+      "src": "/pwa/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "categories": ["productivity", "utilities"],
-  "screenshots": [],
+  "screenshots": [
+    {
+      "src": "/pwa/screenshot-mobile.png",
+      "sizes": "360x780",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "FlowMate mobile tasks and timer"
+    },
+    {
+      "src": "/pwa/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "FlowMate dashboard"
+    }
+  ],
   "shortcuts": [
     {
       "name": "할 일 목록",
       "short_name": "Todos",
       "description": "할 일 목록 보기",
       "url": "/todos",
-      "icons": []
+      "icons": [
+        {
+          "src": "/pwa/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "설정",
       "short_name": "Settings",
       "description": "뽀모도로 설정",
       "url": "/settings",
-      "icons": []
+      "icons": [
+        {
+          "src": "/pwa/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

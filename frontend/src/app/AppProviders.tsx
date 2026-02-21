@@ -43,6 +43,7 @@ export function AppProviders({ children }: PropsWithChildren) {
         position="top-center"
         containerStyle={{
           zIndex: 9999,
+          marginTop: 'calc(var(--safe-top) + 8px)',
         }}
         toastOptions={{
           duration: 2000,

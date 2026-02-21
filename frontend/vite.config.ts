@@ -1,10 +1,59 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
+
+const pwaEnv = (process.env.VITE_ENABLE_PWA ?? '').toLowerCase()
+const enablePwa = pwaEnv !== 'false' && pwaEnv !== '0'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({
+      disable: !enablePwa,
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      manifest: false,
+      includeAssets: [
+        'favicon.ico',
+        'favicon-16x16.png',
+        'favicon-32x32.png',
+        'apple-touch-icon.png',
+        'pwa/icon-192.png',
+        'pwa/icon-512.png',
+        'pwa/icon-maskable-512.png',
+      ],
+      workbox: {
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: ({ request }) =>
+              request.destination === 'script' ||
+              request.destination === 'style' ||
+              request.destination === 'worker',
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'static-assets',
+            },
+          },
+          {
+            urlPattern: ({ request }) => request.destination === 'document',
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'app-shell',
+            },
+          },
+        ],
+      },
+    }),
+  ],
   build: {
     rollupOptions: {
       output: {
