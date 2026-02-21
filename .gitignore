@@ -1,0 +1,19 @@
+.DS_Store
+node_modules/
+.idea/
+.vscode/
+*.iml
+frontend/dist/
+frontend/.vite/
+.claude
+
+# 환경 변수 (실제 값, 커밋 금지)
+/backend/.env.local
+/frontend/.env.local
+/infra/dev/.env
+/infra/prod/.env
+/shared/
+
+# 개인 학습/AI 작업 문서 (로컬 전용)
+/docs/agent/
+/docs/engineering-log/

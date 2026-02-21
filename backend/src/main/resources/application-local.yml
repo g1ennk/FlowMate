@@ -1,0 +1,31 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/flowmate?serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:flowmate}
+    password: ${DB_PASSWORD:flowmate}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # JPA가 테이블을 만들거나 수정하지 않고, 엔티티와 DB 스키마가 맞는지만 검사 (즉, 스키마는 Flyway만 담당)
+
+    # 출력되는 SQL을 보기 좋게 줄바꿈/정렬해줌
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true # 앱 시작 시 Flyway가 자동으로 마이그레이션 적용
+    locations: classpath:db/migration
+
+logging:
+  level:
+    kr.io.flowmate: debug
+    org.hibernate.SQL: debug
+
+cors:
+  allowed-origins: http://localhost:5173

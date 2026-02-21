@@ -1,0 +1,29 @@
+# Git
+.git
+.gitignore
+
+# Build outputs
+build/
+target/
+*.jar
+*.war
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Env files
+.env*
+!.env*.example
+
+# Gradle
+.gradle/
+gradle-wrapper.jar
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
