@@ -129,6 +129,28 @@ sudo certbot renew --dry-run
 | grafana | 3000 노출 | 내부 | 메트릭 시각화 |
 | node-exporter | 9100 노출 | 내부 | 시스템 메트릭 |
 
+## 프론트엔드 배포 (S3 + CloudFront)
+
+프론트엔드는 EC2가 아닌 S3 + CloudFront로 서빙합니다. 코드 변경 후 아래 순서로 수동 배포합니다.
+
+```bash
+# 1. 빌드 (반드시 --mode dev 지정, 미지정 시 .env.local의 localhost URL이 삽입됨)
+cd /Users/glenn/projects/FlowMate/frontend
+pnpm build --mode dev
+
+# 2. S3 업로드 (변경된 파일만 sync, 삭제된 파일도 반영)
+aws s3 sync dist/ s3://flowmate-dev-frontend --delete
+
+# 3. CloudFront 캐시 무효화 (반영까지 1~2분 소요)
+aws cloudfront create-invalidation --distribution-id ELD3D7OCSS5QS --paths "/*"
+```
+
+> Prod 배포 시 버킷명과 distribution ID를 Prod 값으로 교체합니다.
+
+확인:
+- Dev: `https://dev.flowmate.io.kr`
+- Prod: `https://flowmate.io.kr`
+
 ## 운영 명령어
 
 ```bash
