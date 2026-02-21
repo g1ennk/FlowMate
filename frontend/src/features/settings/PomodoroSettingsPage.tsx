@@ -512,7 +512,7 @@ function PomodoroSettingsPage() {
         </section>
       )}
 
-      <p className="text-center text-xs text-gray-400">FlowMate v0.1.0</p>
+      <p className="text-center text-xs text-gray-400">FlowMate v1.0.0-mvp</p>
 
       <BottomSheet
         isOpen={activeSheet === 'flow'}
