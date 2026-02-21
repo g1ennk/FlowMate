@@ -1,0 +1,49 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT:3306}/${DB_NAME}?serverTimezone=Asia/Seoul&useSSL=true&requireSSL=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # Flyway만 스키마 관리
+
+    properties:
+      hibernate:
+        format_sql: false
+    show-sql: false  # SQL 로그 완전히 비활성화
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true  # 마이그레이션 무결성 검증
+    baseline-on-migrate: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never  # Prod: 외부에 상세 정보 노출 안 함
+
+logging:
+  level:
+    kr.io.flowmate: info
+    org.hibernate.SQL: warn
+    org.springframework.web: info
+
+cors:
+  allowed-origins: ${CORS_ORIGINS}  # 환경 변수 필수

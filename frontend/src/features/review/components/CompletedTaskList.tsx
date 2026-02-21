@@ -1,0 +1,61 @@
+import type { TaskItem } from '../reviewTypes'
+
+type CompletedTaskListProps = {
+  items: TaskItem[]
+  onSelect?: (item: TaskItem) => void
+  showDate?: boolean
+  formatDateLabel?: (date: string) => string
+  getHoverDetails?: (item: TaskItem) => string[]
+  className?: string
+}
+
+export function CompletedTaskList({
+  items,
+  onSelect,
+  showDate = false,
+  formatDateLabel = (date) => date,
+  getHoverDetails,
+  className = '',
+}: CompletedTaskListProps) {
+  return (
+    <div className={`rounded-2xl bg-white p-4 shadow-sm ${className}`}>
+      <h3 className="text-sm font-semibold text-emerald-600">완료</h3>
+      <div className="mt-3 space-y-1.5">
+        {items.length === 0 ? (
+          <p className="text-sm text-gray-400">아직 완료한 일이 없어요.</p>
+        ) : (
+          items.map((item) => {
+            const hoverDetails = getHoverDetails?.(item) ?? []
+            const hoverText = hoverDetails.join('\n')
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelect?.(item)}
+                title={hoverText || undefined}
+                className="group relative flex w-full items-center justify-between rounded-xl border border-gray-100 px-3 py-2 text-left transition hover:bg-gray-50"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-400 line-through">{item.title}</p>
+                  {showDate && (
+                    <p className="mt-0.5 text-[11px] text-gray-400">{formatDateLabel(item.date)}</p>
+                  )}
+                </div>
+                {item.focusSeconds >= 60 && (
+                  <span className="ml-2 shrink-0 text-[10px] font-semibold text-emerald-600">
+                    {item.focusTime}
+                  </span>
+                )}
+                {hoverText && (
+                  <span className="pointer-events-none absolute -top-8 right-2 z-10 max-w-64 rounded-md bg-gray-900 px-2 py-1 text-[10px] font-medium whitespace-pre-wrap text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                    {hoverText}
+                  </span>
+                )}
+              </button>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
