@@ -23,6 +23,11 @@ const getIsIosDevice = () => {
   return /iphone|ipad|ipod/.test(ua) || isTouchMac
 }
 
+const getIsAndroidDevice = () => {
+  const ua = window.navigator.userAgent.toLowerCase()
+  return /android/.test(ua)
+}
+
 export type PwaInstallResult = 'accepted' | 'dismissed' | 'unsupported'
 
 export function usePwaInstall() {
@@ -30,6 +35,7 @@ export function usePwaInstall() {
   const [isStandalone, setIsStandalone] = useState(getStandaloneState)
   const [isInstalled, setIsInstalled] = useState(getStandaloneState)
   const isIos = useMemo(() => getIsIosDevice(), [])
+  const isAndroid = useMemo(() => getIsAndroidDevice(), [])
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -102,6 +108,7 @@ export function usePwaInstall() {
     isInstalled,
     isStandalone,
     isIos,
+    isAndroid,
     promptInstall,
   }
 }

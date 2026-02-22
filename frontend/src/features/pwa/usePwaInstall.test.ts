@@ -126,7 +126,19 @@ describe('usePwaInstall', () => {
     const { result } = renderHook(() => usePwaInstall())
 
     expect(result.current.isIos).toBe(true)
+    expect(result.current.isAndroid).toBe(false)
     expect(result.current.canInstall).toBe(false)
+  })
+
+  it('detects Android environment', () => {
+    setNavigatorValue('userAgent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/121.0 Mobile Safari/537.36')
+    setNavigatorValue('platform', 'Linux armv8l')
+    setNavigatorValue('maxTouchPoints', 5)
+
+    const { result } = renderHook(() => usePwaInstall())
+
+    expect(result.current.isAndroid).toBe(true)
+    expect(result.current.isIos).toBe(false)
   })
 
   it('updates standalone and installed state from display-mode changes', async () => {
