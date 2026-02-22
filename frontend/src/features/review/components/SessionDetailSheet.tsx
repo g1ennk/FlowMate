@@ -12,18 +12,37 @@ type SessionDetailSheetProps = {
   onClose: () => void
 }
 
+const formatSessionTime = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+}
+
 export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheetProps) {
   const todoId = task?.id ?? ''
   const { data, isLoading, isError } = useTodoSessions(todoId, isOpen && Boolean(todoId))
   const sessions = data?.items ?? []
   const totalFocusSeconds = sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
   const totalBreakSeconds = sessions.reduce((sum, session) => sum + session.breakSeconds, 0)
+  const longestFlowSeconds = sessions.reduce(
+    (max, session) => Math.max(max, session.sessionFocusSeconds),
+    0,
+  )
   const taskFocusSeconds = task?.focusSeconds ?? 0
   const taskFocusTime = task?.focusTime ?? null
   const focusLabel = totalFocusSeconds >= 60
-    ? formatFocusTime(totalFocusSeconds)
-    : taskFocusSeconds >= 60
+      ? formatFocusTime(totalFocusSeconds)
+      : taskFocusSeconds >= 60
       ? taskFocusTime
+      : null
+  const breakRatioPercent =
+    totalFocusSeconds > 0 ? Math.round((totalBreakSeconds / totalFocusSeconds) * 100) : 0
+  const insightLabel =
+    sessions.length > 0
+      ? `가장 긴 Flow ${formatFocusTime(longestFlowSeconds)} · 휴식 비율 ${breakRatioPercent}%`
       : null
 
   useEffect(() => {
@@ -64,6 +83,11 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
             </p>
           </div>
         </div>
+        {insightLabel && (
+          <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+            {insightLabel}
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -92,9 +116,16 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
                     Flow {session.sessionOrder ?? index + 1}
                   </p>
                   <p className="text-[11px] text-gray-400">
-                    {session.breakSeconds > 0
-                      ? `휴식 ${formatFocusTime(session.breakSeconds)}`
-                      : '휴식 없음'}
+                    {[
+                      formatSessionTime(session.createdAt)
+                        ? `${formatSessionTime(session.createdAt)} 시작`
+                        : null,
+                      session.breakSeconds > 0
+                        ? `휴식 ${formatFocusTime(session.breakSeconds)}`
+                        : '휴식 없음',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </p>
                 </div>
                 {session.sessionFocusSeconds >= 60 && (

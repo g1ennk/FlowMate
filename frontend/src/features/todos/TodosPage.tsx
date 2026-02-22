@@ -1467,7 +1467,7 @@ function TodosPage() {
                   onClick={actions.handleSaveNote}
                   className="text-sm font-medium text-gray-900 transition-colors hover:text-gray-700"
                 >
-                  완료
+                  저장
                 </button>
               </>
             ) : (

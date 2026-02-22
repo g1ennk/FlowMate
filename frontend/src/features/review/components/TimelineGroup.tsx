@@ -4,6 +4,8 @@ import { ChevronRightIcon } from '../../../ui/Icons'
 type TimelineGroupProps = {
   label: string
   taskCount: number
+  completedCount: number
+  incompleteCount: number
   isExpanded: boolean
   onToggle: () => void
   children: ReactNode
@@ -12,6 +14,8 @@ type TimelineGroupProps = {
 export function TimelineGroup({
   label,
   taskCount,
+  completedCount,
+  incompleteCount,
   isExpanded,
   onToggle,
   children,
@@ -29,9 +33,12 @@ export function TimelineGroup({
           }`}
         />
         <span className="text-sm font-semibold text-gray-900">{label}</span>
-        <span className="text-xs font-semibold text-gray-400">
-          {taskCount}개
-        </span>
+        <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+          <span>{taskCount}개</span>
+          <span className="hidden text-gray-300 sm:inline">|</span>
+          <span className="text-emerald-600">완료 {completedCount}</span>
+          <span>미완료 {incompleteCount}</span>
+        </div>
       </button>
       {isExpanded && <div className="mt-3 space-y-2">{children}</div>}
     </div>
