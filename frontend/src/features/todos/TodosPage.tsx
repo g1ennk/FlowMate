@@ -1360,53 +1360,83 @@ function TodosPage() {
               !!otherRunningTimer ||
               (currentTimerRunning && currentTimer.mode === 'stopwatch')
 
+            const stopwatchDisabledReason = isCompleted
+              ? '완료된 태스크는 타이머를 시작할 수 없어요'
+              : otherRunningTimer
+                ? '다른 태스크 타이머가 실행 중이에요'
+                : currentTimerRunning && currentTimer.mode === 'pomodoro'
+                  ? '같은 태스크의 뽀모도로가 실행 중이에요'
+                  : null
+
+            const pomodoroDisabledReason = isCompleted
+              ? '완료된 태스크는 타이머를 시작할 수 없어요'
+              : otherRunningTimer
+                ? '다른 태스크 타이머가 실행 중이에요'
+                : currentTimerRunning && currentTimer.mode === 'stopwatch'
+                  ? '같은 태스크의 일반 타이머가 실행 중이에요'
+                  : null
+
             return (
               <>
                 {/* 일반 타이머 */}
-                <BottomSheetItem
-                  icon={<ClockIcon className="h-5 w-5 text-emerald-500" />}
-                  label="일반 타이머"
-                  onClick={() => {
-                    if (!actions.selectedTodo) return
-                    if (isCompleted) {
-                      actions.setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
-                      return
-                    }
-                    if (otherRunningTimer) {
-                      actions.setTimerErrorMessage('다른 타이머가 실행 중입니다')
-                      return
-                    }
-                    if (currentTimerRunning && currentTimer.mode === 'pomodoro') {
-                      actions.setTimerErrorMessage('뽀모도로 타이머가 실행 중입니다')
-                      return
-                    }
-                    actions.handleOpenTimer(actions.selectedTodo, 'stopwatch')
-                  }}
-                  disabled={disableStopwatch}
-                />
+                <div>
+                  <BottomSheetItem
+                    icon={<ClockIcon className="h-5 w-5 text-emerald-500" />}
+                    label="일반 타이머"
+                    onClick={() => {
+                      if (!actions.selectedTodo) return
+                      if (isCompleted) {
+                        actions.setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
+                        return
+                      }
+                      if (otherRunningTimer) {
+                        actions.setTimerErrorMessage('다른 타이머가 실행 중입니다')
+                        return
+                      }
+                      if (currentTimerRunning && currentTimer.mode === 'pomodoro') {
+                        actions.setTimerErrorMessage('뽀모도로 타이머가 실행 중입니다')
+                        return
+                      }
+                      actions.handleOpenTimer(actions.selectedTodo, 'stopwatch')
+                    }}
+                    disabled={disableStopwatch}
+                  />
+                  {stopwatchDisabledReason && (
+                    <p className="px-4 pb-2 text-xs text-gray-400">
+                      {stopwatchDisabledReason}
+                    </p>
+                  )}
+                </div>
 
                 {/* 뽀모도로 타이머 */}
-                <BottomSheetItem
-                  icon={<ClockIcon className="h-5 w-5 text-red-500" />}
-                  label="뽀모도로 타이머"
-                  onClick={() => {
-                    if (!actions.selectedTodo) return
-                    if (isCompleted) {
-                      actions.setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
-                      return
-                    }
-                    if (otherRunningTimer) {
-                      actions.setTimerErrorMessage('다른 타이머가 실행 중입니다')
-                      return
-                    }
-                    if (currentTimerRunning && currentTimer.mode === 'stopwatch') {
-                      actions.setTimerErrorMessage('일반 타이머가 실행 중입니다')
-                      return
-                    }
-                    actions.handleOpenTimer(actions.selectedTodo, 'pomodoro')
-                  }}
-                  disabled={disablePomodoro}
-                />
+                <div>
+                  <BottomSheetItem
+                    icon={<ClockIcon className="h-5 w-5 text-red-500" />}
+                    label="뽀모도로 타이머"
+                    onClick={() => {
+                      if (!actions.selectedTodo) return
+                      if (isCompleted) {
+                        actions.setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
+                        return
+                      }
+                      if (otherRunningTimer) {
+                        actions.setTimerErrorMessage('다른 타이머가 실행 중입니다')
+                        return
+                      }
+                      if (currentTimerRunning && currentTimer.mode === 'stopwatch') {
+                        actions.setTimerErrorMessage('일반 타이머가 실행 중입니다')
+                        return
+                      }
+                      actions.handleOpenTimer(actions.selectedTodo, 'pomodoro')
+                    }}
+                    disabled={disablePomodoro}
+                  />
+                  {pomodoroDisabledReason && (
+                    <p className="px-4 pb-2 text-xs text-gray-400">
+                      {pomodoroDisabledReason}
+                    </p>
+                  )}
+                </div>
               </>
             )
           })()}
@@ -1470,10 +1500,15 @@ function TodosPage() {
           } : undefined}
           readOnly={!actions.noteEditMode}
           placeholder="메모를 입력하세요..."
-          className={`mb-4 h-40 w-full resize-none rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 ${
+          className={`mb-2 h-40 w-full resize-none rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 ${
             !actions.noteEditMode ? 'cursor-pointer' : ''
           }`}
         />
+        {!actions.noteEditMode && (
+          <p className="mb-4 px-1 text-xs text-gray-400">
+            탭하면 바로 편집 모드로 전환됩니다
+          </p>
+        )}
       </BottomSheet>
 
       {/* 타이머 풀스크린 */}
