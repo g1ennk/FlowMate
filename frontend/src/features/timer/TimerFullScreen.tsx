@@ -48,6 +48,41 @@ const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
 
 // time formatters are extracted to timerFormat.ts
 
+function InlineSegmentToggle({
+  options,
+  value,
+  onChange,
+  className = '',
+}: {
+  options: Array<{ label: string; value: string }>
+  value: string
+  onChange: (value: string) => void
+  className?: string
+}) {
+  return (
+    <div className={`inline-flex rounded-full bg-white/10 p-0.5 ${className}`}>
+      {options.map((option) => {
+        const active = option.value === value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={active}
+            className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              active
+                ? 'bg-white text-gray-900'
+                : 'text-white/70 hover:text-white'
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function TimerFullScreen(props: TimerFullScreenProps) {
   const { isOpen, onClose, todoId, todoTitle, sessionFocusSeconds, initialMode, isDone = false } = props
   const [mounted, setMounted] = useState(false)
@@ -334,7 +369,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               Flow
             </p>
 
-            {/* 타이머 숫자 - 클릭으로 전환 */}
+            {/* 타이머 숫자 / 표시 기준 토글 */}
               {(() => {
                 const currentFocusMs = timer?.focusElapsedMs ?? 0
                 const initialMs = timer?.initialFocusMs ?? 0
@@ -345,21 +380,21 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 
                 // 표시할 시간 (디폴트: 현재 세션)
                 const displayMs = showTotalTime ? totalAccumulatedMs : currentSessionFocusMs
-                const displayLabel = showTotalTime ? '전체 누적' : '현재 세션'
                 
                 return (
-                  <div className="mb-2">
-                    <button
-                      onClick={() => setShowTotalTime(!showTotalTime)}
-                      className="w-full cursor-pointer transition-opacity hover:opacity-80"
-                    >
-                      <p className="text-center text-6xl font-light tabular-nums tracking-tight text-gray-300">
-                        {formatStopwatch(displayMs)}
-                      </p>
-                      <p className="mt-1 text-center text-xs font-medium text-gray-400">
-                        {displayLabel}
-                      </p>
-                    </button>
+                  <div className="mb-2 flex flex-col items-center">
+                    <p className="text-center text-6xl font-light tabular-nums tracking-tight text-gray-300">
+                      {formatStopwatch(displayMs)}
+                    </p>
+                    <InlineSegmentToggle
+                      className="mt-2"
+                      options={[
+                        { label: '현재 세션', value: 'current' },
+                        { label: '전체 누적', value: 'total' },
+                      ]}
+                      value={showTotalTime ? 'total' : 'current'}
+                      onChange={(next) => setShowTotalTime(next === 'total')}
+                    />
                   </div>
                 )
               })()}
@@ -478,17 +513,22 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                       {breakLabel}
                     </p>
 
-                    {/* 타이머 숫자 */}
+                    {/* 타이머 숫자 / 휴식 표시 기준 토글 */}
                     {canToggleBreak ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowBreakTotal(!showBreakTotal)}
-                        className="w-full cursor-pointer transition-opacity hover:opacity-80"
-                      >
-                        <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
+                      <div className="mb-2 flex flex-col items-center">
+                        <p className="text-center text-6xl font-light tabular-nums tracking-tight text-white">
                           {formatStopwatch(displayMs)}
                         </p>
-                      </button>
+                        <InlineSegmentToggle
+                          className="mt-2"
+                          options={[
+                            { label: '추가 휴식', value: 'extra' },
+                            { label: '총 휴식', value: 'total' },
+                          ]}
+                          value={showBreakTotal ? 'total' : 'extra'}
+                          onChange={(next) => setShowBreakTotal(next === 'total')}
+                        />
+                      </div>
                     ) : (
                       <>
                         <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">

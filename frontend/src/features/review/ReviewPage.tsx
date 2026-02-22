@@ -45,11 +45,12 @@ export function ReviewPage() {
   useEffect(() => {
     if (didInitRef.current) return
     didInitRef.current = true
-    const todayKey = formatDateKey(new Date())
-    if (searchParams.get('date') !== todayKey) {
-      setSearchParams({ period, date: todayKey }, { replace: true })
+    const rawPeriod = searchParams.get('period')
+    const rawDate = searchParams.get('date')
+    if (rawPeriod !== period || rawDate !== dateKey) {
+      setSearchParams({ period, date: dateKey }, { replace: true })
     }
-  }, [period, searchParams, setSearchParams])
+  }, [dateKey, period, searchParams, setSearchParams])
 
   const stats = buildPeriodStats(
     data?.items ?? [],
@@ -91,6 +92,18 @@ export function ReviewPage() {
     setSearchParams({ period, date: formatDateKey(nextDate) })
   }
 
+  const isCurrentPeriod =
+    (period === 'daily' && dateKey === todayKey) ||
+    (period === 'weekly' && reviewRange.startKey === currentWeekStartKey) ||
+    (period === 'monthly' && reviewRange.startKey === currentMonthStartKey)
+
+  const handleJumpToCurrent = () => {
+    setSearchParams({ period, date: todayKey })
+  }
+
+  const currentJumpLabel =
+    period === 'daily' ? '오늘로 이동' : period === 'weekly' ? '이번 주로 이동' : '이번 달로 이동'
+
   if (isLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-sm text-gray-400">
@@ -114,6 +127,9 @@ export function ReviewPage() {
                 ? '이번 달'
                 : undefined
         }
+        isCurrent={isCurrentPeriod}
+        jumpLabel={currentJumpLabel}
+        onJumpToCurrent={handleJumpToCurrent}
         onPrev={handlePrev}
         onNext={handleNext}
       />

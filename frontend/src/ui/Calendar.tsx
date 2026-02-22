@@ -115,6 +115,12 @@ export function Calendar({
 
   const days = viewMode === 'month' ? monthDays : weekDays
 
+  const setViewMode = (nextMode: ViewMode) => {
+    if (!allowedViewModes.includes(nextMode)) return
+    if (!controlledViewMode) setInternalViewMode(nextMode)
+    onViewModeChange?.(nextMode)
+  }
+
   const goToPrev = () => {
     if (viewMode === 'month') {
       onMonthChange(new Date(year, month - 1, 1))
@@ -232,20 +238,42 @@ export function Calendar({
         </div>
         {/* 오른쪽 영역 (월/주 버튼) - 일요일 열에 맞춤 */}
         <div className="flex items-center justify-center">
-          <button
-            onClick={() => {
-              const currentIndex = allowedViewModes.indexOf(viewMode)
-              const nextIndex = currentIndex === -1
-                ? 0
-                : (currentIndex + 1) % allowedViewModes.length
-              const nextMode = allowedViewModes[nextIndex] ?? viewMode
-              if (!controlledViewMode) setInternalViewMode(nextMode)
-              onViewModeChange?.(nextMode)
-            }}
-            className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
-          >
-            {VIEW_LABELS[viewMode]}
-          </button>
+          {allowedViewModes.length <= 3 ? (
+            <div className="inline-flex rounded-full bg-gray-100 p-0.5">
+              {allowedViewModes.map((mode) => {
+                const active = mode === viewMode
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                      active
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    aria-pressed={active}
+                    aria-label={`${VIEW_LABELS[mode]} 보기`}
+                  >
+                    {VIEW_LABELS[mode]}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                const currentIndex = allowedViewModes.indexOf(viewMode)
+                const nextIndex = currentIndex === -1
+                  ? 0
+                  : (currentIndex + 1) % allowedViewModes.length
+                const nextMode = allowedViewModes[nextIndex] ?? viewMode
+                setViewMode(nextMode)
+              }}
+              className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
+            >
+              {VIEW_LABELS[viewMode]}
+            </button>
+          )}
         </div>
       </div>
 

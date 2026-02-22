@@ -22,7 +22,7 @@ export function DailyTaskList({
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm">
-      <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+      <div className="space-y-2 md:max-h-72 md:overflow-y-auto md:pr-1">
         {!hasTasks && (
           <p className="text-sm text-gray-400">표시할 태스크가 없어요.</p>
         )}

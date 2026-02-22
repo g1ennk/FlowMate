@@ -8,7 +8,7 @@ type StatsSummaryProps = {
   comparison?: PeriodComparison
 }
 
-  const renderDelta = (value: number, unitFormatter?: (value: number) => string) => {
+const renderDelta = (value: number, unitFormatter?: (value: number) => string) => {
   if (value === 0) {
     return <span className="text-gray-400">변화 없음</span>
   }
@@ -16,7 +16,7 @@ type StatsSummaryProps = {
   const absValue = Math.abs(value)
   const formatted = unitFormatter ? unitFormatter(absValue) : String(absValue)
   return (
-    <span className={value > 0 ? 'text-blue-500' : 'text-rose-500'}>
+    <span className={value > 0 ? 'text-emerald-500' : 'text-rose-500'}>
       {`${sign}${formatted}`}
     </span>
   )
@@ -29,18 +29,20 @@ export function StatsSummary({
   comparison,
 }: StatsSummaryProps) {
   const focusDelta = comparison?.focusDelta
-  const hasFocus = totalFocusSeconds >= 60
+  const focusLabel = totalFocusSeconds >= 60
+    ? formatFocusTime(totalFocusSeconds)
+    : totalFocusSeconds > 0
+      ? '1분 미만'
+      : '0분'
 
   return (
     <section className="rounded-2xl bg-white p-2 shadow-sm">
       <div className="grid grid-cols-3 divide-x divide-gray-100">
         <div className="px-3 py-2">
           <p className="text-[11px] text-gray-500">집중</p>
-          {hasFocus && (
-            <p className="mt-1 text-base font-semibold text-emerald-600">
-              {formatFocusTime(totalFocusSeconds)}
-            </p>
-          )}
+          <p className="mt-1 text-base font-semibold text-emerald-600">
+            {focusLabel}
+          </p>
           {focusDelta !== undefined && (
             <p className="mt-0.5 text-[10px]">
               {renderDelta(focusDelta, formatFocusTime)}

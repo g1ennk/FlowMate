@@ -71,6 +71,29 @@ input[type="number"] {
   animation: fade-in 0.3s ease-out;
 }
 
+.bottom-sheet-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+  scrollbar-gutter: stable;
+}
+
+.bottom-sheet-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.bottom-sheet-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bottom-sheet-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 9999px;
+}
+
+.bottom-sheet-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 /* Prevent iOS Safari auto-zoom on input focus (font-size must be >= 16px). */
 @supports (-webkit-touch-callout: none) {
   input,

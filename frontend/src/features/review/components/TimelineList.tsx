@@ -95,6 +95,8 @@ export function TimelineList({
             key={`${viewMode}-${group.key}-${index}`}
             label={group.label}
             taskCount={group.taskCount}
+            completedCount={group.completedTasks.length}
+            incompleteCount={group.incompleteTasks.length}
             isExpanded={isExpanded}
             onToggle={() => toggleGroup(group.key)}
           >
