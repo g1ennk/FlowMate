@@ -84,7 +84,7 @@ jobs:
           aws ecr put-image \
             --repository-name $ECR_REPOSITORY \
             --image-tag $VERSION \
-            --image-manifest "$MANIFEST"
+            --image-manifest "$MANIFEST" || echo "Tag already exists, skipping."
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
