@@ -7,6 +7,12 @@ on:
     paths:
       - 'backend/**'
       - 'infra/prod/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '배포할 버전 태그 (예: v1.0.0)'
+        required: true
+        type: string
 
 env:
   AWS_REGION: ap-northeast-2
@@ -14,6 +20,7 @@ env:
 
 jobs:
   build-and-push:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       image_uri: ${{ steps.build.outputs.image_uri }}
@@ -42,14 +49,43 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+                       -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+                       ./backend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   deploy:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: build-and-push
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag version in ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          MANIFEST=$(aws ecr batch-get-image \
+            --repository-name $ECR_REPOSITORY \
+            --image-ids imageTag=latest \
+            --query 'images[0].imageManifest' \
+            --output text)
+          aws ecr put-image \
+            --repository-name $ECR_REPOSITORY \
+            --image-tag $VERSION \
+            --image-manifest "$MANIFEST" || echo "Tag already exists, skipping."
+
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
         with:
@@ -57,8 +93,8 @@ jobs:
           username: ubuntu
           key: ${{ secrets.PROD_EC2_SSH_KEY }}
           script: |
+            cd ~/FlowMate/infra/prod
             aws ecr get-login-password --region ap-northeast-2 | \
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
-            cd ~/FlowMate/infra/prod
-            ECR_IMAGE_URI=${{ needs.build-and-push.outputs.image_uri }} docker compose up -d backend
+            ECR_IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ inputs.version }} docker compose up -d backend
             docker compose ps

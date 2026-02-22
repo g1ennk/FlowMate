@@ -4,7 +4,6 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-// ci final test
 public class FlowMateBackendApplication {
 
     public static void main(String[] args) {
@@ -12,3 +11,4 @@ public class FlowMateBackendApplication {
     }
 
 }
+// prod ci test
