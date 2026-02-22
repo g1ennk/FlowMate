@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
 import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
@@ -18,6 +18,10 @@ const PERIOD_OPTIONS = [
   { value: 'am', label: '오전' },
   { value: 'pm', label: '오후' },
 ] as const
+const INSTALL_CARD_DISMISS_KEY = 'flowmate:settings:install-card-dismissed-until:v1'
+const INSTALL_CARD_DISMISS_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const WHEEL_SCROLL_END_COMMIT_DELAY_MS = 120
+const WHEEL_LIVE_SELECT_BIAS = 0.35
 const WHEEL_ITEM_HEIGHT = 40
 const WHEEL_VISIBLE_COUNT = 5
 const WHEEL_PADDING = (WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT - WHEEL_ITEM_HEIGHT) / 2
@@ -29,6 +33,38 @@ const defaultSettings: PomodoroSettings = {
   cycleEvery: 4,
   autoStartBreak: false,
   autoStartSession: false,
+}
+
+const readInstallCardDismissed = () => {
+  if (typeof window === 'undefined') return false
+  try {
+    const raw = window.localStorage.getItem(INSTALL_CARD_DISMISS_KEY)
+    if (!raw) return false
+    const dismissedUntil = Number(raw)
+    if (!Number.isFinite(dismissedUntil)) {
+      window.localStorage.removeItem(INSTALL_CARD_DISMISS_KEY)
+      return false
+    }
+    if (dismissedUntil <= Date.now()) {
+      window.localStorage.removeItem(INSTALL_CARD_DISMISS_KEY)
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+const persistInstallCardDismissed = () => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      INSTALL_CARD_DISMISS_KEY,
+      String(Date.now() + INSTALL_CARD_DISMISS_TTL_MS),
+    )
+  } catch {
+    // ignore localStorage write failures
+  }
 }
 
 type SettingsRowProps = {
@@ -102,6 +138,29 @@ type WheelColumnProps<T> = {
 function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: WheelColumnProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const isProgrammaticScroll = useRef(false)
+  const scrollEndTimeoutRef = useRef<number | null>(null)
+
+  const commitScrollIndex = useCallback((snapToItem = false) => {
+    const node = scrollRef.current
+    if (!node) return
+    const rawIndex = node.scrollTop / WHEEL_ITEM_HEIGHT
+    const index = snapToItem
+      ? Math.round(rawIndex)
+      : Math.floor(rawIndex + WHEEL_LIVE_SELECT_BIAS)
+    const clamped = Math.max(0, Math.min(items.length - 1, index))
+
+    if (clamped !== selectedIndex) {
+      onSelectIndex(clamped)
+      return
+    }
+
+    if (snapToItem) {
+      const nextTop = clamped * WHEEL_ITEM_HEIGHT
+      if (Math.abs(node.scrollTop - nextTop) > 1) {
+        node.scrollTop = nextTop
+      }
+    }
+  }, [items.length, onSelectIndex, selectedIndex])
 
   useEffect(() => {
     const node = scrollRef.current
@@ -116,14 +175,39 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
     return () => window.cancelAnimationFrame(rafId)
   }, [selectedIndex])
 
+  useEffect(() => {
+    return () => {
+      if (scrollEndTimeoutRef.current !== null) {
+        window.clearTimeout(scrollEndTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleScroll = () => {
     const node = scrollRef.current
     if (!node || isProgrammaticScroll.current) return
-    const index = Math.round(node.scrollTop / WHEEL_ITEM_HEIGHT)
-    const clamped = Math.max(0, Math.min(items.length - 1, index))
-    if (clamped !== selectedIndex) {
-      onSelectIndex(clamped)
+    commitScrollIndex(false)
+    if (scrollEndTimeoutRef.current !== null) {
+      window.clearTimeout(scrollEndTimeoutRef.current)
     }
+    scrollEndTimeoutRef.current = window.setTimeout(() => {
+      scrollEndTimeoutRef.current = null
+      commitScrollIndex(true)
+    }, WHEEL_SCROLL_END_COMMIT_DELAY_MS)
+  }
+
+  const handleUserScrollStart = () => {
+    // 사용자가 바로 드래그를 시작할 때 이전 programmatic 플래그가 남아 있으면
+    // 스크롤 이벤트가 무시되는 체감을 줄인다.
+    isProgrammaticScroll.current = false
+  }
+
+  const handleUserScrollEnd = () => {
+    if (scrollEndTimeoutRef.current !== null) {
+      window.clearTimeout(scrollEndTimeoutRef.current)
+      scrollEndTimeoutRef.current = null
+    }
+    commitScrollIndex(true)
   }
 
   return (
@@ -134,8 +218,12 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
       <div
         ref={scrollRef}
         aria-label={ariaLabel}
-        className="h-full overflow-y-auto snap-y snap-mandatory"
+        className="h-full overflow-y-auto overscroll-contain snap-y snap-mandatory touch-pan-y"
         onScroll={handleScroll}
+        onPointerDown={handleUserScrollStart}
+        onPointerUp={handleUserScrollEnd}
+        onPointerCancel={handleUserScrollEnd}
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <div style={{ height: WHEEL_PADDING }} />
         {items.map((item, index) => {
@@ -170,7 +258,8 @@ function PomodoroSettingsPage() {
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
   const [miniDayEditor, setMiniDayEditor] = useState<MiniDayRange>(defaultMiniDaysSettings.day1)
   const [miniDayEditField, setMiniDayEditField] = useState<'start' | 'end'>('start')
-  const [installCardDismissed, setInstallCardDismissed] = useState(false)
+  const [installCardDismissed, setInstallCardDismissed] = useState<boolean>(() => readInstallCardDismissed())
+  const lastSettingsSavedToastAtRef = useRef(0)
   const [timeDraft, setTimeDraft] = useState<{
     period: 'am' | 'pm'
     hour: number
@@ -206,7 +295,12 @@ function PomodoroSettingsPage() {
   const commitSettings = (next: Partial<PomodoroSettings>) => {
     setOverrides((prev) => ({ ...prev, ...next }))
     updateSettings.mutate(next, {
-      onSuccess: () => toast.success('저장됨', { id: 'settings-saved' }),
+      onSuccess: () => {
+        const now = Date.now()
+        if (now - lastSettingsSavedToastAtRef.current < 700) return
+        lastSettingsSavedToastAtRef.current = now
+        toast.success('저장됨', { id: 'settings-saved' })
+      },
     })
   }
 
@@ -381,12 +475,6 @@ function PomodoroSettingsPage() {
     commitTimeDraft(next)
   }
 
-  const handleSelectEndOfDay = () => {
-    const next = { period: 'pm' as const, hour: 12, minute: 0, is24: true }
-    setTimeDraft(next)
-    commitTimeDraft(next)
-  }
-
   const handleResetSessionDefaults = () => {
     if (isSessionDefault) {
       toast('이미 기본값입니다', { id: 'session-reset-noop' })
@@ -468,13 +556,24 @@ function PomodoroSettingsPage() {
   const activeMiniDayErrorMessage = activeMiniDayError === '시작은 종료보다 빨라야 해요'
     ? '종료는 시작 이후여야 합니다'
     : activeMiniDayError
+  const miniDaySaveStateMessage = updateMiniDays.isPending
+    ? '저장 중입니다...'
+    : activeMiniDayErrorMessage
+      ? '오류를 수정한 뒤 상단 저장을 눌러주세요'
+      : isMiniDayDirty
+        ? '상단 저장을 누르면 적용됩니다'
+        : '변경한 뒤 상단 저장을 누르면 적용됩니다'
+  const miniDaySaveStateTone = updateMiniDays.isPending
+    ? 'text-emerald-600'
+    : activeMiniDayErrorMessage
+      ? 'text-red-500'
+      : 'text-gray-500'
   const hourIndex = Math.max(0, HOUR_OPTIONS.indexOf(timeDraft.hour))
   const minuteIndex = Math.max(0, MINUTE_OPTIONS.indexOf(timeDraft.minute))
   const periodIndex = timeDraft.period === 'am' ? 0 : 1
   const hourItems = HOUR_OPTIONS.map((hour) => ({ value: hour, label: `${hour}` }))
   const minuteItems = MINUTE_OPTIONS.map((minute) => ({ value: minute, label: minute.toString().padStart(2, '0') }))
   const periodItems = PERIOD_OPTIONS.map((period) => ({ value: period.value, label: period.label }))
-  const showEndOfDayOption = miniDayEditField === 'end'
   const shouldShowInstallCard =
     !installCardDismissed &&
     !isInstalled &&
@@ -485,11 +584,17 @@ function PomodoroSettingsPage() {
     const result = await promptInstall()
     if (result === 'accepted') {
       toast.success('앱 설치가 완료되었습니다', { id: 'pwa-install-accepted' })
+      setInstallCardDismissed(true)
       return
     }
     if (result === 'dismissed') {
       toast('설치를 취소했습니다', { id: 'pwa-install-dismissed' })
     }
+  }
+
+  const handleDismissInstallCard = () => {
+    setInstallCardDismissed(true)
+    persistInstallCardDismissed()
   }
 
   return (
@@ -630,22 +735,21 @@ function PomodoroSettingsPage() {
 
             <button
               type="button"
-              onClick={() => setInstallCardDismissed(true)}
+              onClick={handleDismissInstallCard}
               className="mt-3 text-xs font-medium text-gray-400 transition-colors hover:text-gray-600"
             >
-              나중에
+              일주일 동안 숨기기
             </button>
           </div>
         </section>
       )}
 
-      <p className="text-center text-xs text-gray-400">FlowMate v1.0.0-mvp</p>
+      <p className="text-center text-xs text-gray-400">FlowMate v1.0.0</p>
 
       <BottomSheet
         isOpen={activeSheet === 'flow'}
         onClose={() => setActiveSheet(null)}
         title="Flow 시간"
-        panelClassName="min-h-[50dvh]"
       >
         {FLOW_PRESETS.map((preset) => (
           <BottomSheetItem
@@ -667,7 +771,6 @@ function PomodoroSettingsPage() {
         isOpen={activeSheet === 'break'}
         onClose={() => setActiveSheet(null)}
         title="휴식 시간"
-        panelClassName="min-h-[50dvh]"
       >
         <p className="px-2 pb-2 pt-1 text-xs font-semibold text-gray-400">짧은 휴식</p>
         {SHORT_BREAK_PRESETS.map((preset) => (
@@ -704,7 +807,6 @@ function PomodoroSettingsPage() {
         isOpen={activeSheet === 'cycle'}
         onClose={() => setActiveSheet(null)}
         title="주기"
-        panelClassName="min-h-[50dvh]"
       >
         {CYCLE_PRESETS.map((preset) => (
           <BottomSheetItem
@@ -740,7 +842,7 @@ function PomodoroSettingsPage() {
       >
         <div className="space-y-4 pb-6">
           <div
-            className="sticky bottom-0 -mx-5 space-y-4 border-t border-gray-100 bg-white px-5 pt-3"
+            className="sticky bottom-0 -mx-5 space-y-4 bg-white px-5 pt-3"
             style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
           >
             <div>
@@ -751,6 +853,9 @@ function PomodoroSettingsPage() {
                 placeholder="미니 데이 1"
                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100"
               />
+              <p className="mt-2 px-1 text-xs text-gray-400">
+                이름도 바꿀 수 있어요. 예: 오전/오후/저녁, 집중 시간, 회의 시간
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -797,24 +902,9 @@ function PomodoroSettingsPage() {
             </div>
 
             <div className="space-y-3 rounded-2xl bg-gray-50 px-3 py-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-500">
-                  {miniDayEditField === 'start' ? '시작 시간 선택' : '종료 시간 선택'}
-                </p>
-                {showEndOfDayOption && (
-                  <button
-                    type="button"
-                    onClick={handleSelectEndOfDay}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                      timeDraft.is24
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    하루 끝
-                  </button>
-                )}
-              </div>
+              <p className="text-xs font-medium text-gray-500">
+                {miniDayEditField === 'start' ? '시작 시간 선택' : '종료 시간 선택'}
+              </p>
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-2">
@@ -850,8 +940,8 @@ function PomodoroSettingsPage() {
               <span>{previewDuration}</span>
             </div>
 
-            <p className="text-center text-xs font-medium text-gray-400">
-              전체 기본값 복원은 설정 목록의 미니 데이 섹션에서 할 수 있어요
+            <p className={`text-center text-xs font-medium ${miniDaySaveStateTone}`}>
+              {miniDaySaveStateMessage}
             </p>
           </div>
         </div>
