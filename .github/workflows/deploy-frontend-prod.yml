@@ -27,7 +27,10 @@ jobs:
 
       - name: Build
         working-directory: frontend
-        run: pnpm build --mode prod
+        run: |
+          echo "VITE_API_BASE_URL=${{ secrets.PROD_VITE_API_BASE_URL }}" > .env.production
+          echo "VITE_ENABLE_PWA=1" >> .env.production
+          pnpm build --mode production
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
