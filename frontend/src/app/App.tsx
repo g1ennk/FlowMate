@@ -5,7 +5,7 @@ import { CheckCircleIcon, DocumentIcon, SettingsIcon } from '../ui/Icons'
 const tabs = [
   {
     to: '/todos',
-    label: '작업',
+    label: '계획',
     icon: (active: boolean) => (
       <CheckCircleIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
     ),
