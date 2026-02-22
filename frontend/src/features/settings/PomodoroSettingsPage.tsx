@@ -38,6 +38,13 @@ type SettingsRowProps = {
   disabled?: boolean
 }
 
+type SectionHeaderProps = {
+  title: string
+  actionLabel?: string
+  onActionClick?: () => void
+  actionDisabled?: boolean
+}
+
 function SettingsRow({ label, value, onClick, disabled = false }: SettingsRowProps) {
   return (
     <button
@@ -54,6 +61,29 @@ function SettingsRow({ label, value, onClick, disabled = false }: SettingsRowPro
         <ChevronRightIcon className={`h-4 w-4 ${disabled ? 'text-gray-300' : 'text-gray-300'}`} />
       </span>
     </button>
+  )
+}
+
+function SectionHeader({
+  title,
+  actionLabel,
+  onActionClick,
+  actionDisabled = false,
+}: SectionHeaderProps) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <p className="text-sm font-medium text-gray-500">{title}</p>
+      {actionLabel && onActionClick && (
+        <button
+          type="button"
+          onClick={onActionClick}
+          disabled={actionDisabled}
+          className="text-xs font-semibold text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:text-gray-300"
+        >
+          {actionLabel}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -79,11 +109,11 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
     const nextTop = selectedIndex * WHEEL_ITEM_HEIGHT
     if (Math.abs(node.scrollTop - nextTop) < 1) return
     isProgrammaticScroll.current = true
-    node.scrollTo({ top: nextTop, behavior: 'smooth' })
-    const timeout = window.setTimeout(() => {
+    node.scrollTop = nextTop
+    const rafId = window.requestAnimationFrame(() => {
       isProgrammaticScroll.current = false
-    }, 120)
-    return () => window.clearTimeout(timeout)
+    })
+    return () => window.cancelAnimationFrame(rafId)
   }, [selectedIndex])
 
   const handleScroll = () => {
@@ -104,7 +134,7 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
       <div
         ref={scrollRef}
         aria-label={ariaLabel}
-        className="h-full overflow-y-auto scroll-smooth snap-y snap-mandatory"
+        className="h-full overflow-y-auto snap-y snap-mandatory"
         onScroll={handleScroll}
       >
         <div style={{ height: WHEEL_PADDING }} />
@@ -134,7 +164,7 @@ function PomodoroSettingsPage() {
   const { data: settingsData, isLoading } = useSettings()
   const updateSettings = useUpdatePomodoroSettings()
   const updateMiniDays = useUpdateMiniDaysSettings()
-  const { canInstall, isInstalled, isStandalone, isIos, promptInstall } = usePwaInstall()
+  const { canInstall, isInstalled, isStandalone, isIos, isAndroid, promptInstall } = usePwaInstall()
   const [overrides, setOverrides] = useState<Partial<PomodoroSettings>>({})
   const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
@@ -228,6 +258,26 @@ function PomodoroSettingsPage() {
       current.end !== miniDayEditor.end
     )
   }, [activeMiniDay, miniDaysBase, miniDayEditor])
+
+  const isSessionDefault =
+    values.flowMin === defaultSettings.flowMin &&
+    values.breakMin === defaultSettings.breakMin &&
+    values.longBreakMin === defaultSettings.longBreakMin &&
+    values.cycleEvery === defaultSettings.cycleEvery
+
+  const isAutomationDefault =
+    values.autoStartBreak === defaultSettings.autoStartBreak &&
+    values.autoStartSession === defaultSettings.autoStartSession
+
+  const isMiniDaysDefault = (Object.keys(defaultMiniDaysSettings) as Array<keyof MiniDaysSettings>).every((key) => {
+    const current = miniDaysBase[key]
+    const defaults = defaultMiniDaysSettings[key]
+    return (
+      current.label === defaults.label &&
+      current.start === defaults.start &&
+      current.end === defaults.end
+    )
+  })
 
   const openMiniDayEditor = (dayKey: keyof MiniDaysSettings) => {
     const next = miniDaysBase[dayKey]
@@ -337,13 +387,53 @@ function PomodoroSettingsPage() {
     commitTimeDraft(next)
   }
 
-  const handleResetMiniDay = () => {
-    if (!activeMiniDay) return
-    if (!window.confirm('미니 데이 시간을 기본값으로 초기화할까요?')) return
-    const defaults = defaultMiniDaysSettings[activeMiniDay]
-    setMiniDayEditor(defaults)
-    setMiniDayEditField('start')
-    setTimeDraftFromValue(defaults.start, defaults.start)
+  const handleResetSessionDefaults = () => {
+    if (isSessionDefault) {
+      toast('이미 기본값입니다', { id: 'session-reset-noop' })
+      return
+    }
+    if (!window.confirm('뽀모도로 세션 설정을 기본값으로 복원할까요?')) return
+    commitSettings({
+      flowMin: defaultSettings.flowMin,
+      breakMin: defaultSettings.breakMin,
+      longBreakMin: defaultSettings.longBreakMin,
+      cycleEvery: defaultSettings.cycleEvery,
+    })
+  }
+
+  const handleResetAutomationDefaults = () => {
+    if (isAutomationDefault) {
+      toast('이미 기본값입니다', { id: 'automation-reset-noop' })
+      return
+    }
+    if (!window.confirm('자동화 설정을 기본값으로 복원할까요?')) return
+    commitSettings({
+      autoStartBreak: defaultSettings.autoStartBreak,
+      autoStartSession: defaultSettings.autoStartSession,
+    })
+  }
+
+  const handleResetMiniDaysDefaults = () => {
+    if (isMiniDaysDefault) {
+      toast('이미 기본값입니다', { id: 'mini-days-reset-noop' })
+      return
+    }
+    if (!window.confirm('미니 데이 전체 설정을 기본값(06:00 / 12:00 / 18:00 시작)으로 복원할까요?')) return
+    const resetPayload: MiniDaysSettings = {
+      day1: { ...defaultMiniDaysSettings.day1 },
+      day2: { ...defaultMiniDaysSettings.day2 },
+      day3: { ...defaultMiniDaysSettings.day3 },
+    }
+    updateMiniDays.mutate(resetPayload, {
+      onSuccess: () => {
+        toast.success('미니 데이 기본값으로 복원됨', { id: 'mini-days-reset-saved' })
+        if (!activeMiniDay) return
+        const defaults = defaultMiniDaysSettings[activeMiniDay]
+        setMiniDayEditor({ ...defaults })
+        setMiniDayEditField('start')
+        setTimeDraftFromValue(defaults.start, defaults.start)
+      },
+    })
   }
 
   const parseTimeMinutes = (value: string, allow24: boolean) => {
@@ -389,7 +479,7 @@ function PomodoroSettingsPage() {
     !installCardDismissed &&
     !isInstalled &&
     !isStandalone &&
-    (canInstall || isIos)
+    (canInstall || isIos || isAndroid)
 
   const handleInstallApp = async () => {
     const result = await promptInstall()
@@ -409,7 +499,12 @@ function PomodoroSettingsPage() {
       </header>
 
       <section>
-        <p className="mb-3 text-sm font-medium text-gray-500">뽀모도로 세션</p>
+        <SectionHeader
+          title="뽀모도로 세션"
+          actionLabel="기본값 복원"
+          onActionClick={handleResetSessionDefaults}
+          actionDisabled={isLoading || updateSettings.isPending || isSessionDefault}
+        />
         <div className="space-y-1 rounded-2xl bg-white p-1 shadow-sm">
           <SettingsRow
             label="Flow 시간"
@@ -430,7 +525,12 @@ function PomodoroSettingsPage() {
       </section>
 
       <section>
-        <p className="mb-3 text-sm font-medium text-gray-500">자동화</p>
+        <SectionHeader
+          title="자동화"
+          actionLabel="기본값 복원"
+          onActionClick={handleResetAutomationDefaults}
+          actionDisabled={isLoading || updateSettings.isPending || isAutomationDefault}
+        />
         <div className="space-y-1 rounded-2xl bg-white p-1 shadow-sm">
           <div className="rounded-xl px-3 py-3">
             <Switch
@@ -454,7 +554,12 @@ function PomodoroSettingsPage() {
       </section>
 
       <section>
-        <p className="mb-3 text-sm font-medium text-gray-500">미니 데이</p>
+        <SectionHeader
+          title="미니 데이"
+          actionLabel="기본값 복원"
+          onActionClick={handleResetMiniDaysDefaults}
+          actionDisabled={!settingsData || updateMiniDays.isPending || isMiniDaysDefault}
+        />
         <div className="space-y-1 rounded-2xl bg-white p-1 shadow-sm">
           {([
             { key: 'day1', title: miniDaysBase.day1.label, range: formatMiniDayRange(miniDaysBase.day1) },
@@ -478,29 +583,51 @@ function PomodoroSettingsPage() {
         <section>
           <p className="mb-3 text-sm font-medium text-gray-500">앱 설치</p>
           <div className="rounded-2xl bg-white p-4 shadow-sm">
-            {canInstall ? (
-              <>
-                <p className="text-sm font-semibold text-gray-900">FlowMate 앱을 홈 화면에 설치하세요</p>
-                <p className="mt-1 text-xs text-gray-500">
-                  앱처럼 실행하고 오프라인에서도 기본 화면을 열 수 있습니다.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleInstallApp}
-                  className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
-                >
-                  앱 설치
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-gray-900">iPhone에서 앱처럼 사용하기</p>
+            <p className="text-sm font-semibold text-gray-900">FlowMate 앱을 홈 화면에 설치하세요</p>
+            <p className="mt-1 text-xs text-gray-500">
+              앱처럼 실행하고 오프라인에서도 기본 화면을 열 수 있습니다.
+            </p>
+
+            {canInstall && (
+              <button
+                type="button"
+                onClick={handleInstallApp}
+                className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+              >
+                앱 설치
+              </button>
+            )}
+
+            <div className="mt-3 space-y-3">
+              <div className={`rounded-xl border p-3 ${
+                isIos ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-100 bg-gray-50'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-gray-900">iPhone / iPad (Safari)</p>
+                  {isIos && <span className="text-[10px] font-semibold text-emerald-700">현재 기기</span>}
+                </div>
                 <ol className="mt-2 space-y-1 pl-4 text-xs text-gray-600 list-decimal">
                   <li>Safari 하단의 공유 버튼을 누르세요</li>
                   <li>홈 화면에 추가를 선택하세요</li>
+                  <li>추가를 눌러 설치를 완료하세요</li>
                 </ol>
-              </>
-            )}
+              </div>
+
+              <div className={`rounded-xl border p-3 ${
+                isAndroid ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-100 bg-gray-50'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-gray-900">Android (Chrome)</p>
+                  {isAndroid && <span className="text-[10px] font-semibold text-emerald-700">현재 기기</span>}
+                </div>
+                <ol className="mt-2 space-y-1 pl-4 text-xs text-gray-600 list-decimal">
+                  <li>브라우저 메뉴(⋮)를 여세요</li>
+                  <li>앱 설치 또는 홈 화면에 추가를 선택하세요</li>
+                  <li>설치/추가를 눌러 완료하세요</li>
+                </ol>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={() => setInstallCardDismissed(true)}
@@ -518,6 +645,7 @@ function PomodoroSettingsPage() {
         isOpen={activeSheet === 'flow'}
         onClose={() => setActiveSheet(null)}
         title="Flow 시간"
+        panelClassName="min-h-[50dvh]"
       >
         {FLOW_PRESETS.map((preset) => (
           <BottomSheetItem
@@ -539,6 +667,7 @@ function PomodoroSettingsPage() {
         isOpen={activeSheet === 'break'}
         onClose={() => setActiveSheet(null)}
         title="휴식 시간"
+        panelClassName="min-h-[50dvh]"
       >
         <p className="px-2 pb-2 pt-1 text-xs font-semibold text-gray-400">짧은 휴식</p>
         {SHORT_BREAK_PRESETS.map((preset) => (
@@ -575,6 +704,7 @@ function PomodoroSettingsPage() {
         isOpen={activeSheet === 'cycle'}
         onClose={() => setActiveSheet(null)}
         title="주기"
+        panelClassName="min-h-[50dvh]"
       >
         {CYCLE_PRESETS.map((preset) => (
           <BottomSheetItem
@@ -594,138 +724,135 @@ function PomodoroSettingsPage() {
       <BottomSheet
         isOpen={!!activeMiniDay}
         onClose={closeMiniDayEditor}
-        hideHandle
-        panelClassName="bg-white shadow-2xl"
-        contentClassName="px-5 pb-0 pt-4"
+        title="미니 데이 설정"
+        panelClassName="min-h-[50dvh]"
+        contentClassName="pb-0 pt-4"
+        headerAction={(
+          <button
+            type="button"
+            onClick={handleSaveMiniDay}
+            disabled={!!activeMiniDayErrorMessage || updateMiniDays.isPending || !isMiniDayDirty}
+            className="rounded-lg px-2 py-1 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
+          >
+            저장
+          </button>
+        )}
       >
         <div className="space-y-4 pb-6">
-          <h2 className="text-center text-lg font-semibold text-gray-900">미니 데이 설정</h2>
-
-          <div>
-            <input
-              type="text"
-              value={miniDayEditor.label}
-              onChange={(e) => updateMiniDayEditorField('label', e.target.value)}
-              placeholder="미니 데이 1"
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="rounded-2xl bg-gray-50 p-1.5">
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleSelectMiniDayField('start')}
-                  className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
-                    miniDayEditField === 'start'
-                      ? 'border-emerald-200 bg-white shadow-sm'
-                      : 'border-transparent text-gray-500 hover:bg-white/70'
-                  }`}
-                >
-                  <p className={`text-xs font-medium ${
-                    miniDayEditField === 'start' ? 'text-emerald-700' : 'text-gray-500'
-                  }`}>
-                    시작
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">{startValueLabel}</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectMiniDayField('end')}
-                  className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
-                    miniDayEditField === 'end'
-                      ? 'border-emerald-200 bg-white shadow-sm'
-                      : 'border-transparent text-gray-500 hover:bg-white/70'
-                  }`}
-                >
-                  <p className={`text-xs font-medium ${
-                    miniDayEditField === 'end' ? 'text-emerald-700' : 'text-gray-500'
-                  }`}>
-                    종료
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">{endValueLabel}</p>
-                </button>
-              </div>
+          <div
+            className="sticky bottom-0 -mx-5 space-y-4 border-t border-gray-100 bg-white px-5 pt-3"
+            style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
+          >
+            <div>
+              <input
+                type="text"
+                value={miniDayEditor.label}
+                onChange={(e) => updateMiniDayEditorField('label', e.target.value)}
+                placeholder="미니 데이 1"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+              />
             </div>
 
-            {activeMiniDayErrorMessage && (
-              <p className="text-xs font-medium text-red-500">{activeMiniDayErrorMessage}</p>
-            )}
-          </div>
+            <div className="space-y-2">
+              <div className="rounded-2xl bg-gray-50 p-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMiniDayField('start')}
+                    className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                      miniDayEditField === 'start'
+                        ? 'border-emerald-200 bg-white shadow-sm'
+                        : 'border-transparent text-gray-500 hover:bg-white/70'
+                    }`}
+                  >
+                    <p className={`text-xs font-medium ${
+                      miniDayEditField === 'start' ? 'text-emerald-700' : 'text-gray-500'
+                    }`}>
+                      시작
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900">{startValueLabel}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMiniDayField('end')}
+                    className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                      miniDayEditField === 'end'
+                        ? 'border-emerald-200 bg-white shadow-sm'
+                        : 'border-transparent text-gray-500 hover:bg-white/70'
+                    }`}
+                  >
+                    <p className={`text-xs font-medium ${
+                      miniDayEditField === 'end' ? 'text-emerald-700' : 'text-gray-500'
+                    }`}>
+                      종료
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900">{endValueLabel}</p>
+                  </button>
+                </div>
+              </div>
 
-          <div className="space-y-3 rounded-2xl bg-gray-50 px-3 py-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-gray-500">
-                {miniDayEditField === 'start' ? '시작 시간 선택' : '종료 시간 선택'}
-              </p>
-              {showEndOfDayOption && (
-                <button
-                  type="button"
-                  onClick={handleSelectEndOfDay}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    timeDraft.is24
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  하루 끝
-                </button>
+              {activeMiniDayErrorMessage && (
+                <p className="text-xs font-medium text-red-500">{activeMiniDayErrorMessage}</p>
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <WheelColumn
-                  items={periodItems}
-                  selectedIndex={periodIndex}
-                  onSelectIndex={(index) => handleTogglePeriod(PERIOD_OPTIONS[index].value)}
-                  ariaLabel="오전 오후 선택"
-                />
+            <div className="space-y-3 rounded-2xl bg-gray-50 px-3 py-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-gray-500">
+                  {miniDayEditField === 'start' ? '시작 시간 선택' : '종료 시간 선택'}
+                </p>
+                {showEndOfDayOption && (
+                  <button
+                    type="button"
+                    onClick={handleSelectEndOfDay}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      timeDraft.is24
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    하루 끝
+                  </button>
+                )}
               </div>
-              <div className="space-y-2">
-                <WheelColumn
-                  items={hourItems}
-                  selectedIndex={hourIndex}
-                  onSelectIndex={(index) => handleSelectHour(HOUR_OPTIONS[index])}
-                  ariaLabel="시 선택"
-                />
-              </div>
-              <div className="space-y-2">
-                <WheelColumn
-                  items={minuteItems}
-                  selectedIndex={minuteIndex}
-                  onSelectIndex={(index) => handleSelectMinute(MINUTE_OPTIONS[index])}
-                  ariaLabel="분 선택"
-                />
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <WheelColumn
+                    items={periodItems}
+                    selectedIndex={periodIndex}
+                    onSelectIndex={(index) => handleTogglePeriod(PERIOD_OPTIONS[index].value)}
+                    ariaLabel="오전 오후 선택"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <WheelColumn
+                    items={hourItems}
+                    selectedIndex={hourIndex}
+                    onSelectIndex={(index) => handleSelectHour(HOUR_OPTIONS[index])}
+                    ariaLabel="시 선택"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <WheelColumn
+                    items={minuteItems}
+                    selectedIndex={minuteIndex}
+                    onSelectIndex={(index) => handleSelectMinute(MINUTE_OPTIONS[index])}
+                    ariaLabel="분 선택"
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="text-center text-sm font-medium text-gray-700">
-            <span className="text-gray-900">{previewRange}</span>
-            <span className="text-gray-400"> · </span>
-            <span>{previewDuration}</span>
-          </div>
-
-          <div className="sticky bottom-0 -mx-5 bg-white px-5 pb-5 pt-3">
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={handleResetMiniDay}
-                className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-200"
-              >
-                초기화
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveMiniDay}
-                disabled={!!activeMiniDayErrorMessage || updateMiniDays.isPending || !isMiniDayDirty}
-                className="rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                저장
-              </button>
+            <div className="text-center text-sm font-medium text-gray-700">
+              <span className="text-gray-900">{previewRange}</span>
+              <span className="text-gray-400"> · </span>
+              <span>{previewDuration}</span>
             </div>
+
+            <p className="text-center text-xs font-medium text-gray-400">
+              전체 기본값 복원은 설정 목록의 미니 데이 섹션에서 할 수 있어요
+            </p>
           </div>
         </div>
       </BottomSheet>
