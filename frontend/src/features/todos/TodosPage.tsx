@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { Fragment, useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -8,10 +8,9 @@ import {
   DndContext,
   closestCenter,
   pointerWithin,
-  MeasuringStrategy,
   type CollisionDetection,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -24,10 +23,8 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { useTimerStore } from '../timer/timerStore'
 import { Calendar } from '../../ui/Calendar'
 import { formatDateKey } from '../../ui/calendarUtils'
@@ -69,8 +66,28 @@ const getTodoOrder = (todo: { dayOrder?: number }) => todo.dayOrder ?? 0
 type GroupedTodos = Record<number, Todo[]>
 
 type ContainerItems = Record<DropContainerId, string[]>
+type CrossSectionPreview = {
+  containerId: DropContainerId
+  activeInsertIndex: number
+} | null
+type QueuedCrossContainerMove = {
+  activeId: string
+  activeContainer: DropContainerId
+  overContainer: DropContainerId
+  overId: string
+  isOverContainer: boolean
+  isBelowOverItem: boolean
+} | null
 
 type RectLike = { top: number; height: number }
+type DaySectionMeta = { id: number; title: string; range: string }
+
+type SectionGuideContent = {
+  headline: string
+  description: string
+  ctaLabel: string
+  examples: readonly string[]
+}
 
 const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): GroupedTodos => {
   const grouped: Record<number, Todo[]> = {}
@@ -100,16 +117,6 @@ const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): Gr
 
   return grouped
 }
-
-const addSpacer = (items: string[], id: string, index: number) => {
-  if (items.includes(id)) return items
-  const next = [...items]
-  const safeIndex = Math.max(0, Math.min(index, next.length))
-  next.splice(safeIndex, 0, id)
-  return next
-}
-
-const removeSpacer = (items: string[], id: string) => items.filter((item) => item !== id)
 
 const resolveActiveRect = (rect: unknown): RectLike | null => {
   const raw = (rect as { current?: unknown })?.current ?? rect
@@ -155,6 +162,66 @@ const buildDefaultOpenSections = (defaultOpenId: number): Record<number, boolean
   [defaultOpenId]: true,
 })
 
+const getSectionGuideContent = (
+  section: Pick<DaySectionMeta, 'id' | 'title'>,
+  mode: 'empty' | 'doneOnly',
+): SectionGuideContent => {
+  const title = section.title.trim() || '이 섹션'
+  const emptyBySection: Record<number, Omit<SectionGuideContent, 'ctaLabel'>> = {
+    0: {
+      headline: '개인 리듬에 맞춰 먼저 담아둘까요?',
+      description: '집중 시간대는 사람마다 달라요. 애매하면 미분류에 먼저 적고 나중에 옮겨도 됩니다.',
+      examples: ['갑자기 떠오른 할 일 기록', '나중에 처리할 일 모아두기', '아이디어 메모'],
+    },
+    1: {
+      headline: `${title}에는 집중 작업(Deep Work)부터`,
+      description: '집중력이 필요한 기획, 문서 작성, 문제 해결 작업을 먼저 배치해보세요.',
+      examples: ['핵심 기획안 작성', '문제 해결/디버깅 집중', '중요 문서 초안 작성'],
+    },
+    2: {
+      headline: `${title}에는 소통·처리 업무를 모아볼까요?`,
+      description: '회신, 회의, 반복 처리처럼 전환이 잦은 일을 묶어두면 부담이 줄어듭니다.',
+      examples: ['이메일/메시지 답장', '회의 후속 작업 처리', '반복 업무/서류 정리'],
+    },
+    3: {
+      headline: `${title}에는 창의·마무리 작업이 잘 맞아요`,
+      description: '정리, 회고, 개인 프로젝트처럼 몰입하거나 마무리하기 좋은 작업을 배치해보세요.',
+      examples: ['개인 프로젝트 진행', '오늘 작업 정리/회고', '내일 준비 및 체크리스트'],
+    },
+  }
+
+  const doneOnlyBySection: Record<number, Omit<SectionGuideContent, 'ctaLabel'>> = {
+    0: {
+      headline: '잘 정리했어요. 다음 아이템을 담아둘까요?',
+      description: '시간대가 애매하면 미분류에 먼저 적고 나중에 옮겨도 됩니다.',
+      examples: ['다음에 떠오를 일 기록', '짧은 할 일 추가', '보류할 일 메모'],
+    },
+    1: {
+      headline: `${title} 집중 작업을 잘 끝냈어요`,
+      description: '집중력이 남아 있다면 중요한 작업 1개만 더 이어가도 좋아요.',
+      examples: ['다음 핵심 작업 시작', '중요 문서 작성 계속', '집중 검토 이어가기'],
+    },
+    2: {
+      headline: `${title} 처리/소통 업무를 이어가볼까요?`,
+      description: '비슷한 성격의 처리 업무를 묶어두면 전환 비용을 줄이기 좋아요.',
+      examples: ['답장할 메시지 정리', '후속 작업 등록', '검토 요청 처리'],
+    },
+    3: {
+      headline: `${title}에 창의/마무리 작업을 하나 더 넣어볼까요?`,
+      description: '창의 작업이나 정리/회고처럼 가벼운 마감 작업을 넣어보세요.',
+      examples: ['아이디어 정리/브레인스토밍', '내일 일정 확인', '간단 회고 작성'],
+    },
+  }
+
+  const source = mode === 'empty'
+    ? (emptyBySection[section.id] ?? emptyBySection[0])
+    : (doneOnlyBySection[section.id] ?? doneOnlyBySection[0])
+  return {
+    ...source,
+    ctaLabel: mode === 'empty' ? `${title}에 추가` : '다음 할 일 추가',
+  }
+}
+
 const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
   const aKeys = Object.keys(a)
   const bKeys = Object.keys(b)
@@ -188,22 +255,51 @@ function ActiveSectionDrop({
   )
 }
 
-function SortableInput({
-  id,
-  children,
+function SectionGuideCard({
+  content,
+  onAdd,
+  onSelectExample,
 }: {
-  id: string
-  children: ReactNode
+  content: SectionGuideContent
+  onAdd: () => void
+  onSelectExample: (title: string) => void
 }) {
-  const { setNodeRef, transform, transition } = useSortable({ id, disabled: true })
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
+  const visibleExamples = content.examples.slice(0, 2)
 
   return (
-    <div ref={setNodeRef} style={style}>
-      {children}
+    <div
+      className="mx-2 mb-2 rounded-2xl border border-gray-100 bg-gradient-to-b from-gray-50 to-white px-3 py-2.5 transition-colors"
+    >
+      <p className="text-sm font-semibold text-gray-900">{content.headline}</p>
+      <p className="mt-1 text-xs leading-4 text-gray-500">{content.description}</p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex h-7 items-center gap-1.5 rounded-full bg-emerald-500 px-3 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+        >
+          <PlusIcon className="h-3 w-3" />
+          <span>{content.ctaLabel}</span>
+        </button>
+        {visibleExamples.map((example) => (
+          <button
+            key={example}
+            type="button"
+            onClick={() => onSelectExample(example)}
+            className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+          >
+            {example}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CrossSectionPreviewSlot() {
+  return (
+    <div className="pointer-events-none mx-2 my-1">
+      <div className="h-11 rounded-xl border-2 border-emerald-300/85 bg-transparent" />
     </div>
   )
 }
@@ -221,6 +317,8 @@ function TodosPage() {
   // 캘린더 상태
   const [selectedDate, setSelectedDate] = useState(new Date())
   const selectedDateKey = formatDateKey(selectedDate)
+  const todayDateKey = formatDateKey(new Date())
+  const isSelectedDateToday = selectedDateKey === todayDateKey
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
 
   useEffect(() => {
@@ -255,7 +353,7 @@ function TodosPage() {
         title: miniDaysSettings.day3.label,
         range: formatRange(miniDaysSettings.day3.start, miniDaysSettings.day3.end),
       },
-    ]
+    ] satisfies DaySectionMeta[]
   }, [miniDaysSettings])
 
   // Todo 액션 훅
@@ -267,12 +365,14 @@ function TodosPage() {
   const isSubmittingRef = useRef(false)
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null)
   const openSectionTimeoutRef = useRef<number | null>(null)
+  const pendingOpenSectionIdRef = useRef<number | null>(null)
 
   // 폼
   const {
     register,
     reset,
     getValues,
+    setValue,
   } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
     defaultValues: { title: '' },
@@ -326,6 +426,9 @@ function TodosPage() {
     buildContainerItems(buildGroupedTodos([], daySections)),
   )
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [crossSectionPreview, setCrossSectionPreview] = useState<CrossSectionPreview>(null)
+  const crossContainerMoveRafRef = useRef<number | null>(null)
+  const queuedCrossContainerMoveRef = useRef<QueuedCrossContainerMove>(null)
   const clonedItemsRef = useRef<ContainerItems | null>(null)
   const dragOriginContainerRef = useRef<DropContainerId | null>(null)
   const lastDragOverKeyRef = useRef<string | null>(null)
@@ -392,59 +495,15 @@ function TodosPage() {
     setContainerItems((prev) => (areContainerItemsEqual(prev, next) ? prev : next))
   }, [activeDragId, groupedTodos, buildContainerItems])
 
-  useEffect(() => {
-    if (activeDragId) return
-
-    if (inputDay === null) {
-      setContainerItems((prev) => {
-        const next = { ...prev }
-        let changed = false
-        for (const section of daySections) {
-          const key = getContainerId(section.id)
-          const current = next[key] ?? []
-          const cleaned = current.filter((id) => !id.startsWith('input-'))
-          if (cleaned.length !== current.length) {
-            next[key] = cleaned
-            changed = true
-          }
-        }
-        return changed ? next : prev
-      })
-      return
-    }
-
-    const containerId = getContainerId(inputDay)
-    const activeIds = (containerItems[containerId] ?? []).filter((id) => {
-      const todo = todoById.get(id)
-      return !!todo && !todo.isDone
-    })
-    const spacerIndex = activeIds.length === 0 ? 0 : activeIds.length
-    const spacerId = `input-${inputDay}`
-    setContainerItems((prev) => {
-      const current = prev[containerId] ?? []
-      const nextItems = addSpacer(removeSpacer(current, spacerId), spacerId, spacerIndex)
-      if (current.length === nextItems.length && current.every((value, index) => value === nextItems[index])) {
-        return prev
-      }
-      return { ...prev, [containerId]: nextItems }
-    })
-  }, [activeDragId, containerItems, inputDay, todoById, daySections])
-
-
   // 타이머 상태
   // === Effects ===
   // 메모 편집 모드로 전환 시 자동 포커스
   useEffect(() => {
     if (actions.noteEditMode && memoTextareaRef.current) {
-      // 약간의 딜레이를 주어 DOM 업데이트 후 포커스
-      setTimeout(() => {
-        if (memoTextareaRef.current) {
-          memoTextareaRef.current.focus()
-          // 커서를 텍스트 끝으로 이동
-          const length = memoTextareaRef.current.value.length
-          memoTextareaRef.current.setSelectionRange(length, length)
-        }
-      }, 0)
+      memoTextareaRef.current.focus()
+      // 커서를 텍스트 끝으로 이동
+      const length = memoTextareaRef.current.value.length
+      memoTextareaRef.current.setSelectionRange(length, length)
     }
   }, [actions.noteEditMode])
 
@@ -452,8 +511,9 @@ function TodosPage() {
 
   // DnD
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+    // Mouse/Touh 센서를 분리해 모바일에서 PointerSensor가 TouchSensor를 가로채지 않게 한다.
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 12 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -533,88 +593,134 @@ function TodosPage() {
     }
   }
 
+  const resizeTodoInput = (node: HTMLTextAreaElement | null) => {
+    if (!node) return
+    node.style.height = 'auto'
+    node.style.height = `${node.scrollHeight}px`
+  }
+
+  const focusTodoInputSoon = () => {
+    window.setTimeout(() => {
+      if (!inputRef.current) return
+      inputRef.current.focus()
+      const length = inputRef.current.value.length
+      inputRef.current.setSelectionRange(length, length)
+      resizeTodoInput(inputRef.current)
+    }, 0)
+  }
+
+  const openQuickInputForSection = (sectionId: number, presetTitle?: string) => {
+    setOpenSections((prev) => ({ ...prev, [sectionId]: true }))
+    setInputDay(sectionId)
+    if (presetTitle !== undefined) {
+      setValue('title', presetTitle, { shouldDirty: true })
+    } else {
+      reset({ title: '' })
+    }
+    focusTodoInputSoon()
+  }
+
+  const cancelQueuedCrossContainerMove = useCallback(() => {
+    queuedCrossContainerMoveRef.current = null
+    if (crossContainerMoveRafRef.current !== null) {
+      window.cancelAnimationFrame(crossContainerMoveRafRef.current)
+      crossContainerMoveRafRef.current = null
+    }
+  }, [])
+
+  const cancelPendingOpenSection = useCallback(() => {
+    pendingOpenSectionIdRef.current = null
+    if (openSectionTimeoutRef.current !== null) {
+      window.clearTimeout(openSectionTimeoutRef.current)
+      openSectionTimeoutRef.current = null
+    }
+  }, [])
+
+  const scheduleCrossContainerMove = useCallback((move: Exclude<QueuedCrossContainerMove, null>) => {
+    queuedCrossContainerMoveRef.current = move
+    if (crossContainerMoveRafRef.current !== null) return
+
+    crossContainerMoveRafRef.current = window.requestAnimationFrame(() => {
+      crossContainerMoveRafRef.current = null
+      const pending = queuedCrossContainerMoveRef.current
+      if (!pending) return
+
+      setContainerItems((prev) => {
+        const next = { ...prev }
+        const fromItems = [...(next[pending.activeContainer] ?? [])]
+        const toItems = [...(next[pending.overContainer] ?? [])]
+
+        const fromIndex = fromItems.indexOf(pending.activeId)
+        if (fromIndex === -1) return prev
+
+        fromItems.splice(fromIndex, 1)
+
+        const overIndex = pending.isOverContainer ? toItems.length : toItems.indexOf(pending.overId)
+        if (!pending.isOverContainer && overIndex === -1) return prev
+
+        const insertIndex = pending.isOverContainer
+          ? toItems.length
+          : overIndex + (pending.isBelowOverItem ? 1 : 0)
+        toItems.splice(Math.max(0, Math.min(insertIndex, toItems.length)), 0, pending.activeId)
+
+        const prevFrom = prev[pending.activeContainer] ?? []
+        const prevTo = prev[pending.overContainer] ?? []
+        const fromUnchanged =
+          prevFrom.length === fromItems.length &&
+          prevFrom.every((value, index) => value === fromItems[index])
+        const toUnchanged =
+          prevTo.length === toItems.length &&
+          prevTo.every((value, index) => value === toItems[index])
+
+        if (fromUnchanged && toUnchanged) return prev
+
+        next[pending.activeContainer] = fromItems
+        next[pending.overContainer] = toItems
+        return next
+      })
+    })
+  }, [])
+
+  const clearDragTransientState = useCallback(() => {
+    setActiveDragId(null)
+    setCrossSectionPreview(null)
+    cancelQueuedCrossContainerMove()
+    cancelPendingOpenSection()
+    clonedItemsRef.current = null
+    dragOriginContainerRef.current = null
+    lastDragOverKeyRef.current = null
+  }, [cancelPendingOpenSection, cancelQueuedCrossContainerMove])
+
+  useEffect(() => {
+    return () => {
+      if (openSectionTimeoutRef.current !== null) {
+        window.clearTimeout(openSectionTimeoutRef.current)
+        openSectionTimeoutRef.current = null
+      }
+      if (crossContainerMoveRafRef.current !== null) {
+        window.cancelAnimationFrame(crossContainerMoveRafRef.current)
+        crossContainerMoveRafRef.current = null
+      }
+    }
+  }, [])
+
   const handleDragStart = (event: DragStartEvent) => {
     const id = String(event.active.id)
     setActiveDragId(id)
+    setCrossSectionPreview(null)
     clonedItemsRef.current = containerItems
     dragOriginContainerRef.current = findContainerFor(id)
     lastDragOverKeyRef.current = null
   }
 
   const handleDragOver = (event: DragOverEvent) => {
-    if (!event.over) return
-    const activeId = String(event.active.id)
-    if (activeId.startsWith('input-')) return
-    const overId = String(event.over.id)
-    const isOverContainer = overId.startsWith('day-')
-    const activeRect = resolveActiveRect(event.active.rect)
-    const activeTop = activeRect?.top ?? 0
-    const overRect = event.over.rect
-    const isBelowOverItem = !isOverContainer && activeTop > overRect.top + overRect.height / 2
-
-    const activeContainer = findContainerFor(activeId)
-    const overContainer = findContainerFor(overId)
-    if (!activeContainer || !overContainer) return
-
-    const dragOverKey = `${activeId}:${activeContainer}->${overContainer}:${overId}:${isBelowOverItem ? '1' : '0'}`
-    if (lastDragOverKeyRef.current === dragOverKey) return
-    lastDragOverKeyRef.current = dragOverKey
-
-    const overMiniDay = parseContainerId(overContainer as DropContainerId)
-      if (!openSections[overMiniDay]) {
-        if (openSectionTimeoutRef.current) window.clearTimeout(openSectionTimeoutRef.current)
-        openSectionTimeoutRef.current = window.setTimeout(() => {
-          setOpenSections((prev) =>
-            prev[overMiniDay] ? prev : { ...prev, [overMiniDay]: true },
-          )
-        }, 200)
-      }
-
-    if (activeContainer === overContainer) return
-
-    setContainerItems((prev) => {
-      const next = { ...prev }
-      const fromItems = [...(next[activeContainer] ?? [])]
-      const toItems = [...(next[overContainer] ?? [])]
-
-      const fromIndex = fromItems.indexOf(activeId)
-      if (fromIndex === -1) return prev
-
-      fromItems.splice(fromIndex, 1)
-
-      const overIndex = isOverContainer ? toItems.length : toItems.indexOf(overId)
-      if (!isOverContainer && overIndex === -1) return prev
-
-      const insertIndex = isOverContainer ? toItems.length : overIndex + (isBelowOverItem ? 1 : 0)
-      toItems.splice(Math.max(0, Math.min(insertIndex, toItems.length)), 0, activeId)
-
-      next[activeContainer] = fromItems
-      next[overContainer] = toItems
-      return next
-    })
-  }
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    if (openSectionTimeoutRef.current) {
-      window.clearTimeout(openSectionTimeoutRef.current)
-      openSectionTimeoutRef.current = null
-    }
     if (!event.over) {
-      setActiveDragId(null)
-      clonedItemsRef.current = null
-      dragOriginContainerRef.current = null
+      cancelPendingOpenSection()
+      cancelQueuedCrossContainerMove()
       lastDragOverKeyRef.current = null
       return
     }
-
     const activeId = String(event.active.id)
-    if (activeId.startsWith('input-')) {
-      setActiveDragId(null)
-      clonedItemsRef.current = null
-      dragOriginContainerRef.current = null
-      lastDragOverKeyRef.current = null
-      return
-    }
     const overId = String(event.over.id)
     const isOverContainer = overId.startsWith('day-')
     const activeRect = resolveActiveRect(event.active.rect)
@@ -625,9 +731,81 @@ function TodosPage() {
     const activeContainer = findContainerFor(activeId)
     const overContainer = findContainerFor(overId)
     if (!activeContainer || !overContainer) {
-      setActiveDragId(null)
-      clonedItemsRef.current = null
-      dragOriginContainerRef.current = null
+      cancelPendingOpenSection()
+      cancelQueuedCrossContainerMove()
+      lastDragOverKeyRef.current = null
+      return
+    }
+
+    const dragOverKey = `${activeId}:${activeContainer}->${overContainer}:${overId}:${isBelowOverItem ? '1' : '0'}`
+    if (lastDragOverKeyRef.current === dragOverKey) return
+    lastDragOverKeyRef.current = dragOverKey
+
+    if (activeContainer === overContainer) {
+      cancelPendingOpenSection()
+      cancelQueuedCrossContainerMove()
+      return
+    }
+
+    // 닫힌 섹션으로 교차 이동하는 동안에는 "펼침"만 먼저 처리하고,
+    // 펼쳐진 이후에 실시간 배열 이동을 시작해 측정 루프 위험을 낮춘다.
+    if (isOverContainer) {
+      const overSectionId = parseContainerId(overContainer)
+      const isOverSectionOpen = openSections[overSectionId] ?? false
+      if (!isOverSectionOpen) {
+        cancelQueuedCrossContainerMove()
+        if (pendingOpenSectionIdRef.current !== overSectionId) {
+          cancelPendingOpenSection()
+          pendingOpenSectionIdRef.current = overSectionId
+          openSectionTimeoutRef.current = window.setTimeout(() => {
+            openSectionTimeoutRef.current = null
+            pendingOpenSectionIdRef.current = null
+            setOpenSections((prev) => {
+              if (prev[overSectionId]) return prev
+              return { ...prev, [overSectionId]: true }
+            })
+          }, 140)
+        }
+        return
+      }
+    }
+
+    cancelPendingOpenSection()
+
+    // 교차 섹션에서는 실시간 배열 이동을 유지하되 rAF 1프레임당 1회로 제한한다.
+    scheduleCrossContainerMove({
+      activeId,
+      activeContainer,
+      overContainer,
+      overId,
+      isOverContainer,
+      isBelowOverItem,
+    })
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    if (openSectionTimeoutRef.current) {
+      window.clearTimeout(openSectionTimeoutRef.current)
+      openSectionTimeoutRef.current = null
+    }
+    if (!event.over) {
+      clearDragTransientState()
+      return
+    }
+
+    const activeId = String(event.active.id)
+    const overId = String(event.over.id)
+    const isOverContainer = overId.startsWith('day-')
+    const activeRect = resolveActiveRect(event.active.rect)
+    const activeTop = activeRect?.top ?? 0
+    const overRect = event.over.rect
+    const isBelowOverItem = !isOverContainer && activeTop > overRect.top + overRect.height / 2
+
+    const activeContainer = findContainerFor(activeId)
+    const overContainer = findContainerFor(overId)
+    const dragOriginContainer = dragOriginContainerRef.current
+    if (!activeContainer || !overContainer) {
+      clearDragTransientState()
       return
     }
 
@@ -685,20 +863,6 @@ function TodosPage() {
     })()
 
     const normalizedSnapshot = normalizeContainerItems(snapshot)
-    if (inputDay !== null) {
-      const containerId = getContainerId(inputDay)
-      const spacerId = `input-${inputDay}`
-      const activeIds = (normalizedSnapshot[containerId] ?? []).filter((id) => {
-        const todo = todoById.get(id)
-        return !!todo && !todo.isDone
-      })
-      const spacerIndex = activeIds.length === 0 ? 0 : activeIds.length
-      normalizedSnapshot[containerId] = addSpacer(
-        removeSpacer(normalizedSnapshot[containerId] ?? [], spacerId),
-        spacerId,
-        spacerIndex,
-      )
-    }
 
     const buildReorderItemsFor = (containerId: DropContainerId): TodoReorderItem[] => {
       const ids = (normalizedSnapshot[containerId] ?? []).filter((id) => todoById.has(id))
@@ -713,7 +877,7 @@ function TodosPage() {
     const affected = new Set<DropContainerId>()
     affected.add(activeContainer)
     affected.add(overContainer)
-    if (dragOriginContainerRef.current) affected.add(dragOriginContainerRef.current)
+    if (dragOriginContainer) affected.add(dragOriginContainer)
 
     const reorderItems = Array.from(affected).flatMap(buildReorderItemsFor)
     if (reorderItems.length > 0) {
@@ -721,10 +885,7 @@ function TodosPage() {
     }
 
     setContainerItems(normalizedSnapshot)
-    setActiveDragId(null)
-    clonedItemsRef.current = null
-    dragOriginContainerRef.current = null
-    lastDragOverKeyRef.current = null
+    clearDragTransientState()
   }
 
   const handleDragCancel = () => {
@@ -735,10 +896,7 @@ function TodosPage() {
     if (clonedItemsRef.current) {
       setContainerItems(clonedItemsRef.current)
     }
-    setActiveDragId(null)
-    clonedItemsRef.current = null
-    dragOriginContainerRef.current = null
-    lastDragOverKeyRef.current = null
+    clearDragTransientState()
   }
 
 
@@ -795,7 +953,6 @@ function TodosPage() {
           <DndContext
             sensors={sensors}
             collisionDetection={collisionDetectionStrategy}
-            measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragCancel={handleDragCancel}
@@ -812,14 +969,22 @@ function TodosPage() {
                 const nextActiveOrder = getNextDayOrder(activeTodos)
                 const nextDoneOrder = getNextDayOrder(doneTodos)
                 const dayFocus = blockFocusStats.totals[section.id] ?? 0
+                const isCurrentTimeSection = isSelectedDateToday && section.id === defaultOpenId
                 const shouldShowInput = inputDay === section.id
-                const inputId = shouldShowInput ? `input-${section.id}` : null
+                const isEmptySection = totalCount === 0
+                const isDoneOnlySection = activeTodos.length === 0 && doneTodos.length > 0
+                const shouldShowPriorityGuide = isCurrentTimeSection || section.id === 0
                 const inputAtTop = shouldShowInput && activeTodos.length === 0
                 const inputBetween = shouldShowInput && activeTodos.length > 0
+                const hasRangeMeta = section.range.trim().length > 0
+                const hasFlowMeta = dayFocus > 0
+                const showRangeOnMobile = hasRangeMeta && (!isSectionOpen || !hasFlowMeta)
+                const showFlowOnMobile = hasFlowMeta && (isSectionOpen || !hasRangeMeta)
+                const previewActiveInsertIndex = crossSectionPreview?.containerId === containerId
+                  ? Math.max(0, Math.min(crossSectionPreview.activeInsertIndex, activeTodos.length))
+                  : null
                 const sortableIds = [
-                  ...(inputAtTop && inputId ? [inputId] : []),
                   ...activeTodos.map((todo) => todo.id),
-                  ...(inputBetween && inputId ? [inputId] : []),
                   ...doneTodos.map((todo) => todo.id),
                 ]
 
@@ -833,8 +998,7 @@ function TodosPage() {
                           register('title').ref(e)
                           inputRef.current = e
                           if (e) {
-                            e.style.height = 'auto'
-                            e.style.height = `${e.scrollHeight}px`
+                            resizeTodoInput(e)
                           }
                         }}
                         placeholder="할 일을 입력하세요"
@@ -859,13 +1023,7 @@ function TodosPage() {
                               try {
                                 await actions.handleCreate(title, section.id, nextActiveOrder)
                                 reset()
-                                setTimeout(() => {
-                                  if (inputRef.current) {
-                                    inputRef.current.focus()
-                                    inputRef.current.style.height = 'auto'
-                                    inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
-                                  }
-                                }, 0)
+                                focusTodoInputSoon()
                               } catch (err) {
                                 toast.error('추가 실패', { id: 'todo-create-failed' })
                                 console.error(err)
@@ -877,8 +1035,7 @@ function TodosPage() {
                         }}
                         onChange={(e) => {
                           register('title').onChange(e)
-                          e.target.style.height = 'auto'
-                          e.target.style.height = `${e.target.scrollHeight}px`
+                          resizeTodoInput(e.target)
                         }}
                         onBlur={async () => {
                           if (isSubmittingRef.current) return
@@ -912,9 +1069,9 @@ function TodosPage() {
                     className={`${index === 0 ? '' : 'border-t border-gray-100 pt-5'} space-y-2`}
                   >
                     <ActiveSectionDrop id={containerId} className="space-y-2 pb-3">
-                      {(isActiveOver) => (
+                      {() => (
                         <>
-                          <div className="grid grid-cols-[20px_1fr_28px] items-start gap-2 px-2">
+                          <div className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-2 rounded-xl px-2 py-1">
                             <button
                               onClick={() =>
                                 setOpenSections((prev) => {
@@ -937,52 +1094,77 @@ function TodosPage() {
                                 <h3 className="text-sm font-semibold text-gray-900">
                                   {section.title}
                                 </h3>
-                                <span className="text-xs text-gray-400">
-                                  {doneTodos.length}/{totalCount}
-                                </span>
-                                {dayFocus > 0 && (
-                                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                    Flow · {formatTimerHoursMinutes(dayFocus)}
+                                {totalCount > 0 && (
+                                  <span className="text-xs text-gray-400">
+                                    남음 {activeTodos.length} · 완료 {doneTodos.length}
+                                  </span>
+                                )}
+                                {isCurrentTimeSection && (
+                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                    현재 시간대
                                   </span>
                                 )}
                               </div>
-                              {section.range && <span className="text-xs text-gray-400">{section.range}</span>}
+                              {(hasRangeMeta || hasFlowMeta) && (
+                                <div className="mt-0.5 flex min-h-[18px] flex-wrap items-center gap-2">
+                                  {hasRangeMeta && (
+                                    <span
+                                      className={`text-xs text-gray-400 ${
+                                        showRangeOnMobile ? 'inline-flex' : 'hidden sm:inline-flex'
+                                      }`}
+                                    >
+                                      {section.range}
+                                    </span>
+                                  )}
+                                  {hasFlowMeta && (
+                                    <span
+                                      className={`rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ${
+                                        showFlowOnMobile ? 'inline-flex' : 'hidden sm:inline-flex'
+                                      }`}
+                                    >
+                                      Flow · {formatTimerHoursMinutes(dayFocus)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             <button
                               onClick={() => {
+                                const willOpenInput = inputDay !== section.id
                                 setOpenSections((prev) => ({ ...prev, [section.id]: true }))
                                 setInputDay((current) => (current === section.id ? null : section.id))
-                                setTimeout(() => {
-                                  if (inputRef.current) {
-                                    inputRef.current.focus()
-                                    inputRef.current.style.height = 'auto'
-                                    inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
-                                  }
-                                }, 0)
+                                if (willOpenInput) focusTodoInputSoon()
                               }}
-                              className="mt-0.5 flex h-7 w-7 items-center justify-center justify-self-end rounded-full text-emerald-500 transition-colors hover:bg-emerald-50"
+                              aria-label={`${section.title} 할 일 추가`}
+                              className="mt-0.5 inline-flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-emerald-700 transition-colors hover:bg-gray-100"
                             >
-                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
-                                <PlusIcon className="h-3 w-3" />
+                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
+                                <PlusIcon className="h-2.5 w-2.5" />
                               </span>
                             </button>
                           </div>
                           {isSectionOpen && (
                             <>
                               <div
-                                className={`min-h-[44px] space-y-1 rounded-lg py-1 transition-colors ${isActiveOver ? 'bg-emerald-50/40' : ''}`}
+                                className="min-h-[44px] space-y-1 rounded-lg py-1"
                               >
+                                {!shouldShowInput && (isEmptySection || isDoneOnlySection) && shouldShowPriorityGuide && (
+                                  <SectionGuideCard
+                                    content={getSectionGuideContent(section, isEmptySection ? 'empty' : 'doneOnly')}
+                                    onAdd={() => openQuickInputForSection(section.id)}
+                                    onSelectExample={(title) => openQuickInputForSection(section.id, title)}
+                                  />
+                                )}
                                 <SortableContext
                                   id={containerId}
                                   items={sortableIds}
                                   strategy={verticalListSortingStrategy}
                                 >
-                                  {inputAtTop && inputId && (
-                                    <SortableInput id={inputId}>
-                                      {renderInput()}
-                                    </SortableInput>
+                                  {inputAtTop && renderInput()}
+                                  {previewActiveInsertIndex === 0 && activeTodos.length === 0 && (
+                                    <CrossSectionPreviewSlot />
                                   )}
-                                  {activeTodos.map((todo) => {
+                                  {activeTodos.map((todo, activeIndex) => {
                                     const {
                                       timer,
                                       isActiveTimer,
@@ -998,53 +1180,54 @@ function TodosPage() {
                                     } = getTodoTimerProps(todo)
 
                                     return (
-                                      <SortableTodoItem
-                                        key={todo.id}
-                                        id={todo.id}
-                                        title={todo.title}
-                                        note={todo.note}
-                                        sessionCount={todo.sessionCount}
-                                        sessionFocusSeconds={todo.sessionFocusSeconds}
-                                        isDone={todo.isDone}
-                                        isEditing={actions.editingId === todo.id}
-                                        editingTitle={actions.editingTitle}
-                                        onEditingTitleChange={actions.setEditingTitle}
-                                        onToggle={() =>
-                                          actions.handleToggleDone(
-                                            todo.id,
-                                            !todo.isDone,
-                                            !todo.isDone ? nextDoneOrder : nextActiveOrder,
-                                          )
-                                        }
-                                        onEdit={() => actions.handleEdit(todo.id, todo.title)}
-                                        onSaveEdit={actions.handleSaveEdit}
-                                        onCancelEdit={actions.handleCancelEdit}
-                                        onDelete={() => actions.handleDelete(todo.id)}
-                                        onOpenMenu={() => actions.setSelectedTodo(todo)}
-                                        onOpenTimer={() => {
-                                          const modeToUse = timer?.mode || todo.timerMode || null
-                                          actions.handleOpenTimer(todo, modeToUse)
-                                        }}
-                                        onOpenNote={() => actions.handleOpenNote(todo)}
-                                        isActiveTimer={isActiveTimer}
-                                        activeTimerMode={timer?.mode}
-                                        activeTimerElapsedMs={activeTimerElapsedMs}
-                                        activeTimerRemainingMs={activeTimerRemainingMs}
-                                        activeTimerPhase={activeTimerPhase}
-                                        breakElapsedMs={breakElapsedMs}
-                                        breakTargetMs={breakTargetMs}
-                                        isBreakPhase={isBreakPhase}
-                                        flexiblePhase={flexiblePhase}
-                                        sessions={sessions}
-                                        initialFocusMs={initialFocusMs}
-                                      />
+                                      <Fragment key={todo.id}>
+                                        {previewActiveInsertIndex === activeIndex && <CrossSectionPreviewSlot />}
+                                        <SortableTodoItem
+                                          id={todo.id}
+                                          title={todo.title}
+                                          note={todo.note}
+                                          sessionCount={todo.sessionCount}
+                                          sessionFocusSeconds={todo.sessionFocusSeconds}
+                                          isDone={todo.isDone}
+                                          isEditing={actions.editingId === todo.id}
+                                          editingTitle={actions.editingTitle}
+                                          onEditingTitleChange={actions.setEditingTitle}
+                                          onToggle={() =>
+                                            actions.handleToggleDone(
+                                              todo.id,
+                                              !todo.isDone,
+                                              !todo.isDone ? nextDoneOrder : nextActiveOrder,
+                                            )
+                                          }
+                                          onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                                          onSaveEdit={actions.handleSaveEdit}
+                                          onCancelEdit={actions.handleCancelEdit}
+                                          onDelete={() => actions.handleDelete(todo.id)}
+                                          onOpenMenu={() => actions.setSelectedTodo(todo)}
+                                          onOpenTimer={() => {
+                                            const modeToUse = timer?.mode || todo.timerMode || null
+                                            actions.handleOpenTimer(todo, modeToUse)
+                                          }}
+                                          onOpenNote={() => actions.handleOpenNote(todo)}
+                                          isActiveTimer={isActiveTimer}
+                                          activeTimerMode={timer?.mode}
+                                          activeTimerElapsedMs={activeTimerElapsedMs}
+                                          activeTimerRemainingMs={activeTimerRemainingMs}
+                                          activeTimerPhase={activeTimerPhase}
+                                          breakElapsedMs={breakElapsedMs}
+                                          breakTargetMs={breakTargetMs}
+                                          isBreakPhase={isBreakPhase}
+                                          flexiblePhase={flexiblePhase}
+                                          sessions={sessions}
+                                          initialFocusMs={initialFocusMs}
+                                        />
+                                      </Fragment>
                                     )
                                   })}
-                                  {inputBetween && inputId && (
-                                    <SortableInput id={inputId}>
-                                      {renderInput()}
-                                    </SortableInput>
+                                  {previewActiveInsertIndex === activeTodos.length && activeTodos.length > 0 && (
+                                    <CrossSectionPreviewSlot />
                                   )}
+                                  {inputBetween && renderInput()}
                                   {doneTodos.map((todo) => {
                                     const {
                                       timer,
@@ -1234,6 +1417,7 @@ function TodosPage() {
       <BottomSheet
         isOpen={actions.showNoteModal}
         onClose={actions.handleCloseNote}
+        panelClassName="min-h-[50dvh]"
       >
         {/* 커스텀 헤더 */}
         <div className="mb-4 -mt-2">
@@ -1273,7 +1457,17 @@ function TodosPage() {
           ref={memoTextareaRef}
           value={actions.noteText}
           onChange={(e) => actions.setNoteText(e.target.value)}
-          onClick={!actions.noteEditMode ? actions.handleEditNote : undefined}
+          onPointerDown={!actions.noteEditMode ? (e) => {
+            // Mobile browsers often ignore async focus after a tap on a readOnly textarea.
+            // Flip to editable + focus within the same user gesture so the keyboard opens.
+            const target = e.currentTarget
+            e.preventDefault()
+            actions.handleEditNote()
+            target.readOnly = false
+            target.focus()
+            const length = target.value.length
+            target.setSelectionRange(length, length)
+          } : undefined}
           readOnly={!actions.noteEditMode}
           placeholder="메모를 입력하세요..."
           className={`mb-4 h-40 w-full resize-none rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 ${
