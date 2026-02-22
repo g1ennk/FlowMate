@@ -3,6 +3,7 @@ export const STORAGE_PREFIX = 'flowmate'
 export const storageKeys = {
   clientId: `${STORAGE_PREFIX}/client-id`,
   onboardingSeen: `${STORAGE_PREFIX}/onboarding/seen`,
+  authMode: `${STORAGE_PREFIX}/auth/mode`,
   todos: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/todos`,
   settings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings`,
   reviews: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/reviews`,
