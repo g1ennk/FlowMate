@@ -39,10 +39,10 @@ jobs:
           aws-region: ap-northeast-2
 
       - name: Upload to S3
-        run: aws s3 sync frontend/dist/ s3://flowmate-dev-frontend --delete
+        run: aws s3 sync frontend/dist/ s3://${{ secrets.DEV_S3_BUCKET }} --delete
 
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ELD3D7OCSS5QS \
+            --distribution-id ${{ secrets.DEV_CLOUDFRONT_ID }} \
             --paths "/*"
