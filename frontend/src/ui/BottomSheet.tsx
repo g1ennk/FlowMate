@@ -60,12 +60,6 @@ export function BottomSheet({
     }
   }, [isOpen])
 
-  useEffect(() => {
-    if (!isOpen) {
-      resetDragState()
-    }
-  }, [isOpen])
-
   // ESC 키로 닫기
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -120,6 +114,8 @@ export function BottomSheet({
     }
   }
 
+  const shouldDisableSheetTransition = isOpen && isDraggingSheet
+
   return createPortal(
     <div
       ref={containerRef}
@@ -136,71 +132,79 @@ export function BottomSheet({
       />
 
       {/* 시트 */}
-      <div
-        className={`absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl ${
-          isDraggingSheet ? 'transition-none' : 'transition-transform duration-300 ease-out'
-        } ${panelClassName}`}
-        style={{
-          transform: isOpen ? `translateY(${dragOffsetY}px)` : 'translateY(100%)',
-        }}
-      >
-        {hideHandle && (
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
+        <div className="w-full sm:max-w-lg sm:px-5">
           <div
-            className="h-2 touch-none"
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={(e) => finishDrag(e)}
-            onPointerCancel={(e) => finishDrag(e, true)}
-          />
-        )}
-
-        {!hideHandle && (
-          <div
-            className="flex cursor-grab touch-none justify-center py-3 active:cursor-grabbing"
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={(e) => finishDrag(e)}
-            onPointerCancel={(e) => finishDrag(e, true)}
+            className={`pointer-events-auto flex w-full max-h-[85dvh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl ${
+              shouldDisableSheetTransition ? 'transition-none' : 'transition-transform duration-300 ease-out'
+            } ${panelClassName}`}
+            style={{
+              transform: isOpen ? `translateY(${dragOffsetY}px)` : 'translateY(100%)',
+            }}
+            onTransitionEnd={(e) => {
+              if (e.target !== e.currentTarget) return
+              if (!isOpen) resetDragState()
+            }}
           >
-            <div className="h-1 w-10 rounded-full bg-gray-300" />
-          </div>
-        )}
+            {hideHandle && (
+              <div
+                className="h-2 touch-none"
+                onPointerDown={handleDragStart}
+                onPointerMove={handleDragMove}
+                onPointerUp={(e) => finishDrag(e)}
+                onPointerCancel={(e) => finishDrag(e, true)}
+              />
+            )}
 
-        {/* 타이틀 */}
-        {title && (
-          <div
-            className={`relative px-5 pb-3 ${
-              showHeaderDivider ? 'border-b border-gray-100' : ''
-            }`}
-          >
-            <h3 className={`text-center text-base font-semibold text-gray-900 truncate ${titleClassName}`}>{title}</h3>
-            {headerAction && (
-              <div className={`absolute top-1/2 -translate-y-1/2 ${showCloseButton ? 'right-12' : 'right-4'}`}>
-                {headerAction}
+            {!hideHandle && (
+              <div
+                className="flex cursor-grab touch-none justify-center py-3 active:cursor-grabbing"
+                onPointerDown={handleDragStart}
+                onPointerMove={handleDragMove}
+                onPointerUp={(e) => finishDrag(e)}
+                onPointerCancel={(e) => finishDrag(e, true)}
+              >
+                <div className="h-1 w-10 rounded-full bg-gray-300" />
               </div>
             )}
-            {showCloseButton && (
-              <button
-                type="button"
-                aria-label={closeButtonAriaLabel}
-                onClick={onClose}
-                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 transition-colors hover:text-gray-600"
-              >
-                <CloseIcon className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        )}
 
-        {/* 컨텐츠 */}
-        <div
-          className={`bottom-sheet-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 pt-2 touch-pan-y ${contentClassName}`}
-          style={{
-            paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
-            WebkitOverflowScrolling: 'touch',
-          }}
-        >
-          {children}
+            {/* 타이틀 */}
+            {title && (
+              <div
+                className={`relative px-5 pb-3 ${
+                  showHeaderDivider ? 'border-b border-gray-100' : ''
+                }`}
+              >
+                <h3 className={`text-center text-base font-semibold text-gray-900 truncate ${titleClassName}`}>{title}</h3>
+                {headerAction && (
+                  <div className={`absolute top-1/2 -translate-y-1/2 ${showCloseButton ? 'right-12' : 'right-4'}`}>
+                    {headerAction}
+                  </div>
+                )}
+                {showCloseButton && (
+                  <button
+                    type="button"
+                    aria-label={closeButtonAriaLabel}
+                    onClick={onClose}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 transition-colors hover:text-gray-600"
+                  >
+                    <CloseIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* 컨텐츠 */}
+            <div
+              className={`bottom-sheet-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 pt-2 touch-pan-y ${contentClassName}`}
+              style={{
+                paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
+              {children}
+            </div>
+          </div>
         </div>
       </div>
     </div>,

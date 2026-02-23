@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { userTextDisplayClass } from '../../../lib/userTextStyles'
 import type { MiniDayGroup, PeriodType } from '../reviewTypes'
 import { useReview } from '../hooks'
 
@@ -39,7 +40,7 @@ export function ReviewDiary({
         <span className="text-xs font-semibold text-emerald-600">{content ? '열기' : '작성'}</span>
       </div>
 
-      <p className="mt-3 line-clamp-2 text-sm text-gray-900">
+      <p className={`mt-3 line-clamp-2 ${userTextDisplayClass} text-gray-900`}>
         {isLoading ? '회고를 불러오는 중...' : content || '짧게라도 남겨두면 다음 회고가 훨씬 쉬워집니다.'}
       </p>
     </button>
