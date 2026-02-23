@@ -6,6 +6,7 @@ import { Switch } from '../../ui/Switch'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
 import { useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
 import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
+import { userTextInputClass } from '../../lib/userTextStyles'
 import { usePwaInstall } from '../pwa/usePwaInstall'
 
 const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
@@ -851,7 +852,7 @@ function PomodoroSettingsPage() {
                 value={miniDayEditor.label}
                 onChange={(e) => updateMiniDayEditorField('label', e.target.value)}
                 placeholder="미니 데이 1"
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                className={`w-full rounded-xl border border-gray-200 bg-white px-4 py-3 ${userTextInputClass} text-gray-900 placeholder:text-gray-400 focus:border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100`}
               />
               <p className="mt-2 px-1 text-xs text-gray-400">
                 이름도 바꿀 수 있어요. 예: 오전/오후/저녁, 집중 시간, 회의 시간

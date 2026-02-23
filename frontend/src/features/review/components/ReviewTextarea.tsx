@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
 import type { PeriodType } from '../reviewTypes'
 import { useDeleteReview, useReview, useUpsertReview } from '../hooks'
 
@@ -258,11 +259,11 @@ export function ReviewTextarea({
             }
           }}
           placeholder="무엇이 잘 됐는지, 다음엔 무엇을 바꿀지 적어보세요."
-          className="mt-3 min-h-[140px] w-full resize-none rounded-xl border border-emerald-300 bg-white p-3 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+          className={`mt-3 min-h-[140px] w-full resize-none rounded-xl border border-emerald-300 bg-white p-3 ${userTextInputClass} text-gray-700 outline-none placeholder:text-gray-400`}
         />
       ) : (
-        <div className="mt-3 rounded-xl px-3 py-2 text-left">
-          <p className="text-sm text-gray-700">
+        <div className="mt-3 rounded-xl p-3 text-left">
+          <p className={`${userTextDisplayClass} text-gray-700`}>
             {review.isLoading
               ? '회고를 불러오는 중...'
               : content || '회고를 작성해보세요.'}

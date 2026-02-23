@@ -49,6 +49,7 @@ import { useReorderTodos, useTodos } from './hooks'
 import { getTimerInfo } from '../timer/useTimerInfo'
 import { formatTimerHoursMinutes } from './todoTimerDisplay'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
+import { userTextInputClass } from '../../lib/userTextStyles'
 import { useMiniDaysSettings } from '../settings/hooks'
 import { getDefaultMiniDayForDate } from './miniDayUtils'
 import type { Todo, TodoReorderItem } from '../../api/types'
@@ -123,10 +124,14 @@ const resolveActiveRect = (rect: unknown): RectLike | null => {
   const candidate = (raw as { translated?: unknown; initial?: unknown })?.translated ??
     (raw as { translated?: unknown; initial?: unknown })?.initial ??
     raw
-  if (!candidate || typeof (candidate as RectLike).top !== 'number' || typeof (candidate as RectLike).height !== 'number') {
+  if (!candidate || typeof candidate !== 'object') {
     return null
   }
-  return candidate as RectLike
+  const maybeRect = candidate as Partial<Record<keyof RectLike, unknown>>
+  if (typeof maybeRect.top !== 'number' || typeof maybeRect.height !== 'number') {
+    return null
+  }
+  return maybeRect as RectLike
 }
 
 const getNextDayOrder = (list: Array<{ dayOrder?: number }>) =>
@@ -1056,7 +1061,7 @@ function TodosPage() {
                           }
                           setInputDay(null)
                         }}
-                        className="w-full bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]"
+                        className={`w-full bg-transparent ${userTextInputClass} text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]`}
                         rows={1}
                       />
                     </div>
@@ -1451,32 +1456,38 @@ function TodosPage() {
       >
         {/* 커스텀 헤더 */}
         <div className="mb-4 -mt-2">
-          <div className="flex items-center justify-between">
+          <div className="grid grid-cols-[56px_minmax(0,1fr)_56px] items-center gap-2">
             {actions.noteEditMode ? (
               <>
                 <button
                   onClick={actions.handleDeleteNote}
-                  className="text-sm font-medium text-red-600 transition-colors hover:text-red-700"
+                  className="h-8 w-14 justify-self-start whitespace-nowrap rounded-md text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700"
                 >
                   삭제
                 </button>
-                <h3 className="text-base font-semibold text-gray-900">
+                <h3
+                  className="min-w-0 truncate text-center text-base font-semibold text-gray-900"
+                  title={actions.noteTodo?.title || '메모'}
+                >
                   {actions.noteTodo?.title || '메모'}
                 </h3>
                 <button
                   onClick={actions.handleSaveNote}
-                  className="text-sm font-medium text-gray-900 transition-colors hover:text-gray-700"
+                  className="h-8 w-14 justify-self-end whitespace-nowrap rounded-md text-sm font-medium text-gray-900 transition-colors hover:bg-gray-100 hover:text-gray-700"
                 >
                   저장
                 </button>
               </>
             ) : (
               <>
-                <div className="w-8"></div>
-                <h3 className="text-base font-semibold text-gray-900">
+                <div className="h-8 w-14" />
+                <h3
+                  className="min-w-0 truncate text-center text-base font-semibold text-gray-900"
+                  title={actions.noteTodo?.title || '메모'}
+                >
                   {actions.noteTodo?.title || '메모'}
                 </h3>
-                <div className="w-8"></div>
+                <div className="h-8 w-14" />
               </>
             )}
           </div>
@@ -1500,7 +1511,7 @@ function TodosPage() {
           } : undefined}
           readOnly={!actions.noteEditMode}
           placeholder="메모를 입력하세요..."
-          className={`mb-2 h-40 w-full resize-none rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 ${
+          className={`mb-2 h-40 w-full resize-none rounded-xl bg-yellow-50 border border-yellow-200 p-3 ${userTextInputClass} text-gray-700 outline-none placeholder:text-gray-400 ${
             !actions.noteEditMode ? 'cursor-pointer' : ''
           }`}
         />

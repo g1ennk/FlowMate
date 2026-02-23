@@ -5,6 +5,7 @@ import {
   StopIcon,
   MoreVerticalIcon,
 } from '../../../ui/Icons'
+import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
 import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDisplay'
 
 export type TodoItemProps = {
@@ -129,7 +130,7 @@ export function TodoItem({
               if (e.key === 'Escape') onCancelEdit()
             }}
             onBlur={onSaveEdit}
-            className="flex-1 bg-transparent text-sm text-gray-900 outline-none resize-none overflow-hidden min-h-[20px]"
+            className={`flex-1 bg-transparent ${userTextInputClass} text-gray-900 outline-none resize-none overflow-hidden min-h-[20px]`}
             rows={1}
           />
 
@@ -163,7 +164,7 @@ export function TodoItem({
         {/* 내용 */}
         <div className="min-w-0 flex-1">
           <p
-            className={`text-sm cursor-pointer break-words whitespace-pre-wrap ${
+            className={`${userTextDisplayClass} cursor-pointer ${
               isDone ? 'text-gray-400 line-through' : 'text-gray-900'
             }`}
             onClick={onOpenMenu}
@@ -231,7 +232,7 @@ export function TodoItem({
             className="cursor-pointer rounded-lg bg-yellow-50 border border-yellow-200 px-2 py-1"
             onClick={onOpenNote}
           >
-            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{note}</p>
+            <p className={`${userTextDisplayClass} text-gray-700`}>{note}</p>
           </div>
         </div>
       )}
