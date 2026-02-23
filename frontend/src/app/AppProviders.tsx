@@ -8,6 +8,7 @@ import { startMockWorker } from '../mocks/browser'
 import { useTimerTicker } from '../features/timer/useTimerTicker'
 import { useTimerSyncEffect } from '../features/timer/useTimerSyncEffect'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
+import { PwaUpdateToast } from './PwaUpdateToast'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
@@ -38,6 +39,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     <QueryClientProvider client={queryClient}>
       <TimerSyncLayer />
       <ActiveTimerTitle />
+      {import.meta.env.PROD ? <PwaUpdateToast /> : null}
       {children}
       <Toaster 
         position="top-center"
