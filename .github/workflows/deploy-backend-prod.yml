@@ -7,6 +7,7 @@ on:
     paths:
       - 'backend/**'
       - 'infra/prod/**'
+      - '.github/workflows/deploy-backend-prod.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -93,7 +94,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.PROD_EC2_SSH_KEY }}
           script: |
-            cd ~/FlowMate/infra/prod
+            cd ~/FlowMate
+            git fetch origin
+            git checkout main
+            git reset --hard origin/main
+            cd infra/prod
             aws ecr get-login-password --region ap-northeast-2 | \
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
             ECR_IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ inputs.version }} docker compose up -d backend
