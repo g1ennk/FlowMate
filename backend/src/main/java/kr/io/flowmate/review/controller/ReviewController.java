@@ -3,7 +3,8 @@ package kr.io.flowmate.review.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
-import kr.io.flowmate.common.util.ClientIdResolver;
+//import kr.io.flowmate.common.util.ClientIdResolver;
+import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.review.domain.ReviewType;
 import kr.io.flowmate.review.dto.request.ReviewUpsertRequest;
 import kr.io.flowmate.review.dto.response.ReviewResponse;
@@ -23,7 +24,7 @@ import java.util.List;
 public class ReviewController {
 
     private final ReviewService reviewService;
-    private final ClientIdResolver clientIdResolver;
+    private final CurrentUserResolver currentUserResolver;
 
     @GetMapping
     public ResponseEntity<?> getReviews(
@@ -36,7 +37,7 @@ public class ReviewController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         ReviewType reviewType = ReviewType.fromValue(type);
 
         boolean hasPeriodStart = periodStart != null;
@@ -70,7 +71,7 @@ public class ReviewController {
             HttpServletRequest request,
             @Valid @RequestBody ReviewUpsertRequest upsertRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         ReviewResponse review = reviewService.upsertReview(userId, upsertRequest);
         return ResponseEntity.ok(review);
     }
@@ -80,7 +81,7 @@ public class ReviewController {
             HttpServletRequest request,
             @PathVariable String id
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         reviewService.deleteReview(userId, id);
         return ResponseEntity.noContent().build();
     }

@@ -2,7 +2,8 @@ package kr.io.flowmate.settings.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import kr.io.flowmate.common.util.ClientIdResolver;
+//import kr.io.flowmate.common.util.ClientIdResolver;
+import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.settings.dto.request.AutomationSettingsRequest;
 import kr.io.flowmate.settings.dto.request.MiniDaysSettingsRequest;
 import kr.io.flowmate.settings.dto.request.PomodoroSessionSettingsRequest;
@@ -21,12 +22,12 @@ import org.springframework.web.bind.annotation.*;
 public class SettingsController {
 
     private final SettingsService settingsService;
-    private final ClientIdResolver clientIdResolver;
+    private final CurrentUserResolver currentUserResolver;
 
     // 전체 설정 불러오기
     @GetMapping
     public ResponseEntity<SettingsResponse> getSettings(HttpServletRequest request) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         SettingsResponse settings = settingsService.getSettings(userId);
         return ResponseEntity.ok(settings);
     }
@@ -36,7 +37,7 @@ public class SettingsController {
             HttpServletRequest request,
             @Valid @RequestBody PomodoroSessionSettingsRequest updateRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         PomodoroSessionSettingsResponse updated = settingsService.updatePomodoro(userId, updateRequest);
         return ResponseEntity.ok(updated);
     }
@@ -46,7 +47,7 @@ public class SettingsController {
             HttpServletRequest request,
             @Valid @RequestBody AutomationSettingsRequest updateRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         AutomationSettingsResponse updated = settingsService.updateAutomation(userId, updateRequest);
         return ResponseEntity.ok(updated);
     }
@@ -54,7 +55,7 @@ public class SettingsController {
     // 미니데이
     @GetMapping("/mini-days")
     public ResponseEntity<MiniDaysSettingsResponse> getMiniDays(HttpServletRequest request) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         MiniDaysSettingsResponse settings = settingsService.getMiniDays(userId);
         return ResponseEntity.ok(settings);
     }
@@ -64,7 +65,7 @@ public class SettingsController {
             HttpServletRequest request,
             @Valid @RequestBody MiniDaysSettingsRequest updateRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         MiniDaysSettingsResponse updated = settingsService.updateMiniDays(userId, updateRequest);
         return ResponseEntity.ok(updated);
     }

@@ -30,7 +30,8 @@ public class CorsConfig {
                 List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
         );
         config.setAllowedHeaders(
-                List.of("Authorization", "Content-Type", "X-Requested-With", "X-Client-Id")
+                //List.of("Authorization", "Content-Type", "X-Requested-With", "X-Client-Id")
+                List.of("Authorization", "Content-Type", "X-Requested-With")
         );
         config.setExposedHeaders(
                 List.of("Authorization")

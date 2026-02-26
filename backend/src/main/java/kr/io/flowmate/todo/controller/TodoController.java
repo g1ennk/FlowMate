@@ -3,7 +3,7 @@ package kr.io.flowmate.todo.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
-import kr.io.flowmate.common.util.ClientIdResolver;
+import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.todo.dto.TodoCreateRequest;
 import kr.io.flowmate.todo.dto.TodoReorderRequest;
 import kr.io.flowmate.todo.dto.TodoResponse;
@@ -24,7 +24,7 @@ import java.util.List;
 public class TodoController {
 
     private final TodoService todoService;
-    private final ClientIdResolver clientIdResolver;
+    private final CurrentUserResolver currentUserResolver;
 
     /**
      * Todo 목록 조회
@@ -37,7 +37,7 @@ public class TodoController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         List<TodoResponse> todos = todoService.getTodos(userId, date);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
@@ -52,7 +52,7 @@ public class TodoController {
             @Valid
             @RequestBody TodoCreateRequest createRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         TodoResponse todo = todoService.createTodo(userId, createRequest);
         return ResponseEntity.status(HttpStatus.CREATED).body(todo);
     }
@@ -68,7 +68,7 @@ public class TodoController {
             @Valid
             @RequestBody TodoUpdateRequest updateRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         TodoResponse todo = todoService.updateTodo(userId, id, updateRequest);
         return ResponseEntity.ok(todo);
     }
@@ -82,7 +82,7 @@ public class TodoController {
             HttpServletRequest request,
             @PathVariable String id
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         todoService.deleteTodo(userId, id);
         return ResponseEntity.noContent().build();
     }
@@ -96,7 +96,7 @@ public class TodoController {
             HttpServletRequest request,
             @Valid @RequestBody TodoReorderRequest reorderRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         List<TodoResponse> todos = todoService.reorderTodos(userId, reorderRequest);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
