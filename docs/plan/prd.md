@@ -1,5 +1,7 @@
 # PRD – Todo + Pomodoro Web App (MVP)
 
+> 참고: 이 문서는 초기 MVP 기획 문서입니다. 현재 구현은 게스트 식별을 `X-Client-Id`에서 서버 서명 JWT(guest token)로 변경했고, 카카오 OAuth 회원 로그인까지 포함합니다.
+
 ## 1. 제품 개요
 
 본 제품은 **Todo 관리 + 타이머**를 결합한 웹 애플리케이션이다.  
