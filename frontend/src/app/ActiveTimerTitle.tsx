@@ -6,11 +6,13 @@ import {
   formatTimerMinutesSeconds,
   getTodoDisplayTimeSeconds,
 } from '../features/todos/todoTimerDisplay'
+import { useAuthStore } from '../store/authStore'
 
 const APP_TITLE = 'FlowMate'
 
 export function ActiveTimerTitle() {
-  const { data } = useTodos()
+  const authState = useAuthStore((s) => s.state)
+  const initialized = useAuthStore((s) => s.initialized)
   const timers = useTimerStore((s) => s.timers)
 
   const activeEntry = useMemo(() => {
@@ -18,6 +20,10 @@ export function ActiveTimerTitle() {
     if (entries.length === 0) return null
     return entries[0]
   }, [timers])
+
+  const { data } = useTodos({
+    enabled: initialized && Boolean(authState) && Boolean(activeEntry),
+  })
 
   const title = useMemo(() => {
     if (!activeEntry) return APP_TITLE

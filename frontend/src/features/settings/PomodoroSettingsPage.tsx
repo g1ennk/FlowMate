@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
+import { useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '../../store/authStore'
 import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
 import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
 import { Switch } from '../../ui/Switch'
@@ -254,6 +257,10 @@ function PomodoroSettingsPage() {
   const updateSettings = useUpdatePomodoroSettings()
   const updateMiniDays = useUpdateMiniDaysSettings()
   const { canInstall, isInstalled, isStandalone, isIos, isAndroid, promptInstall } = usePwaInstall()
+  const logout = useAuthStore((s) => s.logout)
+  const authState = useAuthStore((s) => s.state)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [overrides, setOverrides] = useState<Partial<PomodoroSettings>>({})
   const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
@@ -598,6 +605,13 @@ function PomodoroSettingsPage() {
     persistInstallCardDismissed()
   }
 
+  const handleLogout = async () => {
+    if (!window.confirm('로그아웃 할까요?')) return
+    await logout()
+    queryClient.clear()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -740,6 +754,34 @@ function PomodoroSettingsPage() {
               className="mt-3 text-xs font-medium text-gray-400 transition-colors hover:text-gray-600"
             >
               일주일 동안 숨기기
+            </button>
+          </div>
+        </section>
+      )}
+
+      {authState?.type === 'member' && (
+        <section>
+          <div className="rounded-2xl bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-red-500 transition-colors hover:bg-red-50"
+            >
+              로그아웃
+            </button>
+          </div>
+        </section>
+      )}
+
+      {authState?.type === 'guest' && (
+        <section>
+          <div className="rounded-2xl bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
+            >
+              로그인
             </button>
           </div>
         </section>

@@ -1,24 +1,43 @@
 import { Navigate, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { buildApiUrl } from '../../api/baseUrl'
 import { CheckCircleIcon } from '../../ui/Icons'
-import { getAuthMode, setAuthMode } from '../../lib/auth'
 import { getOnboardingSeen } from '../../lib/onboarding'
+import { useAuthStore } from '../../store/authStore'
 
 function LoginPage() {
   const navigate = useNavigate()
-  const authMode = getAuthMode()
+  const authState = useAuthStore((s) => s.state)
   const onboardingSeen = getOnboardingSeen()
+
+  const initialized = useAuthStore((s) => s.initialized)
 
   if (!onboardingSeen) {
     return <Navigate to="/boarding" replace />
   }
 
-  if (authMode) {
+  if (!initialized) return null
+
+  if (authState?.type === 'member') {
     return <Navigate to="/todos" replace />
   }
 
   const handleGuestStart = () => {
-    setAuthMode('guest')
     navigate('/todos', { replace: true })
+  }
+
+  const handleKakaoLogin = async () => {
+    try {
+      const res = await fetch(buildApiUrl('/auth/kakao/authorize-url'))
+      if (!res.ok) throw new Error('인증 URL 발급 실패')
+      const data = await res.json()
+      sessionStorage.setItem('oauth_state', data.state)
+      sessionStorage.setItem('oauth_provider', 'kakao')
+      window.location.href = data.authorizeUrl
+    } catch (e) {
+      console.error('[LoginPage] 카카오 로그인 시작 실패', e)
+      toast.error('카카오 로그인을 시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
+    }
   }
 
   return (
@@ -43,35 +62,31 @@ function LoginPage() {
                 시작할 방식을 선택하세요
               </h1>
               <p className="mx-auto max-w-md break-keep text-sm leading-6 text-gray-500">
-                카카오 로그인은 준비 중입니다. 지금은 게스트로 바로 시작할 수 있어요.
+                카카오 계정으로 로그인하거나 게스트로 바로 시작할 수 있어요.
               </p>
             </div>
 
             <div className="space-y-2.5">
               <button
                 type="button"
-                disabled
-                aria-label="카카오 로그인 (개발 예정)"
-                className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-left opacity-70"
+                onClick={handleKakaoLogin}
+                className="flex w-full items-center rounded-2xl border border-gray-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-gray-300 hover:bg-gray-50/40"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FEE500] text-sm font-bold text-[#3C1E1E]">
                     K
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-700">카카오로 계속하기</p>
-                    <p className="text-xs text-gray-400">개발 예정</p>
+                    <p className="text-sm font-semibold text-gray-900">카카오로 계속하기</p>
+                    <p className="text-xs text-gray-500">카카오 계정으로 로그인</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-gray-400">
-                  준비 중
-                </span>
               </button>
 
               <button
                 type="button"
                 onClick={handleGuestStart}
-                className="flex w-full items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/40"
+                className="flex w-full items-center rounded-2xl border border-gray-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-gray-300 hover:bg-gray-50/40"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
@@ -82,7 +97,6 @@ function LoginPage() {
                     <p className="text-xs text-gray-500">지금 바로 사용 시작</p>
                   </div>
                 </div>
-                <span className="text-xs font-semibold text-emerald-600">계속</span>
               </button>
             </div>
 

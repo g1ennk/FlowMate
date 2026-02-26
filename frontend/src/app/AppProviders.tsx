@@ -8,14 +8,20 @@ import { startMockWorker } from '../mocks/browser'
 import { useTimerTicker } from '../features/timer/useTimerTicker'
 import { useTimerSyncEffect } from '../features/timer/useTimerSyncEffect'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
+import { useAuthStore } from '../store/authStore'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
 
 export function AppProviders({ children }: PropsWithChildren) {
   const [mockReady, setMockReady] = useState(!mockEnabled)
-  // Install a single global timer ticker
   useTimerTicker()
+
+  // 앱 초기화 시 인증 상태 복원 (mock 모드면 MSW 준비 후 실행)
+  useEffect(() => {
+    if (!mockReady) return
+    useAuthStore.getState().init()
+  }, [mockReady])
 
   useEffect(() => {
     if (!mockEnabled) return
@@ -39,7 +45,7 @@ export function AppProviders({ children }: PropsWithChildren) {
       <TimerSyncLayer />
       <ActiveTimerTitle />
       {children}
-      <Toaster 
+      <Toaster
         position="top-center"
         containerStyle={{
           zIndex: 9999,
