@@ -787,8 +787,6 @@ function PomodoroSettingsPage() {
         </section>
       )}
 
-      <p className="text-center text-xs text-gray-400">FlowMate v1.0.0</p>
-
       <BottomSheet
         isOpen={activeSheet === 'flow'}
         onClose={() => setActiveSheet(null)}
