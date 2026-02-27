@@ -6,6 +6,8 @@ on:
       - develop
     paths:
       - 'frontend/**'
+      - '.github/workflows/deploy-frontend-dev.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -29,6 +31,7 @@ jobs:
         working-directory: frontend
         run: |
           echo "VITE_API_BASE_URL=${{ secrets.DEV_VITE_API_BASE_URL }}" > .env.dev
+          echo "VITE_KAKAO_REDIRECT_URI=${{ secrets.DEV_VITE_KAKAO_REDIRECT_URI }}" >> .env.dev
           pnpm build --mode dev
 
       - name: Configure AWS credentials

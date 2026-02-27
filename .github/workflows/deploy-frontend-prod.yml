@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'frontend/**'
+      - '.github/workflows/deploy-frontend-prod.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -28,9 +30,10 @@ jobs:
       - name: Build
         working-directory: frontend
         run: |
-          echo "VITE_API_BASE_URL=${{ secrets.PROD_VITE_API_BASE_URL }}" > .env.production
-          echo "VITE_ENABLE_PWA=1" >> .env.production
-          pnpm build --mode production
+          echo "VITE_API_BASE_URL=${{ secrets.PROD_VITE_API_BASE_URL }}" > .env.prod
+          echo "VITE_KAKAO_REDIRECT_URI=${{ secrets.PROD_VITE_KAKAO_REDIRECT_URI }}" >> .env.prod
+          echo "VITE_ENABLE_PWA=1" >> .env.prod
+          pnpm build --mode prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

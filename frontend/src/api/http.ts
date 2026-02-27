@@ -1,25 +1,12 @@
 import { z, type ZodSchema } from 'zod'
-import { getClientId } from '../lib/clientId'
+import { useAuthStore } from '../store/authStore'
+import { buildApiUrl } from './baseUrl'
 
 export type ApiError = {
   status: number
   message: string
   fields?: Record<string, string>
 }
-
-function normalizeBaseUrl(value?: string) {
-  const fallback = '/api'
-  if (!value) return fallback
-  const trimmed = value.trim()
-  if (!trimmed) return fallback
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed.replace(/\/$/, '')
-  }
-  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
-  return withLeadingSlash.replace(/\/$/, '')
-}
-
-const baseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
 
 const ErrorSchema = z
   .object({
@@ -41,10 +28,6 @@ type RequestOptions<T> = Omit<RequestInit, 'body'> & {
   schema?: ZodSchema<T>
 }
 
-function buildUrl(path: string) {
-  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`
-}
-
 function normalizeBody(body?: unknown): BodyInit | undefined {
   if (body === undefined || body === null) return undefined
   if (typeof body === 'string' || body instanceof FormData || body instanceof Blob) return body
@@ -64,16 +47,45 @@ async function parseError(response: Response): Promise<ApiError> {
 
 export async function http<T>(method: HttpMethod, path: string, options: RequestOptions<T> = {}) {
   const { schema, headers, body, ...rest } = options
-  const response = await fetch(buildUrl(path), {
+  const token = useAuthStore.getState().getToken()
+
+  const response = await fetch(buildApiUrl(path), {
     method,
     headers: {
       'Content-Type': 'application/json',
-      'X-Client-Id': getClientId(),
+      Authorization: `Bearer ${token}`,
       ...headers,
     },
+    credentials: 'include',
     body: normalizeBody(body),
     ...rest,
   })
+
+  // 401 → 토큰 재발급 후 1회 재시도
+  if (response.status === 401) {
+    const typeBefore = useAuthStore.getState().state?.type
+    await useAuthStore.getState().refresh()
+    // 회원 세션이 만료되어 refresh 실패 → logout() → 게스트로 전환된 경우
+    // 게스트 토큰으로 재시도하면 다른 계정에 데이터가 쓰이므로 에러를 던진다
+    if (typeBefore === 'member' && useAuthStore.getState().state?.type !== 'member') {
+      throw await parseError(response)
+    }
+    const retryToken = useAuthStore.getState().getToken()
+    const retryResponse = await fetch(buildApiUrl(path), {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${retryToken}`,
+        ...headers,
+      },
+      credentials: 'include',
+      body: normalizeBody(body),
+      ...rest,
+    })
+    if (!retryResponse.ok) throw await parseError(retryResponse)
+    if (schema) return schema.parse(await retryResponse.json())
+    return undefined as T
+  }
 
   if (!response.ok) {
     throw await parseError(response)
@@ -84,7 +96,6 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
     return schema.parse(json)
   }
 
-  // If caller doesn't need body
   return undefined as T
 }
 

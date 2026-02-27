@@ -3,7 +3,8 @@ package kr.io.flowmate.session.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
-import kr.io.flowmate.common.util.ClientIdResolver;
+//import kr.io.flowmate.common.util.ClientIdResolver;
+import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.session.dto.request.SessionCreateRequest;
 import kr.io.flowmate.session.dto.response.SessionResponse;
 import kr.io.flowmate.session.service.SessionService;
@@ -20,14 +21,14 @@ import java.util.List;
 public class SessionController {
 
     private final SessionService sessionService;
-    private final ClientIdResolver clientIdResolver;
+    private final CurrentUserResolver currentUserResolver;
 
     @GetMapping
     public ResponseEntity<ListResponse<SessionResponse>> getSessions(
             HttpServletRequest request,
             @PathVariable String todoId
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         List<SessionResponse> sessions = sessionService.getSessions(userId, todoId);
         return ResponseEntity.ok(new ListResponse<>(sessions));
     }
@@ -38,7 +39,7 @@ public class SessionController {
             @PathVariable String todoId,
             @Valid @RequestBody SessionCreateRequest createRequest
     ) {
-        String userId = clientIdResolver.resolve(request);
+        String userId = currentUserResolver.resolve();
         SessionService.CreateSessionResult result = sessionService.createSession(userId, todoId, createRequest);
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status).body(result.session());

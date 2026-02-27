@@ -7,6 +7,8 @@ on:
     paths:
       - 'backend/**'
       - 'infra/dev/**'
+      - '.github/workflows/deploy-backend-dev.yml'
+  workflow_dispatch:
 
 env:
   AWS_REGION: ap-northeast-2
@@ -59,7 +61,11 @@ jobs:
           script: |
             aws ecr get-login-password --region ap-northeast-2 | \
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
-            cd ~/FlowMate/infra/dev
+            cd ~/FlowMate
+            git fetch origin
+            git checkout develop
+            git reset --hard origin/develop
+            cd infra/dev
             export ECR_IMAGE_URI=${{ needs.build-and-push.outputs.image_uri }}
             ECR_IMAGE_URI=$ECR_IMAGE_URI docker compose up -d backend
             docker compose ps

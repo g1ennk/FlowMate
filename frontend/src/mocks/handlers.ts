@@ -71,8 +71,17 @@ type StoredReview = Review
 
 const REVIEW_TYPES: ReviewType[] = ['daily', 'weekly', 'monthly']
 
-function getClientId(request: Request) {
-  return request.headers.get('X-Client-Id') || 'local'
+function getClientId(request: Request): string {
+  const auth = request.headers.get('Authorization')
+  if (auth?.startsWith('Bearer ')) {
+    try {
+      const payload = JSON.parse(atob(auth.substring(7).split('.')[1])) as { sub?: string }
+      return payload.sub ?? 'local'
+    } catch {
+      // JWT 파싱 실패 시 fallback
+    }
+  }
+  return 'local'
 }
 
 function normalizeTodos(input: StoredTodo[]) {

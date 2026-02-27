@@ -12,10 +12,16 @@ import {
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
 
-export function useTodos() {
+type UseTodosOptions = {
+  enabled?: boolean
+}
+
+export function useTodos(options: UseTodosOptions = {}) {
+  const { enabled = true } = options
   return useQuery({
     queryKey: queryKeys.todos(),
     queryFn: () => todoApi.list(),
+    enabled,
   })
 }
 

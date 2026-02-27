@@ -16,3 +16,21 @@ management:
   endpoint:
     health:
       show-details: always
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-ttl: 900        # 15분
+  guest-ttl: 7776000     # 90일
+  state-ttl: 300         # 5분
+  refresh-ttl: 1209600   # 14일
+
+cookie:
+  secure: ${COOKIE_SECURE:false}   # 프로덕션(HTTPS)에서는 true
+
+kakao:
+  client-id: ${KAKAO_CLIENT_ID}
+  client-secret: ${KAKAO_CLIENT_SECRET}
+  redirect-uri: ${KAKAO_REDIRECT_URI}
+  authorize-url: https://kauth.kakao.com/oauth/authorize
+  token-url: https://kauth.kakao.com/oauth/token
+  user-info-url: https://kapi.kakao.com/v2/user/me
