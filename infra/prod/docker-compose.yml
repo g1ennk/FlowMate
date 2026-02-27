@@ -1,5 +1,5 @@
 # FlowMate Production Environment Docker Compose
-# 실행: cd infra/prod && docker compose up -d
+# 실행: cd infra/prod && ECR_IMAGE_URI=<ecr-image-uri:tag> docker compose up -d
 
 services:
   # MySQL Database
@@ -31,10 +31,7 @@ services:
 
   # Spring Boot Backend
   backend:
-    build:
-      context: ../../backend
-      dockerfile: Dockerfile
-    image: flowmate-backend:prod
+    image: ${ECR_IMAGE_URI:?ECR_IMAGE_URI is required}
     container_name: flowmate-backend-prod
     restart: always
     environment:
