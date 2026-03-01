@@ -26,7 +26,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { useTimerStore } from '../timer/timerStore'
-import { Calendar } from '../../ui/Calendar'
+import { Calendar, type ViewMode } from '../../ui/Calendar'
 import { formatDateKey } from '../../ui/calendarUtils'
 import {
   BottomSheet,
@@ -49,10 +49,13 @@ import { useReorderTodos, useTodos } from './hooks'
 import { getTimerInfo } from '../timer/useTimerInfo'
 import { formatTimerHoursMinutes } from './todoTimerDisplay'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
+import { storageKeys } from '../../lib/storageKeys'
 import { userTextInputClass } from '../../lib/userTextStyles'
 import { useMiniDaysSettings } from '../settings/hooks'
 import { getDefaultMiniDayForDate } from './miniDayUtils'
+import { useAuthStore } from '../../store/authStore'
 import type { Todo, TodoReorderItem } from '../../api/types'
+import type { AuthState } from '../../types/auth'
 
 // === 스키마 ===
 const createSchema = z.object({
@@ -85,10 +88,19 @@ type DaySectionMeta = { id: number; title: string; range: string }
 
 type SectionGuideContent = {
   headline: string
-  description: string
   ctaLabel: string
-  examples: readonly string[]
 }
+
+type SectionGuideContext = {
+  section: Pick<DaySectionMeta, 'id' | 'title'>
+  isSelectedDateToday: boolean
+  isCurrentTimeSection: boolean
+  displayName: string
+}
+
+type TodosCalendarViewMode = Extract<ViewMode, 'week' | 'month'>
+
+const TODOS_CALENDAR_VIEW_MODES: readonly TodosCalendarViewMode[] = ['week', 'month']
 
 const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number }>): GroupedTodos => {
   const grouped: Record<number, Todo[]> = {}
@@ -162,68 +174,102 @@ const parseDateParam = (value: string | null) => {
   return candidate
 }
 
-const buildDefaultOpenSections = (defaultOpenId: number): Record<number, boolean> => ({
-  0: true, // 미분류는 기본 진입 시 항상 펼침
-  [defaultOpenId]: true,
-})
+type InitialOpenSectionsParams = {
+  selectedDateKey: string
+  todayDateKey: string
+  defaultOpenId: number
+  daySections: DaySectionMeta[]
+  groupedTodos: GroupedTodos
+}
+
+const buildInitialOpenSections = ({
+  selectedDateKey,
+  todayDateKey,
+  defaultOpenId,
+  daySections,
+  groupedTodos,
+}: InitialOpenSectionsParams): Record<number, boolean> => {
+  const next: Record<number, boolean> = {}
+
+  daySections.forEach((section) => {
+    next[section.id] = false
+  })
+
+  if (selectedDateKey === todayDateKey) {
+    if (defaultOpenId !== 0) {
+      next[defaultOpenId] = true
+    }
+    return next
+  }
+
+  daySections.forEach((section) => {
+    next[section.id] = (groupedTodos[section.id]?.length ?? 0) > 0
+  })
+
+  return next
+}
+
+const getGuideDisplayName = (authState: AuthState | null) => {
+  if (authState?.type !== 'member') return '게스트님'
+
+  const nickname = authState.user.nickname.trim()
+  if (!nickname) return '게스트님'
+  return nickname.endsWith('님') ? nickname : `${nickname}님`
+}
+
+const getMiniDayGreeting = (sectionId: number) => {
+  switch (sectionId) {
+    case 1:
+      return '좋은 아침이에요.'
+    case 2:
+      return '좋은 오후예요.'
+    case 3:
+      return '좋은 저녁이에요.'
+    default:
+      return null
+  }
+}
+
+const readStoredTodosCalendarViewMode = (): TodosCalendarViewMode => {
+  try {
+    const stored = window.localStorage.getItem(storageKeys.todosCalendarViewMode)
+    return stored && TODOS_CALENDAR_VIEW_MODES.includes(stored as TodosCalendarViewMode)
+      ? (stored as TodosCalendarViewMode)
+      : 'week'
+  } catch {
+    return 'week'
+  }
+}
 
 const getSectionGuideContent = (
-  section: Pick<DaySectionMeta, 'id' | 'title'>,
-  mode: 'empty' | 'doneOnly',
+  { section, isSelectedDateToday, isCurrentTimeSection, displayName }: SectionGuideContext,
 ): SectionGuideContent => {
   const title = section.title.trim() || '이 섹션'
-  const emptyBySection: Record<number, Omit<SectionGuideContent, 'ctaLabel'>> = {
-    0: {
-      headline: '개인 리듬에 맞춰 먼저 담아둘까요?',
-      description: '집중 시간대는 사람마다 달라요. 애매하면 미분류에 먼저 적고 나중에 옮겨도 됩니다.',
-      examples: ['갑자기 떠오른 할 일 기록', '나중에 처리할 일 모아두기', '아이디어 메모'],
-    },
-    1: {
-      headline: `${title}에는 집중 작업(Deep Work)부터`,
-      description: '집중력이 필요한 기획, 문서 작성, 문제 해결 작업을 먼저 배치해보세요.',
-      examples: ['핵심 기획안 작성', '문제 해결/디버깅 집중', '중요 문서 초안 작성'],
-    },
-    2: {
-      headline: `${title}에는 소통·처리 업무를 모아볼까요?`,
-      description: '회신, 회의, 반복 처리처럼 전환이 잦은 일을 묶어두면 부담이 줄어듭니다.',
-      examples: ['이메일/메시지 답장', '회의 후속 작업 처리', '반복 업무/서류 정리'],
-    },
-    3: {
-      headline: `${title}에는 창의·마무리 작업이 잘 맞아요`,
-      description: '정리, 회고, 개인 프로젝트처럼 몰입하거나 마무리하기 좋은 작업을 배치해보세요.',
-      examples: ['개인 프로젝트 진행', '오늘 작업 정리/회고', '내일 준비 및 체크리스트'],
-    },
+
+  if (section.id === 0) {
+    return {
+      headline: isSelectedDateToday
+        ? `${displayName}, 떠오른 일을 먼저 적어둘까요?`
+        : '떠오른 일을 먼저 적어둘까요?',
+      ctaLabel: `${title}에 추가`,
+    }
   }
 
-  const doneOnlyBySection: Record<number, Omit<SectionGuideContent, 'ctaLabel'>> = {
-    0: {
-      headline: '잘 정리했어요. 다음 아이템을 담아둘까요?',
-      description: '시간대가 애매하면 미분류에 먼저 적고 나중에 옮겨도 됩니다.',
-      examples: ['다음에 떠오를 일 기록', '짧은 할 일 추가', '보류할 일 메모'],
-    },
-    1: {
-      headline: `${title} 집중 작업을 잘 끝냈어요`,
-      description: '집중력이 남아 있다면 중요한 작업 1개만 더 이어가도 좋아요.',
-      examples: ['다음 핵심 작업 시작', '중요 문서 작성 계속', '집중 검토 이어가기'],
-    },
-    2: {
-      headline: `${title} 처리/소통 업무를 이어가볼까요?`,
-      description: '비슷한 성격의 처리 업무를 묶어두면 전환 비용을 줄이기 좋아요.',
-      examples: ['답장할 메시지 정리', '후속 작업 등록', '검토 요청 처리'],
-    },
-    3: {
-      headline: `${title}에 창의/마무리 작업을 하나 더 넣어볼까요?`,
-      description: '창의 작업이나 정리/회고처럼 가벼운 마감 작업을 넣어보세요.',
-      examples: ['아이디어 정리/브레인스토밍', '내일 일정 확인', '간단 회고 작성'],
-    },
+  if (isSelectedDateToday && isCurrentTimeSection) {
+    const greeting = getMiniDayGreeting(section.id)
+    const headline = greeting
+      ? `${displayName}, ${greeting} ${title}에 어떤 일부터 시작할까요?`
+      : `${displayName}, ${title}에 어떤 일부터 시작할까요?`
+
+    return {
+      headline,
+      ctaLabel: `${title}에 추가`,
+    }
   }
 
-  const source = mode === 'empty'
-    ? (emptyBySection[section.id] ?? emptyBySection[0])
-    : (doneOnlyBySection[section.id] ?? doneOnlyBySection[0])
   return {
-    ...source,
-    ctaLabel: mode === 'empty' ? `${title}에 추가` : '다음 할 일 추가',
+    headline: `${title}에 어떤 일부터 시작할까요?`,
+    ctaLabel: `${title}에 추가`,
   }
 }
 
@@ -263,21 +309,16 @@ function ActiveSectionDrop({
 function SectionGuideCard({
   content,
   onAdd,
-  onSelectExample,
 }: {
   content: SectionGuideContent
   onAdd: () => void
-  onSelectExample: (title: string) => void
 }) {
-  const visibleExamples = content.examples.slice(0, 2)
-
   return (
     <div
       className="mx-2 mb-2 rounded-2xl border border-gray-100 bg-gradient-to-b from-gray-50 to-white px-3 py-2.5 transition-colors"
     >
       <p className="text-sm font-semibold text-gray-900">{content.headline}</p>
-      <p className="mt-1 text-xs leading-4 text-gray-500">{content.description}</p>
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={onAdd}
@@ -286,16 +327,6 @@ function SectionGuideCard({
           <PlusIcon className="h-3 w-3" />
           <span>{content.ctaLabel}</span>
         </button>
-        {visibleExamples.map((example) => (
-          <button
-            key={example}
-            type="button"
-            onClick={() => onSelectExample(example)}
-            className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
-          >
-            {example}
-          </button>
-        ))}
       </div>
     </div>
   )
@@ -314,6 +345,7 @@ function TodosPage() {
   const { data, isLoading } = useTodos()
   const store = useTimerStore()
   const reorderTodos = useReorderTodos()
+  const authState = useAuthStore((s) => s.state)
   const [searchParams] = useSearchParams()
   const dateParam = searchParams.get('date')
 
@@ -321,10 +353,25 @@ function TodosPage() {
 
   // 캘린더 상태
   const [selectedDate, setSelectedDate] = useState(new Date())
+  const [calendarViewMode, setCalendarViewMode] = useState<TodosCalendarViewMode>(() =>
+    readStoredTodosCalendarViewMode(),
+  )
   const selectedDateKey = formatDateKey(selectedDate)
   const todayDateKey = formatDateKey(new Date())
   const isSelectedDateToday = selectedDateKey === todayDateKey
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
+  const guideDisplayName = getGuideDisplayName(authState)
+
+  const handleCalendarViewModeChange = useCallback((nextMode: ViewMode) => {
+    if (!TODOS_CALENDAR_VIEW_MODES.includes(nextMode as TodosCalendarViewMode)) return
+    const next = nextMode as TodosCalendarViewMode
+    setCalendarViewMode(next)
+    try {
+      window.localStorage.setItem(storageKeys.todosCalendarViewMode, next)
+    } catch {
+      // localStorage 접근 실패는 무시한다.
+    }
+  }, [])
 
   useEffect(() => {
     const nextDate = parseDateParam(dateParam)
@@ -377,7 +424,6 @@ function TodosPage() {
     register,
     reset,
     getValues,
-    setValue,
   } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
     defaultValues: { title: '' },
@@ -394,13 +440,6 @@ function TodosPage() {
     () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings),
     [selectedDate, miniDaysSettings],
   )
-  const [openSections, setOpenSections] = useState<Record<number, boolean>>(
-    buildDefaultOpenSections(defaultOpenId),
-  )
-
-  useEffect(() => {
-    setOpenSections(buildDefaultOpenSections(defaultOpenId))
-  }, [defaultOpenId])
 
   const markedDates = useMemo(() => {
     const marks: Record<string, { done: number; total: number }> = {}
@@ -416,6 +455,26 @@ function TodosPage() {
     () => buildGroupedTodos(todosForSelectedDate, daySections),
     [daySections, todosForSelectedDate],
   )
+  const initialOpenSections = useMemo(
+    () =>
+      buildInitialOpenSections({
+        selectedDateKey,
+        todayDateKey,
+        defaultOpenId,
+        daySections,
+        groupedTodos,
+      }),
+    [daySections, defaultOpenId, groupedTodos, selectedDateKey, todayDateKey],
+  )
+  const [openSections, setOpenSections] = useState<Record<number, boolean>>(() => initialOpenSections)
+  const lastInitializedDateKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (isLoading) return
+    if (lastInitializedDateKeyRef.current === selectedDateKey) return
+    lastInitializedDateKeyRef.current = selectedDateKey
+    setOpenSections(initialOpenSections)
+  }, [initialOpenSections, isLoading, selectedDateKey])
 
   // === DnD: multi-container live sorting state (option 2) ===
   const buildContainerItems = useCallback((grouped: GroupedTodos): ContainerItems => {
@@ -614,14 +673,10 @@ function TodosPage() {
     }, 0)
   }
 
-  const openQuickInputForSection = (sectionId: number, presetTitle?: string) => {
+  const openQuickInputForSection = (sectionId: number) => {
     setOpenSections((prev) => ({ ...prev, [sectionId]: true }))
     setInputDay(sectionId)
-    if (presetTitle !== undefined) {
-      setValue('title', presetTitle, { shouldDirty: true })
-    } else {
-      reset({ title: '' })
-    }
+    reset({ title: '' })
     focusTodoInputSoon()
   }
 
@@ -913,6 +968,8 @@ function TodosPage() {
         onSelectDate={setSelectedDate}
         onMonthChange={setSelectedDate}
         markedDates={markedDates}
+        viewMode={calendarViewMode}
+        onViewModeChange={handleCalendarViewModeChange}
       />
 
       {/* Todo 리스트 카드 */}
@@ -977,7 +1034,6 @@ function TodosPage() {
                 const isCurrentTimeSection = isSelectedDateToday && section.id === defaultOpenId
                 const shouldShowInput = inputDay === section.id
                 const isEmptySection = totalCount === 0
-                const isDoneOnlySection = activeTodos.length === 0 && doneTodos.length > 0
                 const shouldShowPriorityGuide = isCurrentTimeSection || section.id === 0
                 const inputAtTop = shouldShowInput && activeTodos.length === 0
                 const inputBetween = shouldShowInput && activeTodos.length > 0
@@ -1086,6 +1142,8 @@ function TodosPage() {
                                   }
                                 })
                               }
+                              aria-label={`${section.title} 섹션 ${isSectionOpen ? '접기' : '펼치기'}`}
+                              aria-expanded={isSectionOpen}
                               className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
                             >
                               <ChevronRightIcon
@@ -1153,11 +1211,15 @@ function TodosPage() {
                               <div
                                 className="min-h-[44px] space-y-1 rounded-lg py-1"
                               >
-                                {!shouldShowInput && (isEmptySection || isDoneOnlySection) && shouldShowPriorityGuide && (
+                                {!shouldShowInput && isEmptySection && shouldShowPriorityGuide && (
                                   <SectionGuideCard
-                                    content={getSectionGuideContent(section, isEmptySection ? 'empty' : 'doneOnly')}
+                                    content={getSectionGuideContent({
+                                      section,
+                                      isSelectedDateToday,
+                                      isCurrentTimeSection,
+                                      displayName: guideDisplayName,
+                                    })}
                                     onAdd={() => openQuickInputForSection(section.id)}
-                                    onSelectExample={(title) => openQuickInputForSection(section.id, title)}
                                   />
                                 )}
                                 <SortableContext

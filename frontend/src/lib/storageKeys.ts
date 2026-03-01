@@ -9,6 +9,7 @@ export const storageKeys = {
   // 기존 (clientId 기반 — 폐기 예정)
   clientId: `${STORAGE_PREFIX}/client-id`,
   authMode: `${STORAGE_PREFIX}/auth/mode`,
+  todosCalendarViewMode: `${STORAGE_PREFIX}/ui/todos-calendar-view-mode`,
   // 도메인 캐시
   todos: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/todos`,
   settings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings`,
