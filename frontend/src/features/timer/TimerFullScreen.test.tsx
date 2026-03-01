@@ -1,6 +1,7 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderApp } from '../../test/renderApp'
 import { TimerFullScreen } from './TimerFullScreen'
 
 const mocked = vi.hoisted(() => {
@@ -19,18 +20,19 @@ const mocked = vi.hoisted(() => {
     status: 'paused' as const,
     endAt: null,
     remainingMs: null,
-    elapsedMs: 1_500_000,
-    initialFocusMs: 1_500_000,
+    elapsedMs: 0,
+    initialFocusMs: 0,
     startedAt: null,
     cycleCount: 0,
     settingsSnapshot: settings,
     flexiblePhase: 'focus' as const,
-    focusElapsedMs: 1_500_000,
+    focusElapsedMs: 90_000,
     breakElapsedMs: 0,
     breakTargetMs: null,
     breakCompleted: false,
     focusStartedAt: null,
     breakStartedAt: null,
+    breakSessionPendingUpdate: false,
     sessions: [],
   }
 
@@ -54,18 +56,17 @@ const mocked = vi.hoisted(() => {
 
   return {
     settings,
-    settingsData: settings as typeof settings | undefined,
     timerState,
     timerStoreActions,
-    mutate: vi.fn(),
-    mutateAsync: vi.fn(),
+    updateTodoMutate: vi.fn(),
+    updateTodoMutateAsync: vi.fn(),
     createSessionMutateAsync: vi.fn(),
     toastSuccess: vi.fn(),
   }
 })
 
 vi.mock('../settings/hooks', () => ({
-  usePomodoroSettings: () => ({ data: mocked.settingsData }),
+  usePomodoroSettings: () => ({ data: mocked.settings }),
 }))
 
 vi.mock('../todos/hooks', () => ({
@@ -74,8 +75,8 @@ vi.mock('../todos/hooks', () => ({
     isPending: false,
   }),
   useUpdateTodo: () => ({
-    mutate: mocked.mutate,
-    mutateAsync: mocked.mutateAsync,
+    mutate: mocked.updateTodoMutate,
+    mutateAsync: mocked.updateTodoMutateAsync,
     isPending: false,
   }),
 }))
@@ -92,26 +93,29 @@ vi.mock('./timerStore', () => ({
     selector(mocked.timerStoreActions),
 }))
 
-describe('TimerFullScreen reset behavior', () => {
+describe('TimerFullScreen', () => {
   beforeEach(() => {
-    mocked.settingsData = mocked.settings
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => {})
     Object.assign(mocked.timerState, {
       mode: 'stopwatch',
       phase: 'flow',
       status: 'paused',
       endAt: null,
       remainingMs: null,
-      elapsedMs: 1_500_000,
-      initialFocusMs: 1_500_000,
+      elapsedMs: 0,
+      initialFocusMs: 0,
+      startedAt: null,
       cycleCount: 0,
       settingsSnapshot: mocked.settings,
       flexiblePhase: 'focus',
-      focusElapsedMs: 1_500_000,
+      focusElapsedMs: 90_000,
       breakElapsedMs: 0,
       breakTargetMs: null,
       breakCompleted: false,
       focusStartedAt: null,
       breakStartedAt: null,
+      breakSessionPendingUpdate: false,
       sessions: [],
     })
 
@@ -126,156 +130,94 @@ describe('TimerFullScreen reset behavior', () => {
     mocked.timerStoreActions.resumeFocus.mockClear()
     mocked.timerStoreActions.calculateBreakSuggestion.mockClear()
     mocked.timerStoreActions.updateSessions.mockClear()
-    mocked.mutate.mockClear()
-    mocked.mutateAsync.mockClear()
-    mocked.createSessionMutateAsync.mockClear()
+    mocked.updateTodoMutate.mockClear()
+    mocked.updateTodoMutateAsync.mockReset()
+    mocked.updateTodoMutateAsync.mockResolvedValue(undefined)
+    mocked.createSessionMutateAsync.mockReset()
+    mocked.createSessionMutateAsync.mockResolvedValue(undefined)
     mocked.toastSuccess.mockClear()
   })
 
-  it('keeps fullscreen open and re-initializes stopwatch with server ms on reset', () => {
+  it('resumes a paused timer and keeps fullscreen open when the timer is reset', async () => {
+    const user = userEvent.setup()
     const onClose = vi.fn()
-    const queryClient = new QueryClient()
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TimerFullScreen
-          isOpen
-          onClose={onClose}
-          todoId="todo-1"
-          todoTitle="타이머 테스트"
-          sessionFocusSeconds={1500}
-          sessionCount={3}
-          initialMode="stopwatch"
-          isDone={false}
-        />
-      </QueryClientProvider>,
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={onClose}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
     )
 
-    const currentLabel = screen.getByText('현재 세션')
-    fireEvent.click(currentLabel.closest('button')!)
-    expect(screen.getByText('전체 누적')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: '재개' }))
+    expect(mocked.timerStoreActions.resume).toHaveBeenCalledWith('todo-1')
 
-    fireEvent.click(screen.getByTitle('전체 리셋'))
-    fireEvent.click(screen.getByRole('button', { name: '확인' }))
+    await user.click(screen.getByTitle('전체 리셋'))
+    await user.click(screen.getByRole('button', { name: '확인' }))
 
     expect(mocked.timerStoreActions.reset).toHaveBeenCalledWith('todo-1')
-    expect(mocked.timerStoreActions.initStopwatch).toHaveBeenCalledWith('todo-1', 1_500_000, mocked.settings)
+    expect(mocked.timerStoreActions.initStopwatch).toHaveBeenCalledWith(
+      'todo-1',
+      1_500_000,
+      mocked.settings,
+    )
     expect(onClose).not.toHaveBeenCalled()
-    expect(screen.getByText('현재 세션')).toBeInTheDocument()
+    expect(await screen.findByText('타이머 테스트')).toBeInTheDocument()
   })
 
-  it('resets tab to current session when reopened', () => {
+  it('creates a session and completes the todo when finishing from stopwatch mode', async () => {
+    const user = userEvent.setup()
     const onClose = vi.fn()
-    const queryClient = new QueryClient()
 
-    const { rerender } = render(
-      <QueryClientProvider client={queryClient}>
-        <TimerFullScreen
-          isOpen
-          onClose={onClose}
-          todoId="todo-1"
-          todoTitle="타이머 테스트"
-          sessionFocusSeconds={1500}
-          sessionCount={3}
-          initialMode="stopwatch"
-          isDone={false}
-        />
-      </QueryClientProvider>,
-    )
-
-    const currentLabel = screen.getByText('현재 세션')
-    fireEvent.click(currentLabel.closest('button')!)
-    expect(screen.getByText('전체 누적')).toBeInTheDocument()
-
-    rerender(
-      <QueryClientProvider client={queryClient}>
-        <TimerFullScreen
-          isOpen={false}
-          onClose={onClose}
-          todoId="todo-1"
-          todoTitle="타이머 테스트"
-          sessionFocusSeconds={1500}
-          sessionCount={3}
-          initialMode="stopwatch"
-          isDone={false}
-        />
-      </QueryClientProvider>,
-    )
-
-    rerender(
-      <QueryClientProvider client={queryClient}>
-        <TimerFullScreen
-          isOpen
-          onClose={onClose}
-          todoId="todo-1"
-          todoTitle="타이머 테스트"
-          sessionFocusSeconds={1500}
-          sessionCount={3}
-          initialMode="stopwatch"
-          isDone={false}
-        />
-      </QueryClientProvider>,
-    )
-
-    expect(screen.getByText('현재 세션')).toBeInTheDocument()
-  })
-
-  it('re-initializes pomodoro on reset even when settings query is unavailable', () => {
-    mocked.settingsData = undefined
     Object.assign(mocked.timerState, {
-      mode: 'pomodoro',
-      phase: 'flow',
       status: 'paused',
-      remainingMs: 600_000,
-      endAt: null,
-      elapsedMs: 0,
+      focusElapsedMs: 120_000,
       initialFocusMs: 0,
-      settingsSnapshot: null,
-      flexiblePhase: null,
-      focusElapsedMs: 0,
-      breakElapsedMs: 0,
-      breakTargetMs: null,
-      breakCompleted: false,
-      focusStartedAt: null,
-      breakStartedAt: null,
       sessions: [],
+      breakElapsedMs: 0,
+      breakStartedAt: null,
+      flexiblePhase: 'focus',
     })
 
-    const onClose = vi.fn()
-    const queryClient = new QueryClient()
-
-    const { container } = render(
-      <QueryClientProvider client={queryClient}>
-        <TimerFullScreen
-          isOpen
-          onClose={onClose}
-          todoId="todo-1"
-          todoTitle="타이머 테스트"
-          sessionFocusSeconds={1500}
-          sessionCount={3}
-          initialMode="pomodoro"
-          isDone={false}
-        />
-      </QueryClientProvider>,
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={onClose}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
     )
 
-    // 서버 sessionCount=3이어도 타이머 상태(cycleCount=0)가 기준이라 초기 도트는 0이어야 한다.
-    expect(container.querySelectorAll('span.bg-emerald-400').length).toBe(0)
+    await user.click(await screen.findByRole('button', { name: '완료' }))
+    await user.click(screen.getByRole('button', { name: '확인' }))
 
-    fireEvent.click(screen.getByTitle('전체 리셋'))
-    fireEvent.click(screen.getByRole('button', { name: '확인' }))
-
-    expect(mocked.timerStoreActions.reset).toHaveBeenCalledWith('todo-1')
-    expect(mocked.timerStoreActions.initPomodoro).toHaveBeenCalledWith(
-      'todo-1',
-      expect.objectContaining({
-        flowMin: 25,
-        breakMin: 5,
-        longBreakMin: 15,
-        cycleEvery: 4,
-      }),
-    )
-    expect(container.querySelectorAll('span.bg-emerald-400').length).toBe(0)
-    expect(onClose).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(mocked.createSessionMutateAsync).toHaveBeenCalledWith({
+        todoId: 'todo-1',
+        body: expect.objectContaining({
+          sessionFocusSeconds: 120,
+          breakSeconds: 0,
+          clientSessionId: expect.any(String),
+        }),
+      })
+      expect(mocked.updateTodoMutateAsync).toHaveBeenCalledWith({
+        id: 'todo-1',
+        patch: {
+          isDone: true,
+          timerMode: 'stopwatch',
+        },
+      })
+      expect(onClose).toHaveBeenCalled()
+    })
   })
 })

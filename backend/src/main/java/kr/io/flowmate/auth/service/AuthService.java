@@ -102,29 +102,25 @@ public class AuthService {
             user.updateProfile(userInfo.email(), userInfo.nickname());
         }
 
-        // 7. 기존 활성 Refresh Token 모두 폐기 (중복 발급 방지)
-        refreshTokenRepository.findAllActiveByUserId(user.getId(), Instant.now())
-                .forEach(RefreshToken::revoke);
-
-        // 8. 새 Refresh Token 발급 -> SHA-256 해시 -> DB 저장
+        // 7. 새 Refresh Token 발급 -> SHA-256 해시 -> DB 저장
         String rawRefreshToken = UUID.randomUUID().toString();
         String tokenHash = sha256(rawRefreshToken);
         Instant expiresAt = Instant.now().plusSeconds(jwtProps.getRefreshTtl());
         refreshTokenRepository.save(RefreshToken.create(user.getId(), tokenHash, expiresAt));
 
-        // 9. Refresh Token -> HttpOnly 쿠키
+        // 8. Refresh Token -> HttpOnly 쿠키
         setRefreshCookie(httpResponse, rawRefreshToken, (int) jwtProps.getRefreshTtl());
 
-        // 10. Access JWT 발급
+        // 9. Access JWT 발급
         String accessToken = jwtProvider.generateAccessToken(user.getId());
         return new LoginResponse(accessToken, UserResponse.from(user));
     }
 
     /**
-     * Access Token 재발급
+     * Access Token 재발급 (RTR: 기존 RT revoke + 새 RT 발급 + 쿠키 교체)
      */
     @Transactional
-    public LoginResponse refresh(String rawRefreshToken) {
+    public LoginResponse refresh(String rawRefreshToken, HttpServletResponse httpResponse) {
         String tokenHash = sha256(rawRefreshToken);
 
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
@@ -136,6 +132,13 @@ public class AuthService {
 
         User user = userRepository.findById(refreshToken.getUserId())
                 .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
+
+        // RTR: 기존 RT revoke + 새 RT 발급 + 쿠키 교체
+        refreshToken.revoke();
+        String newRaw = UUID.randomUUID().toString();
+        Instant expiresAt = Instant.now().plusSeconds(jwtProps.getRefreshTtl());
+        refreshTokenRepository.save(RefreshToken.create(user.getId(), sha256(newRaw), expiresAt));
+        setRefreshCookie(httpResponse, newRaw, (int) jwtProps.getRefreshTtl());
 
         return new LoginResponse(jwtProvider.generateAccessToken(user.getId()), UserResponse.from(user));
     }
