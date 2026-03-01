@@ -51,10 +51,11 @@ public class AuthController {
      */
     @PostMapping("/refresh")
     public ResponseEntity<LoginResponse> refresh(
-            @CookieValue(name = "refreshToken", required = false) String rawRefreshToken
+            @CookieValue(name = "refreshToken", required = false) String rawRefreshToken,
+            HttpServletResponse response
     ) {
         if (rawRefreshToken == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        return ResponseEntity.ok(authService.refresh(rawRefreshToken));
+        return ResponseEntity.ok(authService.refresh(rawRefreshToken, response));
     }
 
     /**
