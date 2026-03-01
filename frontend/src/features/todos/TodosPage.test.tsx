@@ -1,18 +1,26 @@
-import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { act, fireEvent, screen } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defaultMiniDaysSettings } from '../../lib/miniDays'
 import { storageKeys } from '../../lib/storageKeys'
+import { useAuthStore } from '../../store/authStore'
 import { renderApp } from '../../test/renderApp'
 import { useTimerStore } from '../timer/timerStore'
 import TodosPage from './TodosPage'
 
 const selectedDateKey = '2026-01-09'
-const existingTodoId = '11111111-1111-4111-8111-111111111111'
+const initialAuthStore = useAuthStore.getState()
+
+let todoIdSequence = 0
+
+function nextTodoId() {
+  todoIdSequence += 1
+  return `00000000-0000-4000-8000-${String(todoIdSequence).padStart(12, '0')}`
+}
 
 function buildTodo(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    id: existingTodoId,
+    id: nextTodoId(),
     title: '기존 할 일',
     note: null,
     date: selectedDateKey,
@@ -32,52 +40,390 @@ function seedTodos(items: Array<Record<string, unknown>>) {
   window.localStorage.setItem(storageKeys.todos('local'), JSON.stringify(items))
 }
 
+type MiniDaysOverrides = {
+  day1?: Partial<(typeof defaultMiniDaysSettings)['day1']>
+  day2?: Partial<(typeof defaultMiniDaysSettings)['day2']>
+  day3?: Partial<(typeof defaultMiniDaysSettings)['day3']>
+}
+
+function seedMiniDaysSettings(overrides: MiniDaysOverrides = {}) {
+  window.localStorage.setItem(
+    storageKeys.settings('local'),
+    JSON.stringify({
+      miniDays: {
+        day1: { ...defaultMiniDaysSettings.day1, ...(overrides.day1 ?? {}) },
+        day2: { ...defaultMiniDaysSettings.day2, ...(overrides.day2 ?? {}) },
+        day3: { ...defaultMiniDaysSettings.day3, ...(overrides.day3 ?? {}) },
+      },
+    }),
+  )
+}
+
+function seedCalendarViewMode(mode: string) {
+  window.localStorage.setItem(storageKeys.todosCalendarViewMode, mode)
+}
+
+function setGuestAuth() {
+  useAuthStore.setState({
+    initialized: true,
+    state: {
+      type: 'guest',
+      token: 'guest-token',
+    },
+  })
+}
+
+function setMemberAuth(nickname: string) {
+  useAuthStore.setState({
+    initialized: true,
+    state: {
+      type: 'member',
+      accessToken: 'member-token',
+      user: {
+        id: 'user-1',
+        email: null,
+        nickname,
+      },
+    },
+  })
+}
+
+async function flushTodosPage() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(700)
+  })
+}
+
+async function renderTodosPage({
+  routeDateKey = selectedDateKey,
+  items = [],
+  now = new Date(2026, 0, 9, 9, 0, 0),
+}: {
+  routeDateKey?: string
+  items?: Array<Record<string, unknown>>
+  now?: Date
+} = {}) {
+  vi.setSystemTime(now)
+  seedTodos(items)
+
+  const result = renderApp(
+    <Routes>
+      <Route path="/todos" element={<TodosPage />} />
+    </Routes>,
+    { route: `/todos?date=${routeDateKey}` },
+  )
+
+  await flushTodosPage()
+  return result
+}
+
+function getSectionToggleButton(sectionTitle: string, action: '펼치기' | '접기') {
+  return screen.getByRole('button', { name: `${sectionTitle} 섹션 ${action}` })
+}
+
+function expectSectionExpanded(sectionTitle: string) {
+  expect(getSectionToggleButton(sectionTitle, '접기')).toHaveAttribute('aria-expanded', 'true')
+}
+
+function expectSectionCollapsed(sectionTitle: string) {
+  expect(getSectionToggleButton(sectionTitle, '펼치기')).toHaveAttribute('aria-expanded', 'false')
+}
+
 describe('TodosPage', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    todoIdSequence = 0
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
+    setGuestAuth()
     useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
   })
 
   afterEach(() => {
+    vi.useRealTimers()
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
     useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    vi.restoreAllMocks()
+  })
+
+  it('opens only the current mini-day section for today', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({ title: '미분류 할 일', miniDay: 0 }),
+        buildTodo({ title: '오전 할 일', miniDay: 1 }),
+        buildTodo({ title: '오후 할 일', miniDay: 2 }),
+      ],
+    })
+
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+    expectSectionCollapsed('미분류')
+    expectSectionExpanded('오전')
+    expectSectionCollapsed('오후')
+    expectSectionCollapsed('저녁')
+    expect(screen.getByText('오전 할 일')).toBeInTheDocument()
+    expect(screen.queryByText('미분류 할 일')).not.toBeInTheDocument()
+    expect(screen.queryByText('오후 할 일')).not.toBeInTheDocument()
+  })
+
+  it('defaults the calendar to week view on the todos page', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    expect(screen.getByRole('button', { name: '주 보기' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '월 보기' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('restores the last selected calendar view mode from local storage', async () => {
+    seedCalendarViewMode('month')
+
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    expect(screen.getByRole('button', { name: '월 보기' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '주 보기' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('persists the selected calendar view mode across remounts', async () => {
+    const rendered = await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '월 보기' }))
+
+    expect(window.localStorage.getItem(storageKeys.todosCalendarViewMode)).toBe('month')
+    expect(screen.getByRole('button', { name: '월 보기' })).toHaveAttribute('aria-pressed', 'true')
+
+    rendered.unmount()
+
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    expect(screen.getByRole('button', { name: '월 보기' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '주 보기' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows a guest greeting for the current mini-day guide on today', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    expect(screen.getByText('게스트님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '오전에 추가' })).toBeInTheDocument()
+  })
+
+  it('adds 님 to a member nickname in the current mini-day guide', async () => {
+    setMemberAuth('김민석')
+
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    expect(screen.getByText('김민석님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?')).toBeInTheDocument()
+  })
+
+  it('does not duplicate 님 in the current mini-day guide', async () => {
+    setMemberAuth('김민석님')
+
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    expect(screen.getByText('김민석님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?')).toBeInTheDocument()
+    expect(
+      screen.queryByText('김민석님님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('uses the configured mini-day label in the personalized guide', async () => {
+    seedMiniDaysSettings({
+      day1: { label: '집중' },
+    })
+
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [],
+    })
+
+    expect(screen.getByText('게스트님, 좋은 아침이에요. 집중에 어떤 일부터 시작할까요?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '집중에 추가' })).toBeInTheDocument()
+  })
+
+  it('keeps all sections collapsed for today when the current time is outside mini-day ranges', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 2, 0, 0),
+      items: [
+        buildTodo({ title: '미분류 할 일', miniDay: 0 }),
+        buildTodo({ title: '오전 할 일', miniDay: 1 }),
+      ],
+    })
+
+    expectSectionCollapsed('미분류')
+    expectSectionCollapsed('오전')
+    expectSectionCollapsed('오후')
+    expectSectionCollapsed('저녁')
+    expect(screen.queryByText('미분류 할 일')).not.toBeInTheDocument()
+    expect(screen.queryByText('오전 할 일')).not.toBeInTheDocument()
+  })
+
+  it('shows a personalized guide for today uncategorized section', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 2, 0, 0),
+      items: [],
+    })
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    expect(screen.getByText('게스트님, 떠오른 일을 먼저 적어둘까요?')).toBeInTheDocument()
+  })
+
+  it('keeps uncategorized guide neutral for non-today dates', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 15, 9, 0, 0),
+      items: [],
+    })
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    expect(screen.getByText('떠오른 일을 먼저 적어둘까요?')).toBeInTheDocument()
+    expect(screen.queryByText('게스트님, 떠오른 일을 먼저 적어둘까요?')).not.toBeInTheDocument()
+  })
+
+  it('opens only populated sections for past dates', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 15, 9, 0, 0),
+      items: [
+        buildTodo({ title: '과거 오전 할 일', miniDay: 1 }),
+        buildTodo({ title: '과거 저녁 할 일', miniDay: 3, date: selectedDateKey }),
+        buildTodo({ title: '다른 날짜 할 일', miniDay: 2, date: '2026-01-10' }),
+      ],
+    })
+
+    expectSectionCollapsed('미분류')
+    expectSectionExpanded('오전')
+    expectSectionCollapsed('오후')
+    expectSectionExpanded('저녁')
+    expect(screen.getByText('과거 오전 할 일')).toBeInTheDocument()
+    expect(screen.getByText('과거 저녁 할 일')).toBeInTheDocument()
+    expect(screen.queryByText('다른 날짜 할 일')).not.toBeInTheDocument()
+  })
+
+  it('opens only populated sections for future dates', async () => {
+    await renderTodosPage({
+      routeDateKey: '2026-01-11',
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({ title: '미래 오후 할 일', miniDay: 2, date: '2026-01-11' }),
+        buildTodo({ title: '다른 날짜 할 일', miniDay: 1, date: '2026-01-12' }),
+      ],
+    })
+
+    expectSectionCollapsed('미분류')
+    expectSectionCollapsed('오전')
+    expectSectionExpanded('오후')
+    expectSectionCollapsed('저녁')
+    expect(screen.getByText('미래 오후 할 일')).toBeInTheDocument()
+    expect(screen.queryByText('다른 날짜 할 일')).not.toBeInTheDocument()
+  })
+
+  it('keeps all sections collapsed for empty future dates', async () => {
+    await renderTodosPage({
+      routeDateKey: '2026-01-12',
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [buildTodo({ title: '다른 날짜 할 일', miniDay: 1, date: '2026-01-11' })],
+    })
+
+    expectSectionCollapsed('미분류')
+    expectSectionCollapsed('오전')
+    expectSectionCollapsed('오후')
+    expectSectionCollapsed('저녁')
+    expect(screen.queryByText('다른 날짜 할 일')).not.toBeInTheDocument()
+  })
+
+  it('reinitializes section state when the selected date changes', async () => {
+    await renderTodosPage({
+      routeDateKey: '2026-01-10',
+      now: new Date(2026, 0, 15, 9, 0, 0),
+      items: [
+        buildTodo({ title: '1월 10일 오전 할 일', miniDay: 1, date: '2026-01-10' }),
+        buildTodo({ title: '1월 11일 오후 할 일', miniDay: 2, date: '2026-01-11' }),
+      ],
+    })
+
+    expect(screen.getByText('1월 10일')).toBeInTheDocument()
+    expect(screen.getByText('1월 10일 오전 할 일')).toBeInTheDocument()
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    expect(screen.getByText('떠오른 일을 먼저 적어둘까요?')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^11\b/ }))
+
+    expect(screen.getByText('1월 11일')).toBeInTheDocument()
+    expect(screen.getByText('1월 11일 오후 할 일')).toBeInTheDocument()
+    expect(screen.queryByText('1월 10일 오전 할 일')).not.toBeInTheDocument()
+    expect(screen.queryByText('떠오른 일을 먼저 적어둘까요?')).not.toBeInTheDocument()
+    expectSectionCollapsed('미분류')
+    expectSectionCollapsed('오전')
+    expectSectionExpanded('오후')
   })
 
   it('renders, creates, completes, and deletes todos in the main flow', async () => {
-    const user = userEvent.setup()
-    seedTodos([buildTodo()])
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 2, 0, 0),
+      items: [buildTodo({ title: '기존 할 일', miniDay: 0 })],
+    })
 
-    renderApp(
-      <Routes>
-        <Route path="/todos" element={<TodosPage />} />
-      </Routes>,
-      { route: `/todos?date=${selectedDateKey}` },
-    )
-
-    expect(await screen.findByText('기존 할 일')).toBeInTheDocument()
     expect(screen.getByText('1월 9일')).toBeInTheDocument()
-    expect(screen.getByText('미분류')).toBeInTheDocument()
+    expectSectionCollapsed('미분류')
+    expect(screen.queryByText('기존 할 일')).not.toBeInTheDocument()
 
-    await user.click(screen.getByLabelText('미분류 할 일 추가'))
-    await user.type(await screen.findByPlaceholderText('할 일을 입력하세요'), '새 할 일{enter}')
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    expect(screen.getByText('기존 할 일')).toBeInTheDocument()
 
-    expect(await screen.findByText('새 할 일')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('미분류 할 일 추가'))
+    const todoInput = screen.getByPlaceholderText('할 일을 입력하세요')
+    fireEvent.change(todoInput, { target: { value: '새 할 일' } })
+    fireEvent.blur(todoInput)
+    await flushTodosPage()
+
+    expect(screen.getByText('새 할 일')).toBeInTheDocument()
     expect(screen.getByText('남음 2 · 완료 0')).toBeInTheDocument()
 
-    const newTodoTitle = screen.getByText('새 할 일')
-    const toggleButton = newTodoTitle.parentElement?.previousElementSibling
-    expect(toggleButton).toBeInstanceOf(HTMLButtonElement)
+    fireEvent.click(screen.getByRole('button', { name: '새 할 일 완료' }))
+    await flushTodosPage()
 
-    await user.click(toggleButton as HTMLButtonElement)
+    expect(screen.getByText('남음 1 · 완료 1')).toBeInTheDocument()
 
-    await waitFor(() => {
-      expect(screen.getByText('남음 1 · 완료 1')).toBeInTheDocument()
-    })
+    fireEvent.click(screen.getByText('기존 할 일'))
+    fireEvent.click(screen.getByRole('button', { name: '삭제하기' }))
+    await flushTodosPage()
 
-    await user.click(screen.getByText('기존 할 일'))
-    await user.click(await screen.findByRole('button', { name: '삭제하기' }))
-
-    await waitFor(() => {
-      expect(screen.queryByText('기존 할 일')).not.toBeInTheDocument()
-    })
+    expect(screen.queryByText('기존 할 일')).not.toBeInTheDocument()
   })
 })

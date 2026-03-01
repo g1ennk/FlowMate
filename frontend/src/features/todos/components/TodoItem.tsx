@@ -152,6 +152,7 @@ export function TodoItem({
         {/* 체크박스 */}
         <button
           onClick={onToggle}
+          aria-label={`${title} ${isDone ? '완료 취소' : '완료'}`}
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
             isDone
               ? 'border-emerald-500 bg-emerald-500 text-white'
