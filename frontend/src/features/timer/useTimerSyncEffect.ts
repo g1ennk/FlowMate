@@ -1,17 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useCreateSession } from '../todos/hooks'
 import { useTimerStore } from './timerStore'
-import {
-  readSyncCursor,
-  type PendingPomodoroSession,
-  type SyncCursor,
-  type SyncCursorEntry,
-  writeSyncCursor,
-} from './timerSyncService'
-import type { SessionRecord, SingleTimerState } from './timerTypes'
+import type { PendingPomodoroSession, SessionRecord, SingleTimerState } from './timerTypes'
 import { normalizeSessionId } from '../../lib/sessionId'
 
 type RetryState = Record<string, { attempt: number; nextRetryAt: number }>
+type SyncCursorEntry = { count: number; signatures: string[] }
+type SyncCursor = Record<string, SyncCursorEntry>
 
 type SyncState = {
   timers: Record<string, SingleTimerState>
@@ -109,14 +104,13 @@ export function useTimerSyncEffect() {
 
   const getCursor = useCallback(() => {
     if (!cursorRef.current) {
-      cursorRef.current = readSyncCursor()
+      cursorRef.current = {}
     }
     return cursorRef.current
   }, [])
 
   const setCursor = useCallback((next: SyncCursor) => {
     cursorRef.current = next
-    writeSyncCursor(next)
   }, [])
 
   const syncStopwatchSessions = useCallback(async (
