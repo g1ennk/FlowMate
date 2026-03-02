@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { buildApiUrl } from '../../api/baseUrl'
 import { timerApi, type ServerTimerState, type TimerStatePushBody } from '../../api/timerApi'
 import { useAuthStore } from '../../store/authStore'
+import { shouldRefreshSseToken } from './sseAuth'
 import { getIsApplyingRemote, useTimerStore } from './timerStore'
 
 const pendingResync = new Set<string>()
@@ -10,6 +11,7 @@ const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
 
 let sseRefreshing = false
+let lastSseRefreshAt = 0
 
 async function enqueuePush(todoId: string, body: TimerStatePushBody): Promise<void> {
   const existing = pushQueues.get(todoId)
@@ -82,8 +84,14 @@ function connectSse(token: string): EventSource {
   })
 
   es.onerror = () => {
-    if (sseRefreshing) return
+    const authState = useAuthStore.getState().state
+    if (authState?.type !== 'member') return
+
+    const now = Date.now()
+    if (sseRefreshing || !shouldRefreshSseToken(authState.accessToken, lastSseRefreshAt, now)) return
+
     sseRefreshing = true
+    lastSseRefreshAt = now
     useAuthStore.getState().refresh()
       .catch(() => {})
       .finally(() => {
@@ -111,6 +119,8 @@ export function useSseTimerSync() {
           slot.cancelled = true
         })
         pushQueues.clear()
+        sseRefreshing = false
+        lastSseRefreshAt = 0
         useTimerStore.getState().clearAll()
       }
 
@@ -119,6 +129,8 @@ export function useSseTimerSync() {
       if (auth.state?.type !== 'member') {
         esRef.current?.close()
         esRef.current = null
+        sseRefreshing = false
+        lastSseRefreshAt = 0
         return
       }
 
