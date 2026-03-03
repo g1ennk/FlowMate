@@ -5,6 +5,7 @@ export type MusicTrackMeta = {
 }
 
 export const DEFAULT_MUSIC_TRACK_INDEX = 0
+export const MUSIC_LABEL = 'Lo-fi'
 
 export const MUSIC_TRACKS: MusicTrackMeta[] = [
   {

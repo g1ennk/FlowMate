@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderApp } from '../../test/renderApp'
-import { DEFAULT_MUSIC_TRACK_INDEX, MUSIC_TRACKS } from './musicTracks'
+import { DEFAULT_MUSIC_TRACK_INDEX, MUSIC_LABEL } from './musicTracks'
 import { DEFAULT_MUSIC_VOLUME, useMusicStore } from './musicStore'
 import { TimerFullScreen } from './TimerFullScreen'
 
@@ -169,8 +169,6 @@ describe('TimerFullScreen', () => {
     expect(mocked.timerStoreActions.resume).toHaveBeenCalledWith('todo-1')
 
     await user.click(screen.getByRole('button', { name: '배경 음악 켜기' }))
-    await user.click(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[0].displayName}` }))
-    await user.click(screen.getByRole('button', { name: MUSIC_TRACKS[1].displayName }))
 
     await user.click(screen.getByTitle('전체 리셋'))
     await user.click(screen.getByRole('button', { name: '확인' }))
@@ -311,7 +309,72 @@ describe('TimerFullScreen', () => {
     await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(2))
   })
 
-  it('resets the music session when closing fullscreen after selecting a track', async () => {
+  it('shows a single Lo-fi label instead of exposing per-track controls', async () => {
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    expect(await screen.findByText(MUSIC_LABEL)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /트랙 선택:/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Focus Study')).not.toBeInTheDocument()
+  })
+
+  it('cycles through bundled tracks automatically while focus music stays enabled', async () => {
+    const user = userEvent.setup()
+    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+
+    Object.assign(mocked.timerState, {
+      status: 'running',
+      flexiblePhase: 'focus',
+    })
+
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1))
+
+    const audio = playSpy.mock.contexts[0] as HTMLAudioElement
+
+    audio.dispatchEvent(new Event('ended'))
+    await waitFor(() => {
+      expect(playSpy).toHaveBeenCalledTimes(2)
+      expect(useMusicStore.getState().currentTrackIndex).toBe(1)
+    })
+
+    audio.dispatchEvent(new Event('ended'))
+    await waitFor(() => {
+      expect(playSpy).toHaveBeenCalledTimes(3)
+      expect(useMusicStore.getState().currentTrackIndex).toBe(2)
+    })
+
+    audio.dispatchEvent(new Event('ended'))
+    await waitFor(() => {
+      expect(playSpy).toHaveBeenCalledTimes(4)
+      expect(useMusicStore.getState().currentTrackIndex).toBe(DEFAULT_MUSIC_TRACK_INDEX)
+    })
+  })
+
+  it('resets the music session when closing fullscreen', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
 
@@ -334,10 +397,6 @@ describe('TimerFullScreen', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
-    await user.click(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[0].displayName}` }))
-    await user.click(screen.getByRole('button', { name: MUSIC_TRACKS[1].displayName }))
-
-    expect(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[1].displayName}` })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '타이머 닫기' }))
 
@@ -371,8 +430,6 @@ describe('TimerFullScreen', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
-    await user.click(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[0].displayName}` }))
-    await user.click(screen.getByRole('button', { name: MUSIC_TRACKS[2].displayName }))
 
     view.unmount()
 

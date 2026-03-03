@@ -17,11 +17,12 @@ export type MusicSessionState = {
 }
 
 type MusicActions = {
+  playTrack: (index: number) => void
+  playNextTrack: () => void
   playIfAllowed: () => void
   pauseForFlowExit: () => void
   stopSession: () => void
   setVolume: (value: number) => void
-  setTrack: (index: number) => void
   setEnabled: (value: boolean) => void
 }
 
@@ -75,6 +76,7 @@ function getAudio() {
     audioElement = new Audio()
     audioElement.loop = false
     audioElement.volume = readStoredVolume()
+    audioElement.addEventListener('ended', handleAudioEnded)
   }
   return audioElement
 }
@@ -83,8 +85,14 @@ function getExistingAudio() {
   return audioElement
 }
 
+function normalizeTrackIndex(index: number) {
+  const trackCount = MUSIC_TRACKS.length
+  if (trackCount === 0) return DEFAULT_MUSIC_TRACK_INDEX
+  return ((index % trackCount) + trackCount) % trackCount
+}
+
 function syncAudioTrack(audio: HTMLAudioElement, trackIndex: number) {
-  const track = MUSIC_TRACKS[trackIndex]
+  const track = MUSIC_TRACKS[normalizeTrackIndex(trackIndex)]
   if (audio.dataset.trackId === track.id) return
   audio.src = track.src
   audio.dataset.trackId = track.id
@@ -107,20 +115,47 @@ function resetAudio(audio: HTMLAudioElement) {
   audio.load()
 }
 
+function handleAudioEnded() {
+  useMusicStore.getState().playNextTrack()
+}
+
 export const useMusicStore = create<MusicStore>((set, get) => ({
   ...createInitialSessionState(),
+
+  playTrack: (index: number) => {
+    const safeIndex = normalizeTrackIndex(index)
+    const { enabled, volume } = get()
+    set({ currentTrackIndex: safeIndex })
+
+    if (!enabled) {
+      set({ isPlaying: false })
+      return
+    }
+
+    const audio = getAudio()
+    syncAudioTrack(audio, safeIndex)
+    audio.volume = volume
+
+    audio.play()
+      .then(() => set({ isPlaying: true }))
+      .catch(() => set({ isPlaying: false }))
+  },
+
+  playNextTrack: () => {
+    const { enabled, currentTrackIndex } = get()
+    if (!enabled) {
+      set({ isPlaying: false })
+      return
+    }
+
+    get().playTrack(currentTrackIndex + 1)
+  },
 
   playIfAllowed: () => {
     const { enabled, currentTrackIndex } = get()
     if (!enabled) return
 
-    const audio = getAudio()
-    syncAudioTrack(audio, currentTrackIndex)
-    audio.volume = get().volume
-
-    audio.play()
-      .then(() => set({ isPlaying: true }))
-      .catch(() => set({ isPlaying: false }))
+    get().playTrack(currentTrackIndex)
   },
 
   pauseForFlowExit: () => {
@@ -153,20 +188,6 @@ export const useMusicStore = create<MusicStore>((set, get) => ({
     audio.volume = nextVolume
     set({ volume: nextVolume })
     persistVolume(nextVolume)
-  },
-
-  setTrack: (index: number) => {
-    const safeIndex = Math.max(0, Math.min(MUSIC_TRACKS.length - 1, index))
-    const { isPlaying } = get()
-    set({ currentTrackIndex: safeIndex })
-
-    if (!isPlaying) return
-
-    const audio = getAudio()
-    syncAudioTrack(audio, safeIndex)
-    audio.play()
-      .then(() => set({ isPlaying: true }))
-      .catch(() => set({ isPlaying: false }))
   },
 
   setEnabled: (value: boolean) => {
