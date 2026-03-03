@@ -1,8 +1,11 @@
 # API Spec – FlowMate
 
+> 상태: current
+> 역할: 현재 API 계약 정본
+
 Base URL: `/api`
-Auth: `Authorization: Bearer {JWT}` (게스트/회원 모두 동일)
-Content-Type: `application/json`
+Auth: `Authorization: Bearer {JWT}` (게스트/회원 공통, 단 `GET /api/timer/sse`는 query token 사용)
+Content-Type: `application/json` (`GET /api/timer/sse`는 `text/event-stream`)
 
 > 게스트는 `POST /api/auth/guest/token`으로 발급받은 guestJWT를 사용.
 > 회원은 카카오 로그인 후 발급받은 accessJWT를 사용.
@@ -75,7 +78,8 @@ Content-Type: `application/json`
 ```json
 { "id": "UUID", "email": "string|null", "nickname": "string" }
 ```
-- Error 403: 미인증 또는 `ROLE_MEMBER` 아님 (현행 Security 설정 기준)
+- Error 401: 미인증
+- Error 403: 인증됐지만 `ROLE_MEMBER` 아님
 
 ---
 
@@ -134,6 +138,86 @@ Content-Type: `application/json`
   }
 }
 ```
+
+### TimerStatePushBody
+```json
+{
+  "status": "running",
+  "state": {
+    "mode": "pomodoro",
+    "phase": "flow",
+    "status": "running",
+    "endAt": 1772455500000,
+    "remainingMs": null,
+    "elapsedMs": 0,
+    "initialFocusMs": 0,
+    "startedAt": null,
+    "cycleCount": 0,
+    "settingsSnapshot": { "flowMin": 25, "breakMin": 5, "longBreakMin": 15, "cycleEvery": 4 },
+    "flexiblePhase": null,
+    "focusElapsedMs": 0,
+    "breakElapsedMs": 0,
+    "breakTargetMs": null,
+    "breakCompleted": false,
+    "focusStartedAt": null,
+    "breakStartedAt": null,
+    "breakSessionPendingUpdate": false,
+    "sessions": []
+  }
+}
+```
+
+> `status`: `idle | running | paused | waiting`
+> `idle`이면 `state`는 반드시 `null`, non-idle이면 `state`는 반드시 non-null
+
+### TimerStateResponse
+```json
+{
+  "todoId": "uuid",
+  "state": {
+    "mode": "stopwatch",
+    "phase": "flow",
+    "status": "paused",
+    "endAt": null,
+    "remainingMs": null,
+    "elapsedMs": 1200000,
+    "initialFocusMs": 0,
+    "startedAt": null,
+    "cycleCount": 0,
+    "settingsSnapshot": null,
+    "flexiblePhase": "focus",
+    "focusElapsedMs": 1200000,
+    "breakElapsedMs": 0,
+    "breakTargetMs": null,
+    "breakCompleted": false,
+    "focusStartedAt": 1772454032000,
+    "breakStartedAt": null,
+    "breakSessionPendingUpdate": false,
+    "sessions": []
+  },
+  "serverTime": 1772454032001
+}
+```
+
+> `serverTime`은 wall-clock 타임스탬프가 아니라 `timer_states.version` 기반 최신성 판정 값이다.
+> SSE와 `GET /api/timer/state`는 모두 이 값을 동일한 최신성 기준으로 사용한다.
+
+### SingleTimerState (요약)
+
+`state` 필드는 프론트 `SingleTimerState`를 그대로 직렬화한 JSON blob이다. 주요 필드는 아래와 같다.
+
+- 공통
+  - `mode`: `pomodoro | stopwatch`
+  - `phase`: `flow | short | long`
+  - `status`: `idle | running | paused | waiting`
+  - `endAt`, `remainingMs`, `elapsedMs`, `initialFocusMs`, `startedAt`
+  - `cycleCount`, `settingsSnapshot`
+- stopwatch 전용
+  - `flexiblePhase`: `focus | break_suggested | break_free | null`
+  - `focusElapsedMs`, `breakElapsedMs`, `breakTargetMs`, `breakCompleted`
+  - `focusStartedAt`, `breakStartedAt`, `breakSessionPendingUpdate`
+- 세션 버퍼
+  - `sessions[]`: `{ sessionFocusSeconds, breakSeconds, clientSessionId? }`
 
 ---
 
@@ -254,20 +338,66 @@ Content-Type: `application/json`
 
 ---
 
-## 5. Reviews
+## 5. Timer Sync
+
+> `GET /api/timer/sse`는 member access token을 query param으로 전달한다.
+> `/api/timer/state/**`는 `Authorization: Bearer {accessJWT}`가 필요한 member 전용 엔드포인트다.
+
+### 5.1 Subscribe Timer SSE
+- `GET /api/timer/sse?token={accessToken}`
+- Auth: query parameter `token` (member access token)
+- Security: Spring Security에서는 `permitAll()`, 컨트롤러에서 token 검증 + role=`member` 확인
+- Response 200: `text/event-stream`
+- Stream events:
+
+| Event name | Data | 의미 |
+|---|---|---|
+| `connected` | `ok` | 연결 직후 1회 전송되는 연결 확인 이벤트 |
+| `heartbeat` | `keepalive` | 약 25초 간격 keepalive 이벤트 |
+| `timer-state` | JSON 문자열 `TimerStateResponse` | 실제 타이머 상태 변경 이벤트 |
+
+- 클라이언트 처리 규칙:
+  - `timer-state`만 상태 반영 대상으로 처리한다
+  - `connected`, `heartbeat`는 연결 유지용 이벤트로 무시 가능하다
+- Error 400: 유효하지 않은 token 또는 member 아님
+
+### 5.2 Push Timer State
+- `PUT /api/timer/state/{todoId}`
+- Auth: 필요 (회원만)
+- Body: `TimerStatePushBody`
+- Behavior:
+  - `status=idle`이면 `state=null`로 저장하고 soft delete 의미를 갖는다
+  - `status!=idle`이면 `state`를 JSON blob으로 저장한다
+  - 저장 성공 시 같은 user의 SSE 연결에 `timer-state`를 브로드캐스트한다
+- Response 200: `TimerStateResponse`
+- Error 404: 해당 user 소유 Todo 아님
+- Error 400: `idle`/`state` 조합 불일치 또는 state 직렬화 실패
+
+### 5.3 Get Active Timer States
+- `GET /api/timer/state`
+- Auth: 필요 (회원만)
+- Response 200: `TimerStateResponse[]`
+- Behavior:
+  - 현재 user의 active timer만 반환한다
+  - `state_json IS NULL`인 idle row는 응답에서 제외한다
+  - stale row는 TTL cleanup 후 제외될 수 있다
+
+---
+
+## 6. Reviews
 
 > 모든 엔드포인트: `Authorization: Bearer {JWT}` 필요
 
-### 5.1 Get Review (단건)
+### 6.1 Get Review (단건)
 - `GET /api/reviews?type={type}&periodStart=YYYY-MM-DD`
 - `type`: `daily | weekly | monthly`
 - Response 200: Review 객체 또는 `null`
 
-### 5.2 List Reviews (기간 목록)
+### 6.2 List Reviews (기간 목록)
 - `GET /api/reviews?type={type}&from=YYYY-MM-DD&to=YYYY-MM-DD`
 - Response 200: `{ "items": Review[] }`
 
-### 5.3 Upsert Review
+### 6.3 Upsert Review
 - `PUT /api/reviews`
 - Body:
 ```json
@@ -280,13 +410,13 @@ Content-Type: `application/json`
 ```
 - Response 200: Review 객체
 
-### 5.4 Delete Review
+### 6.4 Delete Review
 - `DELETE /api/reviews/{id}`
 - Response 204
 
 ---
 
-## 6. Error Format
+## 7. Error Format
 ```json
 {
   "error": {

@@ -1,11 +1,15 @@
 # FlowMate Data Model
 
+> 상태: current
+> 역할: 현재 데이터 모델/스키마 정본
+
 ## 1) Conceptual Model (개념적 모델)
 
 ### 핵심 개념
 
 - **User**: 게스트(guestJWT)와 회원(카카오 로그인) 모두 동일한 `user_id` 구조로 식별
 - **Todo**: 날짜 기반 할 일 + 타이머 누적
+- **TimerState**: 회원의 현재 활성 타이머 스냅샷 (`timer_states`, SSE/초기 복원용)
 - **Session**: 완료된 집중/휴식 기록 (서버 저장)
 - **Review**: 기간별 회고 (일일/주간/월간)
 - **Settings**: 사용자 단위 환경설정 (세션/자동화/미니데이)
@@ -14,13 +18,16 @@
 
 - User 1 : N Todo
 - User 1 : 1 Settings
+- User 1 : N TimerState
 - Todo 1 : N Session
+- Todo 1 : 0..1 TimerState
 - User 1 : N Review
 - User 1 : N SocialAccount (소셜 로그인 연결)
 - User 1 : N RefreshToken (발급된 Refresh Token)
 
-> Timer 상태는 **클라이언트 localStorage**에만 저장.
-> Session은 서버 저장 대상.
+> 회원 타이머 상태의 정본은 서버 `timer_states`다.
+> 클라이언트는 서버에서 받은 스냅샷을 `hydrateState()`로 런타임 상태로 보정한다.
+> 완료 세션의 정본은 여전히 `todo_sessions`다.
 
 ---
 
@@ -74,6 +81,14 @@
 - `sessionFocusSeconds`: int (초 단위, 1 이상)
 - `breakSeconds`: int (초 단위, 0 이상)
 - `sessionOrder`: int (같은 todoId 내 생성 순번, 중복 불가)
+- `createdAt`, `updatedAt`: Instant
+
+### TimerState
+
+- `todoId`: string (UUID, 36자, PK, todos.id FK)
+- `userId`: string (UUID, 36자, 회원 userId)
+- `stateJson?`: object | null (`null`이면 idle soft delete)
+- `version`: long (단조 증가, 최신성 판단 정본)
 - `createdAt`, `updatedAt`: Instant
 
 ### Settings (UserSettings)
@@ -203,7 +218,29 @@ CREATE TABLE todo_sessions (
 );
 ```
 
-### 3.6 user_settings *(변경 없음)*
+### 3.6 timer_states *(신규)*
+
+```sql
+CREATE TABLE timer_states
+(
+    todo_id    VARCHAR(36)  NOT NULL PRIMARY KEY,
+    user_id    VARCHAR(36)  NOT NULL,
+    state_json TEXT         NULL,
+    version    BIGINT       NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    CONSTRAINT fk_timer_states_todo
+        FOREIGN KEY (todo_id) REFERENCES todos (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_timer_states_user ON timer_states (user_id, updated_at DESC);
+```
+
+> `state_json = NULL`은 row 삭제가 아니라 idle 상태를 나타내는 soft delete다.
+> 최신성 판단은 `updated_at`이 아니라 `version`으로 한다.
+
+### 3.7 user_settings *(변경 없음)*
 
 ```sql
 CREATE TABLE user_settings (
@@ -233,7 +270,7 @@ CREATE TABLE user_settings (
 );
 ```
 
-### 3.7 reviews *(변경 없음)*
+### 3.8 reviews *(변경 없음)*
 
 ```sql
 CREATE TABLE reviews (
@@ -252,14 +289,15 @@ CREATE TABLE reviews (
 );
 ```
 
-### 3.8 마이그레이션 파일
+### 3.9 마이그레이션 파일
 
 ```
 V1__init.sql     기존 (todos, todo_sessions, user_settings, reviews)
 V2__add_auth.sql 신규 (users, auth_social_accounts, auth_refresh_tokens)
+V3__add_timer_state.sql 신규 (timer_states)
 ```
 
-### 3.9 Index 정책
+### 3.10 Index 정책
 
 - 전략: 핫패스 최소 인덱스 먼저, 이후 실측 기반으로 추가
 - 후속 인덱스 추가 기준: `EXPLAIN` full scan 확인, p95/p99 응답 시간 악화, 읽기/쓰기 비용 트레이드오프 검토
@@ -274,7 +312,9 @@ users
   ├── N ── auth_social_accounts
   ├── N ── auth_refresh_tokens
   ├── 1 ── user_settings
+  ├── N ── timer_states
   ├── N ── todos ── N ── todo_sessions
+  │              └── 1 ── timer_states
   └── N ── reviews
 ```
 
@@ -303,6 +343,13 @@ users
 - `session_focus_seconds`: API 입력 1 이상, DB 컬럼 0 이상
 - `break_seconds`: 0 이상 (초 단위)
 - 멱등 재요청 시 `break_seconds`는 감소 없이 증가 방향(`max`)으로만 갱신
+
+### TimerState
+- `todo_id`: PK이자 FK, Todo당 현재 스냅샷 row는 최대 1개
+- `user_id`: member userId 저장, 게스트 타이머는 서버 저장 대상이 아님
+- `state_json`: active 상태면 JSON blob, idle이면 `NULL`
+- `version`: `max(now, lastVersion + 1)` 규칙으로 단조 증가
+- `updated_at`: TTL cleanup 기준으로만 사용, 최신성 비교 기준은 아님
 
 ### Settings
 - `flowMin`: 1~90 (기본값 25)
