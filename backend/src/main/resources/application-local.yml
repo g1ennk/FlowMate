@@ -3,6 +3,10 @@ spring:
     activate:
       on-profile: local
 
+  mvc:
+    async:
+      request-timeout: 1h
+
   datasource:
     url: jdbc:mysql://localhost:3306/flowmate?serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:flowmate}
