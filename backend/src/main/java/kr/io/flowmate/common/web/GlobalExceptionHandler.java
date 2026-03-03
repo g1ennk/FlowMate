@@ -13,6 +13,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -85,6 +86,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Void> handleAsyncRequestTimeout(AsyncRequestTimeoutException ex) {
         log.debug("Async request timed out", ex);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+    }
+
+    // SSE 클라이언트가 먼저 연결을 닫은 경우는 정상 종료로 간주
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public ResponseEntity<Void> handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
+        log.debug("Async request disconnected", ex);
+        return ResponseEntity.noContent().build();
     }
 
     // 처리되지 않는 예외의 최후 방어선

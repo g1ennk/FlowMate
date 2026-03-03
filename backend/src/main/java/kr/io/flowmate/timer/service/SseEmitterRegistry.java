@@ -2,6 +2,7 @@ package kr.io.flowmate.timer.service;
 
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -53,8 +54,12 @@ public class SseEmitterRegistry {
             emitter.send(SseEmitter.event()
                     .name("connected")
                     .data("ok"));
-        } catch (IOException | IllegalStateException e) {
-            removeEntry(userId, internalId);
+        } catch (Exception e) {
+            if (isDisconnectedClientError(e)) {
+                removeEntry(userId, internalId);
+                return emitter;
+            }
+            throw new IllegalStateException("SSE 초기 연결 이벤트 전송 실패", e);
         }
 
         return emitter;
@@ -69,8 +74,12 @@ public class SseEmitterRegistry {
         for (ConnectionEntry entry : entries) {
             try {
                 entry.emitter().send(event);
-            } catch (IOException | IllegalStateException e) {
-                removeEntry(userId, entry.internalId());
+            } catch (Exception e) {
+                if (isDisconnectedClientError(e)) {
+                    removeEntry(userId, entry.internalId());
+                    continue;
+                }
+                throw new IllegalStateException("SSE 브로드캐스트 전송 실패", e);
             }
         }
     }
@@ -103,8 +112,12 @@ public class SseEmitterRegistry {
             entry.emitter().send(SseEmitter.event()
                     .name("heartbeat")
                     .data("keepalive"));
-        } catch (IOException | IllegalStateException e) {
-            removeEntry(userId, internalId);
+        } catch (Exception e) {
+            if (isDisconnectedClientError(e)) {
+                removeEntry(userId, internalId);
+                return;
+            }
+            throw new IllegalStateException("SSE heartbeat 전송 실패", e);
         }
     }
 
@@ -123,6 +136,12 @@ public class SseEmitterRegistry {
     @PreDestroy
     void shutdown() {
         heartbeatExecutor.shutdownNow();
+    }
+
+    private boolean isDisconnectedClientError(Throwable error) {
+        return error instanceof IOException
+                || error instanceof IllegalStateException
+                || error instanceof AsyncRequestNotUsableException;
     }
 
     private static final class HeartbeatThreadFactory implements ThreadFactory {
