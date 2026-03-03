@@ -8,7 +8,7 @@ import type {
   Todo,
 } from '../api/types'
 import { defaultMiniDaysSettings, normalizeMiniDaysSettings } from '../lib/miniDays'
-import { storageKeys } from '../lib/storageKeys'
+import { STORAGE_PREFIX, storageKeys } from '../lib/storageKeys'
 
 type StoredTodo = Omit<Todo, 'miniDay' | 'dayOrder'> & {
   miniDay?: number
@@ -37,7 +37,7 @@ const STORAGE_KEYS = {
   todos: storageKeys.todos,
   reviews: storageKeys.reviews,
   settingsCombined: storageKeys.settings,
-  sessions: (clientId: string) => `${storageKeys.sessionsPrefix(clientId)}__mock_server`,
+  sessions: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/sessions/__mock_server`,
 }
 
 const now = () => new Date().toISOString()
@@ -349,6 +349,16 @@ function saveMiniDaysSettings(clientId: string, settings: MiniDaysSettings) {
 }
 
 export const handlers = [
+  http.get('/api/timer/state', async () => {
+    await delay(latency)
+    return HttpResponse.json([])
+  }),
+
+  http.put('/api/timer/state/:todoId', async () => {
+    await delay(latency)
+    return new HttpResponse(null, { status: 200 })
+  }),
+
   http.get('/api/todos', async ({ request }) => {
     await delay(latency)
     const clientId = getClientId(request)

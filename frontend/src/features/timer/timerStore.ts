@@ -3,21 +3,19 @@ import type { PomodoroSettings } from '../../api/types'
 import { MIN_FLOW_MS } from '../../lib/constants'
 import { playNotificationSound } from '../../lib/sound'
 import { checkTimerConflict, getTimerConflictMessage } from './timerHelpers'
-import type { SessionRecord, SingleTimerState, TimerPhase } from './timerTypes'
-import {
-  loadAllPersisted,
-  removePersisted,
-  savePersisted,
-} from './timerPersistence'
-import {
-  clearSyncedCount,
-  readPendingAutoSessions,
-  type PendingPomodoroSession,
-  writePendingAutoSessions,
-} from './timerSyncService'
+import { hydrateState } from './timerHydration'
 import { generateSessionId, normalizeSessionId } from '../../lib/sessionId'
+import type { PendingPomodoroSession, SessionRecord, SingleTimerState, TimerPhase } from './timerTypes'
 
-export type { FlexiblePhase, SessionRecord, SingleTimerState, TimerMode, TimerPhase, TimerStatus } from './timerTypes'
+export type {
+  FlexiblePhase,
+  PendingPomodoroSession,
+  SessionRecord,
+  SingleTimerState,
+  TimerMode,
+  TimerPhase,
+  TimerStatus,
+} from './timerTypes'
 export { initialSingleTimerState } from './timerDefaults'
 
 type TimerState = {
@@ -40,8 +38,10 @@ type TimerActions = {
   skipToNext: (todoId: string) => void
   getTimer: (todoId: string) => SingleTimerState | undefined
   ackAutoSession: (todoId: string) => void
-  restore: () => void
   syncWithNow: () => void
+  applyRemoteState: (todoId: string, state: SingleTimerState, serverTime: number) => void
+  applyRemoteReset: (todoId: string, serverTime: number) => void
+  clearAll: () => void
   // Flexible timer 액션
   startBreak: (todoId: string, targetMs: number | null) => void
   resumeFocus: (todoId: string) => void
@@ -53,6 +53,13 @@ type TimerActions = {
 type TimerStore = TimerState & TimerActions
 
 const MINUTE = 60_000
+
+let applyingRemote = false
+const seenServerTimes = new Map<string, number>()
+
+export function getIsApplyingRemote() {
+  return applyingRemote
+}
 
 
 
@@ -72,7 +79,7 @@ const getBreakType = (cycleCount: number, cycleEvery: number): { phase: 'short' 
 // === Store ===
 
 export const useTimerStore = create<TimerStore>((set, get) => {
-  // 헬퍼: 타이머 업데이트 (set + savePersisted)
+  // 헬퍼: 타이머 업데이트
   const updateTimer = (todoId: string, updates: Partial<SingleTimerState>) => {
     const timer = get().timers[todoId]
     if (!timer) return
@@ -82,9 +89,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     set((state) => ({
       timers: { ...state.timers, [todoId]: updated }
     }))
-    
-    // 타이머 상태 저장 (sessions는 이미 localStorage에 저장됨)
-    savePersisted(todoId, updated)
   }
 
   const setPendingAutoSessions = (
@@ -94,7 +98,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
   ) => {
     const next = updater(get().pendingAutoSessions)
     set({ pendingAutoSessions: next })
-    writePendingAutoSessions(next)
   }
 
   const enqueuePendingAutoSession = (todoId: string, session: PendingPomodoroSession) => {
@@ -187,10 +190,44 @@ export const useTimerStore = create<TimerStore>((set, get) => {
   }
 
   return {
-    timers: loadAllPersisted(),
-    pendingAutoSessions: readPendingAutoSessions(),
+    timers: {},
+    pendingAutoSessions: {},
 
     getTimer: (todoId) => get().timers[todoId],
+
+    applyRemoteState: (todoId, remoteState, serverTime) => {
+      const last = seenServerTimes.get(todoId) ?? 0
+      if (serverTime <= last) return
+
+      seenServerTimes.set(todoId, serverTime)
+      applyingRemote = true
+      set((state) => ({
+        timers: { ...state.timers, [todoId]: hydrateState(remoteState) },
+      }))
+      applyingRemote = false
+    },
+
+    applyRemoteReset: (todoId, serverTime) => {
+      const last = seenServerTimes.get(todoId) ?? 0
+      if (serverTime <= last) return
+
+      seenServerTimes.set(todoId, serverTime)
+      applyingRemote = true
+
+      const existing = get().timers[todoId]
+      if (existing?.status !== 'idle') {
+        const timers = { ...get().timers }
+        delete timers[todoId]
+        set({ timers })
+      }
+
+      applyingRemote = false
+    },
+
+    clearAll: () => {
+      seenServerTimes.clear()
+      set({ timers: {}, pendingAutoSessions: {} })
+    },
 
     startPomodoro: (todoId, settings) => {
       // 전역 타이머 충돌 체크
@@ -237,7 +274,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       set((state) => ({
         timers: { ...state.timers, [todoId]: newTimer }
       }))
-      savePersisted(todoId, newTimer)
     },
 
     initPomodoro: (todoId, settings) => {
@@ -269,7 +305,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       set((state) => ({
         timers: { ...state.timers, [todoId]: newTimer },
       }))
-      savePersisted(todoId, newTimer)
     },
 
     startStopwatch: (todoId, initialElapsedMs = 0, settings) => {
@@ -337,7 +372,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       set((state) => ({
         timers: { ...state.timers, [todoId]: newTimer }
       }))
-      savePersisted(todoId, newTimer)
     },
 
     initStopwatch: (todoId, initialElapsedMs = 0, settings) => {
@@ -369,7 +403,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       set((state) => ({
         timers: { ...state.timers, [todoId]: newTimer },
       }))
-      savePersisted(todoId, newTimer)
     },
 
     pause: (todoId) => {
@@ -485,10 +518,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       delete nextPending[todoId]
 
       set({ timers, pendingAutoSessions: nextPending })
-      writePendingAutoSessions(nextPending)
-      
-      removePersisted(todoId)
-      clearSyncedCount(todoId)
     },
 
     updateInitialFocusMs: (todoId, newInitialFocusMs) => {
@@ -792,11 +821,6 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           },
         )
       }
-    },
-
-    restore: () => {
-      const timers = loadAllPersisted()
-      set({ timers })
     },
 
     syncWithNow: () => {

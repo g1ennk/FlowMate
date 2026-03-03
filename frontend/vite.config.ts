@@ -30,7 +30,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            // Keep streaming SSE requests off Workbox so the browser owns the long-lived connection.
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/') && url.pathname !== '/api/timer/sse',
             handler: 'NetworkOnly',
           },
           {

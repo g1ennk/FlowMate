@@ -1,5 +1,6 @@
 package kr.io.flowmate.config;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,7 +12,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.CorsFilter;
-import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @EnableWebSecurity
@@ -40,9 +40,11 @@ public class SecurityConfig {
                                 "/api/auth/*/exchange",
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
+                                "/api/timer/sse",
                                 "/actuator/**"
                         ).permitAll()
                         .requestMatchers("/api/auth/me").hasRole("MEMBER")
+                        .requestMatchers("/api/timer/state/**").hasRole("MEMBER")
                         .anyRequest().authenticated()
                 )
                 // CORS 필터를 Security 필터보다 먼저 적용
@@ -54,7 +56,9 @@ public class SecurityConfig {
 
     @Bean
     public UserDetailsService userDetailsService() {
-        return username -> { throw new UsernameNotFoundException(username); };
+        return username -> {
+            throw new UsernameNotFoundException(username);
+        };
     }
 
 }

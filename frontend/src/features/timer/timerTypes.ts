@@ -11,6 +11,12 @@ export type SessionRecord = {
   clientSessionId?: string
 }
 
+export type PendingPomodoroSession = {
+  sessionFocusSeconds: number
+  breakSeconds: number
+  clientSessionId?: string
+}
+
 export type SingleTimerState = {
   mode: TimerMode
   phase: TimerPhase

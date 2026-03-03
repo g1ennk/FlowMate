@@ -3,6 +3,10 @@ spring:
     activate:
       on-profile: dev
 
+  mvc:
+    async:
+      request-timeout: 1h
+
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:flowmate}?serverTimezone=Asia/Seoul&useSSL=true
     username: ${DB_USERNAME}

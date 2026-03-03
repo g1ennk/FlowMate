@@ -3,10 +3,13 @@ import { useEffect, useState } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Toaster } from 'react-hot-toast'
+import { timerApi } from '../api/timerApi'
 import { queryClient } from './queryClient'
 import { startMockWorker } from '../mocks/browser'
+import { useSseTimerSync } from '../features/timer/useSseTimerSync'
 import { useTimerTicker } from '../features/timer/useTimerTicker'
 import { useTimerSyncEffect } from '../features/timer/useTimerSyncEffect'
+import { useTimerStore } from '../features/timer/timerStore'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
 import { useAuthStore } from '../store/authStore'
 
@@ -71,5 +74,34 @@ export function AppProviders({ children }: PropsWithChildren) {
 
 function TimerSyncLayer() {
   useTimerSyncEffect()
+  useSseTimerSync()
+  useInitialTimerFetch()
   return null
+}
+
+function useInitialTimerFetch() {
+  const initialized = useAuthStore((state) => state.initialized)
+  const userId = useAuthStore((state) =>
+    state.state?.type === 'member' ? state.state.user.id : null,
+  )
+
+  useEffect(() => {
+    if (!initialized || !userId) return
+
+    const requestedUserId = userId
+
+    timerApi.getActiveStates()
+      .then((states) => {
+        const currentState = useAuthStore.getState().state
+        const currentUserId = currentState?.type === 'member' ? currentState.user.id : null
+
+        if (currentUserId !== requestedUserId) return
+
+        states.forEach(({ todoId, state, serverTime }) => {
+          if (!todoId || !state) return
+          useTimerStore.getState().applyRemoteState(todoId, state, serverTime)
+        })
+      })
+      .catch(() => {})
+  }, [initialized, userId])
 }

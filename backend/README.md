@@ -1,24 +1,30 @@
 # Backend
 
+> 상태: current
+> 역할: FlowMate 백엔드 실행/구조 가이드. API/데이터 계약 정본은 `../docs/plan/api.md`, `../docs/plan/data.md`다.
+
 ## 개요
 
-FlowMate 백엔드 - Spring Boot 4.0 + Java 21 기반 REST API 서버
+FlowMate 백엔드는 Spring Boot 4.0.2 + Java 21 기반 REST API 서버다.  
+Todo, Timer, Session, Settings, Review와 JWT 기반 인증(게스트/회원)을 제공한다.
 
 ## 기술 스택
 
-- **Framework**: Spring Boot 4.0.x
-- **Language**: Java 21
-- **ORM**: Spring Data JPA
-- **마이그레이션**: Flyway
-- **Database**: MySQL 8.x
-- **인증**: X-Client-Id 헤더 (게스트 모드)
+- Spring Boot 4.0.2
+- Java 21
+- Spring Web
+- Spring Data JPA
+- Spring Security
+- Flyway
+- MySQL 8.x
+- Micrometer Actuator + Prometheus registry
 
 ## 빠른 시작
 
 ### 요구사항
 
 - Java 21
-- MySQL 8.x (Docker 또는 로컬 설치)
+- MySQL 8.x
 
 ### 실행
 
@@ -26,114 +32,142 @@ FlowMate 백엔드 - Spring Boot 4.0 + Java 21 기반 REST API 서버
 # 테스트
 ./gradlew test
 
-# 로컬 실행 (local 프로파일)
+# local 프로파일 실행
 ./gradlew bootRun --args='--spring.profiles.active=local'
+```
 
-# API 확인: http://localhost:8080/actuator/health
+헬스 체크:
+
+```bash
+curl http://localhost:8080/actuator/health
 ```
 
 ## 환경 변수
 
-각 프로파일별 `.env` 파일 또는 시스템 환경 변수:
+프로젝트는 `.env.local`을 자동 로딩하지 않는다.  
+아래 값은 셸 export, IDE run configuration, direnv 같은 방식으로 주입해야 한다.
 
-### Local
+### Local 최소값
+
 ```bash
-# .env.local
 DB_USERNAME=flowmate
 DB_PASSWORD=flowmate
+
+# 64자리 HEX 문자열 (32바이트)
+JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+# 로컬에서 OAuth를 실제로 쓰지 않더라도 placeholder 필요
+KAKAO_CLIENT_ID=dummy
+KAKAO_CLIENT_SECRET=dummy
+KAKAO_REDIRECT_URI=http://localhost:5173/auth/callback
+
+COOKIE_SECURE=false
 ```
 
-### Dev
+### Dev 주요값
+
 ```bash
-# .env.dev (예시: .env.dev.example 참고)
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=flowmate
 DB_USERNAME=flowmate
 DB_PASSWORD=flowmate
-CORS_ORIGINS=http://localhost:5173,https://dev.flowmate.example.com
+JWT_SECRET=<64-char-hex>
+KAKAO_CLIENT_ID=<value>
+KAKAO_CLIENT_SECRET=<value>
+KAKAO_REDIRECT_URI=https://dev.flowmate.io.kr/auth/callback
+CORS_ORIGINS=http://localhost:5173,https://dev.flowmate.io.kr
+COOKIE_SECURE=true
 ```
 
-### Prod
+### Prod 주요값
+
 ```bash
-# .env.prod (예시: .env.prod.example 참고)
-DB_HOST=your-rds-endpoint.rds.amazonaws.com
+DB_HOST=<db-host>
 DB_PORT=3306
-DB_NAME=flowmate
-DB_USERNAME=flowmate_prod
-DB_PASSWORD=strong-password-here
-CORS_ORIGINS=https://flowmate.yourdomain.com
+DB_NAME=<db-name>
+DB_USERNAME=<db-user>
+DB_PASSWORD=<db-password>
+JWT_SECRET=<64-char-hex>
+KAKAO_CLIENT_ID=<value>
+KAKAO_CLIENT_SECRET=<value>
+KAKAO_REDIRECT_URI=https://flowmate.io.kr/auth/callback
+CORS_ORIGINS=https://flowmate.io.kr,https://www.flowmate.io.kr
+COOKIE_SECURE=true
 ```
 
 ## 프로파일
 
-### local (로컬 개발)
-- **파일**: `src/main/resources/application-local.yml`
-- **DB**: `localhost:3306/flowmate`
-- **로그**: DEBUG 레벨
-- **CORS**: `http://localhost:5173`
-- **실행**:
-  ```bash
-  ./gradlew bootRun --args='--spring.profiles.active=local'
-  ```
+### local
 
-### dev (개발/스테이징 서버)
-- **파일**: `src/main/resources/application-dev.yml`
-- **DB**: 환경 변수로 설정 (`DB_HOST`, `DB_PORT` 등)
-- **로그**: INFO 레벨
-- **CORS**: 환경 변수 (`CORS_ORIGINS`)
-- **실행**:
-  ```bash
-  ./gradlew bootRun --args='--spring.profiles.active=dev'
-  ```
+- 파일: `src/main/resources/application-local.yml`
+- DB: `localhost:3306/flowmate`
+- 로그: `kr.io.flowmate=debug`
+- Actuator 노출: `health`
 
-### prod (프로덕션)
-- **파일**: `src/main/resources/application-prod.yml`
-- **DB**: 환경 변수 필수 (`DB_HOST`, `DB_PORT` 등)
-- **로그**: INFO/WARN 레벨
-- **CORS**: 환경 변수 필수 (`CORS_ORIGINS`)
-- **커넥션 풀**: 최대 20개
-- **실행** (JAR 배포):
-  ```bash
-  java -jar backend.jar --spring.profiles.active=prod
-  ```
+### dev
+
+- 파일: `src/main/resources/application-dev.yml`
+- DB/CORS/env: 환경 변수 기반
+- Actuator 노출: `health,info,prometheus,metrics`
+- 커넥션 풀 최대 10
+
+### prod
+
+- 파일: `src/main/resources/application-prod.yml`
+- DB/CORS/env: 환경 변수 필수
+- Actuator 노출: `health,prometheus,metrics`
+- 커넥션 풀 최대 20
 
 ## 패키지 구조
 
-```
+```txt
 kr.io.flowmate
-├── config/                    # 설정
-│   └── CorsConfig.java           # CORS 정책
-├── common/                    # 공통
-│   └── error/                    # 글로벌 에러 처리
-├── todo/                      # Todo 도메인
-│   ├── domain/
-│   │   └── Todo.java             # 엔티티
-│   ├── dto/
-│   │   ├── TodoCreateRequest.java
-│   │   ├── TodoUpdateRequest.java
-│   │   └── TodoResponse.java
-│   ├── repository/
-│   │   └── TodoRepository.java   # JPA Repository
-│   ├── service/
-│   │   └── TodoService.java      # 비즈니스 로직
-│   └── controller/
-│       └── TodoController.java   # REST API
-├── session/                   # Session 도메인
-│   └── ... (동일 구조)
-├── settings/                  # Settings 도메인
-│   └── ... (동일 구조)
-└── review/                    # Review 도메인
-    └── ... (동일 구조)
+├── auth/         # JWT, OAuth, user/refresh token
+├── common/       # 공통 DTO, 에러, resolver
+├── config/       # security, cors, app config
+├── review/       # 회고 도메인
+├── session/      # 세션 도메인
+├── settings/     # 사용자 설정 도메인
+├── timer/        # 타이머 상태 저장/SSE 동기화
+└── todo/         # todo 도메인
 ```
+
+## 인증 모델
+
+### 게스트
+
+- `POST /api/auth/guest/token`
+- 응답의 `guestToken`을 `Authorization: Bearer {guestToken}`으로 사용
+- JWT `sub`는 clientId UUID, `role=guest`
+
+### 회원
+
+- `GET /api/auth/kakao/authorize-url`
+- `POST /api/auth/kakao/exchange`
+- 응답 body의 `accessToken`은 Bearer 토큰으로 사용
+- `refreshToken`은 HttpOnly 쿠키로 발급
+
+### 세션 복원/로그아웃
+
+- `POST /api/auth/refresh`
+  - 쿠키 기반 access token 재발급
+- `POST /api/auth/logout`
+  - refresh token revoke + 쿠키 삭제
+- `GET /api/auth/me`
+  - 회원 전용, guest JWT는 접근 불가
+- `GET /api/timer/sse?token={accessToken}`
+  - Security에서는 `permitAll()`이지만 컨트롤러에서 query token 검증 + member role 검증 수행
 
 ## 핵심 규칙
 
 ### 인증
 
-- 모든 API는 `X-Client-Id` 헤더 필수
-- 게스트 모드: UUID 기반 사용자 식별
-- 멀티유저 대비 설계 (추후 OAuth 전환 가능)
+- 인증 API와 `/actuator/**` 외의 모든 API는 인증 필요
+- 인증 헤더는 `Authorization: Bearer {guestJWT|accessJWT}`
+- 현재 사용자 식별은 `CurrentUserResolver`가 SecurityContext의 principal에서 읽는다
+- `/api/timer/state/**`는 `ROLE_MEMBER` 전용이다
+- `/api/timer/sse`는 `Authorization` 헤더 대신 query param `token`을 받아 member access token을 직접 검증한다
 
 ### 에러 응답 포맷
 
@@ -151,172 +185,133 @@ kr.io.flowmate
 
 ### 타이머/세션 정책
 
-- **타이머 상태(ms)**: 프론트엔드 로컬 관리 (Zustand + localStorage)
-- **세션 기록(초)**: 백엔드 저장 (`todo_sessions` 테이블)
-- **집계 정본**: 서버의 `todo.sessionCount`, `todo.sessionFocusSeconds`
-- **멱등성**: `clientSessionId` 기반 중복 방지
+- 회원 타이머 진행 상태는 `timer_states`와 SSE로 서버 동기화한다
+- 게스트 타이머 진행 상태는 클라이언트 메모리 상태로만 유지한다
+- `/api/timer/sse` 스트림은 `connected`, `heartbeat`, `timer-state` 이벤트를 순서대로 사용한다
+  - `connected`: 연결 직후 1회
+  - `heartbeat`: 약 25초 간격 keepalive
+  - `timer-state`: 실제 상태 변경 브로드캐스트
+- `application-local/dev/prod.yml`은 SSE 장기 연결을 위해 `spring.mvc.async.request-timeout: 1h`를 사용한다
+- 완료 세션은 `todo_sessions`에 저장한다
+- 집계 정본은 `todo.sessionCount`, `todo.sessionFocusSeconds`
+- 세션 생성은 `clientSessionId` 기반 멱등 처리
 
 ## API 엔드포인트
 
+### Auth
+
+- `POST /api/auth/guest/token`
+- `GET /api/auth/{provider}/authorize-url`
+- `POST /api/auth/{provider}/exchange`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
 ### Todo
-- `GET /api/todos?date=YYYY-MM-DD`: 목록 조회
-- `POST /api/todos`: 생성
-- `PATCH /api/todos/{id}`: 수정
-- `DELETE /api/todos/{id}`: 삭제
-- `PUT /api/todos/reorder`: 정렬
+
+- `GET /api/todos`
+- `POST /api/todos`
+- `PATCH /api/todos/{id}`
+- `DELETE /api/todos/{id}`
+- `PUT /api/todos/reorder`
 
 ### Session
-- `GET /api/todos/{todoId}/sessions`: 세션 목록
-- `POST /api/todos/{todoId}/sessions`: 세션 생성 (멱등)
+
+- `GET /api/todos/{todoId}/sessions`
+- `POST /api/todos/{todoId}/sessions`
+
+### Timer
+
+- `GET /api/timer/sse?token={accessToken}`
+- `PUT /api/timer/state/{todoId}`
+- `GET /api/timer/state`
+
+`GET /api/timer/sse?token={accessToken}` 세부 계약:
+
+- member access token을 query param으로 전달
+- 응답 타입: `text/event-stream`
+- 이벤트:
+  - `connected`
+  - `heartbeat`
+  - `timer-state`
 
 ### Settings
-- `GET /api/settings`: 통합 설정 조회
-- `PUT /api/settings/pomodoro-session`: 뽀모도로 설정
-- `PUT /api/settings/automation`: 자동화 설정
-- `GET /api/settings/mini-days`: 미니 데이 설정 조회
-- `PUT /api/settings/mini-days`: 미니 데이 설정 수정
+
+- `GET /api/settings`
+- `PUT /api/settings/pomodoro-session`
+- `PUT /api/settings/automation`
+- `GET /api/settings/mini-days`
+- `PUT /api/settings/mini-days`
 
 ### Review
-- `GET /api/reviews?type=daily&periodStart=YYYY-MM-DD`: 단건 조회
-- `GET /api/reviews?type=daily&from=YYYY-MM-DD&to=YYYY-MM-DD`: 목록 조회
-- `PUT /api/reviews`: Upsert
-- `DELETE /api/reviews/{id}`: 삭제
 
-### Actuator (모니터링)
-- `GET /actuator/health`: 헬스 체크 (외부 노출)
-- `GET /actuator/metrics`: 메트릭 목록
-- `GET /actuator/prometheus`: Prometheus 형식 메트릭 (Grafana 수집용, Nginx에서 외부 차단)
-
-> **환경별 노출 범위:**
-> - Dev: `health, info, prometheus, metrics`
-> - Prod: `health, prometheus, metrics` (info 제외)
+- `GET /api/reviews?type=...&periodStart=...`
+- `GET /api/reviews?type=...&from=...&to=...`
+- `PUT /api/reviews`
+- `DELETE /api/reviews/{id}`
 
 ## 테스트
 
 ```bash
-# 전체 테스트
 ./gradlew test
-
-# 도메인별 테스트
 ./gradlew test --tests '*Todo*'
 ./gradlew test --tests '*Session*'
 ./gradlew test --tests '*Settings*'
 ./gradlew test --tests '*Review*'
-
-# 빌드
-./gradlew build
 ```
 
-### 테스트 전략
+현재 저장소의 백엔드 테스트는 서비스 레이어 Mockito 테스트 4개가 중심이다.
 
-- **현재 기준**: Service 레이어 단위 테스트(Mockito) 중심
-- **위치**: `src/test/java/kr/io/flowmate/*/service/*Test.java`
-- **대상**: Todo/Session/Settings/Review 핵심 비즈니스 로직
+- `src/test/java/kr/io/flowmate/todo/service/TodoServiceTest.java`
+- `src/test/java/kr/io/flowmate/session/service/SessionServiceTest.java`
+- `src/test/java/kr/io/flowmate/settings/service/SettingsServiceTest.java`
+- `src/test/java/kr/io/flowmate/review/service/ReviewServiceTest.java`
 
 ## 데이터베이스
 
-### Flyway 마이그레이션
+### Flyway
 
-- **위치**: `src/main/resources/db/migration/`
-- **파일**: `V1__init.sql`
-- **실행**: 앱 시작 시 자동
+- 위치: `src/main/resources/db/migration/`
+- 현재 마이그레이션
+  - `V1__init.sql`
+  - `V2__add_auth.sql`
+  - `V3__add_timer_state.sql`
 
-### 스키마
+### 주요 테이블
 
-#### `todos` 테이블
-- Todo 메인 테이블
-- 집계 필드: `session_count`, `session_focus_seconds`
-- 인덱스: `(user_id, date, mini_day, day_order, created_at)`
-
-#### `todo_sessions` 테이블
-- 세션 기록 (초 단위)
-- 멱등 키: `(todo_id, client_session_id)` UNIQUE
-- 순서 보장: `(todo_id, session_order)` UNIQUE
-
-#### `user_settings` 테이블
-- 사용자별 설정 (단일 레코드)
-- Pomodoro, Automation, MiniDays 통합
-
-#### `reviews` 테이블
-- 회고 (일/주/월)
-- Upsert 키: `(user_id, type, period_start)` UNIQUE
+- `users`
+- `auth_social_accounts`
+- `auth_refresh_tokens`
+- `todos`
+- `timer_states`
+- `todo_sessions`
+- `user_settings`
+- `reviews`
 
 ## 핵심 로직
 
 ### Session 생성 멱등성
 
-```java
-// clientSessionId 기반 멱등 처리
-// 1. 신규 생성: sessionCount 증가, sessionFocusSeconds 누적
-// 2. 재전송: 집계 유지, breakSeconds만 증가 방향 보정
-```
+- 키: `(todo_id, client_session_id)`
+- 신규 생성: `201 Created`
+- 동일 요청 재전송: `200 OK`
+- `sessionFocusSeconds`가 다르면 `400`
+- `breakSeconds`는 증가 방향으로만 보정
 
 ### Todo Reorder
 
-- `dayOrder` 필드로 정렬 관리
-- 프론트엔드가 계산한 순서를 그대로 저장
-- 섹션 간 이동 시 `miniDay`와 `dayOrder` 동시 업데이트
+- 프론트가 계산한 `miniDay`, `dayOrder`를 그대로 저장
+- 응답은 전체 Todo 목록 기준으로 재정렬해 반환
 
 ### Settings 기본값
 
-- DB 레코드 없으면 기본값 반환
-- 최초 변경 시 레코드 생성
-- 3중 보장: DB DEFAULT + 서비스 + 클라이언트
+- DB 레코드가 없으면 기본값 반환
+- 최초 변경 시 `getOrCreate`로 영속 저장
+- DB DEFAULT + 서비스 기본값 + 프론트 placeholder의 3중 보장
 
 ## 관련 문서
 
-- [API 계약](../docs/plan/api.md): 프론트-백 정합 단일 소스
-- [데이터 모델](../docs/plan/data.md): ERD, 인덱스 설계
-- [Flyway 가이드](../docs/engineering-log/flyway-운영-가이드.md): 마이그레이션 전략
-- [멱등성 설계](../docs/engineering-log/멱등성-가이드.md): Session API 멱등 처리
-- [동시성 제어](../docs/engineering-log/동시성-제어-가이드.md): 낙관적 락 전략
-- [N+1 개선](../docs/engineering-log/n-plus-1-개선-가이드.md): 쿼리 최적화
-
-## 트러블슈팅
-
-### DB 연결 실패
-
-```bash
-# MySQL 컨테이너 상태 확인
-cd ../infra
-docker compose ps
-
-# MySQL 로그 확인
-docker compose logs mysql
-
-# 컨테이너 재시작
-docker compose restart mysql
-```
-
-### Flyway 마이그레이션 실패
-
-```bash
-# 마이그레이션 히스토리 확인
-mysql -u flowmate -p flowmate
-> SELECT * FROM flyway_schema_history;
-
-# 실패한 마이그레이션 삭제 후 재실행
-> DELETE FROM flyway_schema_history WHERE success = 0;
-```
-
-### 포트 충돌
-
-```bash
-# 8080 포트 사용 프로세스 확인
-lsof -i :8080
-
-# 프로세스 종료
-kill -9 <PID>
-```
-
-## Health Check
-
-```bash
-# 헬스 체크
-curl http://localhost:8080/actuator/health
-
-# 응답 예시
-{
-  "status": "UP"
-}
-```
+- [API 계약](../docs/plan/api.md)
+- [데이터 모델](../docs/plan/data.md)
+- [인프라 가이드](../infra/README.md)
+- [인증 구현 참고](../docs/agent/plan/oauth-plan.md)

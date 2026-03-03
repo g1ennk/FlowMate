@@ -4,22 +4,22 @@
 - `frontend/`: React + TypeScript 앱
   - `README.md`: 프론트엔드 개발/실행 가이드
   - `src/app/`: 앱 셸, 라우트, 프로바이더
-  - `src/features/`: 도메인 단위 모듈 (`todos`, `timer`, `settings` 등)
+  - `src/features/`: 도메인 단위 모듈 (`auth`, `boarding`, `todos`, `timer`, `review`, `settings` 등)
   - `src/ui/`: 공통 UI 컴포넌트
   - `src/api/`: API 클라이언트와 타입
   - `src/mocks/`: MSW 핸들러 및 목 서버
   - `src/lib/`: 공용 유틸/상수
 - `backend/`: Spring Boot API 서버
   - `README.md`: 백엔드 개발/실행 가이드
-  - `src/main/java/kr/io/flowmate`: 도메인 모듈 (`todo`, `session`, `settings`, `review`)
+  - `src/main/java/kr/io/flowmate`: 도메인 모듈 (`auth`, `timer`, `todo`, `session`, `settings`, `review`, `config`, `common`)
   - `src/main/resources/db/migration`: Flyway 마이그레이션
-- `infra/`: 로컬 인프라 구성 (Docker Compose)
-  - `README.md`: 로컬 MySQL 실행/관리 가이드
-  - `docker-compose*.yml`: MySQL 컨테이너 설정
+- `infra/`: Dev/Prod 인프라 구성
+  - `README.md`: 배포/운영 구조 가이드
+  - `dev/`, `prod/`: Docker Compose, env, nginx 설정
 - `docs/`: 문서
-  - `plan/`: PRD/API/Data Model (정본)
-  - `agent/`: AI 작업 계획/가이드
-  - `engineering-log/`: 기술 학습/결정 기록
+  - `plan/`: API/Data/Roadmap 정본 (`current`)
+  - `agent/`: AI 작업 계획/가이드 (`current`, `reference`, `historical`, `proposal`)
+  - `engineering-log/`: 기술 학습/결정/트러블슈팅 기록 (`historical`, `active`)
 - `images/`: 문서용 이미지 자산
 
 ## 빌드/테스트/개발 명령어

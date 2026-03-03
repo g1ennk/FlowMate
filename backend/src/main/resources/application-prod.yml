@@ -3,6 +3,10 @@ spring:
     activate:
       on-profile: prod
 
+  mvc:
+    async:
+      request-timeout: 1h
+
   datasource:
     url: jdbc:mysql://${DB_HOST}:${DB_PORT:3306}/${DB_NAME}?serverTimezone=Asia/Seoul&useSSL=true&requireSSL=true
     username: ${DB_USERNAME}
