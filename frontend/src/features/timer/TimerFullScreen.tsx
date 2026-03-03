@@ -15,6 +15,8 @@ import {
   ArrowPathIcon,
   StopIcon,
 } from '../../ui/Icons'
+import { TimerMusicControls } from './TimerMusicControls'
+import { useTimerMusicSession } from './useTimerMusicSession'
 import { useTimer, useTimerStore } from './timerStore'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 import { completeTaskFromTimer } from './completeHelpers'
@@ -92,13 +94,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [showBreakSelection, setShowBreakSelection] = useState(false)
   const [showTotalTime, setShowTotalTime] = useState(false) // 디폴트: 현재 세션(false) vs 전체 누적(true)
   const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
+  const [showMusicSheet, setShowMusicSheet] = useState(false)
   const baseSessionFocusSeconds = sessionFocusSeconds
 
   const { data: settings } = usePomodoroSettings()
   const createSession = useCreateSession()
   const updateTodo = useUpdateTodo()
   const queryClient = useQueryClient()
-  
+
   const timer = useTimer(todoId)
   const initPomodoro = useTimerStore((s) => s.initPomodoro)
   const initStopwatch = useTimerStore((s) => s.initStopwatch)
@@ -111,6 +114,28 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const resumeFocus = useTimerStore((s) => s.resumeFocus)
   const calculateBreakSuggestion = useTimerStore((s) => s.calculateBreakSuggestion)
   const updateSessions = useTimerStore((s) => s.updateSessions)
+
+  // Flow 상태에 따른 음악 자동 재생/정지
+  // effectiveMode = selectedMode ?? timer?.mode (early return 전에 계산 필요)
+  const _resolvedMode = selectedMode ?? timer?.mode
+  const isFlowActive =
+    timer?.status === 'running' && (
+      (_resolvedMode === 'stopwatch' && timer.flexiblePhase === 'focus') ||
+      (_resolvedMode === 'pomodoro' && timer.phase === 'flow')
+    )
+  const {
+    musicEnabled,
+    musicTrackIndex,
+    musicVolume,
+    endMusicSession,
+    setMusicEnabled,
+    setMusicTrack,
+    setMusicVolume,
+  } = useTimerMusicSession({
+    isFlowActive,
+    isOpen,
+    todoId,
+  })
 
   // Global ticker is installed in AppProviders
 
@@ -132,6 +157,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       // 이미 타이머가 있고, 사용자가 다른 모드를 요청(initialMode)했다면 기존 상태를 정리하고 전환
       if (currentTimer && currentTimer.status !== 'idle' && initialMode && initialMode !== currentTimer.mode) {
         // 기존 타이머 상태 제거 후, 요청된 모드로 새로 시작 (paused)
+        endMusicSession()
         reset(todoId)
         setSelectedMode(initialMode)
         if (initialMode === 'stopwatch') {
@@ -165,9 +191,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       pomodoroInitKeyRef.current = null
       setMounted(false)
       setSelectedMode(null)
+      setShowMusicSheet(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, todoId, initialMode])
+  }, [isOpen, todoId, initialMode, endMusicSession])
 
   useEffect(() => {
     if (!isOpen || !settings || !todoId) return
@@ -207,14 +234,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     prevFlexiblePhaseRef.current = currentPhase ?? null
   }, [timer?.flexiblePhase, timer?.mode, timer?.breakCompleted])
 
-
-  // 닫을 때 타이머 처리
-  const handleClose = async () => {
-    if (timer && timer.status !== 'idle') {
-      // 상태를 유지한 채로 단순히 닫기 (waiting/paused/running 모두)
-      onClose()
-      return
-    }
+  const handleClose = () => {
+    endMusicSession()
+    setShowMusicSheet(false)
     onClose()
   }
 
@@ -279,6 +301,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       debug: timer.mode === 'stopwatch',
     })
     toast.success('태스크 완료! 🎉', { id: 'task-completed' })
+    endMusicSession()
+    setShowMusicSheet(false)
     onClose()
   }
 
@@ -338,6 +362,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       >
         <button
           onClick={handleClose}
+          aria-label="타이머 닫기"
           className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-gray-800"
         >
           <ChevronLeftIcon className="h-6 w-6" />
@@ -354,7 +379,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       </header>
 
       {/* 컨텐츠 */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6">
+      <div className="flex flex-1 flex-col px-6">
+        <div className="flex flex-1 flex-col items-center justify-center">
         {/* Todo 제목 */}
         <h2 className="mb-8 text-center text-lg font-medium text-white">{todoTitle}</h2>
 
@@ -758,6 +784,21 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             </div>
           </>
         )}
+
+        {mounted && (
+          <TimerMusicControls
+            musicEnabled={musicEnabled}
+            musicTrackIndex={musicTrackIndex}
+            musicVolume={musicVolume}
+            showMusicSheet={showMusicSheet}
+            onToggleEnabled={() => setMusicEnabled(!musicEnabled)}
+            onOpenMusicSheet={() => setShowMusicSheet(true)}
+            onCloseMusicSheet={() => setShowMusicSheet(false)}
+            onSelectTrack={setMusicTrack}
+            onChangeVolume={setMusicVolume}
+          />
+        )}
+        </div>
       </div>
 
       {/* 완료 확인 모달 */}
@@ -873,6 +914,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 onClick={() => {
                   const timerBeforeReset = getTimer(todoId)
                   setShowResetModal(false)
+                  endMusicSession()
+                  setShowMusicSheet(false)
 
                   // store에서 타이머 자체를 삭제
                   reset(todoId)

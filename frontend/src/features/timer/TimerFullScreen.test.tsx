@@ -2,6 +2,8 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderApp } from '../../test/renderApp'
+import { DEFAULT_MUSIC_TRACK_INDEX, MUSIC_TRACKS } from './musicTracks'
+import { DEFAULT_MUSIC_VOLUME, useMusicStore } from './musicStore'
 import { TimerFullScreen } from './TimerFullScreen'
 
 const mocked = vi.hoisted(() => {
@@ -136,6 +138,14 @@ describe('TimerFullScreen', () => {
     mocked.createSessionMutateAsync.mockReset()
     mocked.createSessionMutateAsync.mockResolvedValue(undefined)
     mocked.toastSuccess.mockClear()
+
+    useMusicStore.getState().stopSession()
+    useMusicStore.setState({
+      enabled: false,
+      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
+      isPlaying: false,
+      volume: DEFAULT_MUSIC_VOLUME,
+    })
   })
 
   it('resumes a paused timer and keeps fullscreen open when the timer is reset', async () => {
@@ -158,6 +168,10 @@ describe('TimerFullScreen', () => {
     await user.click(await screen.findByRole('button', { name: '재개' }))
     expect(mocked.timerStoreActions.resume).toHaveBeenCalledWith('todo-1')
 
+    await user.click(screen.getByRole('button', { name: '배경 음악 켜기' }))
+    await user.click(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[0].displayName}` }))
+    await user.click(screen.getByRole('button', { name: MUSIC_TRACKS[1].displayName }))
+
     await user.click(screen.getByTitle('전체 리셋'))
     await user.click(screen.getByRole('button', { name: '확인' }))
 
@@ -169,6 +183,11 @@ describe('TimerFullScreen', () => {
     )
     expect(onClose).not.toHaveBeenCalled()
     expect(await screen.findByText('타이머 테스트')).toBeInTheDocument()
+    expect(useMusicStore.getState()).toMatchObject({
+      enabled: false,
+      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
+      isPlaying: false,
+    })
   })
 
   it('creates a session and completes the todo when finishing from stopwatch mode', async () => {
@@ -218,6 +237,149 @@ describe('TimerFullScreen', () => {
         },
       })
       expect(onClose).toHaveBeenCalled()
+    })
+
+    expect(useMusicStore.getState()).toMatchObject({
+      enabled: false,
+      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
+      isPlaying: false,
+    })
+  })
+
+  it('plays on focus toggle, pauses on break, and resumes when focus returns', async () => {
+    const user = userEvent.setup()
+    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+    const pauseSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'pause')
+
+    Object.assign(mocked.timerState, {
+      status: 'running',
+      flexiblePhase: 'focus',
+    })
+
+    const view = renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1))
+
+    Object.assign(mocked.timerState, {
+      status: 'running',
+      flexiblePhase: 'break_suggested',
+    })
+    view.rerender(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+
+    Object.assign(mocked.timerState, {
+      status: 'running',
+      flexiblePhase: 'focus',
+    })
+    view.rerender(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(2))
+  })
+
+  it('resets the music session when closing fullscreen after selecting a track', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+
+    Object.assign(mocked.timerState, {
+      status: 'running',
+      flexiblePhase: 'focus',
+    })
+
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={onClose}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await user.click(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[0].displayName}` }))
+    await user.click(screen.getByRole('button', { name: MUSIC_TRACKS[1].displayName }))
+
+    expect(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[1].displayName}` })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '타이머 닫기' }))
+
+    expect(onClose).toHaveBeenCalled()
+    expect(useMusicStore.getState()).toMatchObject({
+      enabled: false,
+      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
+      isPlaying: false,
+    })
+  })
+
+  it('resets the music session when fullscreen unmounts without an explicit close action', async () => {
+    const user = userEvent.setup()
+
+    Object.assign(mocked.timerState, {
+      status: 'running',
+      flexiblePhase: 'focus',
+    })
+
+    const view = renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={1500}
+        sessionCount={3}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await user.click(screen.getByRole('button', { name: `트랙 선택: ${MUSIC_TRACKS[0].displayName}` }))
+    await user.click(screen.getByRole('button', { name: MUSIC_TRACKS[2].displayName }))
+
+    view.unmount()
+
+    expect(useMusicStore.getState()).toMatchObject({
+      enabled: false,
+      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
+      isPlaying: false,
     })
   })
 })

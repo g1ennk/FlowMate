@@ -26,6 +26,7 @@ export default defineConfig({
         'pwa/icon-maskable-512.png',
       ],
       workbox: {
+        globIgnores: ['**/sounds/**'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
