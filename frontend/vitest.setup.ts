@@ -3,6 +3,10 @@ import { cleanup } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { server } from './src/mocks/server'
 
+const playMediaMock = vi.fn().mockResolvedValue(undefined)
+const pauseMediaMock = vi.fn()
+const loadMediaMock = vi.fn()
+
 class MockAudioContext {
   currentTime = 0
   destination = {}
@@ -78,12 +82,33 @@ if (!('AudioContext' in window)) {
   })
 }
 
+Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+  configurable: true,
+  writable: true,
+  value: playMediaMock,
+})
+
+Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
+  configurable: true,
+  writable: true,
+  value: pauseMediaMock,
+})
+
+Object.defineProperty(HTMLMediaElement.prototype, 'load', {
+  configurable: true,
+  writable: true,
+  value: loadMediaMock,
+})
+
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   cleanup()
   server.resetHandlers()
   window.localStorage.clear()
   window.sessionStorage.clear()
+  playMediaMock.mockClear()
+  pauseMediaMock.mockClear()
+  loadMediaMock.mockClear()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
