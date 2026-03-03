@@ -94,7 +94,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [showBreakSelection, setShowBreakSelection] = useState(false)
   const [showTotalTime, setShowTotalTime] = useState(false) // 디폴트: 현재 세션(false) vs 전체 누적(true)
   const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
-  const [showMusicSheet, setShowMusicSheet] = useState(false)
   const baseSessionFocusSeconds = sessionFocusSeconds
 
   const { data: settings } = usePomodoroSettings()
@@ -125,11 +124,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     )
   const {
     musicEnabled,
-    musicTrackIndex,
     musicVolume,
     endMusicSession,
     setMusicEnabled,
-    setMusicTrack,
     setMusicVolume,
   } = useTimerMusicSession({
     isFlowActive,
@@ -191,7 +188,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       pomodoroInitKeyRef.current = null
       setMounted(false)
       setSelectedMode(null)
-      setShowMusicSheet(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, todoId, initialMode, endMusicSession])
@@ -236,7 +232,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   const handleClose = () => {
     endMusicSession()
-    setShowMusicSheet(false)
     onClose()
   }
 
@@ -302,7 +297,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     })
     toast.success('태스크 완료! 🎉', { id: 'task-completed' })
     endMusicSession()
-    setShowMusicSheet(false)
     onClose()
   }
 
@@ -788,13 +782,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         {mounted && (
           <TimerMusicControls
             musicEnabled={musicEnabled}
-            musicTrackIndex={musicTrackIndex}
             musicVolume={musicVolume}
-            showMusicSheet={showMusicSheet}
             onToggleEnabled={() => setMusicEnabled(!musicEnabled)}
-            onOpenMusicSheet={() => setShowMusicSheet(true)}
-            onCloseMusicSheet={() => setShowMusicSheet(false)}
-            onSelectTrack={setMusicTrack}
             onChangeVolume={setMusicVolume}
           />
         )}
@@ -915,7 +904,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   const timerBeforeReset = getTimer(todoId)
                   setShowResetModal(false)
                   endMusicSession()
-                  setShowMusicSheet(false)
 
                   // store에서 타이머 자체를 삭제
                   reset(todoId)

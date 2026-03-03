@@ -14,13 +14,11 @@ export function useTimerMusicSession({
 }: UseTimerMusicSessionArgs) {
   const musicVolume = useMusicStore((state) => state.volume)
   const musicEnabled = useMusicStore((state) => state.enabled)
-  const musicTrackIndex = useMusicStore((state) => state.currentTrackIndex)
   const playIfAllowed = useMusicStore((state) => state.playIfAllowed)
   const pauseForFlowExit = useMusicStore((state) => state.pauseForFlowExit)
   const stopSession = useMusicStore((state) => state.stopSession)
   const setVolume = useMusicStore((state) => state.setVolume)
   const setEnabled = useMusicStore((state) => state.setEnabled)
-  const setTrack = useMusicStore((state) => state.setTrack)
 
   const prevIsFlowActiveRef = useRef(false)
   const prevMusicEnabledRef = useRef(musicEnabled)
@@ -75,11 +73,9 @@ export function useTimerMusicSession({
 
   return {
     musicEnabled,
-    musicTrackIndex,
     musicVolume,
     endMusicSession,
     setMusicEnabled: setEnabled,
-    setMusicTrack: setTrack,
     setMusicVolume: setVolume,
   }
 }

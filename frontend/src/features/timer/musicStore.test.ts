@@ -40,7 +40,7 @@ describe('musicStore', () => {
     } = await loadMusicModules()
 
     useMusicStore.getState().setEnabled(true)
-    useMusicStore.getState().setTrack(2)
+    useMusicStore.setState({ currentTrackIndex: 2 })
     useMusicStore.getState().setVolume(0.45)
 
     expect(window.localStorage.getItem('flowmate:music:volume')).toBe('0.45')
@@ -90,6 +90,71 @@ describe('musicStore', () => {
       currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
       isPlaying: false,
       volume: 0.4,
+    })
+  })
+
+  it('plays the current track and cycles through all bundled tracks', async () => {
+    const {
+      MUSIC_TRACKS,
+      useMusicStore,
+    } = await loadMusicModules()
+    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+
+    useMusicStore.setState({
+      enabled: true,
+      currentTrackIndex: 0,
+      isPlaying: false,
+      volume: 0.35,
+    })
+
+    useMusicStore.getState().playIfAllowed()
+    await Promise.resolve()
+
+    const audio = playSpy.mock.contexts[0] as HTMLAudioElement
+    expect(playSpy).toHaveBeenCalledTimes(1)
+    expect(useMusicStore.getState().currentTrackIndex).toBe(0)
+    expect(audio.src).toContain(MUSIC_TRACKS[0].src)
+
+    useMusicStore.getState().playNextTrack()
+    await Promise.resolve()
+    expect(playSpy).toHaveBeenCalledTimes(2)
+    expect(useMusicStore.getState().currentTrackIndex).toBe(1)
+    expect(audio.src).toContain(MUSIC_TRACKS[1].src)
+
+    useMusicStore.getState().playNextTrack()
+    await Promise.resolve()
+    expect(playSpy).toHaveBeenCalledTimes(3)
+    expect(useMusicStore.getState().currentTrackIndex).toBe(2)
+    expect(audio.src).toContain(MUSIC_TRACKS[2].src)
+
+    useMusicStore.getState().playNextTrack()
+    await Promise.resolve()
+    expect(playSpy).toHaveBeenCalledTimes(4)
+    expect(useMusicStore.getState().currentTrackIndex).toBe(0)
+    expect(audio.src).toContain(MUSIC_TRACKS[0].src)
+  })
+
+  it('does not advance tracks when the music session is disabled', async () => {
+    const {
+      useMusicStore,
+    } = await loadMusicModules()
+    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+
+    useMusicStore.setState({
+      enabled: false,
+      currentTrackIndex: 1,
+      isPlaying: true,
+      volume: 0.35,
+    })
+
+    useMusicStore.getState().playNextTrack()
+    await Promise.resolve()
+
+    expect(playSpy).not.toHaveBeenCalled()
+    expect(useMusicStore.getState()).toMatchObject({
+      currentTrackIndex: 1,
+      isPlaying: false,
+      enabled: false,
     })
   })
 })
