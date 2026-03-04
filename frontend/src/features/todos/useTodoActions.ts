@@ -7,13 +7,18 @@ import {
   useDeleteTodo,
   useUpdateTodo,
 } from './hooks'
-import type { Todo } from '../../api/types'
+import type { Todo, TodoList } from '../../api/types'
 import { useTimerStore, type TimerMode } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
 import { checkTimerConflict, getTimerConflictMessage } from '../timer/timerHelpers'
 import { completeTaskFromTimer } from '../timer/completeHelpers'
 import { applySessionAggregateDelta } from './sessionAggregateCache'
 import { normalizeSessionId } from '../../lib/sessionId'
+import { queryKeys } from '../../lib/queryKeys'
+import {
+  getNextTodoDayOrder,
+  getOffsetDateKey,
+} from './todoDateActionHelpers'
 
 /**
  * Todo CRUD 및 타이머 관련 핸들러를 제공하는 커스텀 훅
@@ -51,6 +56,11 @@ export function useTodoActions(selectedDateKey: string) {
 
   // 타이머 에러 메시지 (BottomSheet 내부에 표시)
   const [timerErrorMessage, setTimerErrorMessage] = useState<string | null>(null)
+
+  // 날짜 액션 상태
+  const [datePickerMode, setDatePickerMode] = useState<'move' | 'duplicate' | null>(null)
+  const [datePickerTodo, setDatePickerTodo] = useState<Todo | null>(null)
+  const [datePickerSelectedDate, setDatePickerSelectedDate] = useState('')
 
   // === Todo CRUD ===
   const handleCreate = async (title: string, miniDay: number = 0, dayOrder: number) => {
@@ -223,6 +233,104 @@ export function useTodoActions(selectedDateKey: string) {
     setTimerMode(null)
   }
 
+  const getCachedTodos = () => {
+    return queryClient.getQueryData<TodoList>(queryKeys.todos())?.items ?? []
+  }
+
+  const closeDatePicker = () => {
+    setDatePickerMode(null)
+    setDatePickerTodo(null)
+    setDatePickerSelectedDate('')
+  }
+
+  const openMoveDatePicker = (todo: Todo) => {
+    setSelectedTodo(null)
+    setDatePickerMode('move')
+    setDatePickerTodo(todo)
+    setDatePickerSelectedDate(todo.date)
+  }
+
+  const openDuplicateDatePicker = (todo: Todo) => {
+    setSelectedTodo(null)
+    setDatePickerMode('duplicate')
+    setDatePickerTodo(todo)
+    setDatePickerSelectedDate(todo.date)
+  }
+
+  const handleMoveTodo = async (todo: Todo, targetDateKey: string, successMessage = '날짜를 변경했어요') => {
+    setSelectedTodo(null)
+    if (todo.date === targetDateKey) {
+      closeDatePicker()
+      return
+    }
+
+    const nextOrder = getNextTodoDayOrder(getCachedTodos(), {
+      targetDateKey,
+      targetMiniDay: todo.miniDay ?? 0,
+      targetIsDone: todo.isDone,
+    })
+
+    closeDatePicker()
+    await updateTodo.mutateAsync({
+      id: todo.id,
+      patch: {
+        date: targetDateKey,
+        dayOrder: nextOrder,
+      },
+    })
+    toast.success(successMessage, { id: 'todo-date-moved' })
+  }
+
+  const handleDuplicateTodo = async (
+    todo: Todo,
+    targetDateKey: string,
+    successMessage = '새 할 일을 추가했어요',
+  ) => {
+    setSelectedTodo(null)
+    const nextOrder = getNextTodoDayOrder(getCachedTodos(), {
+      targetDateKey,
+      targetMiniDay: 0,
+      targetIsDone: false,
+    })
+
+    closeDatePicker()
+    await createTodo.mutateAsync({
+      title: todo.title,
+      note: todo.note,
+      date: targetDateKey,
+      miniDay: 0,
+      dayOrder: nextOrder,
+    })
+    toast.success(successMessage, { id: 'todo-duplicated' })
+  }
+
+  const handleMoveTodoToToday = async (todo: Todo) => {
+    await handleMoveTodo(todo, getOffsetDateKey(0), '오늘로 이동했어요')
+  }
+
+  const handleMoveTodoToTomorrow = async (todo: Todo) => {
+    await handleMoveTodo(todo, getOffsetDateKey(1), '내일로 이동했어요')
+  }
+
+  const handleDuplicateTodoToToday = async (todo: Todo) => {
+    await handleDuplicateTodo(todo, getOffsetDateKey(0), '오늘 할 일을 추가했어요')
+  }
+
+  const handleDuplicateTodoToTomorrow = async (todo: Todo) => {
+    await handleDuplicateTodo(todo, getOffsetDateKey(1), '내일 할 일을 추가했어요')
+  }
+
+  const confirmDatePicker = async () => {
+    if (!datePickerTodo || !datePickerMode || !datePickerSelectedDate) return
+
+    if (datePickerMode === 'move') {
+      await handleMoveTodo(datePickerTodo, datePickerSelectedDate)
+      return
+    }
+
+    await handleDuplicateTodo(datePickerTodo, datePickerSelectedDate)
+  }
+
   // Note: handleStopTimer와 handleCompleteTask는 TimerFullScreen에서 직접 처리됩니다.
   // 여기서는 제거되었습니다.
 
@@ -259,6 +367,11 @@ export function useTodoActions(selectedDateKey: string) {
     timerMode,
     timerErrorMessage,
     setTimerErrorMessage,
+    datePickerOpen: !!datePickerMode && !!datePickerTodo,
+    datePickerMode,
+    datePickerTodo,
+    datePickerSelectedDate,
+    setDatePickerSelectedDate,
 
     // 핸들러
     handleCreate,
@@ -274,5 +387,13 @@ export function useTodoActions(selectedDateKey: string) {
     handleCloseNote,
     handleOpenTimer,
     handleCloseTimer,
+    closeDatePicker,
+    openMoveDatePicker,
+    openDuplicateDatePicker,
+    confirmDatePicker,
+    handleMoveTodoToToday,
+    handleMoveTodoToTomorrow,
+    handleDuplicateTodoToToday,
+    handleDuplicateTodoToTomorrow,
   }
 }

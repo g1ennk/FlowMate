@@ -117,6 +117,34 @@ export function ChevronRightIcon({ size, className, ...props }: IconProps) {
   )
 }
 
+export function ArrowDownIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      {...props}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5.25v13.5m0 0l-5.25-5.25M12 18.75l5.25-5.25" />
+    </svg>
+  )
+}
+
+export function ArrowRightIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      {...props}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 12h13.5m0 0L13.5 6.75M18.75 12l-5.25 5.25" />
+    </svg>
+  )
+}
+
 export function CloseIcon({ size, className, ...props }: IconProps) {
   return (
     <svg

@@ -151,6 +151,97 @@ class TodoServiceTest {
     }
 
     @Test
+    @DisplayName("updateTodo: date를 전달하면 날짜만 변경")
+    void updateTodo_date전달_날짜변경() {
+        // given
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        Todo todo = Todo.create(userId, "제목", "노트", LocalDate.of(2026, 2, 11), 1, 2);
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+
+        TodoUpdateRequest request = new TodoUpdateRequest();
+        request.setDate(LocalDate.of(2026, 2, 12));
+
+        // when
+        TodoResponse result = todoService.updateTodo(userId, todoId, request);
+
+        // then
+        assertThat(result.getDate()).isEqualTo(LocalDate.of(2026, 2, 12));
+        assertThat(result.getTitle()).isEqualTo("제목");
+        assertThat(result.getNote()).isEqualTo("노트");
+        assertThat(result.getMiniDay()).isEqualTo(1);
+        assertThat(result.getDayOrder()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("updateTodo: date와 dayOrder를 함께 전달하면 둘 다 반영")
+    void updateTodo_date와DayOrder_함께반영() {
+        // given
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        Todo todo = Todo.create(userId, "제목", null, LocalDate.of(2026, 2, 11), 0, 0);
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+
+        TodoUpdateRequest request = new TodoUpdateRequest();
+        request.setDate(LocalDate.of(2026, 2, 14));
+        request.setDayOrder(5);
+
+        // when
+        TodoResponse result = todoService.updateTodo(userId, todoId, request);
+
+        // then
+        assertThat(result.getDate()).isEqualTo(LocalDate.of(2026, 2, 14));
+        assertThat(result.getDayOrder()).isEqualTo(5);
+        assertThat(result.getMiniDay()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("updateTodo: date 변경 시 session 집계와 timerMode는 유지")
+    void updateTodo_date변경_기록유지() {
+        // given
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        Todo todo = Todo.create(userId, "제목", null, LocalDate.of(2026, 2, 11), 0, 0);
+        todo.incrementSessionCount();
+        todo.addSessionFocusSeconds(1500);
+        todo.updateTimerMode(kr.io.flowmate.todo.domain.TimerMode.STOPWATCH);
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+
+        TodoUpdateRequest request = new TodoUpdateRequest();
+        request.setDate(LocalDate.of(2026, 2, 13));
+
+        // when
+        TodoResponse result = todoService.updateTodo(userId, todoId, request);
+
+        // then
+        assertThat(result.getDate()).isEqualTo(LocalDate.of(2026, 2, 13));
+        assertThat(result.getSessionCount()).isEqualTo(1);
+        assertThat(result.getSessionFocusSeconds()).isEqualTo(1500);
+        assertThat(result.getTimerMode()).isEqualTo("stopwatch");
+    }
+
+    @Test
+    @DisplayName("updateTodo: date를 보내지 않으면 기존 날짜 유지")
+    void updateTodo_date미전달_기존날짜유지() {
+        // given
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        LocalDate originalDate = LocalDate.of(2026, 2, 11);
+        Todo todo = Todo.create(userId, "원래제목", null, originalDate, 0, 0);
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+
+        TodoUpdateRequest request = new TodoUpdateRequest();
+        request.setTitle("새제목");
+
+        // when
+        TodoResponse result = todoService.updateTodo(userId, todoId, request);
+
+        // then
+        assertThat(result.getTitle()).isEqualTo("새제목");
+        assertThat(result.getDate()).isEqualTo(originalDate);
+    }
+
+    @Test
     @DisplayName("updateTodo: timerMode pomodoro 반영")
     void updateTodo_timerModePomodoro_반영() {
         // given

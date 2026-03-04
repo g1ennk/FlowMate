@@ -1,11 +1,14 @@
 package kr.io.flowmate.todo.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -33,6 +36,10 @@ public class TodoUpdateRequest {
     }
 
     private Boolean isDone;
+
+    // 날짜 이동(날짜 바꾸기/오늘하기/내일 하기)은 PATCH date로 처리한다.
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate date;
 
     @Min(0)
     @Max(3)

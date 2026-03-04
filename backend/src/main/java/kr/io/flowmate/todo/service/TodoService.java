@@ -97,6 +97,11 @@ public class TodoService {
             todo.updateDone(request.getIsDone());
         }
 
+        // 태스크 이동 계열 액션은 같은 Todo를 유지하고 date/dayOrder만 갱신한다.
+        if (request.getDate() != null) {
+            todo.updateDate(request.getDate());
+        }
+
         if (request.getMiniDay() != null) {
             todo.updateMiniDay(request.getMiniDay());
         }

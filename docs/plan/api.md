@@ -104,6 +104,8 @@ Content-Type: `application/json` (`GET /api/timer/sse`는 `text/event-stream`)
 ```
 
 > `miniDay`: Day 0(미분류), Day 1~3(시간대)
+> `date`: 실제 완료일이 아니라 계획일/소속일
+> `dayOrder`: `date + miniDay + 완료상태(active/done)` 레인 내부 순서값
 > `sessionFocusSeconds`: 초 단위
 > `isDone` 키는 응답/요청 모두 고정 사용 (`done` 아님)
 
@@ -247,10 +249,20 @@ Content-Type: `application/json` (`GET /api/timer/sse`는 `text/event-stream`)
 - `PATCH /api/todos/{id}`
 - Body:
 ```json
-{ "title": "string", "note": "string|null", "isDone": true, "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch"|"pomodoro"|null }
+{ "title": "string", "note": "string|null", "isDone": true, "date": "2026-01-10", "miniDay": 0, "dayOrder": 3, "timerMode": "stopwatch" }
 ```
-- Validation: `title` 전달 시 1~200자, 나머지 optional
-- Note: `sessionCount`, `sessionFocusSeconds`는 Session API로만 변경
+- Validation:
+  - `title`: 전달 시 1~200자
+  - `note`: 전달 시 string 또는 null
+  - `isDone`: 전달 시 boolean
+  - `date`: 전달 시 `YYYY-MM-DD`
+  - `miniDay`: 전달 시 0~3
+  - `dayOrder`: 전달 시 0 이상 정수
+  - `timerMode`: 전달 시 `stopwatch | pomodoro | null`
+- Note:
+  - `PATCH /api/todos/{id}`는 부분 업데이트이며, 전달한 필드만 변경한다.
+  - `sessionCount`, `sessionFocusSeconds`는 Session API로만 변경한다.
+  - 날짜 이동 계열은 보통 `{ "date": "2026-01-10", "dayOrder": 3 }` 형태로 사용한다.
 - Response 200: `Todo`
 - Error 404, 400
 
@@ -263,6 +275,22 @@ Content-Type: `application/json` (`GET /api/timer/sse`는 `text/event-stream`)
 - `DELETE /api/todos/{id}`
 - Response 204
 - Error 404
+
+### 2.6 Todo Date Action Policy
+- 이동 계열: `날짜 바꾸기`, `오늘하기`, `내일 하기`
+  - 기존 Todo를 수정한다.
+  - `date`, `dayOrder`만 변경한다.
+  - `id`, `note`, `isDone`, `miniDay`, `sessionCount`, `sessionFocusSeconds`, `timerMode`, 세션 기록, 현재 타이머 상태는 유지한다.
+- 생성 계열: `오늘 또 하기`, `내일 또 하기`, `다른 날 또 하기`
+  - 새 Todo를 생성한다.
+  - 원본 완료 Todo는 유지한다.
+  - 새 Todo는 `miniDay=0(미분류)`, `isDone=false`, `sessionCount=0`, `sessionFocusSeconds=0`, `timerMode=null`로 시작한다.
+
+### 2.7 Todo Action Visibility
+| 상태 | 과거 날짜 | 오늘 날짜 | 미래 날짜 |
+| --- | --- | --- | --- |
+| 미완료 | `오늘하기`, `날짜 바꾸기` | `내일 하기`, `날짜 바꾸기` | `오늘하기`, `날짜 바꾸기` |
+| 완료 | `오늘 또 하기`, `다른 날 또 하기`, `날짜 바꾸기` | `내일 또 하기`, `다른 날 또 하기`, `날짜 바꾸기` | `오늘 또 하기`, `다른 날 또 하기`, `날짜 바꾸기` |
 
 ---
 

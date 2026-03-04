@@ -41,6 +41,7 @@ export const TodoPatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   note: z.string().nullable().optional(),
   isDone: z.boolean().optional(),
+  date: z.string().optional(),
   miniDay: z.number().int().min(0).max(3).optional(),
   dayOrder: z.number().int().min(0).optional(),
   timerMode: z.enum(['stopwatch', 'pomodoro']).nullable().optional(),

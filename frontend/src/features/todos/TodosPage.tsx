@@ -41,8 +41,13 @@ import {
   ClockIcon,
   DocumentIcon,
   ChevronRightIcon,
+  CalendarIcon,
+  ArrowDownIcon,
+  ArrowRightIcon,
+  ArrowPathIcon,
 } from '../../ui/Icons'
 import { SortableTodoItem } from './components/SortableTodoItem'
+import { TodoDatePickerSheet } from './components/TodoDatePickerSheet'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
 import { useTodoActions } from './useTodoActions'
 import { useReorderTodos, useTodos } from './hooks'
@@ -53,6 +58,10 @@ import { storageKeys } from '../../lib/storageKeys'
 import { userTextInputClass } from '../../lib/userTextStyles'
 import { useMiniDaysSettings } from '../settings/hooks'
 import { getDefaultMiniDayForDate } from './miniDayUtils'
+import {
+  getTodoDateActionItems,
+  type TodoDateActionKind,
+} from './todoDateActionHelpers'
 import { useAuthStore } from '../../store/authStore'
 import type { Todo, TodoReorderItem } from '../../api/types'
 import type { AuthState } from '../../types/auth'
@@ -959,6 +968,53 @@ function TodosPage() {
     clearDragTransientState()
   }
 
+  const handleTodoDateAction = (todo: Todo, kind: TodoDateActionKind) => {
+    switch (kind) {
+      case 'move_to_today':
+        void actions.handleMoveTodoToToday(todo)
+        return
+      case 'move_to_tomorrow':
+        void actions.handleMoveTodoToTomorrow(todo)
+        return
+      case 'move_to_date':
+        actions.openMoveDatePicker(todo)
+        return
+      case 'duplicate_to_today':
+        void actions.handleDuplicateTodoToToday(todo)
+        return
+      case 'duplicate_to_tomorrow':
+        void actions.handleDuplicateTodoToTomorrow(todo)
+        return
+      case 'duplicate_to_date':
+        actions.openDuplicateDatePicker(todo)
+        return
+    }
+  }
+
+  const getTodoDateActionIcon = (kind: TodoDateActionKind) => {
+    if (kind === 'move_to_date') {
+      return <CalendarIcon className="h-5 w-5 text-indigo-500" />
+    }
+
+    if (kind === 'duplicate_to_date') {
+      return <ArrowPathIcon className="h-5 w-5 text-orange-500" />
+    }
+
+    if (kind === 'move_to_today') {
+      return <ArrowDownIcon className="h-5 w-5 text-blue-500" />
+    }
+
+    if (kind === 'duplicate_to_today') {
+      return <ArrowDownIcon className="h-5 w-5 text-orange-500" />
+    }
+
+    if (kind === 'duplicate_to_tomorrow') {
+      return <ArrowRightIcon className="h-5 w-5 text-orange-500" />
+    }
+
+    return <ArrowRightIcon className="h-5 w-5 text-blue-500" />
+  }
+
 
   return (
     <div className="space-y-4">
@@ -1507,8 +1563,32 @@ function TodosPage() {
               </>
             )
           })()}
+          {actions.selectedTodo &&
+            getTodoDateActionItems(actions.selectedTodo, todayDateKey).map((item) => (
+              <BottomSheetItem
+                key={item.kind}
+                icon={getTodoDateActionIcon(item.kind)}
+                label={item.label}
+                onClick={() => {
+                  if (!actions.selectedTodo) return
+                  handleTodoDateAction(actions.selectedTodo, item.kind)
+                }}
+              />
+            ))}
         </div>
       </BottomSheet>
+
+      <TodoDatePickerSheet
+        isOpen={actions.datePickerOpen}
+        mode={actions.datePickerMode}
+        currentDateKey={actions.datePickerTodo?.date ?? null}
+        selectedDateKey={actions.datePickerSelectedDate}
+        onSelectDateKey={actions.setDatePickerSelectedDate}
+        onClose={actions.closeDatePicker}
+        onConfirm={() => {
+          void actions.confirmDatePicker()
+        }}
+      />
 
       {/* 메모 바텀시트 */}
       <BottomSheet
