@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, screen, within } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
@@ -38,6 +38,12 @@ function buildTodo(overrides: Partial<Record<string, unknown>> = {}) {
 
 function seedTodos(items: Array<Record<string, unknown>>) {
   window.localStorage.setItem(storageKeys.todos('local'), JSON.stringify(items))
+}
+
+function readStoredTodos() {
+  return JSON.parse(window.localStorage.getItem(storageKeys.todos('local')) ?? '[]') as Array<
+    Record<string, unknown>
+  >
 }
 
 type MiniDaysOverrides = {
@@ -390,6 +396,134 @@ describe('TodosPage', () => {
     expectSectionCollapsed('미분류')
     expectSectionCollapsed('오전')
     expectSectionExpanded('오후')
+  })
+
+  it('shows move actions for incomplete todos and duplicate actions for completed todos', async () => {
+    await renderTodosPage({
+      routeDateKey: '2026-01-08',
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({ title: '과거 미완료', date: '2026-01-08', isDone: false }),
+        buildTodo({ title: '과거 완료', date: '2026-01-08', isDone: true }),
+      ],
+    })
+
+    fireEvent.click(screen.getByText('과거 미완료'))
+    expect(screen.getByRole('button', { name: '오늘하기' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '날짜 바꾸기' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '다른 날 또 하기' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('과거 완료'))
+    expect(screen.getByRole('button', { name: '오늘 또 하기' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '다른 날 또 하기' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '날짜 바꾸기' })).toBeInTheDocument()
+  })
+
+  it('shows 내일 하기 for today incomplete todos and 내일 또 하기 for today completed todos', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({ title: '오늘 미완료', miniDay: 0, isDone: false }),
+        buildTodo({ title: '오늘 완료', miniDay: 0, isDone: true }),
+      ],
+    })
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    fireEvent.click(screen.getByText('오늘 미완료'))
+    expect(screen.getByRole('button', { name: '내일 하기' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('오늘 완료'))
+    expect(screen.getByRole('button', { name: '내일 또 하기' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '다른 날 또 하기' })).toBeInTheDocument()
+  })
+
+  it('disables move date confirmation for the same date and allows duplicate date confirmation', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({ title: '같은 날 이동', miniDay: 0, isDone: false }),
+        buildTodo({ title: '같은 날 복제', miniDay: 0, isDone: true }),
+      ],
+    })
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    fireEvent.click(screen.getByText('같은 날 이동'))
+    fireEvent.click(screen.getByRole('button', { name: '날짜 바꾸기' }))
+    expect(within(screen.getByRole('button', { name: '2026-01-09 선택' })).getByText('오늘')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '이 날짜로 이동' })).toBeDisabled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.click(screen.getByText('같은 날 복제'))
+    fireEvent.click(screen.getByRole('button', { name: '다른 날 또 하기' }))
+    expect(screen.getByRole('button', { name: '새로 추가' })).not.toBeDisabled()
+  })
+
+  it('moves incomplete todos to today while preserving miniDay and recalculating dayOrder', async () => {
+    await renderTodosPage({
+      routeDateKey: '2026-01-08',
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({ title: '오늘 기존 할 일', date: '2026-01-09', miniDay: 2, dayOrder: 0 }),
+        buildTodo({ title: '이동할 할 일', date: '2026-01-08', miniDay: 2, dayOrder: 0 }),
+      ],
+    })
+
+    fireEvent.click(screen.getByText('이동할 할 일'))
+    fireEvent.click(screen.getByRole('button', { name: '오늘하기' }))
+    await flushTodosPage()
+
+    const movedTodo = readStoredTodos().find((todo) => todo.title === '이동할 할 일')
+    expect(movedTodo).toMatchObject({
+      date: '2026-01-09',
+      miniDay: 2,
+      dayOrder: 1,
+      isDone: false,
+    })
+  })
+
+  it('duplicates completed todos into uncategorized active todos', async () => {
+    await renderTodosPage({
+      routeDateKey: '2026-01-08',
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({ title: '오늘 미분류 기존 할 일', date: '2026-01-09', miniDay: 0, dayOrder: 0 }),
+        buildTodo({
+          title: '다시 할 완료 태스크',
+          date: '2026-01-08',
+          miniDay: 2,
+          dayOrder: 0,
+          isDone: true,
+          note: '메모 복사',
+          sessionCount: 2,
+          sessionFocusSeconds: 1800,
+          timerMode: 'pomodoro',
+        }),
+      ],
+    })
+
+    fireEvent.click(screen.getByText('다시 할 완료 태스크'))
+    fireEvent.click(screen.getByRole('button', { name: '오늘 또 하기' }))
+    await flushTodosPage()
+
+    const storedTodos = readStoredTodos()
+    const duplicatedTodo = storedTodos.find(
+      (todo) => todo.title === '다시 할 완료 태스크' && todo.date === '2026-01-09' && todo.isDone === false,
+    )
+
+    expect(duplicatedTodo).toMatchObject({
+      title: '다시 할 완료 태스크',
+      note: '메모 복사',
+      date: '2026-01-09',
+      miniDay: 0,
+      dayOrder: 1,
+      isDone: false,
+      sessionCount: 0,
+      sessionFocusSeconds: 0,
+      timerMode: null,
+    })
   })
 
   it('renders, creates, completes, and deletes todos in the main flow', async () => {

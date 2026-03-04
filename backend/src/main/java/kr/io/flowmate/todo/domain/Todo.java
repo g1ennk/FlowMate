@@ -91,6 +91,11 @@ public class Todo {
         this.done = done;
     }
 
+    // 기존 Todo identity를 유지한 채 소속 날짜만 이동한다. (태스크 날짜 이동 기능)
+    public void updateDate(LocalDate date) {
+        this.date = date;
+    }
+
     public void updateMiniDay(int miniDay) {
         this.miniDay = miniDay;
     }
@@ -136,4 +141,5 @@ public class Todo {
     public boolean isDone() {
         return done;
     }
+
 }

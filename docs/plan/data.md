@@ -63,14 +63,21 @@
 - `userId`: string (UUID, 36자) — 게스트 clientId 또는 회원 userId
 - `title`: string (1~200자)
 - `note?`: string | null
-- `date`: LocalDate (YYYY-MM-DD)
+- `date`: LocalDate (YYYY-MM-DD, 계획일/소속일)
 - `miniDay`: int (0~3, 0=미분류, 1~3=시간대)
-- `dayOrder`: int (0 이상)
+- `dayOrder`: int (0 이상, `date + miniDay + 완료상태(active/done)` 레인 내부 순서)
 - `isDone`: boolean
 - `sessionCount`: int (완료된 Flow 횟수, 0 이상)
 - `sessionFocusSeconds`: int (초 단위, 0 이상)
 - `timerMode`: enum (`stopwatch` | `pomodoro` | null)
 - `createdAt`, `updatedAt`: Instant
+
+정책 메모
+- Todo identity의 정본은 `id`다.
+- Todo 날짜 이동은 기존 Todo를 유지한 채 `date`와 `dayOrder`만 변경하는 동작이다.
+- Session / TimerState는 Todo identity(`id`)에 귀속되므로 날짜 이동 시 같은 Todo의 기록으로 함께 따라간다.
+- 완료 Todo 재생성(`또 하기`)은 새로운 Todo identity를 생성한다.
+- `또 하기`로 생성된 Todo는 항상 `miniDay=0(미분류)`에서 시작한다.
 
 ### Session
 
