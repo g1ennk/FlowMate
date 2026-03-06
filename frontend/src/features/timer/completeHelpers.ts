@@ -17,6 +17,7 @@ type CompletionDeps = {
   timer: SingleTimerState
   settings?: PomodoroSettings
   pause: (todoId: string) => void
+  reset: (todoId: string) => void
   getTimer: (todoId: string) => SingleTimerState | undefined
   updateSessions: (todoId: string, sessions: SessionRecord[]) => void
   updateTodo: (args: UpdateTodoArgs) => Promise<unknown>
@@ -204,4 +205,6 @@ export async function completeTaskFromTimer(deps: CompletionDeps) {
       ...(deps.nextOrder === undefined ? {} : { dayOrder: deps.nextOrder }),
     },
   })
+
+  deps.reset(todoId)
 }

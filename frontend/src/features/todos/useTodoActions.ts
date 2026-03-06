@@ -83,6 +83,7 @@ export function useTodoActions(selectedDateKey: string) {
           timer,
           settings: settings ?? undefined,
           pause,
+          reset,
           getTimer,
           updateSessions,
           syncSessionsImmediately: async (sessions) => {

@@ -216,6 +216,9 @@ describe('TimerFullScreen', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: '완료' }))
+    expect(
+      screen.getByText('현재 진행 상황이 저장되고 타이머가 초기화됩니다.'),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '확인' }))
 
     await waitFor(() => {
@@ -234,6 +237,7 @@ describe('TimerFullScreen', () => {
           timerMode: 'stopwatch',
         },
       })
+      expect(mocked.timerStoreActions.reset).toHaveBeenCalledWith('todo-1')
       expect(onClose).toHaveBeenCalled()
     })
 
