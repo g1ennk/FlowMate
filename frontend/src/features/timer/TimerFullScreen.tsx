@@ -273,6 +273,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       timer,
       settings: settings ?? undefined,
       pause,
+      reset,
       getTimer,
       updateSessions,
       syncSessionsImmediately: async (sessions) => {
@@ -843,7 +844,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               타이머를 완료하시겠습니까?
             </h3>
               <p className="mb-4 text-center text-sm text-gray-400">
-              현재 진행 상황이 저장됩니다.
+              현재 진행 상황이 저장되고 타이머가 초기화됩니다.
             </p>
               
               {/* 총계 표시 (일반 타이머 및 뽀모도로) */}

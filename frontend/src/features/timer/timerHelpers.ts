@@ -41,6 +41,28 @@ export function getPlannedMs(
 }
 
 /**
+ * 현재 pomodoro phase의 실제 경과 시간(ms) 계산
+ * running 상태에서는 endAt을 우선 사용해 마지막 tick의 stale remainingMs를 피한다.
+ * endAt을 조금 넘긴 경우도 실제 경과 시간으로 계산한다.
+ */
+export function getPomodoroElapsedMs(
+  timer: SingleTimerState | undefined,
+  plannedMs: number,
+): number {
+  if (!timer) return 0
+
+  if (typeof timer.endAt === 'number') {
+    return Math.max(0, plannedMs - (timer.endAt - Date.now()))
+  }
+
+  if (typeof timer.remainingMs === 'number') {
+    return Math.max(0, plannedMs - timer.remainingMs)
+  }
+
+  return 0
+}
+
+/**
  * 타이머 충돌 에러 메시지 생성
  */
 export function getTimerConflictMessage(mode: 'stopwatch' | 'pomodoro'): string {
