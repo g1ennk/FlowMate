@@ -1,7 +1,10 @@
 import type { PomodoroSettings } from '../../api/types'
 import { MIN_FLOW_MS } from '../../lib/constants'
 import type { SessionRecord, SingleTimerState, TimerMode } from './timerStore'
-import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
+import {
+  getPlannedMs as getPlannedMsUtil,
+  getPomodoroElapsedMs,
+} from './timerHelpers'
 import { generateSessionId } from '../../lib/sessionId'
 
 type UpdateTodoArgs = {
@@ -144,9 +147,7 @@ async function completePomodoro(
   }
 
   const plannedMs = getPlannedMsUtil(timer, settings)
-  const remaining =
-    timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-  const elapsedMs = plannedMs - remaining
+  const elapsedMs = getPomodoroElapsedMs(timer, plannedMs)
   const elapsedSec = Math.round(elapsedMs / 1000)
 
   const newSessions = [...timer.sessions]

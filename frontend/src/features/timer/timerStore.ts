@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import type { PomodoroSettings } from '../../api/types'
 import { MIN_FLOW_MS } from '../../lib/constants'
 import { playNotificationSound } from '../../lib/sound'
-import { checkTimerConflict, getTimerConflictMessage } from './timerHelpers'
+import {
+  checkTimerConflict,
+  getPomodoroElapsedMs,
+  getTimerConflictMessage,
+} from './timerHelpers'
 import { hydrateState } from './timerHydration'
 import { generateSessionId, normalizeSessionId } from '../../lib/sessionId'
 import type { PendingPomodoroSession, SessionRecord, SingleTimerState, TimerPhase } from './timerTypes'
@@ -674,9 +678,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         
         // Flow 완료 시 sessions에 추가 (실제 경과 시간 계산)
         const plannedMs = flowMin * MINUTE
-        const actualElapsedMs = timer.endAt 
-          ? Math.max(0, plannedMs - Math.max(0, timer.endAt - Date.now()))
-          : plannedMs
+        const actualElapsedMs = getPomodoroElapsedMs(timer, plannedMs)
         const flowMs = Math.max(0, actualElapsedMs)
         const flowSeconds = Math.round(flowMs / 1000)
         const completedSession: PendingPomodoroSession = {
@@ -705,9 +707,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         // Break → Flow 자동 전환
         // Break 완료 시 실제 경과 시간을 기준으로 마지막 세션의 breakSeconds 업데이트
         const plannedBreakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
-        const remainingMs =
-          timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-        const elapsedBreakMs = Math.max(0, plannedBreakMs - remainingMs)
+        const elapsedBreakMs = getPomodoroElapsedMs(timer, plannedBreakMs)
         const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -cycleCount : 0
 
@@ -753,9 +753,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const breakType = getBreakType(nextCycle, cycleEvery)
         const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
         const plannedMs = flowMin * MINUTE
-        const remainingMs =
-          timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-        const elapsedMs = Math.max(0, plannedMs - remainingMs)
+        const elapsedMs = getPomodoroElapsedMs(timer, plannedMs)
         const elapsedSec = Math.round(elapsedMs / 1000)
         const completedSession: PendingPomodoroSession = {
           sessionFocusSeconds: elapsedSec,
@@ -788,9 +786,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         // Break → Flow 수동 스킵
         // Break에서 Flow로 이동할 때, 최소 휴식 시간을 넘긴 경우 마지막 세션의 breakSeconds 반영
         const plannedBreakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
-        const remainingMs =
-          timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : 0)
-        const elapsedBreakMs = Math.max(0, plannedBreakMs - remainingMs)
+        const elapsedBreakMs = getPomodoroElapsedMs(timer, plannedBreakMs)
         const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -timer.cycleCount : 0
 
