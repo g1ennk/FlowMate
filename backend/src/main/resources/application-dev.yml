@@ -38,6 +38,9 @@ management:
   endpoint:
     health:
       show-details: always
+  metrics:
+    tags:
+      application: flowmate-dev
 
 logging:
   level:
