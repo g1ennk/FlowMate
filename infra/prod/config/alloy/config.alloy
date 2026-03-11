@@ -1,0 +1,102 @@
+// ── Metrics: Spring Boot Actuator ──────────────────────────────
+prometheus.scrape "backend" {
+  targets = [{
+    "__address__"      = "backend:8080",
+    "__metrics_path__" = "/actuator/prometheus",
+  }]
+  scrape_interval = "15s"
+  forward_to      = [prometheus.relabel.backend.receiver]
+}
+
+prometheus.relabel "backend" {
+  rule {
+    target_label = "instance"
+    replacement  = "flowmate-backend-prod"
+  }
+  rule {
+    target_label = "environment"
+    replacement  = "prod"
+  }
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ── Metrics: System (node-exporter 대체) ──────────────────────
+prometheus.exporter.unix "host" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/rootfs"
+  filesystem {
+    mount_points_exclude = "^/(sys|proc|dev|host|etc)($|/)"
+  }
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  scrape_interval = "15s"
+  forward_to      = [prometheus.relabel.host.receiver]
+}
+
+prometheus.relabel "host" {
+  rule {
+    target_label = "instance"
+    replacement  = "flowmate-host-prod"
+  }
+  rule {
+    target_label = "environment"
+    replacement  = "prod"
+  }
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ── Remote Write → Grafana Cloud Mimir ────────────────────────
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = env("GRAFANA_CLOUD_METRICS_URL")
+    basic_auth {
+      username = env("GRAFANA_CLOUD_USER")
+      password = env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}
+
+// ── Logs: Docker 컨테이너 → Grafana Cloud Loki ─────────────────
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.containers.targets
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = env("GRAFANA_CLOUD_LOGS_URL")
+    basic_auth {
+      username = env("GRAFANA_CLOUD_USER")
+      password = env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}
+
+// ── Traces: OTLP → Grafana Cloud Tempo (Phase 4 대비) ─────────
+otelcol.receiver.otlp "default" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+  output {
+    traces = [otelcol.exporter.otlp.grafana_cloud.input]
+  }
+}
+
+otelcol.exporter.otlp "grafana_cloud" {
+  client {
+    endpoint = env("GRAFANA_CLOUD_TEMPO_ENDPOINT")
+    auth     = otelcol.auth.basic.grafana_cloud.handler
+  }
+}
+
+otelcol.auth.basic "grafana_cloud" {
+  username = env("GRAFANA_CLOUD_USER")
+  password = env("GRAFANA_CLOUD_API_KEY")
+}

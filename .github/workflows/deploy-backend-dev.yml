@@ -67,5 +67,5 @@ jobs:
             git reset --hard origin/develop
             cd infra/dev
             export ECR_IMAGE_URI=${{ needs.build-and-push.outputs.image_uri }}
-            ECR_IMAGE_URI=$ECR_IMAGE_URI docker compose up -d backend
+            ECR_IMAGE_URI=$ECR_IMAGE_URI docker compose up -d --remove-orphans backend alloy
             docker compose ps

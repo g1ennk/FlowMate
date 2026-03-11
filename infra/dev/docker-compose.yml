@@ -59,61 +59,32 @@ services:
       retries: 3
       start_period: 40s
 
-  # Prometheus (metrics collection)
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: flowmate-prometheus-dev
+  # Grafana Alloy (메트릭 + 로그 + 트레이스 수집 → Grafana Cloud)
+  alloy:
+    image: grafana/alloy:${ALLOY_VERSION:-v1.8.3}
+    container_name: flowmate-alloy-dev
     restart: unless-stopped
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=7d'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    volumes:
-      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data-dev:/prometheus
-    ports:
-      - "9090:9090"
-    depends_on:
-      - backend
-    networks:
-      - flowmate-network
-
-  # Grafana (metrics visualization)
-  grafana:
-    image: grafana/grafana:latest
-    container_name: flowmate-grafana-dev
-    restart: unless-stopped
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_INSTALL_PLUGINS: ''
+      GRAFANA_CLOUD_METRICS_URL: ${GRAFANA_CLOUD_METRICS_URL}
+      GRAFANA_CLOUD_LOGS_URL: ${GRAFANA_CLOUD_LOGS_URL}
+      GRAFANA_CLOUD_TEMPO_ENDPOINT: ${GRAFANA_CLOUD_TEMPO_ENDPOINT}
+      GRAFANA_CLOUD_USER: ${GRAFANA_CLOUD_USER}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
     volumes:
-      - grafana-data-dev:/var/lib/grafana
-      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
-    networks:
-      - flowmate-network
-
-  # Node Exporter (system metrics)
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: flowmate-node-exporter-dev
-    restart: unless-stopped
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+    pid: "host"
     ports:
-      - "9100:9100"
+      - "12345:12345"
+    depends_on:
+      - backend
     networks:
       - flowmate-network
 
@@ -123,8 +94,4 @@ networks:
 
 volumes:
   mysql-data-dev:
-    driver: local
-  prometheus-data-dev:
-    driver: local
-  grafana-data-dev:
     driver: local
