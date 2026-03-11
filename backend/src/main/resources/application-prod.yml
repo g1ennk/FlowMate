@@ -42,6 +42,9 @@ management:
   endpoint:
     health:
       show-details: never  # Prod: 외부에 상세 정보 노출 안 함
+  metrics:
+    tags:
+      application: flowmate-prod
 
 logging:
   level:
