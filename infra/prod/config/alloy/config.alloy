@@ -53,7 +53,7 @@ prometheus.remote_write "grafana_cloud" {
   endpoint {
     url = env("GRAFANA_CLOUD_METRICS_URL")
     basic_auth {
-      username = env("GRAFANA_CLOUD_USER")
+      username = env("GRAFANA_CLOUD_METRICS_USER")
       password = env("GRAFANA_CLOUD_API_KEY")
     }
   }
@@ -74,7 +74,7 @@ loki.write "grafana_cloud" {
   endpoint {
     url = env("GRAFANA_CLOUD_LOGS_URL")
     basic_auth {
-      username = env("GRAFANA_CLOUD_USER")
+      username = env("GRAFANA_CLOUD_LOGS_USER")
       password = env("GRAFANA_CLOUD_API_KEY")
     }
   }
@@ -97,6 +97,6 @@ otelcol.exporter.otlp "grafana_cloud" {
 }
 
 otelcol.auth.basic "grafana_cloud" {
-  username = env("GRAFANA_CLOUD_USER")
+  username = env("GRAFANA_CLOUD_TEMPO_USER")
   password = env("GRAFANA_CLOUD_API_KEY")
 }
