@@ -110,5 +110,5 @@ jobs:
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
             export ECR_IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ inputs.version }}
             docker compose pull backend
-            docker compose up -d backend
+            docker compose up -d --remove-orphans backend alloy
             docker compose ps backend
