@@ -63,6 +63,7 @@ services:
   alloy:
     image: grafana/alloy:${ALLOY_VERSION:-v1.8.3}
     container_name: flowmate-alloy-dev
+    hostname: flowmate-host-dev
     restart: unless-stopped
     command:
       - run
