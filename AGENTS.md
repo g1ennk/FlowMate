@@ -1,58 +1,51 @@
-# Repository Guidelines
+# AGENT Rules
 
-## 프로젝트 구조 & 모듈 구성
-- `frontend/`: React + TypeScript 앱
-  - `README.md`: 프론트엔드 개발/실행 가이드
-  - `src/app/`: 앱 셸, 라우트, 프로바이더
-  - `src/features/`: 도메인 단위 모듈 (`auth`, `boarding`, `todos`, `timer`, `review`, `settings` 등)
-  - `src/ui/`: 공통 UI 컴포넌트
-  - `src/api/`: API 클라이언트와 타입
-  - `src/mocks/`: MSW 핸들러 및 목 서버
-  - `src/lib/`: 공용 유틸/상수
-- `backend/`: Spring Boot API 서버
-  - `README.md`: 백엔드 개발/실행 가이드
-  - `src/main/java/kr/io/flowmate`: 도메인 모듈 (`auth`, `timer`, `todo`, `session`, `settings`, `review`, `config`, `common`)
-  - `src/main/resources/db/migration`: Flyway 마이그레이션
-- `infra/`: Dev/Prod 인프라 구성
-  - `README.md`: 배포/운영 구조 가이드
-  - `dev/`, `prod/`: Docker Compose, env, nginx 설정
-- `docs/`: 문서
-  - `plan/`: API/Data/Roadmap 정본 (`current`)
-  - `agent/`: AI 작업 계획/가이드 (`current`, `reference`, `historical`, `proposal`)
-  - `engineering-log/`: 기술 학습/결정/트러블슈팅 기록 (`historical`, `active`)
-- `images/`: 문서용 이미지 자산
+## Purpose
 
-## 빌드/테스트/개발 명령어
-`frontend/`에서 실행:
-- `pnpm install`: 의존성 설치
-- `pnpm dev`: Vite 개발 서버 (실 API)
-- `pnpm dev:mock`: MSW 모킹 서버 (`VITE_USE_MOCK=1`)
-- `pnpm dev:port 1019`: 포트 지정 실행
-- `pnpm build`: 타입 체크 + 프로덕션 빌드
-- `pnpm preview`: 프로덕션 빌드 프리뷰
-- `pnpm lint`: ESLint 실행
-- `pnpm test`: Vitest 1회 실행 (CI용)
-- `pnpm test:watch`: Vitest watch 모드
+- This file is for AI coding agents working in this repository.
+- Keep guidance minimal, repo-accurate, and implementation-focused.
+- Use `AGENTS.local.md` for private notes or session-specific instructions. Do not commit that file.
 
-`backend/`에서 실행:
-- `./gradlew test`: 테스트 실행
-- `./gradlew bootRun --args='--spring.profiles.active=local'`: 로컬 실행
-- `./gradlew clean test bootJar`: 클린 테스트 + 패키징
+## Source of Truth
 
-## 코딩 스타일 & 네이밍 규칙
-- TypeScript + React, 스타일은 Tailwind 사용.
-- 들여쓰기 2칸, 작은따옴표, 세미콜론 없음(기존 스타일 준수).
-- ESLint 설정: `frontend/eslint.config.js` (`pnpm lint` 권장).
-- 컴포넌트 파일명: PascalCase (예: `TimerFullScreen.tsx`).
-- 훅/유틸 함수: camelCase, 훅은 `useX` 접두사.
-- 테스트: 소스와 동일 경로에 `*.test.ts` / `*.test.tsx`로 배치.
+- Resolve conflicts in this order: source code > `README.md` > `docs/architecture.md` / `docs/api.md` / `docs/data-model.md`.
+- Prefer canonical docs under `docs/` over ad-hoc subsystem notes when they match the code and configs.
+- Treat `docs/agent/*` as local reference or draft material. It is ignored by Git and is not the source of truth for current behavior.
+- Do not introduce links to missing files or empty placeholders as if they were canonical docs.
 
-## 테스트 가이드
-- Vitest + Testing Library, JSDOM 환경, API 모킹은 MSW 사용.
-- 단위 테스트는 `frontend/src/**` 내에 두고 파일명은 `*.test.ts`.
-- 수동/QA 체크 문서는 현재 별도 파일 없음 (필요 시 추가).
+## Repository Map
 
-## 커밋 & PR 가이드
-- Conventional Commits 사용: `type(scope): summary` (예: `fix(frontend): ...`, `docs: ...`).
-- 커밋은 하나의 변경 목적에 집중.
-- PR에는 변경 요약, 실행한 테스트, UI 변경 시 스크린샷/GIF 포함. 관련 이슈 링크와 모킹/실 API 여부도 명시.
+- `frontend/`: React 19 + TypeScript app.
+  - `src/app/`: app shell, routing, providers
+  - `src/features/`: domain features such as `auth`, `todos`, `timer`, `review`, `settings`, `notifications`, `pwa`
+  - `src/api/`, `src/ui/`, `src/store/`, `src/mocks/`, `src/styles/`, `src/test/`
+- `backend/`: Spring Boot API.
+  - `auth`, `todo`, `timer`, `session`, `review`, `settings`, `common`, `config`
+  - Flyway migrations: `src/main/resources/db/migration`
+- `infra/`: deployment and runtime configuration.
+  - `dev/`, `prod/`: Docker Compose, host nginx, Alloy config
+  - GitHub Actions deploy frontend to S3 + CloudFront and backend to EC2 + ECR
+- `docs/`: portfolio-facing and implementation docs.
+  - `architecture.md`, `api.md`, `data-model.md`, `study/`
+- `load-test/`: k6 load test assets
+
+## Commands
+
+- Run from `frontend/`:
+  - `pnpm lint`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm dev`
+  - `pnpm dev:mock`
+- Run from `backend/`:
+  - `./gradlew test`
+  - `./gradlew bootRun --args='--spring.profiles.active=local'`
+
+## Coding Rules
+
+- Frontend uses TypeScript, React, and Tailwind CSS.
+- Use 2-space indentation, single quotes, and no semicolons unless the file clearly uses a different style.
+- Component files use PascalCase. Hooks use `useX`. Utilities use camelCase.
+- Place tests next to source files with `*.test.ts` or `*.test.tsx`.
+- Treat `README.md` as a portfolio document. Keep engineering detail in canonical docs under `docs/` or detailed logs, not in the root README.
+- When docs drift from code, prefer fixing the code-aligned canonical docs rather than expanding ignored local drafts.

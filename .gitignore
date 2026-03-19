@@ -14,6 +14,5 @@ frontend/.vite/
 /infra/prod/.env
 /shared/
 
-# 개인 학습/AI 작업 문서 (로컬 전용)
-/docs/agent/
-/docs/engineering-log/
+# 로컬 참고용 agent 문서
+/agent
