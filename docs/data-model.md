@@ -6,7 +6,7 @@
 
 - Identity: 할 일, 회고, 설정을 소유하는 사용자 주체로 `회원`과 `게스트` 두 유형이 있다.
 - MiniDay: 하루를 오전·오후·저녁 같은 시간 블록으로 나누어 Todo를 배치하기 위한 구간 개념이다.
-- Todo: Identity가 특정 날짜와 MiniDay 구간에 계획하는 작업 단위다.
+- Todo: Identity가 특정 날짜와 MiniDay 구간에 계획하는 작업 단위이며, 필요하면 복습 체인 메타데이터를 함께 가진다.
 - TodoSession: Todo를 수행하는 과정에서 발생하는 집중·휴식 기록 단위다.
 - TimerState: 진행 중인 Todo의 타이머 진행 상태를 나타내는 런타임 상태다.
 - UserSettings: Identity별 집중·휴식 길이와 MiniDay 구성을 담는 개인 설정이다.
@@ -28,16 +28,16 @@
 
 ### 1) 주요 내용
 
-| 엔터티           | 식별자       | 주요 속성                                                                                                | 핵심 규칙                                                                                                                          |
-|---------------|-----------|------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| Todo          | `id`      | `user_id`, `title`, `date`, `mini_day`, `day_order`, `timer_mode`                                    | `timer_mode`는 `'stopwatch' \| 'pomodoro' \| null`만 허용하고, 날짜 이동 시에도 Todo identity는 유지되며, 세션 집계 필드는 캐시이고 정본은 `todo_sessions`다.   |
-| TodoSession   | `id`      | `todo_id`, `user_id`, `client_session_id`, `session_order`, `session_focus_seconds`, `break_seconds` | Todo의 정본 세션이며 `(todo_id, client_session_id)`와 `(todo_id, session_order)`에는 유일 제약이 있고, 멱등 재요청에서는 `break_seconds`만 증가 방향으로 갱신된다. |
-| TimerState    | `todo_id` | `user_id`, `state_json`, `version`                                                                   | Todo당 최대 1개만 존재하는 회원 전용 런타임 스냅샷이며, `state_json = null`은 행 삭제 대신 상태만 남기는 논리 삭제를 뜻하고 `version`은 단조 증가한다.                         |
-| UserSettings  | `user_id` | `flow_min`, `break_min`, `long_break_min`, `cycle_every`                                             | 사용자당 최대 1개이며 평면 컬럼으로 저장하고 행이 없을 때는 서비스가 기본값으로 응답한다.                                                                            |
-| Review        | `id`      | `user_id`, `type`, `period_start`, `period_end`                                                      | `(user_id, type, period_start)`에는 유일 제약이 있고 주간은 월요일 시작, 월간은 1일 시작 규칙을 따른다.                                                     |
-| User          | `id`      | `email`, `nickname`                                                                                  | 회원 계정 엔터티다.                                                                                                                    |
-| SocialAccount | `id`      | `user_id`, `provider`, `provider_user_id`                                                            | 회원 계정에 연결된 OAuth 계정이며 `(provider, provider_user_id)`에는 유일 제약이 있고 현재 구현 공급자는 `kakao`다.                                          |
-| RefreshToken  | `id`      | `user_id`, `token_hash`, `expires_at`, `revoked_at`                                                  | 회원 전용 인증 토큰 저장소이며 평문 대신 해시만 저장하고 `token_hash`에는 유일 제약을 둔다.                                                                     |
+| 엔터티           | 식별자       | 주요 속성                                                                                                 | 핵심 규칙                                                                                                                                                                                         |
+|---------------|-----------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Todo          | `id`      | `user_id`, `title`, `date`, `mini_day`, `day_order`, `timer_mode`, `review_round`, `original_todo_id` | `timer_mode`는 `'stopwatch' \| 'pomodoro' \| null`만 허용하고, 날짜 이동 시에도 Todo identity는 유지되며, 복습 Todo는 `(user_id, original_todo_id, review_round)` 유일 제약을 가지며, 세션 집계 필드는 캐시이고 정본은 `todo_sessions`다. |
+| TodoSession   | `id`      | `todo_id`, `user_id`, `client_session_id`, `session_order`, `session_focus_seconds`, `break_seconds`  | Todo의 정본 세션이며 `(todo_id, client_session_id)`와 `(todo_id, session_order)`에는 유일 제약이 있고, 멱등 재요청에서는 `break_seconds`만 증가 방향으로 갱신된다.                                                                |
+| TimerState    | `todo_id` | `user_id`, `state_json`, `version`                                                                    | Todo당 최대 1개만 존재하는 회원 전용 런타임 스냅샷이며, `state_json = null`은 행 삭제 대신 상태만 남기는 논리 삭제를 뜻하고 `version`은 단조 증가한다.                                                                                        |
+| UserSettings  | `user_id` | `flow_min`, `break_min`, `long_break_min`, `cycle_every`                                              | 사용자당 최대 1개이며 평면 컬럼으로 저장하고 행이 없을 때는 서비스가 기본값으로 응답한다.                                                                                                                                           |
+| Review        | `id`      | `user_id`, `type`, `period_start`, `period_end`                                                       | `(user_id, type, period_start)`에는 유일 제약이 있고 주간은 월요일 시작, 월간은 1일 시작 규칙을 따른다.                                                                                                                    |
+| User          | `id`      | `email`, `nickname`                                                                                   | 회원 계정 엔터티다.                                                                                                                                                                                   |
+| SocialAccount | `id`      | `user_id`, `provider`, `provider_user_id`                                                             | 회원 계정에 연결된 OAuth 계정이며 `(provider, provider_user_id)`에는 유일 제약이 있고 현재 구현 공급자는 `kakao`다.                                                                                                         |
+| RefreshToken  | `id`      | `user_id`, `token_hash`, `expires_at`, `revoked_at`                                                   | 회원 전용 인증 토큰 저장소이며 평문 대신 해시만 저장하고 `token_hash`에는 유일 제약을 둔다.                                                                                                                                    |
 
 ### 2) 공통 규칙
 
@@ -81,11 +81,15 @@ CREATE TABLE todos
     session_count         INT          NOT NULL DEFAULT 0,
     session_focus_seconds INT          NOT NULL DEFAULT 0,
     timer_mode            VARCHAR(20),
+    review_round          INT,
+    original_todo_id      VARCHAR(36),
     created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_todos_user_order ON todos (user_id, date, mini_day, day_order, created_at);
+CREATE UNIQUE INDEX uq_todos_review_round ON todos (user_id, original_todo_id, review_round);
+CREATE INDEX idx_todos_original ON todos (user_id, original_todo_id);
 
 CREATE TABLE todo_sessions
 (

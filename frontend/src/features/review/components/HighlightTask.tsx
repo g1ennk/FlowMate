@@ -1,4 +1,5 @@
 import type { HighlightTask as HighlightTaskType } from '../reviewTypes'
+import { ReviewTaskLabel } from './ReviewTaskLabel'
 
 type HighlightTaskProps = {
   title: string
@@ -12,9 +13,10 @@ export function HighlightTask({ title, task }: HighlightTaskProps) {
       <div className="mt-3">
         {task ? (
           <div className="rounded-xl bg-emerald-50 px-4 py-3">
-            <p className="text-sm font-semibold text-emerald-800">
-              {task.title}
-            </p>
+            <ReviewTaskLabel
+              task={task}
+              titleClassName="text-sm font-semibold text-emerald-800"
+            />
             <p className="mt-1 text-xs text-emerald-700">
               {task.focusTime} 몰입
             </p>

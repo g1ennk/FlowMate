@@ -9,6 +9,7 @@ import {
   type TodoList,
   type TodoPatchInput,
   type TodoReorderRequest,
+  type TodoScheduleReviewResult,
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
 
@@ -151,6 +152,21 @@ export function useReorderTodos() {
       }
     },
     onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.todos() }),
+  })
+}
+
+export function useScheduleReviewTodo() {
+  const qc = useQueryClient()
+  return useMutation<
+    TodoScheduleReviewResult,
+    unknown,
+    { id: string }
+  >({
+    mutationFn: ({ id }) => todoApi.scheduleReview(id),
+    onSettled: (_data, _error, { id }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.todos() })
+      qc.invalidateQueries({ queryKey: queryKeys.todo(id) })
+    },
   })
 }
 

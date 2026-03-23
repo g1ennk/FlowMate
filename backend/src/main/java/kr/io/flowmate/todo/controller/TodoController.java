@@ -1,12 +1,12 @@
 package kr.io.flowmate.todo.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
 import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.todo.dto.TodoCreateRequest;
 import kr.io.flowmate.todo.dto.TodoReorderRequest;
 import kr.io.flowmate.todo.dto.TodoResponse;
+import kr.io.flowmate.todo.dto.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.dto.TodoUpdateRequest;
 import kr.io.flowmate.todo.service.TodoService;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +33,6 @@ public class TodoController {
      */
     @GetMapping
     public ResponseEntity<ListResponse<TodoResponse>> getTodos(
-            HttpServletRequest request,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
     ) {
@@ -48,7 +47,6 @@ public class TodoController {
      */
     @PostMapping
     public ResponseEntity<TodoResponse> createTodo(
-            HttpServletRequest request,
             @Valid
             @RequestBody TodoCreateRequest createRequest
     ) {
@@ -63,7 +61,6 @@ public class TodoController {
      */
     @PatchMapping("/{id}")
     public ResponseEntity<TodoResponse> updateTodo(
-            HttpServletRequest request,
             @PathVariable String id,
             @Valid
             @RequestBody TodoUpdateRequest updateRequest
@@ -79,7 +76,6 @@ public class TodoController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTodo(
-            HttpServletRequest request,
             @PathVariable String id
     ) {
         String userId = currentUserResolver.resolve();
@@ -93,7 +89,6 @@ public class TodoController {
      */
     @PutMapping("/reorder")
     public ResponseEntity<ListResponse<TodoResponse>> reorderTodos(
-            HttpServletRequest request,
             @Valid @RequestBody TodoReorderRequest reorderRequest
     ) {
         String userId = currentUserResolver.resolve();
@@ -101,10 +96,18 @@ public class TodoController {
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
 
+    @PostMapping("/{id}/review-schedule")
+    public ResponseEntity<TodoScheduleReviewResponse> scheduleReview(
+            @PathVariable String id
+    ) {
+        String userId = currentUserResolver.resolve();
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, id);
+        HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status)
+                .body(new TodoScheduleReviewResponse(result.item(), result.created()));
+    }
+
 }
-
-
-
 
 
 

@@ -30,6 +30,8 @@ function buildTodo(overrides: Partial<Record<string, unknown>> = {}) {
     sessionCount: 0,
     sessionFocusSeconds: 0,
     timerMode: null,
+    reviewRound: null,
+    originalTodoId: null,
     createdAt: '2026-01-09T00:00:00.000Z',
     updatedAt: '2026-01-09T00:00:00.000Z',
     ...overrides,
@@ -412,8 +414,10 @@ describe('TodosPage', () => {
     expect(screen.getByRole('button', { name: '오늘하기' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '날짜 바꾸기' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '다른 날 또 하기' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '복습하기' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByText('과거 완료'))
+    expect(screen.getByRole('button', { name: '복습하기' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '오늘 또 하기' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '다른 날 또 하기' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '날짜 바꾸기' })).toBeInTheDocument()
@@ -434,8 +438,57 @@ describe('TodosPage', () => {
     expect(screen.getByRole('button', { name: '내일 하기' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('오늘 완료'))
+    expect(screen.getByRole('button', { name: '복습하기' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '내일 또 하기' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '다른 날 또 하기' })).toBeInTheDocument()
+  })
+
+  it('hides 복습하기 for completed sixth review todos', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({
+          title: '[복습 6회] 마지막 복습',
+          miniDay: 0,
+          isDone: true,
+          reviewRound: 6,
+          originalTodoId: '00000000-0000-4000-8000-999999999999',
+        }),
+      ],
+    })
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    expect(screen.getByText('[복습 6회] 마지막 복습')).toBeInTheDocument()
+    expect(screen.getByText('복습 완료')).toBeInTheDocument()
+    expect(screen.queryByText('복습 6회')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('[복습 6회] 마지막 복습'))
+
+    expect(screen.queryByRole('button', { name: '복습하기' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '내일 또 하기' })).toBeInTheDocument()
+  })
+
+  it('keeps 복습 6회 badge for incomplete sixth review todos', async () => {
+    await renderTodosPage({
+      routeDateKey: selectedDateKey,
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({
+          title: '[복습 6회] 마지막 복습',
+          miniDay: 0,
+          isDone: false,
+          reviewRound: 6,
+          originalTodoId: '00000000-0000-4000-8000-999999999999',
+        }),
+      ],
+    })
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    expect(screen.getByText('[복습 6회] 마지막 복습')).toBeInTheDocument()
+    expect(screen.getByText('복습 6회')).toBeInTheDocument()
+    expect(screen.queryByText('복습 완료')).not.toBeInTheDocument()
   })
 
   it('disables move date confirmation for the same date and allows duplicate date confirmation', async () => {
@@ -524,6 +577,91 @@ describe('TodosPage', () => {
       sessionFocusSeconds: 0,
       timerMode: null,
     })
+  })
+
+  it('schedules completed todos into future uncategorized review todos', async () => {
+    const originalTodoId = nextTodoId()
+
+    await renderTodosPage({
+      routeDateKey: '2026-01-08',
+      now: new Date(2026, 0, 20, 9, 0, 0),
+      items: [
+        buildTodo({ title: '해당 날짜 기존 할 일', date: '2026-01-09', miniDay: 0, dayOrder: 0 }),
+        buildTodo({
+          id: originalTodoId,
+          title: '복습할 완료 태스크',
+          date: '2026-01-08',
+          miniDay: 2,
+          dayOrder: 0,
+          isDone: true,
+          note: '복습 메모',
+          sessionCount: 2,
+          sessionFocusSeconds: 1800,
+          timerMode: 'pomodoro',
+        }),
+      ],
+    })
+
+    fireEvent.click(screen.getByText('복습할 완료 태스크'))
+    fireEvent.click(screen.getByRole('button', { name: '복습하기' }))
+    await flushTodosPage()
+
+    const storedTodos = readStoredTodos()
+    const reviewTodo = storedTodos.find(
+      (todo) =>
+        todo.title === '복습할 완료 태스크' &&
+        todo.date === '2026-01-09' &&
+        todo.isDone === false,
+    )
+
+    expect(reviewTodo).toMatchObject({
+      title: '복습할 완료 태스크',
+      note: '복습 메모',
+      date: '2026-01-09',
+      miniDay: 0,
+      dayOrder: 1,
+      isDone: false,
+      sessionCount: 0,
+      sessionFocusSeconds: 0,
+      timerMode: null,
+      reviewRound: 1,
+      originalTodoId,
+    })
+  })
+
+  it('does not create duplicate review todos for the same round', async () => {
+    const originalTodoId = nextTodoId()
+
+    await renderTodosPage({
+      routeDateKey: '2026-01-08',
+      now: new Date(2026, 0, 9, 9, 0, 0),
+      items: [
+        buildTodo({
+          id: originalTodoId,
+          title: '중복 방지 태스크',
+          date: '2026-01-08',
+          miniDay: 0,
+          isDone: true,
+        }),
+      ],
+    })
+
+    fireEvent.click(screen.getByText('중복 방지 태스크'))
+    fireEvent.click(screen.getByRole('button', { name: '복습하기' }))
+    await flushTodosPage()
+
+    fireEvent.click(screen.getByText('중복 방지 태스크'))
+    fireEvent.click(screen.getByRole('button', { name: '복습하기' }))
+    await flushTodosPage()
+
+    const storedTodos = readStoredTodos().filter(
+      (todo) =>
+        todo.title === '중복 방지 태스크' &&
+        todo.originalTodoId === originalTodoId &&
+        todo.reviewRound === 1,
+    )
+
+    expect(storedTodos).toHaveLength(1)
   })
 
   it('renders, creates, completes, and deletes todos in the main flow', async () => {

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
+import type { ApiError } from '../../api/http'
 import {
   useCreateSession,
   useCreateTodo,
   useDeleteTodo,
+  useScheduleReviewTodo,
   useUpdateTodo,
 } from './hooks'
 import type { Todo, TodoList } from '../../api/types'
@@ -20,6 +22,16 @@ import {
   getOffsetDateKey,
 } from './todoDateActionHelpers'
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as ApiError).message
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message
+    }
+  }
+  return fallback
+}
+
 /**
  * Todo CRUD 및 타이머 관련 핸들러를 제공하는 커스텀 훅
  */
@@ -29,6 +41,7 @@ export function useTodoActions(selectedDateKey: string) {
   const createTodo = useCreateTodo()
   const updateTodo = useUpdateTodo()
   const deleteTodo = useDeleteTodo()
+  const scheduleReviewTodo = useScheduleReviewTodo()
 
   const { data: settings } = usePomodoroSettings()
 
@@ -321,6 +334,24 @@ export function useTodoActions(selectedDateKey: string) {
     await handleDuplicateTodo(todo, getOffsetDateKey(1), '내일 할 일을 추가했어요')
   }
 
+  const handleScheduleReview = async (todo: Todo) => {
+    setSelectedTodo(null)
+
+    try {
+      const result = await scheduleReviewTodo.mutateAsync({
+        id: todo.id,
+      })
+      toast.success(
+        result.created ? '다음 복습을 추가했어요' : '이미 다음 복습이 있어요',
+        { id: 'todo-review-scheduled' },
+      )
+    } catch (error) {
+      toast.error(getErrorMessage(error, '복습 추가에 실패했어요'), {
+        id: 'todo-review-schedule-failed',
+      })
+    }
+  }
+
   const confirmDatePicker = async () => {
     if (!datePickerTodo || !datePickerMode || !datePickerSelectedDate) return
 
@@ -396,5 +427,6 @@ export function useTodoActions(selectedDateKey: string) {
     handleMoveTodoToTomorrow,
     handleDuplicateTodoToToday,
     handleDuplicateTodoToTomorrow,
+    handleScheduleReview,
   }
 }

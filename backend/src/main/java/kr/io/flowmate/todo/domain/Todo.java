@@ -51,6 +51,12 @@ public class Todo {
     @Column(name = "timer_mode", length = 20)
     private TimerMode timerMode;
 
+    @Column(name = "review_round")
+    private Integer reviewRound;
+
+    @Column(name = "original_todo_id", length = 36)
+    private String originalTodoId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -73,6 +79,39 @@ public class Todo {
         todo.sessionCount = 0;
         todo.sessionFocusSeconds = 0;
         todo.timerMode = null;
+        todo.reviewRound = null;
+        todo.originalTodoId = null;
+        todo.createdAt = now;
+        todo.updatedAt = now;
+        return todo;
+    }
+
+    public static Todo createReview(
+            String userId,
+            String originalTodoId,
+            String title,
+            String note,
+            LocalDate date,
+            int miniDay,
+            int dayOrder,
+            int reviewRound
+    ) {
+        Todo todo = new Todo();
+        Instant now = Instant.now();
+
+        todo.id = UUID.randomUUID().toString();
+        todo.userId = userId;
+        todo.title = title;
+        todo.note = note;
+        todo.date = date;
+        todo.miniDay = miniDay;
+        todo.dayOrder = dayOrder;
+        todo.done = false;
+        todo.sessionCount = 0;
+        todo.sessionFocusSeconds = 0;
+        todo.timerMode = null;
+        todo.reviewRound = reviewRound;
+        todo.originalTodoId = originalTodoId;
         todo.createdAt = now;
         todo.updatedAt = now;
         return todo;

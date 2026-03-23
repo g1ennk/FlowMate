@@ -6,6 +6,7 @@ import type {
   Review,
   ReviewType,
   Todo,
+  TodoScheduleReviewResult,
 } from '../api/types'
 import { defaultMiniDaysSettings, normalizeMiniDaysSettings } from '../lib/miniDays'
 import { STORAGE_PREFIX, storageKeys } from '../lib/storageKeys'
@@ -47,6 +48,8 @@ const today = () => {
 }
 const latency = 200
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/
+const REVIEW_INTERVALS = [1, 2, 4, 8, 16, 32]
 
 // 기본 설정 (Todo는 빈 상태)
 const defaultSessionSettings: PomodoroSessionSettings = {
@@ -293,6 +296,33 @@ function getNextOrder(todos: Todo[], date: string, isDone: boolean, miniDay: num
   return orders.length === 0 ? 0 : Math.max(...orders) + 1
 }
 
+function parseDateKey(dateKey: string) {
+  if (!DATE_KEY_RE.test(dateKey)) return null
+  const [year, month, day] = dateKey.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const candidate = new Date(year, month - 1, day)
+  if (
+    candidate.getFullYear() !== year ||
+    candidate.getMonth() !== month - 1 ||
+    candidate.getDate() !== day
+  ) {
+    return null
+  }
+  return candidate
+}
+
+function formatDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const baseDate = parseDateKey(dateKey)
+  if (!baseDate) return null
+  const next = new Date(baseDate)
+  next.setDate(next.getDate() + days)
+  return formatDateKey(next)
+}
+
 function normalizeCombinedSettings(input?: Partial<CombinedSettings> | null): CombinedSettings {
   return {
     pomodoroSession: { ...defaultSessionSettings, ...(input?.pomodoroSession ?? {}) },
@@ -531,6 +561,76 @@ export const handlers = [
     todos = todos.map((t) => (t.id === id ? updated : t))
     saveTodos(clientId, todos)
     return HttpResponse.json(updated)
+  }),
+
+  http.post('/api/todos/:id/review-schedule', async ({ params, request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const id = params.id as string
+
+    let todos = loadTodos(clientId)
+    const sourceTodo = todos.find((todo) => todo.id === id)
+    if (!sourceTodo) {
+      return HttpResponse.json({ error: { message: 'Not Found' } }, { status: 404 })
+    }
+
+    if (!sourceTodo.isDone) {
+      return HttpResponse.json(
+        { error: { code: 'BAD_REQUEST', message: '완료된 Todo만 복습 등록할 수 있습니다' } },
+        { status: 400 },
+      )
+    }
+
+    const currentRound = sourceTodo.reviewRound ?? 0
+    if (currentRound >= REVIEW_INTERVALS.length) {
+      return HttpResponse.json(
+        { error: { code: 'BAD_REQUEST', message: '복습이 모두 완료된 Todo입니다' } },
+        { status: 400 },
+      )
+    }
+
+    const nextRound = currentRound + 1
+    const rootTodoId = sourceTodo.originalTodoId ?? sourceTodo.id
+    const existingTodo = todos.find(
+      (todo) => todo.originalTodoId === rootTodoId && todo.reviewRound === nextRound,
+    )
+    if (existingTodo) {
+      const response: TodoScheduleReviewResult = { item: existingTodo, created: false }
+      return HttpResponse.json(response, { status: 200 })
+    }
+
+    const nextDate = addDaysToDateKey(sourceTodo.date, REVIEW_INTERVALS[currentRound])
+    if (!nextDate) {
+      return HttpResponse.json({ error: { code: 'BAD_REQUEST', message: '잘못된 Todo 날짜입니다' } }, { status: 400 })
+    }
+
+    const rootTodo = sourceTodo.originalTodoId
+      ? todos.find((todo) => todo.id === rootTodoId)
+      : sourceTodo
+    const baseTitle = rootTodo ? rootTodo.title : sourceTodo.title
+
+    const nextTodo: Todo = {
+      id: crypto.randomUUID(),
+      title: baseTitle,
+      note: sourceTodo.note ?? null,
+      date: nextDate,
+      miniDay: 0,
+      dayOrder: getNextOrder(todos, nextDate, false, 0),
+      isDone: false,
+      sessionCount: 0,
+      sessionFocusSeconds: 0,
+      timerMode: null,
+      reviewRound: nextRound,
+      originalTodoId: rootTodoId,
+      createdAt: now(),
+      updatedAt: now(),
+    }
+
+    todos = [nextTodo, ...todos]
+    saveTodos(clientId, todos)
+
+    const response: TodoScheduleReviewResult = { item: nextTodo, created: true }
+    return HttpResponse.json(response, { status: 201 })
   }),
 
   http.put('/api/todos/reorder', async ({ request }) => {
