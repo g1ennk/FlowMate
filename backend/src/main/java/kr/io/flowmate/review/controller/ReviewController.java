@@ -1,9 +1,7 @@
 package kr.io.flowmate.review.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
-//import kr.io.flowmate.common.util.ClientIdResolver;
 import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.review.domain.ReviewType;
 import kr.io.flowmate.review.dto.request.ReviewUpsertRequest;
@@ -28,7 +26,6 @@ public class ReviewController {
 
     @GetMapping
     public ResponseEntity<?> getReviews(
-            HttpServletRequest request,
             @RequestParam String type,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodStart,
@@ -68,7 +65,6 @@ public class ReviewController {
 
     @PutMapping
     public ResponseEntity<ReviewResponse> upsertReview(
-            HttpServletRequest request,
             @Valid @RequestBody ReviewUpsertRequest upsertRequest
     ) {
         String userId = currentUserResolver.resolve();
@@ -78,7 +74,6 @@ public class ReviewController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteReview(
-            HttpServletRequest request,
             @PathVariable String id
     ) {
         String userId = currentUserResolver.resolve();

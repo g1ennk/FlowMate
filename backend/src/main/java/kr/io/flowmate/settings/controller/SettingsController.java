@@ -1,8 +1,6 @@
 package kr.io.flowmate.settings.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-//import kr.io.flowmate.common.util.ClientIdResolver;
 import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.settings.dto.request.AutomationSettingsRequest;
 import kr.io.flowmate.settings.dto.request.MiniDaysSettingsRequest;
@@ -26,7 +24,7 @@ public class SettingsController {
 
     // 전체 설정 불러오기
     @GetMapping
-    public ResponseEntity<SettingsResponse> getSettings(HttpServletRequest request) {
+    public ResponseEntity<SettingsResponse> getSettings() {
         String userId = currentUserResolver.resolve();
         SettingsResponse settings = settingsService.getSettings(userId);
         return ResponseEntity.ok(settings);
@@ -34,7 +32,6 @@ public class SettingsController {
 
     @PutMapping("/pomodoro-session")
     public ResponseEntity<PomodoroSessionSettingsResponse> updatePomodoroSession(
-            HttpServletRequest request,
             @Valid @RequestBody PomodoroSessionSettingsRequest updateRequest
     ) {
         String userId = currentUserResolver.resolve();
@@ -44,7 +41,6 @@ public class SettingsController {
 
     @PutMapping("/automation")
     public ResponseEntity<AutomationSettingsResponse> updateAutomation(
-            HttpServletRequest request,
             @Valid @RequestBody AutomationSettingsRequest updateRequest
     ) {
         String userId = currentUserResolver.resolve();
@@ -54,7 +50,7 @@ public class SettingsController {
 
     // 미니데이
     @GetMapping("/mini-days")
-    public ResponseEntity<MiniDaysSettingsResponse> getMiniDays(HttpServletRequest request) {
+    public ResponseEntity<MiniDaysSettingsResponse> getMiniDays() {
         String userId = currentUserResolver.resolve();
         MiniDaysSettingsResponse settings = settingsService.getMiniDays(userId);
         return ResponseEntity.ok(settings);
@@ -62,7 +58,6 @@ public class SettingsController {
 
     @PutMapping("/mini-days")
     public ResponseEntity<MiniDaysSettingsResponse> updateMiniDays(
-            HttpServletRequest request,
             @Valid @RequestBody MiniDaysSettingsRequest updateRequest
     ) {
         String userId = currentUserResolver.resolve();
