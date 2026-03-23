@@ -13,6 +13,8 @@ export const TodoSchema = z
     sessionCount: z.number().int(),
     sessionFocusSeconds: z.number().int(),
     timerMode: z.enum(['stopwatch', 'pomodoro']).nullable(), // 선택된 타이머 타입
+    reviewRound: z.number().int().min(1).max(6).nullable().optional(),
+    originalTodoId: z.string().uuid().nullable().optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -55,6 +57,11 @@ export const TodoReorderItemSchema = z.object({
 
 export const TodoReorderRequestSchema = z.object({
   items: z.array(TodoReorderItemSchema).min(1),
+})
+
+export const TodoScheduleReviewResponseSchema = z.object({
+  item: TodoSchema,
+  created: z.boolean(),
 })
 
 export const PomodoroSessionSettingsSchema = z.object({
@@ -139,6 +146,7 @@ export type Todo = z.infer<typeof TodoSchema>
 export type TodoList = z.infer<typeof TodoListSchema>
 export type TodoCreateInput = z.infer<typeof TodoCreateSchema>
 export type TodoPatchInput = z.infer<typeof TodoPatchSchema>
+export type TodoScheduleReviewResult = z.infer<typeof TodoScheduleReviewResponseSchema>
 
 export type PomodoroSessionSettings = z.infer<typeof PomodoroSessionSettingsSchema>
 export type AutomationSettings = z.infer<typeof AutomationSettingsSchema>

@@ -1,9 +1,7 @@
 package kr.io.flowmate.session.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
-//import kr.io.flowmate.common.util.ClientIdResolver;
 import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.session.dto.request.SessionCreateRequest;
 import kr.io.flowmate.session.dto.response.SessionResponse;
@@ -25,7 +23,6 @@ public class SessionController {
 
     @GetMapping
     public ResponseEntity<ListResponse<SessionResponse>> getSessions(
-            HttpServletRequest request,
             @PathVariable String todoId
     ) {
         String userId = currentUserResolver.resolve();
@@ -35,7 +32,6 @@ public class SessionController {
 
     @PostMapping
     public ResponseEntity<SessionResponse> createSession(
-            HttpServletRequest request,
             @PathVariable String todoId,
             @Valid @RequestBody SessionCreateRequest createRequest
     ) {

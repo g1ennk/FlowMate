@@ -10,6 +10,7 @@ import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDispl
 
 export type TodoItemProps = {
   title: string
+  reviewBadgeLabel?: string | null
   note?: string | null
   sessionCount: number
   sessionFocusSeconds: number
@@ -41,6 +42,7 @@ export type TodoItemProps = {
 
 export function TodoItem({
   title,
+  reviewBadgeLabel,
   note,
   sessionCount,
   sessionFocusSeconds,
@@ -152,7 +154,7 @@ export function TodoItem({
         {/* 체크박스 */}
         <button
           onClick={onToggle}
-          aria-label={`${title} ${isDone ? '완료 취소' : '완료'}`}
+          aria-label={`${title}${reviewBadgeLabel ? ` ${reviewBadgeLabel}` : ''} ${isDone ? '완료 취소' : '완료'}`}
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
             isDone
               ? 'border-emerald-500 bg-emerald-500 text-white'
@@ -164,14 +166,24 @@ export function TodoItem({
 
         {/* 내용 */}
         <div className="min-w-0 flex-1">
-          <p
-            className={`${userTextDisplayClass} cursor-pointer ${
-              isDone ? 'text-gray-400 line-through' : 'text-gray-900'
-            }`}
+          <button
+            type="button"
             onClick={onOpenMenu}
+            className="inline-flex max-w-full flex-wrap items-center gap-2 text-left"
           >
-            {title}
-          </p>
+            <span
+              className={`${userTextDisplayClass} ${
+                isDone ? 'text-gray-400 line-through' : 'text-gray-900'
+              }`}
+            >
+              {title}
+            </span>
+            {reviewBadgeLabel && (
+              <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium leading-none text-emerald-700">
+                {reviewBadgeLabel}
+              </span>
+            )}
+          </button>
           {/* 누적 통계 표시 - 타이머 버튼 */}
           {shouldShowTimerButton && (
             <button

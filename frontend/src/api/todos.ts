@@ -4,6 +4,7 @@ import {
   SessionListSchema,
   SessionSchema,
   TodoReorderRequestSchema,
+  TodoScheduleReviewResponseSchema,
   TodoListSchema,
   TodoSchema,
   type Session,
@@ -14,6 +15,7 @@ import {
   type TodoList,
   type TodoPatchInput,
   type TodoReorderRequest,
+  type TodoScheduleReviewResult,
 } from './types'
 
 export const todoApi = {
@@ -25,6 +27,8 @@ export const todoApi = {
   remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`),
   reorder: (body: TodoReorderRequest): Promise<TodoList> =>
     api.put('/todos/reorder', TodoReorderRequestSchema.parse(body), TodoListSchema),
+  scheduleReview: (id: string): Promise<TodoScheduleReviewResult> =>
+    api.post(`/todos/${id}/review-schedule`, undefined, TodoScheduleReviewResponseSchema),
   listSessions: (todoId: string): Promise<SessionList> =>
     api.get(`/todos/${todoId}/sessions`, SessionListSchema),
   // Session API (뽀모도로/일반 타이머 통합)
