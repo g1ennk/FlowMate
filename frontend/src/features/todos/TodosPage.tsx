@@ -62,6 +62,7 @@ import {
   getTodoDateActionItems,
   type TodoDateActionKind,
 } from './todoDateActionHelpers'
+import { getTodoDisplayTitle, getTodoReviewBadgeLabel } from './reviewTodoDisplay'
 import { useAuthStore } from '../../store/authStore'
 import type { Todo, TodoReorderItem } from '../../api/types'
 import type { AuthState } from '../../types/auth'
@@ -970,6 +971,9 @@ function TodosPage() {
 
   const handleTodoDateAction = (todo: Todo, kind: TodoDateActionKind) => {
     switch (kind) {
+      case 'schedule_review':
+        void actions.handleScheduleReview(todo)
+        return
       case 'move_to_today':
         void actions.handleMoveTodoToToday(todo)
         return
@@ -992,6 +996,10 @@ function TodosPage() {
   }
 
   const getTodoDateActionIcon = (kind: TodoDateActionKind) => {
+    if (kind === 'schedule_review') {
+      return <ArrowPathIcon className="h-5 w-5 text-amber-500" />
+    }
+
     if (kind === 'move_to_date') {
       return <CalendarIcon className="h-5 w-5 text-indigo-500" />
     }
@@ -1288,6 +1296,8 @@ function TodosPage() {
                                     <CrossSectionPreviewSlot />
                                   )}
                                   {activeTodos.map((todo, activeIndex) => {
+                                    const displayTitle = getTodoDisplayTitle(todo)
+                                    const reviewBadgeLabel = getTodoReviewBadgeLabel(todo.reviewRound, todo.isDone)
                                     const {
                                       timer,
                                       isActiveTimer,
@@ -1307,7 +1317,8 @@ function TodosPage() {
                                         {previewActiveInsertIndex === activeIndex && <CrossSectionPreviewSlot />}
                                         <SortableTodoItem
                                           id={todo.id}
-                                          title={todo.title}
+                                          title={displayTitle}
+                                          reviewBadgeLabel={reviewBadgeLabel}
                                           note={todo.note}
                                           sessionCount={todo.sessionCount}
                                           sessionFocusSeconds={todo.sessionFocusSeconds}
@@ -1322,7 +1333,7 @@ function TodosPage() {
                                               !todo.isDone ? nextDoneOrder : nextActiveOrder,
                                             )
                                           }
-                                          onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                                          onEdit={() => actions.handleEdit(todo.id, displayTitle)}
                                           onSaveEdit={actions.handleSaveEdit}
                                           onCancelEdit={actions.handleCancelEdit}
                                           onDelete={() => actions.handleDelete(todo.id)}
@@ -1352,6 +1363,8 @@ function TodosPage() {
                                   )}
                                   {inputBetween && renderInput()}
                                   {doneTodos.map((todo) => {
+                                    const displayTitle = getTodoDisplayTitle(todo)
+                                    const reviewBadgeLabel = getTodoReviewBadgeLabel(todo.reviewRound, todo.isDone)
                                     const {
                                       timer,
                                       isActiveTimer,
@@ -1370,7 +1383,8 @@ function TodosPage() {
                                       <SortableTodoItem
                                         key={todo.id}
                                         id={todo.id}
-                                        title={todo.title}
+                                        title={displayTitle}
+                                        reviewBadgeLabel={reviewBadgeLabel}
                                         note={todo.note}
                                         sessionCount={todo.sessionCount}
                                         sessionFocusSeconds={todo.sessionFocusSeconds}
@@ -1385,7 +1399,7 @@ function TodosPage() {
                                             !todo.isDone ? nextDoneOrder : nextActiveOrder,
                                           )
                                         }
-                                        onEdit={() => actions.handleEdit(todo.id, todo.title)}
+                                        onEdit={() => actions.handleEdit(todo.id, displayTitle)}
                                         onSaveEdit={actions.handleSaveEdit}
                                         onCancelEdit={actions.handleCancelEdit}
                                         onDelete={() => actions.handleDelete(todo.id)}
@@ -1431,13 +1445,13 @@ function TodosPage() {
           actions.setSelectedTodo(null)
           actions.setTimerErrorMessage(null)
         }}
-        title={actions.selectedTodo?.title}
+        title={actions.selectedTodo ? getTodoDisplayTitle(actions.selectedTodo) : undefined}
       >
         <BottomSheetActions>
           <BottomSheetActionButton
             icon={<EditIcon className="h-6 w-6" />}
             label="수정하기"
-            onClick={() => actions.selectedTodo && actions.handleEdit(actions.selectedTodo.id, actions.selectedTodo.title)}
+            onClick={() => actions.selectedTodo && actions.handleEdit(actions.selectedTodo.id, getTodoDisplayTitle(actions.selectedTodo))}
           />
           <BottomSheetActionButton
             icon={<TrashIcon className="h-6 w-6" />}
@@ -1609,9 +1623,9 @@ function TodosPage() {
                 </button>
                 <h3
                   className="min-w-0 truncate text-center text-base font-semibold text-gray-900"
-                  title={actions.noteTodo?.title || '메모'}
+                  title={actions.noteTodo ? getTodoDisplayTitle(actions.noteTodo) : '메모'}
                 >
-                  {actions.noteTodo?.title || '메모'}
+                  {actions.noteTodo ? getTodoDisplayTitle(actions.noteTodo) : '메모'}
                 </h3>
                 <button
                   onClick={actions.handleSaveNote}
@@ -1625,9 +1639,9 @@ function TodosPage() {
                 <div className="h-8 w-14" />
                 <h3
                   className="min-w-0 truncate text-center text-base font-semibold text-gray-900"
-                  title={actions.noteTodo?.title || '메모'}
+                  title={actions.noteTodo ? getTodoDisplayTitle(actions.noteTodo) : '메모'}
                 >
-                  {actions.noteTodo?.title || '메모'}
+                  {actions.noteTodo ? getTodoDisplayTitle(actions.noteTodo) : '메모'}
                 </h3>
                 <div className="h-8 w-14" />
               </>
@@ -1669,7 +1683,7 @@ function TodosPage() {
         isOpen={!!actions.timerTodo}
         onClose={actions.handleCloseTimer}
         todoId={actions.timerTodo?.id ?? ''}
-        todoTitle={actions.timerTodo?.title ?? ''}
+        todoTitle={actions.timerTodo ? getTodoDisplayTitle(actions.timerTodo) : ''}
         sessionCount={actions.timerTodo?.sessionCount ?? 0}
         sessionFocusSeconds={actions.timerTodo?.sessionFocusSeconds ?? 0}
         initialMode={actions.timerMode ?? undefined}

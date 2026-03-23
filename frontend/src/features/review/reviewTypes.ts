@@ -12,6 +12,7 @@ export type DistributionBucket = {
 export type TaskItem = {
   id: string
   title: string
+  reviewRound?: number | null
   date: string
   isDone: boolean
   focusSeconds: number

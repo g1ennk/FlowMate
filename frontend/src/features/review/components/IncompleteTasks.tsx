@@ -1,4 +1,5 @@
 import type { TaskItem } from '../reviewTypes'
+import { ReviewTaskLabel } from './ReviewTaskLabel'
 
 type IncompleteTasksProps = {
   items: TaskItem[]
@@ -36,7 +37,11 @@ export function IncompleteTasks({
                 className="group relative flex w-full items-center justify-between rounded-xl border border-gray-100 px-3 py-2 text-left transition hover:bg-gray-50"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900">{item.title}</p>
+                  <ReviewTaskLabel
+                    task={item}
+                    wrapperClassName="min-w-0 inline-flex max-w-full flex-wrap items-center gap-2"
+                    titleClassName="truncate text-sm font-medium text-gray-900"
+                  />
                   {showDate && (
                     <p className="mt-0.5 text-[11px] text-gray-400">{formatDateLabel(item.date)}</p>
                   )}

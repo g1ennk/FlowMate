@@ -187,6 +187,7 @@ const buildTaskItem = (
 ): TaskItem => ({
   id: todo.id,
   title: todo.title,
+  reviewRound: todo.reviewRound ?? null,
   date: todo.date,
   isDone: typeof isDoneOverride === 'boolean' ? isDoneOverride : todo.isDone,
   focusSeconds,

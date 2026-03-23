@@ -16,6 +16,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -343,6 +344,280 @@ class TodoServiceTest {
                 .hasMessageContaining(todoId);
     }
 
+    @Test
+    @DisplayName("scheduleReview: 완료된 일반 Todo는 1회차 복습 Todo를 생성")
+    void scheduleReview_완료된일반Todo_1회차생성() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        Todo todo = Todo.create(userId, "JPA 정리", "메모", LocalDate.of(2026, 3, 21), 2, 0);
+        todo.updateDone(true);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, todo.getId(), 1))
+                .thenReturn(Optional.empty());
+        when(todoRepository.findMaxDayOrderForUndone(userId, LocalDate.of(2026, 3, 22), 0))
+                .thenReturn(0);
+        when(todoRepository.save(any(Todo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.item().getTitle()).isEqualTo("JPA 정리");
+        assertThat(result.item().getNote()).isEqualTo("메모");
+        assertThat(result.item().getDate()).isEqualTo(LocalDate.of(2026, 3, 22));
+        assertThat(result.item().getMiniDay()).isEqualTo(0);
+        assertThat(result.item().getDayOrder()).isEqualTo(1);
+        assertThat(result.item().getReviewRound()).isEqualTo(1);
+        assertThat(result.item().getOriginalTodoId()).isEqualTo(todo.getId());
+        assertThat(result.item().getIsDone()).isFalse();
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 일반 Todo 제목의 [복습 N회] 접두사는 사용자 입력 그대로 보존")
+    void scheduleReview_일반TodoPrefix제목_그대로보존() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-prefix";
+        Todo todo = Todo.create(userId, "[복습 1회] 실제 제목", null, LocalDate.of(2026, 3, 21), 0, 0);
+        todo.updateDone(true);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, todo.getId(), 1))
+                .thenReturn(Optional.empty());
+        when(todoRepository.findMaxDayOrderForUndone(userId, LocalDate.of(2026, 3, 22), 0))
+                .thenReturn(-1);
+        when(todoRepository.save(any(Todo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.item().getTitle()).isEqualTo("[복습 1회] 실제 제목");
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 완료된 복습 Todo는 다음 회차를 생성")
+    void scheduleReview_완료된복습Todo_다음회차생성() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String rootTodoId = "root-todo";
+        String todoId = "review-todo-1";
+        Todo rootTodo = Todo.create(userId, "알고리즘 정리", "루트 메모", LocalDate.of(2026, 3, 20), 0, 0);
+        Todo reviewTodo = Todo.createReview(
+                userId,
+                rootTodoId,
+                "알고리즘 정리",
+                "최신 메모",
+                LocalDate.of(2026, 3, 21),
+                0,
+                0,
+                1
+        );
+        reviewTodo.updateDone(true);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(reviewTodo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, 2))
+                .thenReturn(Optional.empty());
+        when(todoRepository.findByIdAndUserId(rootTodoId, userId)).thenReturn(Optional.of(rootTodo));
+        when(todoRepository.findMaxDayOrderForUndone(userId, LocalDate.of(2026, 3, 23), 0))
+                .thenReturn(-1);
+        when(todoRepository.save(any(Todo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.item().getTitle()).isEqualTo("알고리즘 정리");
+        assertThat(result.item().getNote()).isEqualTo("최신 메모");
+        assertThat(result.item().getDate()).isEqualTo(LocalDate.of(2026, 3, 23));
+        assertThat(result.item().getDayOrder()).isEqualTo(0);
+        assertThat(result.item().getReviewRound()).isEqualTo(2);
+        assertThat(result.item().getOriginalTodoId()).isEqualTo(rootTodoId);
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 미완료 Todo는 복습 등록할 수 없다")
+    void scheduleReview_미완료Todo_예외() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        Todo todo = Todo.create(userId, "제목", null, LocalDate.of(2026, 3, 21), 0, 0);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+
+        assertThatThrownBy(() -> todoService.scheduleReview(userId, todoId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("완료된 Todo만 복습 등록할 수 있습니다");
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 6회차 완료 Todo는 다음 복습을 만들 수 없다")
+    void scheduleReview_6회차완료Todo_예외() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "review-6";
+        Todo todo = Todo.createReview(
+                userId,
+                "root-todo",
+                "제목",
+                null,
+                LocalDate.of(2026, 3, 21),
+                0,
+                0,
+                6
+        );
+        todo.updateDone(true);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+
+        assertThatThrownBy(() -> todoService.scheduleReview(userId, todoId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("복습이 모두 완료된 Todo입니다");
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 같은 회차가 이미 있으면 기존 Todo를 반환")
+    void scheduleReview_같은회차기존존재_기존반환() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        Todo todo = Todo.create(userId, "제목", null, LocalDate.of(2026, 3, 21), 0, 0);
+        todo.updateDone(true);
+        Todo existing = Todo.createReview(
+                userId,
+                todo.getId(),
+                "제목",
+                null,
+                LocalDate.of(2026, 3, 22),
+                0,
+                0,
+                1
+        );
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, todo.getId(), 1))
+                .thenReturn(Optional.of(existing));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isFalse();
+        assertThat(result.item().getTitle()).isEqualTo("제목");
+        verify(todoRepository, never()).save(any(Todo.class));
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 원본이 삭제된 체인은 현재 제목을 그대로 사용한다")
+    void scheduleReview_원본삭제_현재제목기준으로생성() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String rootTodoId = "deleted-root";
+        String todoId = "review-1";
+        Todo reviewTodo = Todo.createReview(
+                userId,
+                rootTodoId,
+                "[복습 1회] 운영체제 정리",
+                null,
+                LocalDate.of(2026, 3, 21),
+                0,
+                0,
+                1
+        );
+        reviewTodo.updateDone(true);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(reviewTodo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, 2))
+                .thenReturn(Optional.empty());
+        when(todoRepository.findByIdAndUserId(rootTodoId, userId)).thenReturn(Optional.empty());
+        when(todoRepository.findMaxDayOrderForUndone(userId, LocalDate.of(2026, 3, 23), 0))
+                .thenReturn(-1);
+        when(todoRepository.save(any(Todo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.item().getTitle()).isEqualTo("[복습 1회] 운영체제 정리");
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 원본이 삭제된 체인에서 prefix-only 제목도 그대로 유지한다")
+    void scheduleReview_원본삭제_prefixOnly제목_그대로유지() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String rootTodoId = "deleted-root";
+        String todoId = "review-prefix-only";
+        Todo reviewTodo = Todo.createReview(
+                userId,
+                rootTodoId,
+                "[복습 1회]",
+                null,
+                LocalDate.of(2026, 3, 21),
+                0,
+                0,
+                1
+        );
+        reviewTodo.updateDone(true);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(reviewTodo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, 2))
+                .thenReturn(Optional.empty());
+        when(todoRepository.findByIdAndUserId(rootTodoId, userId)).thenReturn(Optional.empty());
+        when(todoRepository.findMaxDayOrderForUndone(userId, LocalDate.of(2026, 3, 23), 0))
+                .thenReturn(-1);
+        when(todoRepository.save(any(Todo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.item().getTitle()).isEqualTo("[복습 1회]");
+    }
+
+    @Test
+    @DisplayName("scheduleReview: 늦게 눌러도 현재 Todo의 날짜 기준으로 다음 회차를 계산")
+    void scheduleReview_늦게시작해도_todo날짜기준계산() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-late";
+        Todo todo = Todo.create(userId, "네트워크 정리", null, LocalDate.of(2026, 3, 21), 0, 0);
+        todo.updateDone(true);
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, todo.getId(), 1))
+                .thenReturn(Optional.empty());
+        when(todoRepository.findMaxDayOrderForUndone(userId, LocalDate.of(2026, 3, 22), 0))
+                .thenReturn(-1);
+        when(todoRepository.save(any(Todo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.item().getDate()).isEqualTo(LocalDate.of(2026, 3, 22));
+    }
+
+    @Test
+    @DisplayName("scheduleReview: unique 충돌이 나면 기존 Todo를 재조회해 반환")
+    void scheduleReview_unique충돌_재조회반환() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        String todoId = "todo-1";
+        Todo todo = Todo.create(userId, "제목", null, LocalDate.of(2026, 3, 21), 0, 0);
+        todo.updateDone(true);
+        Todo collided = Todo.createReview(
+                userId,
+                todo.getId(),
+                "제목",
+                null,
+                LocalDate.of(2026, 3, 22),
+                0,
+                0,
+                1
+        );
+
+        when(todoRepository.findByIdAndUserId(todoId, userId)).thenReturn(Optional.of(todo));
+        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(userId, todo.getId(), 1))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(collided));
+        when(todoRepository.findMaxDayOrderForUndone(userId, LocalDate.of(2026, 3, 22), 0))
+                .thenReturn(-1);
+        when(todoRepository.save(any(Todo.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, todoId);
+
+        assertThat(result.created()).isFalse();
+        assertThat(result.item().getTitle()).isEqualTo("제목");
+        verify(todoRepository, times(2))
+                .findByUserIdAndOriginalTodoIdAndReviewRound(userId, todo.getId(), 1);
+    }
+
     private TodoReorderRequest.Item reorderItem(String id, int dayOrder, int miniDay) {
         TodoReorderRequest.Item item = new TodoReorderRequest.Item();
         item.setId(id);
@@ -350,4 +625,5 @@ class TodoServiceTest {
         item.setMiniDay(miniDay);
         return item;
     }
+
 }

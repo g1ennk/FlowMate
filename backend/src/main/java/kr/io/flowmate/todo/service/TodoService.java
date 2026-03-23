@@ -9,6 +9,7 @@ import kr.io.flowmate.todo.dto.TodoUpdateRequest;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,8 @@ import java.util.List;
 @RequiredArgsConstructor // 생성자 주입
 public class TodoService {
 
+    private static final int[] REVIEW_INTERVALS = {1, 2, 4, 8, 16, 32};
+    private static final int MAX_REVIEW_ROUND = 6;
     private final TodoRepository todoRepository;
 
     /**
@@ -150,12 +153,73 @@ public class TodoService {
                 .toList();
     }
 
+    @Transactional
+    public ScheduleReviewResult scheduleReview(String userId, String todoId) {
+        Todo todo = findTodoByIdAndUserId(todoId, userId);
+
+        if (!todo.isDone()) {
+            throw new IllegalArgumentException("완료된 Todo만 복습 등록할 수 있습니다");
+        }
+
+        int currentRound = todo.getReviewRound() != null ? todo.getReviewRound() : 0;
+        if (currentRound >= MAX_REVIEW_ROUND) {
+            throw new IllegalArgumentException("복습이 모두 완료된 Todo입니다");
+        }
+
+        int nextRound = currentRound + 1;
+        String rootTodoId = todo.getOriginalTodoId() != null ? todo.getOriginalTodoId() : todo.getId();
+
+        Todo existing = todoRepository
+                .findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, nextRound)
+                .orElse(null);
+        if (existing != null) {
+            return new ScheduleReviewResult(TodoResponse.from(existing), false);
+        }
+
+        LocalDate nextDate = todo.getDate().plusDays(REVIEW_INTERVALS[currentRound]);
+        int nextDayOrder = todoRepository.findMaxDayOrderForUndone(userId, nextDate, 0) + 1;
+
+        Todo reviewTodo = Todo.createReview(
+                userId,
+                rootTodoId,
+                resolveBaseTitle(userId, todo, rootTodoId),
+                todo.getNote(),
+                nextDate,
+                0,
+                nextDayOrder,
+                nextRound
+        );
+
+        try {
+            Todo saved = todoRepository.save(reviewTodo);
+            return new ScheduleReviewResult(TodoResponse.from(saved), true);
+        } catch (DataIntegrityViolationException ex) {
+            Todo collided = todoRepository
+                    .findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, nextRound)
+                    .orElseThrow(() -> ex);
+            return new ScheduleReviewResult(TodoResponse.from(collided), false);
+        }
+    }
+
     /**
      * Todo 조회 (내부 메서드)
      */
     private Todo findTodoByIdAndUserId(String todoId, String userId) {
         return todoRepository.findByIdAndUserId(todoId, userId)
                 .orElseThrow(() -> new TodoNotFoundException(todoId));
+    }
+
+    private String resolveBaseTitle(String userId, Todo sourceTodo, String rootTodoId) {
+        if (sourceTodo.getOriginalTodoId() == null) {
+            return sourceTodo.getTitle();
+        }
+
+        return todoRepository.findByIdAndUserId(rootTodoId, userId)
+                .map(Todo::getTitle)
+                .orElseGet(sourceTodo::getTitle);
+    }
+
+    public record ScheduleReviewResult(TodoResponse item, boolean created) {
     }
 
 }
