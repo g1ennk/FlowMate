@@ -7,6 +7,8 @@ import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -18,6 +20,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -43,27 +46,39 @@ public class TimerService {
         long lastVersion = timerState.getVersion();
         long newVersion = Math.max(System.currentTimeMillis(), lastVersion + 1);
 
-        // idle이면 soft delete
-        if ("idle".equals(request.getStatus())) {
-            timerState.update(null, newVersion);
+        boolean isIdle = "idle".equals(request.getStatus());
+
+        // idle이면 stateJson = null (soft delete), 아니면 직렬화
+        String stateJson;
+        if (isIdle) {
+            stateJson = null;
         } else {
-            // running|paused|waiting 중 하나이면 state를 JSON 문자열로 저장
             try {
-                String json = objectMapper.writeValueAsString(request.getState());
-                timerState.update(json, newVersion);
+                stateJson = objectMapper.writeValueAsString(request.getState());
             } catch (JacksonException e) {
                 throw new IllegalArgumentException("state 직렬화 실패", e);
             }
         }
 
-        // DB 즉시 반영
-        timerStateRepository.saveAndFlush(timerState);
+        timerState.update(stateJson, newVersion);
 
-        // 응답/SSE에 넣을 state 결정 후, 같은 유저의 모든 기기에 SSE 전송
-        Object responseState = "idle".equals(request.getStatus()) ? null : request.getState();
+        try {
+            timerStateRepository.saveAndFlush(timerState);
+        } catch (DataIntegrityViolationException e) {
+            // 동시 first insert로 PK 충돌 → row가 이미 생겼으니 다시 조회해서 업데이트.
+            // saveAndFlush가 SQL을 즉시 실행하므로 재조회한 엔티티는 별도 인스턴스로 동작한다.
+            // TodoService.scheduleReview와 동일한 패턴.
+            log.warn("timer state PK 충돌, 재조회 후 업데이트. todoId={}", todoId);
+            timerState = timerStateRepository.findByUserIdAndTodoId(userId, todoId)
+                    .orElseThrow(() -> e);
+            timerState.update(stateJson, newVersion);
+            timerStateRepository.saveAndFlush(timerState);
+        }
+
+        // SSE broadcast
+        Object responseState = isIdle ? null : request.getState();
         broadcast(userId, todoId, responseState, newVersion);
 
-        // 클라이언트 응답 반환
         return new TimerStateResponse(todoId, responseState, newVersion);
     }
 

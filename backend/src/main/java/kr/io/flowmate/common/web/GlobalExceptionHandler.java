@@ -5,6 +5,7 @@ import kr.io.flowmate.common.error.ApiError;
 import kr.io.flowmate.common.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -93,6 +94,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Void> handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
         log.debug("Async request disconnected", ex);
         return ResponseEntity.noContent().build();
+    }
+
+    // 데드락 retry 소진 시 409 Conflict 반환
+    @ExceptionHandler(CannotAcquireLockException.class)
+    public ResponseEntity<ApiError> handleDeadlock(CannotAcquireLockException ex) {
+        log.warn("Deadlock retry exhausted", ex);
+        ApiError body = ApiError.of("CONFLICT", "일시적 충돌이 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     // 처리되지 않는 예외의 최후 방어선
