@@ -17,3 +17,6 @@ frontend/.vite/
 # 로컬 참고용 agent 문서
 /agent
 /output/
+
+# Git worktrees
+.worktrees/
