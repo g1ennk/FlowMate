@@ -24,6 +24,8 @@ import {
 import { DEFAULT_POMODORO_SETTINGS } from './timerDefaults'
 import { useTimerInit } from './useTimerInit'
 import { useTimerCompletion } from './useTimerCompletion'
+import { useSseStatusStore } from './sseStatusStore'
+import { useAuthStore } from '../../store/authStore'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -165,27 +167,16 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   // formatCountdown은 timerFormat.ts에서 제공
 
-  // Phase별 배경색
-  const getBackgroundColor = () => {
-    if (effectiveMode === 'stopwatch') {
-      // Flexible timer: 휴식 중이면 에메랄드
-      if (timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free') {
-        return 'bg-timer-break-bg'
-      }
-      return 'bg-timer-focus-bg'
-    }
-    if (effectiveMode === 'pomodoro') {
-      if (timer?.phase === 'flow' || !isActive) return 'bg-timer-focus-bg' // Flow 또는 시작 전: 블랙
-      return 'bg-timer-break-bg' // Break: 홈 버튼 색
-    }
-    return 'bg-timer-focus-bg'
-  }
+  // Phase별 배경색: 휴식 중이면 break, 나머지는 focus
+  const isBreakBackground =
+    (effectiveMode === 'stopwatch' && (timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free')) ||
+    (effectiveMode === 'pomodoro' && isActive && timer?.phase !== 'flow')
+  const backgroundColorClass = isBreakBackground ? 'bg-timer-break-bg' : 'bg-timer-focus-bg'
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[9999] flex flex-col ${
-        getBackgroundColor()
-      }`}
+      data-timer-fullscreen
+      className={`fixed inset-0 z-[9999] flex flex-col ${backgroundColorClass}`}
       style={{ paddingBottom: 'var(--safe-bottom)' }}
     >
       {/* 헤더 */}
@@ -203,7 +194,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
-        <h1 className="text-base font-medium text-timer-focus-text">{effectiveMode === 'pomodoro' ? '뽀모도로 타이머' : '일반 타이머'}</h1>
+        <h1 className="flex items-center gap-1.5 text-base font-medium text-timer-focus-text">
+          {effectiveMode === 'pomodoro' ? '뽀모도로 타이머' : '일반 타이머'}
+          <SseDot />
+        </h1>
         {/* 리셋 버튼 (항상 표시) */}
         <button
           onClick={() => setShowResetModal(true)}
@@ -864,5 +858,28 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       })()}
     </div>,
     document.body,
+  )
+}
+
+const SSE_DOT_STYLES: Record<string, { color: string; label: string }> = {
+  connected: { color: 'bg-accent', label: '동기화 연결됨' },
+  connecting: { color: 'bg-yellow-400 animate-pulse', label: '재연결 중' },
+  disconnected: { color: 'bg-text-tertiary', label: '동기화 끊김' },
+}
+
+function SseDot() {
+  const authType = useAuthStore((s) => s.state?.type)
+  const sseStatus = useSseStatusStore((s) => s.status)
+
+  if (authType !== 'member') return null
+
+  const { color, label } = SSE_DOT_STYLES[sseStatus] ?? SSE_DOT_STYLES.disconnected
+
+  return (
+    <span
+      className={`inline-block h-2 w-2 rounded-full ${color}`}
+      title={label}
+      aria-label={label}
+    />
   )
 }

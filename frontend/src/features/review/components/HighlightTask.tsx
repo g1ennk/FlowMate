@@ -8,7 +8,7 @@ type HighlightTaskProps = {
 
 export function HighlightTask({ title, task }: HighlightTaskProps) {
   return (
-    <div className="rounded-2xl bg-surface-card p-4 shadow-sm">
+    <div className="rounded-2xl bg-surface-card p-card shadow-sm">
       <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
       <div className="mt-3">
         {task ? (

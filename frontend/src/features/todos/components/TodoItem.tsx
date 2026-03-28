@@ -29,6 +29,9 @@ export type TodoItemProps = {
   onOpenMenu?: () => void
   onOpenTimer?: () => void
   onOpenNote?: () => void
+  selectMode?: boolean
+  isSelected?: boolean
+  onSelect?: () => void
 }
 
 export function TodoItem({
@@ -48,6 +51,9 @@ export function TodoItem({
   onOpenMenu,
   onOpenTimer,
   onOpenNote,
+  selectMode = false,
+  isSelected = false,
+  onSelect,
 }: TodoItemProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -99,11 +105,18 @@ export function TodoItem({
   const shouldShowTimerButton = !!isActiveTimer || sessionCount > 0 || totalFocusSeconds > 0
   const shouldShowTimerTime = totalFocusSeconds > 0 || !!isActiveTimer
 
+  const timerColorClass =
+    !isDone && isActiveTimer && activeTimerMode === 'pomodoro'
+      ? 'text-state-error'
+      : 'text-accent'
+
+  const isOnBreak = !isDone && isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long')
+
   // 편집 모드
   if (isEditing) {
     return (
       <div className="rounded-xl p-2">
-        <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+        <div className="flex items-start gap-card-item rounded-lg px-2 py-1 -mx-2 -my-1">
           {/* 체크박스 (비활성) */}
           <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border-strong bg-transparent opacity-50 mt-0.5" />
 
@@ -111,6 +124,7 @@ export function TodoItem({
           <textarea
             ref={textareaRef}
             value={editingTitle}
+            maxLength={200}
             onChange={(e) => {
               onEditingTitleChange(e.target.value)
               // 높이 자동 조정
@@ -134,6 +148,13 @@ export function TodoItem({
             <MoreVerticalIcon className="h-4 w-4" />
           </div>
         </div>
+        {editingTitle.length >= 160 && (
+          <div className="mt-1 px-10 text-right">
+            <span className={`text-[11px] tabular-nums ${editingTitle.length >= 200 ? 'text-state-error' : 'text-text-tertiary'}`}>
+              {editingTitle.length}/200
+            </span>
+          </div>
+        )}
       </div>
     )
   }
@@ -142,30 +163,48 @@ export function TodoItem({
   return (
     <div className="rounded-xl p-2">
       <div
-        className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-hover"
+        className="flex items-center gap-card-item rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-hover"
       >
-        {/* 체크박스 */}
-        <button
-          onClick={onToggle}
-          aria-label={`${title}${reviewBadgeLabel ? ` ${reviewBadgeLabel}` : ''} ${isDone ? '완료 취소' : '완료'}`}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-            isDone
-              ? 'border-accent bg-accent text-text-inverse'
-              : 'border-border-strong bg-transparent hover:border-accent'
-          }`}
-        >
-          {isDone && <CheckIcon className="h-3 w-3 animate-check-pop" strokeWidth={3} />}
-        </button>
+        {/* 체크박스 / 선택 모드 */}
+        {selectMode ? (
+          <button
+            onClick={onSelect}
+            aria-label={`${title} ${isSelected ? '선택 해제' : '선택'}`}
+            className="-m-2.5 flex shrink-0 items-center justify-center p-2.5"
+          >
+            <span className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${
+              isSelected
+                ? 'border-accent bg-accent text-text-inverse'
+                : 'border-border-strong bg-transparent hover:border-accent'
+            }`}>
+              {isSelected && <CheckIcon className="h-3 w-3 animate-check-pop" strokeWidth={3} />}
+            </span>
+          </button>
+        ) : (
+          <button
+            onClick={onToggle}
+            aria-label={`${title}${reviewBadgeLabel ? ` ${reviewBadgeLabel}` : ''} ${isDone ? '완료 취소' : '완료'}`}
+            className="-m-2.5 flex shrink-0 items-center justify-center p-2.5"
+          >
+            <span className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
+              isDone
+                ? 'border-accent bg-accent text-text-inverse'
+                : 'border-border-strong bg-transparent hover:border-accent'
+            }`}>
+              {isDone && <CheckIcon className="h-3 w-3 animate-check-pop" strokeWidth={3} />}
+            </span>
+          </button>
+        )}
 
         {/* 내용 */}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-hidden">
           <button
             type="button"
-            onClick={onOpenMenu}
+            onClick={selectMode ? onSelect : onOpenMenu}
             className="inline-flex max-w-full flex-wrap items-center gap-2 text-left"
           >
             <span
-              className={`${userTextDisplayClass} ${
+              className={`${userTextDisplayClass} break-all ${
                 isDone ? 'text-text-tertiary line-through' : 'text-text-primary'
               }`}
             >
@@ -185,36 +224,14 @@ export function TodoItem({
                 isDone ? 'cursor-default' : 'hover:bg-hover cursor-pointer'
               }`}
             >
-              {/* 아이콘: 휴식=Stop, 집중=Clock | 색깔: 뽀모=빨강, 일반=초록 */}
-              {!isDone && isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
-                <StopIcon
-                  className={`h-3.5 w-3.5 shrink-0 ${
-                    activeTimerMode === 'pomodoro' ? 'text-state-error' : 'text-accent'
-                  }`}
-                />
+              {/* 휴식 중이면 Stop 아이콘, 그 외 Clock 아이콘 */}
+              {isOnBreak ? (
+                <StopIcon className={`h-3.5 w-3.5 shrink-0 ${timerColorClass}`} />
               ) : (
-                <ClockIcon
-                  className={`h-3.5 w-3.5 shrink-0 ${
-                    // 완료: 진한 초록색
-                    isDone
-                      ? 'text-accent'
-                    // 진행 중: 모드에 따라 색 구분
-                    : isActiveTimer && activeTimerMode === 'pomodoro'
-                      ? 'text-state-error'        // 뽀모도로: 빨간색
-                      : 'text-accent'    // 일반: 초록색
-                  }`}
-                />
+                <ClockIcon className={`h-3.5 w-3.5 shrink-0 ${timerColorClass}`} />
               )}
               {shouldShowTimerTime && (
-                <span className={`text-xs font-medium tabular-nums ${
-                    // 완료: 진한 초록색
-                  isDone
-                      ? 'text-accent'
-                  // 진행 중/휴식 중: 모드에 따라 색 구분
-                  : isActiveTimer && activeTimerMode === 'pomodoro'
-                    ? 'text-state-error'        // 뽀모도로: 빨간색
-                    : 'text-accent'    // 일반: 초록색
-                }`}>
+                <span className={`text-xs font-medium tabular-nums ${timerColorClass}`}>
                   {focusTimeDisplay}
                 </span>
               )}
@@ -224,8 +241,8 @@ export function TodoItem({
 
         {/* 더보기 버튼 */}
         <button
-          onClick={onOpenMenu}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-disabled transition-colors hover:bg-hover-strong hover:text-text-secondary"
+          onClick={selectMode ? onSelect : onOpenMenu}
+          className="-m-2 flex shrink-0 items-center justify-center rounded-full p-2 text-text-disabled transition-colors hover:bg-hover-strong hover:text-text-secondary"
         >
           <MoreVerticalIcon className="h-4 w-4" />
         </button>

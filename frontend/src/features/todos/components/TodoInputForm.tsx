@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { toast } from 'react-hot-toast'
@@ -30,6 +30,8 @@ export function TodoInputForm({
     resolver: zodResolver(createSchema),
     defaultValues: { title: '' },
   })
+  const MAX_LENGTH = 200
+  const [charCount, setCharCount] = useState(0)
 
   const resizeTodoInput = (node: HTMLTextAreaElement | null) => {
     if (!node) return
@@ -49,7 +51,7 @@ export function TodoInputForm({
 
   return (
     <div className="rounded-xl p-2">
-      <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
+      <div className="flex items-start gap-card-item rounded-lg px-2 py-1 -mx-2 -my-1">
         <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border-strong bg-transparent" />
         <textarea
           {...register('title')}
@@ -82,6 +84,7 @@ export function TodoInputForm({
                 try {
                   await onCreate(title, sectionId, nextActiveOrder)
                   reset()
+                  setCharCount(0)
                   focusTodoInputSoon()
                 } catch (err) {
                   toast.error('추가 실패', { id: 'todo-create-failed' })
@@ -92,9 +95,11 @@ export function TodoInputForm({
               }
             }
           }}
+          maxLength={MAX_LENGTH}
           onChange={(e) => {
             register('title').onChange(e)
             resizeTodoInput(e.target)
+            setCharCount(e.target.value.length)
           }}
           onBlur={async () => {
             if (isSubmittingRef.current) return
@@ -104,6 +109,7 @@ export function TodoInputForm({
               try {
                 await onCreate(title, sectionId, nextActiveOrder)
                 reset()
+                setCharCount(0)
               } catch (err) {
                 toast.error('추가 실패', { id: 'todo-create-failed' })
                 console.error(err)
@@ -112,6 +118,7 @@ export function TodoInputForm({
               }
             } else {
               reset()
+              setCharCount(0)
             }
             onClose()
           }}
@@ -119,6 +126,13 @@ export function TodoInputForm({
           rows={1}
         />
       </div>
+      {charCount >= MAX_LENGTH * 0.8 && (
+        <div className="mt-1 px-10 text-right">
+          <span className={`text-[11px] tabular-nums ${charCount >= MAX_LENGTH ? 'text-state-error' : 'text-text-tertiary'}`}>
+            {charCount}/{MAX_LENGTH}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

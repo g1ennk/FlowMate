@@ -1,6 +1,9 @@
 import { Suspense } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
+import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts'
+import { KeyboardShortcutsHelp } from '../ui/KeyboardShortcutsHelp'
+import { OfflineBanner } from '../ui/OfflineBanner'
 import { EditIcon, ListBulletIcon, MoonIcon, SettingsIcon, SunIcon } from '../ui/Icons'
 
 const tabs = [
@@ -30,14 +33,16 @@ const tabs = [
 function AppLayout() {
   const resolved = useThemeStore((s) => s.resolved)
   const setTheme = useThemeStore((s) => s.setTheme)
+  const { helpOpen, setHelpOpen } = useKeyboardShortcuts()
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface-base">
+      <OfflineBanner />
       <main
         className="flex-1 overflow-y-auto"
         style={{ paddingBottom: 'calc(var(--bottom-nav-height) + var(--safe-bottom))' }}
       >
-        <div className="mx-auto w-full max-w-lg px-5 py-6">
+        <div className="mx-auto w-full max-w-lg px-page-x py-page-y">
           <Suspense
             fallback={
               <div className="flex min-h-[50vh] items-center justify-center text-sm text-text-tertiary">
@@ -64,7 +69,7 @@ function AppLayout() {
       </button>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-border-default bg-surface-card px-4"
+        className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-border-default bg-surface-card px-card"
         style={{
           height: 'calc(var(--bottom-nav-height) + var(--safe-bottom))',
           paddingBottom: 'var(--safe-bottom)',
@@ -76,7 +81,7 @@ function AppLayout() {
             to={tab.to}
             className={({ isActive }) =>
               `flex flex-col items-center justify-center gap-0.5 rounded-lg px-4 py-1.5 transition-colors ${
-                isActive ? 'bg-accent-muted text-text-primary' : 'text-border-default'
+                isActive ? 'bg-accent-muted text-text-primary' : 'text-nav-inactive'
               }`
             }
           >
@@ -89,6 +94,8 @@ function AppLayout() {
           </NavLink>
         ))}
       </nav>
+
+      <KeyboardShortcutsHelp isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   )
 }

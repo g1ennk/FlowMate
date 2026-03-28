@@ -24,11 +24,14 @@ import {
 import { getReviewRouteState } from './reviewRouteParams'
 import { useReviewScrollMemory } from './useReviewScrollMemory'
 import type { TaskItem } from './reviewTypes'
+import { useCoachMark } from '../../lib/useCoachMark'
+import { CoachMark } from '../../ui/CoachMark'
+import { ReviewSkeleton } from '../../ui/Skeleton'
 
-const getDiaryTitle = (type: ReturnType<typeof getReviewRouteState>['period']) => {
-  if (type === 'daily') return '오늘 회고'
-  if (type === 'weekly') return '주간 회고'
-  return '월간 회고'
+const DIARY_TITLES: Record<ReturnType<typeof getReviewRouteState>['period'], string> = {
+  daily: '오늘 회고',
+  weekly: '주간 회고',
+  monthly: '월간 회고',
 }
 
 export function ReviewPage() {
@@ -101,32 +104,37 @@ export function ReviewPage() {
     setSearchParams({ period, date: todayKey })
   }
 
-  const currentJumpLabel =
-    period === 'daily' ? '오늘로 이동' : period === 'weekly' ? '이번 주로 이동' : '이번 달로 이동'
+  const PERIOD_LABELS: Record<typeof period, { badge: string; jump: string }> = {
+    daily: { badge: '오늘', jump: '오늘로 이동' },
+    weekly: { badge: '이번 주', jump: '이번 주로 이동' },
+    monthly: { badge: '이번 달', jump: '이번 달로 이동' },
+  }
+  const currentJumpLabel = PERIOD_LABELS[period].jump
+
+  const reviewCoach = useCoachMark('review-intro')
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center text-sm text-text-tertiary">
-        회고를 불러오는 중...
+      <div className="animate-fade-in-up space-y-section">
+        <PeriodTabs value={period} onChange={handlePeriodChange} />
+        <ReviewSkeleton />
       </div>
     )
   }
 
   return (
-    <div className="animate-fade-in-up space-y-5">
+    <div className="animate-fade-in-up space-y-section">
       <PeriodTabs value={period} onChange={handlePeriodChange} />
+
+      <CoachMark
+        message={"오늘 완료한 할 일과 집중 시간이 여기에 기록돼요.\n일간/주간/월간으로 회고할 수 있어요."}
+        visible={reviewCoach.visible}
+        onDismiss={reviewCoach.dismiss}
+      />
 
       <PeriodNavigator
         label={formatPeriodLabel(period, baseDate)}
-        badge={
-          period === 'daily' && dateKey === todayKey
-            ? '오늘'
-            : period === 'weekly' && reviewRange.startKey === currentWeekStartKey
-              ? '이번 주'
-              : period === 'monthly' && reviewRange.startKey === currentMonthStartKey
-                ? '이번 달'
-                : undefined
-        }
+        badge={isCurrentPeriod ? PERIOD_LABELS[period].badge : undefined}
         isCurrent={isCurrentPeriod}
         jumpLabel={currentJumpLabel}
         onJumpToCurrent={handleJumpToCurrent}
@@ -134,7 +142,7 @@ export function ReviewPage() {
         onNext={handleNext}
       />
 
-      <div className="mt-6">
+      <div className="mt-section">
         <StatsSummary
           totalFocusSeconds={stats.totalFocusSeconds}
           totalFlows={stats.totalFlows}
@@ -154,26 +162,31 @@ export function ReviewPage() {
       {period === 'weekly' && (
         <TimelineList
           key={`timeline-weekly-${reviewRange.startKey}`}
+          title="타임라인"
           viewMode="weekly"
           groups={weeklyGroups}
           miniDayLabels={miniDayLabels}
           onSelectTask={setSelectedTask}
+          todayKey={todayKey}
         />
       )}
 
       {period === 'monthly' && (
         <TimelineList
           key={`timeline-monthly-${reviewRange.startKey}`}
+          title="타임라인"
           viewMode="monthly"
           groups={monthlyGroups}
           miniDayLabels={miniDayLabels}
           onSelectTask={setSelectedTask}
+          todayKey={todayKey}
+          highlightKey={currentWeekStartKey}
         />
       )}
 
       <ReviewTextarea
         key={`review-${period}-${reviewRange.startKey}`}
-        title={getDiaryTitle(period)}
+        title={DIARY_TITLES[period]}
         periodType={period}
         periodStart={reviewRange.startKey}
         periodEnd={reviewRange.endKey}

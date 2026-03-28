@@ -35,26 +35,90 @@ type TodoMenuSheetProps = {
   setTimerErrorMessage: (msg: string | null) => void
 }
 
-const getTodoDateActionIcon = (kind: TodoDateActionKind) => {
-  if (kind === 'schedule_review') {
-    return <ArrowPathIcon className="h-5 w-5 text-cyan-500" />
+const DATE_ACTION_ICONS: Record<TodoDateActionKind, { Icon: typeof ArrowPathIcon; color: string }> = {
+  schedule_review: { Icon: ArrowPathIcon, color: 'text-cyan-500' },
+  move_to_today: { Icon: ArrowDownIcon, color: 'text-blue-500' },
+  move_to_tomorrow: { Icon: ArrowRightIcon, color: 'text-blue-500' },
+  move_to_date: { Icon: CalendarIcon, color: 'text-indigo-500' },
+  duplicate_to_today: { Icon: ArrowDownIcon, color: 'text-orange-500' },
+  duplicate_to_tomorrow: { Icon: ArrowRightIcon, color: 'text-orange-500' },
+  duplicate_to_date: { Icon: CalendarIcon, color: 'text-orange-500' },
+}
+
+function getTodoDateActionIcon(kind: TodoDateActionKind) {
+  const { Icon, color } = DATE_ACTION_ICONS[kind]
+  return <Icon className={`h-5 w-5 ${color}`} />
+}
+
+type TimerMenuItemsProps = {
+  todo: Todo
+  onOpenTimer: (todo: Todo, mode: TimerMode) => void
+  setTimerErrorMessage: (msg: string | null) => void
+}
+
+function TimerMenuItems({ todo, onOpenTimer, setTimerErrorMessage }: TimerMenuItemsProps) {
+  const getTimer = useTimerStore((s) => s.getTimer)
+  const currentTimer = getTimer(todo.id)
+  const currentTimerRunning = currentTimer?.status === 'running'
+
+  const allTimerEntries = Object.entries(useTimerStore.getState().timers)
+  const otherRunningTimer = allTimerEntries.find(
+    ([todoId, timer]) => timer.status === 'running' && todoId !== todo.id
+  )
+
+  const isCompleted = todo.isDone
+
+  function getDisabledReason(conflictingMode: 'stopwatch' | 'pomodoro'): string | null {
+    if (isCompleted) return '완료된 태스크는 타이머를 시작할 수 없어요'
+    if (otherRunningTimer) return '다른 태스크 타이머가 실행 중이에요'
+    if (currentTimerRunning && currentTimer.mode === conflictingMode) {
+      return conflictingMode === 'pomodoro'
+        ? '같은 태스크의 뽀모도로가 실행 중이에요'
+        : '같은 태스크의 일반 타이머가 실행 중이에요'
+    }
+    return null
   }
-  if (kind === 'move_to_date') {
-    return <CalendarIcon className="h-5 w-5 text-indigo-500" />
+
+  function handleTimerClick(mode: 'stopwatch' | 'pomodoro') {
+    const conflictingMode = mode === 'stopwatch' ? 'pomodoro' : 'stopwatch'
+    const reason = getDisabledReason(conflictingMode)
+    if (reason) {
+      setTimerErrorMessage(reason)
+      return
+    }
+    onOpenTimer(todo, mode)
   }
-  if (kind === 'duplicate_to_date') {
-    return <CalendarIcon className="h-5 w-5 text-orange-500" />
-  }
-  if (kind === 'move_to_today') {
-    return <ArrowDownIcon className="h-5 w-5 text-blue-500" />
-  }
-  if (kind === 'duplicate_to_today') {
-    return <ArrowDownIcon className="h-5 w-5 text-orange-500" />
-  }
-  if (kind === 'duplicate_to_tomorrow') {
-    return <ArrowRightIcon className="h-5 w-5 text-orange-500" />
-  }
-  return <ArrowRightIcon className="h-5 w-5 text-blue-500" />
+
+  const stopwatchReason = getDisabledReason('pomodoro')
+  const pomodoroReason = getDisabledReason('stopwatch')
+
+  return (
+    <>
+      <div>
+        <BottomSheetItem
+          icon={<ClockIcon className="h-5 w-5 text-accent" />}
+          label="일반 타이머"
+          onClick={() => handleTimerClick('stopwatch')}
+          disabled={!!stopwatchReason}
+        />
+        <p className={`px-4 pb-2 text-xs ${stopwatchReason ? 'text-state-error-text' : 'text-text-disabled'}`}>
+          {stopwatchReason || '자유롭게 시작하고 멈추는 집중 타이머'}
+        </p>
+      </div>
+
+      <div>
+        <BottomSheetItem
+          icon={<ClockIcon className="h-5 w-5 text-state-error" />}
+          label="뽀모도로 타이머"
+          onClick={() => handleTimerClick('pomodoro')}
+          disabled={!!pomodoroReason}
+        />
+        <p className={`px-4 pb-2 text-xs ${pomodoroReason ? 'text-state-error-text' : 'text-text-disabled'}`}>
+          {pomodoroReason || '집중 → 휴식을 반복하는 구간 타이머'}
+        </p>
+      </div>
+    </>
+  )
 }
 
 export function TodoMenuSheet({
@@ -69,8 +133,6 @@ export function TodoMenuSheet({
   onTodoDateAction,
   setTimerErrorMessage,
 }: TodoMenuSheetProps) {
-  const getTimer = useTimerStore((s) => s.getTimer)
-
   return (
     <BottomSheet
       isOpen={!!selectedTodo && !showNoteModal}
@@ -90,121 +152,26 @@ export function TodoMenuSheet({
           variant="danger"
         />
       </BottomSheetActions>
-      <div className="space-y-1">
+      <div className="space-y-tight">
         <BottomSheetItem
           icon={<DocumentIcon className="h-5 w-5 text-[var(--color-warning)]" />}
           label="메모"
           onClick={() => selectedTodo && onOpenNote(selectedTodo)}
         />
-        {selectedTodo && (() => {
-          const currentTimer = getTimer(selectedTodo.id)
-          const currentTimerRunning = currentTimer?.status === 'running'
-
-          const allTimerEntries = Object.entries(useTimerStore.getState().timers)
-          const otherRunningTimer = allTimerEntries.find(
-            ([todoId, timer]) => timer.status === 'running' && todoId !== selectedTodo?.id
-          )
-
-          const isCompleted = selectedTodo.isDone
-
-          const disableStopwatch =
-            isCompleted ||
-            !!otherRunningTimer ||
-            (currentTimerRunning && currentTimer.mode === 'pomodoro')
-
-          const disablePomodoro =
-            isCompleted ||
-            !!otherRunningTimer ||
-            (currentTimerRunning && currentTimer.mode === 'stopwatch')
-
-          const stopwatchDisabledReason = isCompleted
-            ? '완료된 태스크는 타이머를 시작할 수 없어요'
-            : otherRunningTimer
-              ? '다른 태스크 타이머가 실행 중이에요'
-              : currentTimerRunning && currentTimer.mode === 'pomodoro'
-                ? '같은 태스크의 뽀모도로가 실행 중이에요'
-                : null
-
-          const pomodoroDisabledReason = isCompleted
-            ? '완료된 태스크는 타이머를 시작할 수 없어요'
-            : otherRunningTimer
-              ? '다른 태스크 타이머가 실행 중이에요'
-              : currentTimerRunning && currentTimer.mode === 'stopwatch'
-                ? '같은 태스크의 일반 타이머가 실행 중이에요'
-                : null
-
-          return (
-            <>
-              <div>
-                <BottomSheetItem
-                  icon={<ClockIcon className="h-5 w-5 text-accent" />}
-                  label="일반 타이머"
-                  onClick={() => {
-                    if (!selectedTodo) return
-                    if (isCompleted) {
-                      setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
-                      return
-                    }
-                    if (otherRunningTimer) {
-                      setTimerErrorMessage('다른 타이머가 실행 중입니다')
-                      return
-                    }
-                    if (currentTimerRunning && currentTimer.mode === 'pomodoro') {
-                      setTimerErrorMessage('뽀모도로 타이머가 실행 중입니다')
-                      return
-                    }
-                    onOpenTimer(selectedTodo, 'stopwatch')
-                  }}
-                  disabled={disableStopwatch}
-                />
-                {stopwatchDisabledReason && (
-                  <p className="px-4 pb-2 text-xs text-text-tertiary">
-                    {stopwatchDisabledReason}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <BottomSheetItem
-                  icon={<ClockIcon className="h-5 w-5 text-state-error" />}
-                  label="뽀모도로 타이머"
-                  onClick={() => {
-                    if (!selectedTodo) return
-                    if (isCompleted) {
-                      setTimerErrorMessage('완료된 태스크는 타이머를 시작할 수 없습니다')
-                      return
-                    }
-                    if (otherRunningTimer) {
-                      setTimerErrorMessage('다른 타이머가 실행 중입니다')
-                      return
-                    }
-                    if (currentTimerRunning && currentTimer.mode === 'stopwatch') {
-                      setTimerErrorMessage('일반 타이머가 실행 중입니다')
-                      return
-                    }
-                    onOpenTimer(selectedTodo, 'pomodoro')
-                  }}
-                  disabled={disablePomodoro}
-                />
-                {pomodoroDisabledReason && (
-                  <p className="px-4 pb-2 text-xs text-text-tertiary">
-                    {pomodoroDisabledReason}
-                  </p>
-                )}
-              </div>
-            </>
-          )
-        })()}
+        {selectedTodo && (
+          <TimerMenuItems
+            todo={selectedTodo}
+            onOpenTimer={onOpenTimer}
+            setTimerErrorMessage={setTimerErrorMessage}
+          />
+        )}
         {selectedTodo &&
           getTodoDateActionItems(selectedTodo, todayDateKey).map((item) => (
             <BottomSheetItem
               key={item.kind}
               icon={getTodoDateActionIcon(item.kind)}
               label={item.label}
-              onClick={() => {
-                if (!selectedTodo) return
-                onTodoDateAction(selectedTodo, item.kind)
-              }}
+              onClick={() => onTodoDateAction(selectedTodo, item.kind)}
             />
           ))}
       </div>

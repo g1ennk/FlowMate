@@ -5,8 +5,9 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTimerStore, type SingleTimerState } from '../timer/timerStore'
 import { Calendar, type ViewMode } from '../../ui/Calendar'
 import { formatDateKey } from '../../lib/time'
-import { PlusIcon, ChevronRightIcon } from '../../ui/Icons'
+import { PlusIcon, ChevronRightIcon, CheckIcon } from '../../ui/Icons'
 import { SortableTodoItem } from './components/SortableTodoItem'
+import { BatchActionBar } from './components/BatchActionBar'
 import { TodoDatePickerSheet } from './components/TodoDatePickerSheet'
 import { NoteModal } from './components/NoteModal'
 import { TodoInputForm } from './components/TodoInputForm'
@@ -14,6 +15,7 @@ import { TodoMenuSheet } from './components/TodoMenuSheet'
 import { ActiveSectionDrop, SectionGuideCard, CrossSectionPreviewSlot } from './components/TodoSectionParts'
 import { TimerFullScreen } from '../timer/TimerFullScreen'
 import { useTodoActions } from './useTodoActions'
+import { useBatchSelect } from './useBatchSelect'
 import { useReorderTodos, useTodos } from './hooks'
 import { useDragAndDrop, getContainerId } from './useDragAndDrop'
 import { formatTimerHoursMinutes } from './todoTimerDisplay'
@@ -24,6 +26,9 @@ import { getDefaultMiniDayForDate } from './miniDayUtils'
 import type { TodoDateActionKind } from './todoDateActionHelpers'
 import { getTodoReviewBadgeLabel } from './reviewTodoDisplay'
 import { useAuthStore } from '../../store/authStore'
+import { useCoachMark } from '../../lib/useCoachMark'
+import { CoachMark } from '../../ui/CoachMark'
+import { TodosSkeleton } from '../../ui/Skeleton'
 import type { Todo } from '../../api/types'
 import {
   buildGroupedTodos,
@@ -103,6 +108,8 @@ function TodosPage() {
   }, [miniDaysSettings])
 
   const actions = useTodoActions(selectedDateKey)
+  const batch = useBatchSelect()
+  const todosCoach = useCoachMark('todos-intro')
   const [inputDay, setInputDay] = useState<number | null>(null)
 
   const todosForSelectedDate = useMemo(() => {
@@ -241,12 +248,15 @@ function TodosPage() {
           actions.handleOpenTimer(todo, modeToUse)
         }}
         onOpenNote={() => actions.handleOpenNote(todo)}
+        selectMode={batch.selectMode}
+        isSelected={batch.selectedIds.has(todo.id)}
+        onSelect={() => batch.toggleSelect(todo.id)}
       />
     )
   }
 
   return (
-    <div className="animate-fade-in-up space-y-5">
+    <div className="animate-fade-in-up space-y-section">
       <Calendar
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
@@ -256,9 +266,16 @@ function TodosPage() {
         onViewModeChange={handleCalendarViewModeChange}
       />
 
-      <div className="rounded-2xl bg-surface-card p-4 shadow-sm">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      <CoachMark
+        message={"할 일을 추가하고, ▶ 를 눌러 집중 타이머를 시작해보세요.\n섹션을 드래그해서 순서를 바꿀 수도 있어요."}
+        visible={todosCoach.visible}
+        onDismiss={todosCoach.dismiss}
+        className="mb-2"
+      />
+
+      <div className="rounded-2xl bg-surface-card p-card shadow-sm">
+        <div className="mb-section flex items-center justify-between">
+          <div className="flex items-center gap-list">
             <h2 className="text-base font-semibold text-text-primary">
               {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
             </h2>
@@ -268,27 +285,48 @@ function TodosPage() {
               </span>
             )}
           </div>
-          <button
-            onClick={() => {
-              if (isAllOpen) {
-                setOpenSections({})
-                setInputDay(null)
-                return
-              }
-              const next: Record<number, boolean> = {}
-              daySections.forEach((sectionItem) => { next[sectionItem.id] = true })
-              setOpenSections(next)
-            }}
-            className="flex items-center gap-1 text-xs font-medium text-text-tertiary hover:text-text-secondary"
-          >
-            <span>{isAllOpen ? '모두 접기' : '모두 펼침'}</span>
-            <ChevronRightIcon
-              className={`h-3 w-3 transition-transform ${isAllOpen ? '-rotate-90' : 'rotate-90'}`}
-            />
-          </button>
+          <div className="flex items-center gap-3">
+            {todosForSelectedDate.length > 0 && (
+              <button
+                onClick={batch.selectMode ? batch.exitSelectMode : batch.enterSelectMode}
+                className={`flex items-center gap-1 text-xs font-medium transition-colors ${
+                  batch.selectMode
+                    ? 'text-accent hover:text-accent-hover'
+                    : 'text-text-tertiary hover:text-text-secondary'
+                }`}
+              >
+                {batch.selectMode ? (
+                  <>
+                    <CheckIcon className="h-3 w-3" strokeWidth={2.5} />
+                    <span>취소</span>
+                  </>
+                ) : (
+                  <span>선택</span>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                if (isAllOpen) {
+                  setOpenSections({})
+                  setInputDay(null)
+                  return
+                }
+                const next: Record<number, boolean> = {}
+                daySections.forEach((sectionItem) => { next[sectionItem.id] = true })
+                setOpenSections(next)
+              }}
+              className="flex items-center gap-1 text-xs font-medium text-text-tertiary hover:text-text-secondary"
+            >
+              <span>{isAllOpen ? '모두 접기' : '모두 펼침'}</span>
+              <ChevronRightIcon
+                className={`h-3 w-3 transition-transform ${isAllOpen ? '-rotate-90' : 'rotate-90'}`}
+              />
+            </button>
+          </div>
         </div>
 
-        {isLoading && <div className="py-8 text-center text-sm text-text-tertiary">불러오는 중...</div>}
+        {isLoading && <TodosSkeleton />}
 
         {!isLoading && (
           <DndContext
@@ -299,7 +337,7 @@ function TodosPage() {
             onDragCancel={dnd.handleDragCancel}
             onDragEnd={dnd.handleDragEnd}
           >
-            <div className="space-y-2">
+            <div className="space-y-list">
               {daySections.map((section, index) => {
                 const containerId = getContainerId(section.id)
                 const sectionTodos = dnd.getTodosForContainer(containerId)
@@ -331,9 +369,9 @@ function TodosPage() {
                 return (
                   <section
                     key={section.id}
-                    className={`${index === 0 ? '' : 'border-t border-border-subtle pt-4'} space-y-1.5`}
+                    className={`${index === 0 ? '' : 'border-t border-border-subtle pt-card'} space-y-element`}
                   >
-                    <ActiveSectionDrop id={containerId} className="space-y-1.5 pb-2">
+                    <ActiveSectionDrop id={containerId} className="space-y-element pb-list">
                       {() => (
                         <>
                           <div className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-2 rounded-xl px-2 py-1">
@@ -346,14 +384,14 @@ function TodosPage() {
                               }
                               aria-label={`${section.title} 섹션 ${isSectionOpen ? '접기' : '펼치기'}`}
                               aria-expanded={isSectionOpen}
-                              className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-text-tertiary hover:bg-hover-strong"
+                              className="-m-2 mt-0.5 flex items-center justify-center rounded-full p-2 text-text-tertiary hover:bg-hover-strong"
                             >
                               <ChevronRightIcon
-                                className={`h-3 w-3 transition-transform ${isSectionOpen ? 'rotate-90' : ''}`}
+                                className={`h-4 w-4 transition-transform ${isSectionOpen ? 'rotate-90' : ''}`}
                               />
                             </button>
                             <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-list">
                                 <h3 className="text-sm font-semibold text-text-primary">{section.title}</h3>
                                 {totalCount > 0 && (
                                   <span className="text-xs text-text-tertiary">
@@ -367,7 +405,7 @@ function TodosPage() {
                                 )}
                               </div>
                               {(hasRangeMeta || hasFlowMeta) && (
-                                <div className="mt-0.5 flex min-h-[18px] flex-wrap items-center gap-2">
+                                <div className="mt-0.5 flex min-h-[18px] flex-wrap items-center gap-list">
                                   {hasRangeMeta && (
                                     <span
                                       className={`text-xs text-text-tertiary ${
@@ -507,7 +545,7 @@ function TodosPage() {
         isOpen={!!actions.timerTodo}
         onClose={actions.handleCloseTimer}
         todoId={actions.timerTodo?.id ?? ''}
-        todoTitle={actions.timerTodo ? actions.timerTodo.title : ''}
+        todoTitle={actions.timerTodo?.title ?? ''}
         sessionCount={actions.timerTodo?.sessionCount ?? 0}
         sessionFocusSeconds={actions.timerTodo?.sessionFocusSeconds ?? 0}
         initialMode={actions.timerMode ?? undefined}
@@ -525,6 +563,15 @@ function TodosPage() {
             </p>
           </div>
         </div>
+      )}
+
+      {batch.selectMode && (
+        <BatchActionBar
+          selectedCount={batch.selectedCount}
+          onComplete={batch.batchComplete}
+          onDelete={batch.batchDelete}
+          onCancel={batch.exitSelectMode}
+        />
       )}
     </div>
   )

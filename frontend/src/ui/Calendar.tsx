@@ -196,7 +196,7 @@ export function Calendar({
 
   return (
     <div
-      className="rounded-2xl bg-surface-card p-4 shadow-sm"
+      className="rounded-2xl bg-surface-card p-card shadow-sm"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >

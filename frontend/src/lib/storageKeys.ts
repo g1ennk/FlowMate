@@ -19,6 +19,8 @@ export const storageKeys = {
   sharedMiniDaysSettings: `${STORAGE_PREFIX}/settings/miniDays`,
   // 테마
   theme: `${STORAGE_PREFIX}/ui/theme`,
+  // 코치마크
+  coachMarksSeen: `${STORAGE_PREFIX}/ui/coach-marks-seen`,
   // 음악
   musicVolume: `${STORAGE_PREFIX}:music:volume`,
   legacyMusicKeys: [`${STORAGE_PREFIX}:music:trackIndex`, `${STORAGE_PREFIX}:music:enabled`] as readonly string[],

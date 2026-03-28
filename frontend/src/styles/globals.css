@@ -180,6 +180,17 @@
 
   --color-cal-sunday: var(--color-cal-sunday);
   --color-cal-saturday: var(--color-cal-saturday);
+
+  /* ── Spacing Tokens ─────────────────────────────────── */
+  --spacing-page-x: 20px;
+  --spacing-page-y: 24px;
+  --spacing-section: 20px;
+  --spacing-card: 16px;
+  --spacing-card-item: 12px;
+  --spacing-list: 8px;
+  --spacing-element: 6px;
+  --spacing-tight: 4px;
+  --spacing-sheet: 20px;
 }
 
 *,

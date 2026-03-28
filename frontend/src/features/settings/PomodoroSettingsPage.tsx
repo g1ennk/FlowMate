@@ -11,6 +11,8 @@ import { useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } fro
 import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
 import { userTextInputClass } from '../../lib/userTextStyles'
 import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
+import { useCoachMark } from '../../lib/useCoachMark'
+import { CoachMark } from '../../ui/CoachMark'
 
 const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
 const SHORT_BREAK_PRESETS = [5, 10, 15, 20, 30]
@@ -28,6 +30,18 @@ const WHEEL_ITEM_HEIGHT = 40
 const WHEEL_VISIBLE_COUNT = 5
 const WHEEL_PADDING = (WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT - WHEEL_ITEM_HEIGHT) / 2
 
+type MiniDaySaveState = { message: string; tone: string }
+
+function getMiniDaySaveState(opts: {
+  isPending: boolean
+  hasError: boolean
+  isDirty: boolean
+}): MiniDaySaveState {
+  if (opts.isPending) return { message: '저장 중입니다...', tone: 'text-accent' }
+  if (opts.hasError) return { message: '오류를 수정한 뒤 상단 저장을 눌러주세요', tone: 'text-state-error' }
+  if (opts.isDirty) return { message: '상단 저장을 누르면 적용됩니다', tone: 'text-text-secondary' }
+  return { message: '변경한 뒤 상단 저장을 누르면 적용됩니다', tone: 'text-text-secondary' }
+}
 
 type SettingsRowProps = {
   label: string
@@ -38,6 +52,7 @@ type SettingsRowProps = {
 
 type SectionHeaderProps = {
   title: string
+  description?: string
   actionLabel?: string
   onActionClick?: () => void
   actionDisabled?: boolean
@@ -64,13 +79,15 @@ function SettingsRow({ label, value, onClick, disabled = false }: SettingsRowPro
 
 function SectionHeader({
   title,
+  description,
   actionLabel,
   onActionClick,
   actionDisabled = false,
 }: SectionHeaderProps) {
   return (
-    <div className="mb-3 flex items-center justify-between gap-3">
-      <p className="text-sm font-medium text-text-secondary">{title}</p>
+    <div className="mb-card-item">
+      <div className="flex items-center justify-between gap-card-item">
+        <p className="text-sm font-medium text-text-secondary">{title}</p>
       {actionLabel && onActionClick && (
         <button
           type="button"
@@ -80,6 +97,10 @@ function SectionHeader({
         >
           {actionLabel}
         </button>
+      )}
+      </div>
+      {description && (
+        <p className="mt-1 text-xs text-text-tertiary">{description}</p>
       )}
     </div>
   )
@@ -520,18 +541,11 @@ function PomodoroSettingsPage() {
   const activeMiniDayErrorMessage = activeMiniDayError === '시작은 종료보다 빨라야 해요'
     ? '종료는 시작 이후여야 합니다'
     : activeMiniDayError
-  const miniDaySaveStateMessage = updateMiniDays.isPending
-    ? '저장 중입니다...'
-    : activeMiniDayErrorMessage
-      ? '오류를 수정한 뒤 상단 저장을 눌러주세요'
-      : isMiniDayDirty
-        ? '상단 저장을 누르면 적용됩니다'
-        : '변경한 뒤 상단 저장을 누르면 적용됩니다'
-  const miniDaySaveStateTone = updateMiniDays.isPending
-    ? 'text-accent'
-    : activeMiniDayErrorMessage
-      ? 'text-state-error'
-      : 'text-text-secondary'
+  const miniDaySaveState = getMiniDaySaveState({
+    isPending: updateMiniDays.isPending,
+    hasError: !!activeMiniDayErrorMessage,
+    isDirty: isMiniDayDirty,
+  })
   const hourIndex = Math.max(0, HOUR_OPTIONS.indexOf(timeDraft.hour))
   const minuteIndex = Math.max(0, MINUTE_OPTIONS.indexOf(timeDraft.minute))
   const periodIndex = timeDraft.period === 'am' ? 0 : 1
@@ -545,15 +559,24 @@ function PomodoroSettingsPage() {
     navigate('/login', { replace: true })
   }
 
+  const settingsCoach = useCoachMark('settings-intro')
+
   return (
-    <div className="animate-fade-in-up space-y-6">
+    <div className="animate-fade-in-up space-y-section">
       <header>
         <h1 className="text-2xl font-bold text-text-primary">설정</h1>
       </header>
 
+      <CoachMark
+        message={"뽀모도로 세션 길이와 미니 데이 시간대를 설정해보세요.\n미니 데이는 하루를 시간대별로 나누어 할 일을 정리하는 기능이에요."}
+        visible={settingsCoach.visible}
+        onDismiss={settingsCoach.dismiss}
+      />
+
       <section>
         <SectionHeader
           title="뽀모도로 세션"
+          description="집중 시간, 휴식 시간, 한 주기에 몇 세션을 반복할지 설정해요."
           actionLabel="기본값 복원"
           onActionClick={handleResetSessionDefaults}
           actionDisabled={isLoading || updateSettings.isPending || isSessionDefault}
@@ -580,6 +603,7 @@ function PomodoroSettingsPage() {
       <section>
         <SectionHeader
           title="자동화"
+          description="세션과 휴식 사이 전환을 자동으로 할지 설정해요."
           actionLabel="기본값 복원"
           onActionClick={handleResetAutomationDefaults}
           actionDisabled={isLoading || updateSettings.isPending || isAutomationDefault}
@@ -609,6 +633,7 @@ function PomodoroSettingsPage() {
       <section>
         <SectionHeader
           title="미니 데이"
+          description="하루를 시간대별로 나누어 할 일을 정리할 수 있어요."
           actionLabel="기본값 복원"
           onActionClick={handleResetMiniDaysDefaults}
           actionDisabled={!settingsData || updateMiniDays.isPending || isMiniDaysDefault}
@@ -754,9 +779,9 @@ function PomodoroSettingsPage() {
           </button>
         )}
       >
-        <div className="space-y-4 pb-6">
+        <div className="space-y-card pb-6">
           <div
-            className="sticky bottom-0 -mx-5 space-y-4 bg-surface-card px-5 pt-3"
+            className="sticky bottom-0 -mx-sheet space-y-card bg-surface-card px-sheet pt-3"
             style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
           >
             <div>
@@ -772,7 +797,7 @@ function PomodoroSettingsPage() {
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-list">
               <div className="rounded-2xl bg-surface-base p-1.5">
                 <div className="grid grid-cols-2 gap-1.5">
                   <button
@@ -815,13 +840,13 @@ function PomodoroSettingsPage() {
               )}
             </div>
 
-            <div className="space-y-3 rounded-2xl bg-surface-base px-3 py-3">
+            <div className="space-y-card-item rounded-2xl bg-surface-base px-3 py-3">
               <p className="text-xs font-medium text-text-secondary">
                 {miniDayEditField === 'start' ? '시작 시간 선택' : '종료 시간 선택'}
               </p>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-card-item">
+                <div className="space-y-list">
                   <WheelColumn
                     items={periodItems}
                     selectedIndex={periodIndex}
@@ -829,7 +854,7 @@ function PomodoroSettingsPage() {
                     ariaLabel="오전 오후 선택"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-list">
                   <WheelColumn
                     items={hourItems}
                     selectedIndex={hourIndex}
@@ -837,7 +862,7 @@ function PomodoroSettingsPage() {
                     ariaLabel="시 선택"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-list">
                   <WheelColumn
                     items={minuteItems}
                     selectedIndex={minuteIndex}
@@ -854,8 +879,8 @@ function PomodoroSettingsPage() {
               <span>{previewDuration}</span>
             </div>
 
-            <p className={`text-center text-xs font-medium ${miniDaySaveStateTone}`}>
-              {miniDaySaveStateMessage}
+            <p className={`text-center text-xs font-medium ${miniDaySaveState.tone}`}>
+              {miniDaySaveState.message}
             </p>
           </div>
         </div>

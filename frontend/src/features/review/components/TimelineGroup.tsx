@@ -9,6 +9,7 @@ type TimelineGroupProps = {
   isExpanded: boolean
   onToggle: () => void
   children: ReactNode
+  isToday?: boolean
 }
 
 export function TimelineGroup({
@@ -19,9 +20,10 @@ export function TimelineGroup({
   isExpanded,
   onToggle,
   children,
+  isToday = false,
 }: TimelineGroupProps) {
   return (
-    <div className="rounded-2xl bg-surface-card p-4 shadow-sm">
+    <div className={`rounded-2xl bg-surface-card p-card shadow-sm ${isToday ? 'ring-2 ring-accent/30' : ''}`}>
       <button
         type="button"
         onClick={onToggle}

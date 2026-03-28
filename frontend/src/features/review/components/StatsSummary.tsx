@@ -28,6 +28,19 @@ export function StatsSummary({
   completedCount,
   comparison,
 }: StatsSummaryProps) {
+  const isEmpty = totalFocusSeconds === 0 && totalFlows === 0 && completedCount === 0
+
+  if (isEmpty) {
+    return (
+      <section className="rounded-2xl bg-surface-card p-card shadow-sm">
+        <h3 className="mb-2 text-sm font-semibold text-text-primary">집중 기록</h3>
+        <p className="py-2 text-center text-sm text-text-tertiary">
+          첫 Flow를 시작하면 집중 시간과 완료 기록이 여기에 표시돼요
+        </p>
+      </section>
+    )
+  }
+
   const focusDelta = comparison?.focusDelta
   const focusLabel = totalFocusSeconds >= 60
     ? formatFocusTime(totalFocusSeconds)
@@ -36,7 +49,8 @@ export function StatsSummary({
       : '0분'
 
   return (
-    <section className="rounded-2xl bg-surface-card p-3 shadow-sm">
+    <section className="rounded-2xl bg-surface-card p-card shadow-sm">
+      <h3 className="mb-card-item text-sm font-semibold text-text-primary">집중 기록</h3>
       <div className="grid grid-cols-3 divide-x divide-border-subtle">
         <div className="px-3 py-2">
           <p className="text-[11px] text-text-secondary">집중</p>

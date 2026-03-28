@@ -19,9 +19,9 @@ export function IncompleteTasks({
   className = '',
 }: IncompleteTasksProps) {
   return (
-    <div className={`rounded-2xl bg-surface-card p-4 shadow-sm ${className}`}>
+    <div className={`rounded-2xl bg-surface-card p-card shadow-sm ${className}`}>
       <h3 className="text-sm font-semibold text-amber-600">미완료</h3>
-      <div className="mt-3 space-y-1.5">
+      <div className="mt-card-item space-y-element">
         {items.length === 0 ? (
           <p className="text-sm text-text-tertiary">모두 마무리했어요.</p>
         ) : (

@@ -61,7 +61,7 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
       title="세션 상세"
       showCloseButton
       showHeaderDivider={false}
-      contentClassName="space-y-4"
+      contentClassName="space-y-card"
     >
       <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-3">
         <ReviewTaskLabel
@@ -69,7 +69,7 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
           titleClassName="text-sm font-semibold text-text-primary"
         />
         <p className="mt-1 text-xs text-text-tertiary">{task.date}</p>
-        <div className="mt-3 grid grid-cols-3 gap-3">
+        <div className="mt-3 grid grid-cols-3 gap-card-item">
           <div>
             <p className="text-[11px] text-text-tertiary">총 집중</p>
             {focusLabel && (
@@ -94,7 +94,7 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
         )}
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-list">
         <h4 className="text-sm font-semibold text-text-primary">세션 기록</h4>
         {isLoading ? (
           <div className="rounded-xl border border-border-subtle px-3 py-4 text-center text-xs text-text-tertiary">
@@ -106,7 +106,7 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
           </div>
         ) : sessions.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border-default px-3 py-4 text-center text-xs text-text-tertiary">
-            기록된 세션이 없어요.
+            타이머로 집중하면 세션 기록이 쌓여요.
           </div>
         ) : (
           <div className="divide-y divide-border-subtle rounded-xl border border-border-subtle">

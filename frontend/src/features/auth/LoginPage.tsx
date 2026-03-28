@@ -109,6 +109,10 @@ function LoginPage() {
   const handleGuestStart = () => {
     setOnboardingSeen(true)
     navigate('/todos', { replace: true })
+    if (!localStorage.getItem('flowmate/ui/guest-notice-seen')) {
+      localStorage.setItem('flowmate/ui/guest-notice-seen', '1')
+      setTimeout(() => toast('게스트 데이터는 이 기기에만 저장돼요', { id: 'guest-notice', duration: 4000 }), 500)
+    }
   }
 
   const handleKakaoLogin = async () => {
@@ -146,7 +150,7 @@ function LoginPage() {
               return (
                 <li
                   key={step.label}
-                  className="animate-fade-in-up overflow-hidden rounded-2xl bg-surface-card p-4 shadow-sm"
+                  className="animate-fade-in-up overflow-hidden rounded-2xl bg-surface-card p-card shadow-sm"
                   style={{ animationDelay: `${i * 100}ms`, animationFillMode: 'both' }}
                 >
                   <div className="mb-3 flex items-center gap-2">

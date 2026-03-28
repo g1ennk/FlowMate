@@ -30,7 +30,7 @@ export function ReviewDiary({
     <button
       type="button"
       onClick={onOpen}
-      className="w-full rounded-2xl bg-surface-card p-4 text-left shadow-sm transition-colors hover:bg-hover"
+      className="w-full rounded-2xl bg-surface-card p-card text-left shadow-sm transition-colors hover:bg-hover"
     >
       <div className="flex items-start justify-between gap-3">
         <div>

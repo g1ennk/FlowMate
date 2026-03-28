@@ -4,6 +4,7 @@ import { timerApi, type ServerTimerState, type TimerStatePushBody } from '../../
 import { useAuthStore } from '../../store/authStore'
 import { shouldRefreshSseToken } from './sseAuth'
 import { getIsApplyingRemote, useTimerStore } from './timerStore'
+import { useSseStatusStore } from './sseStatusStore'
 
 const pendingResync = new Set<string>()
 const pushQueues = new Map<string, { latest: TimerStatePushBody; cancelled: boolean }>()
@@ -66,6 +67,11 @@ function getPrincipal(auth: ReturnType<typeof useAuthStore.getState>): string | 
 
 function connectSse(token: string): EventSource {
   const es = new EventSource(buildApiUrl(`/timer/sse?token=${encodeURIComponent(token)}`))
+  useSseStatusStore.getState().setStatus('connecting')
+
+  es.addEventListener('connected', () => {
+    useSseStatusStore.getState().setStatus('connected')
+  })
 
   es.addEventListener('timer-state', (event: MessageEvent) => {
     try {
@@ -84,6 +90,7 @@ function connectSse(token: string): EventSource {
   })
 
   es.onerror = () => {
+    useSseStatusStore.getState().setStatus('connecting')
     const authState = useAuthStore.getState().state
     if (authState?.type !== 'member') return
 
@@ -131,6 +138,7 @@ export function useSseTimerSync() {
         esRef.current = null
         sseRefreshing = false
         lastSseRefreshAt = 0
+        useSseStatusStore.getState().setStatus('disconnected')
         return
       }
 

@@ -19,9 +19,9 @@ export function CompletedTaskList({
   className = '',
 }: CompletedTaskListProps) {
   return (
-    <div className={`rounded-2xl bg-surface-card p-4 shadow-sm ${className}`}>
+    <div className={`rounded-2xl bg-surface-card p-card shadow-sm ${className}`}>
       <h3 className="text-sm font-semibold text-accent">완료</h3>
-      <div className="mt-3 space-y-1.5">
+      <div className="mt-card-item space-y-element">
         {items.length === 0 ? (
           <p className="text-sm text-text-tertiary">아직 완료한 일이 없어요.</p>
         ) : (

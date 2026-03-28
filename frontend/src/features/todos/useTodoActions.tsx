@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
+import { UndoToast } from '../../ui/UndoToast'
+import { queryKeys } from '../../lib/queryKeys'
+import type { Todo, TodoList } from '../../api/types'
 import type { ApiError } from '../../api/http'
 import {
   useCreateSession,
@@ -9,7 +12,6 @@ import {
   useScheduleReviewTodo,
   useUpdateTodo,
 } from './hooks'
-import type { Todo } from '../../api/types'
 import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
 import { completeTaskFromTimer } from '../timer/completeHelpers'
@@ -19,7 +21,7 @@ import { useNoteModal } from './useNoteModal'
 import { useDatePickerActions } from './useDatePickerActions'
 import { useTimerOpenState } from './useTimerOpenState'
 
-function getErrorMessage(error: unknown, fallback: string) {
+function getErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null && 'message' in error) {
     const message = (error as ApiError).message
     if (typeof message === 'string' && message.trim().length > 0) {
@@ -29,9 +31,6 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-/**
- * Todo CRUD 및 타이머 관련 핸들러를 제공하는 커스텀 훅
- */
 export function useTodoActions(selectedDateKey: string) {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
@@ -47,23 +46,13 @@ export function useTodoActions(selectedDateKey: string) {
   const getTimer = useTimerStore((s) => s.getTimer)
   const updateSessions = useTimerStore((s) => s.updateSessions)
 
-  // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
-
-  // 메모 상태 (extracted)
   const noteModal = useNoteModal()
-
-  // 타이머 상태 (extracted)
   const timerOpen = useTimerOpenState()
-
-  // 날짜 액션 상태 (extracted)
   const datePicker = useDatePickerActions()
-
-  // 선택된 todo (더보기 메뉴용)
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
 
-  // === Todo CRUD ===
   const handleCreate = async (title: string, miniDay: number = 0, dayOrder: number) => {
     await createTodo.mutateAsync({
       title,
@@ -122,15 +111,86 @@ export function useTodoActions(selectedDateKey: string) {
         ...(nextOrder === undefined ? {} : { dayOrder: nextOrder }),
       },
     })
+
+    toast(
+      (t) => (
+        <UndoToast
+          t={t}
+          message={next ? '완료!' : '완료 취소'}
+          onUndo={() => updateTodo.mutate({ id, patch: { isDone: !next } })}
+        />
+      ),
+      { id: `toggle-${id}`, duration: 3000 },
+    )
   }
 
-  const handleDelete = (id: string) => {
+  const pendingDeleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const deleteTodoRef = useRef(deleteTodo.mutate)
+  useEffect(() => { deleteTodoRef.current = deleteTodo.mutate })
+
+  // 언마운트 시 pending delete 즉시 실행
+  useEffect(() => {
+    return () => {
+      pendingDeleteTimers.current.forEach((timer, id) => {
+        clearTimeout(timer)
+        deleteTodoRef.current(id)
+      })
+      pendingDeleteTimers.current.clear()
+    }
+  }, [])
+
+  const handleDelete = useCallback((id: string) => {
+    // 이전 pending delete가 있으면 즉시 확정
+    const existingTimer = pendingDeleteTimers.current.get(id)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+      pendingDeleteTimers.current.delete(id)
+    }
+
     reset(id)
-    deleteTodo.mutate(id)
     setSelectedTodo(null)
-  }
 
-  // === 편집 ===
+    // 삭제 대상 항목만 저장 (전체 스냅샷 대신)
+    const currentData = queryClient.getQueryData<TodoList>(queryKeys.todos())
+    const deletedTodo = currentData?.items.find((t) => t.id === id)
+
+    // 캐시에서 optimistic 제거
+    queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+      if (!old) return old
+      return { items: old.items.filter((t) => t.id !== id) }
+    })
+
+    // 5초 후 실제 삭제
+    const timer = setTimeout(() => {
+      pendingDeleteTimers.current.delete(id)
+      deleteTodoRef.current(id)
+    }, 5000)
+    pendingDeleteTimers.current.set(id, timer)
+
+    toast(
+      (t) => (
+        <UndoToast
+          t={t}
+          message="삭제됨"
+          onUndo={() => {
+            const pending = pendingDeleteTimers.current.get(id)
+            if (pending) {
+              clearTimeout(pending)
+              pendingDeleteTimers.current.delete(id)
+            }
+            if (deletedTodo) {
+              queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+                if (!old) return { items: [deletedTodo] }
+                return { items: [...old.items, deletedTodo] }
+              })
+            }
+          }}
+        />
+      ),
+      { id: `delete-${id}`, duration: 5000 },
+    )
+  }, [queryClient, reset])
+
   const handleEdit = (id: string, currentTitle: string) => {
     setEditingId(id)
     setEditingTitle(currentTitle)
@@ -150,18 +210,15 @@ export function useTodoActions(selectedDateKey: string) {
     setEditingTitle('')
   }
 
-  // === 메모 (delegate to useNoteModal, clear selectedTodo) ===
   const handleOpenNote = (todo: Todo) => {
     noteModal.handleOpenNote(todo)
     setSelectedTodo(null)
   }
 
-  // === 타이머 (delegate to useTimerOpenState) ===
   const handleOpenTimer = (todo: Todo, currentMode: Parameters<typeof timerOpen.handleOpenTimer>[1]) => {
     timerOpen.handleOpenTimer(todo, currentMode, setSelectedTodo)
   }
 
-  // === 날짜 액션 (delegate to useDatePickerActions, clear selectedTodo) ===
   const openMoveDatePicker = (todo: Todo) => {
     setSelectedTodo(null)
     datePicker.openMoveDatePicker(todo)

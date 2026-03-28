@@ -33,7 +33,7 @@ export function SectionGuideCard({
       className="mx-2 mb-2 rounded-2xl border border-border-subtle bg-gradient-to-b from-surface-base to-surface-card px-3 py-2.5 transition-colors"
     >
       <p className="text-sm font-semibold text-text-primary">{content.headline}</p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-list">
         <button
           type="button"
           onClick={onAdd}

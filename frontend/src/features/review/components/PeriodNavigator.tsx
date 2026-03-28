@@ -20,7 +20,7 @@ export function PeriodNavigator({
   onNext,
 }: PeriodNavigatorProps) {
   return (
-    <div className="grid grid-cols-[36px_1fr_36px] items-center rounded-2xl bg-surface-card px-4 py-3 shadow-sm">
+    <div className="grid grid-cols-[36px_1fr_36px] items-center rounded-2xl bg-surface-card px-card py-card-item shadow-sm">
       <button
         type="button"
         onClick={onPrev}

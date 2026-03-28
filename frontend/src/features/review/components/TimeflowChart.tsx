@@ -30,7 +30,7 @@ export function TimeflowChart({ title, data, onBarSelect }: TimeflowChartProps) 
   const labelClass = data.length <= 12 ? 'text-xs' : 'text-[11px]'
 
   return (
-    <div className="rounded-2xl bg-surface-card p-4 shadow-sm">
+    <div className="rounded-2xl bg-surface-card p-card shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
         {activeItem && activeItem.seconds >= 60 && (

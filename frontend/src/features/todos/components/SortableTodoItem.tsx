@@ -26,8 +26,8 @@ export function SortableTodoItem({
     willChange: isDragging ? 'transform' : undefined,
   }
 
-  // 편집 중인 항목은 드래그 불가
-  const canDrag = !props.isEditing
+  // 편집 중이거나 선택 모드이면 드래그 불가
+  const canDrag = !props.isEditing && !props.selectMode
 
   return (
     <div

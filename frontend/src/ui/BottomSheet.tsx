@@ -171,7 +171,7 @@ export function BottomSheet({
             {/* 타이틀 */}
             {title && (
               <div
-                className={`relative px-5 pb-3 ${
+                className={`relative px-sheet pb-card-item ${
                   showHeaderDivider ? 'border-b border-border-subtle' : ''
                 }`}
               >
@@ -196,7 +196,7 @@ export function BottomSheet({
 
             {/* 컨텐츠 */}
             <div
-              className={`bottom-sheet-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 pt-2 touch-pan-y ${contentClassName}`}
+              className={`bottom-sheet-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-sheet pb-8 pt-list touch-pan-y ${contentClassName}`}
               style={{
                 paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
                 WebkitOverflowScrolling: 'touch',
@@ -235,7 +235,7 @@ export function BottomSheetItem({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-all ${
+      className={`flex w-full items-center gap-card-item rounded-xl px-card py-3.5 text-left transition-all ${
         disabled
           ? 'cursor-not-allowed opacity-40'
           : variant === 'danger'
@@ -256,7 +256,7 @@ type BottomSheetActionsProps = {
 
 export function BottomSheetActions({ children }: BottomSheetActionsProps) {
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3">
+    <div className="mb-card grid grid-cols-2 gap-card-item">
       {children}
     </div>
   )

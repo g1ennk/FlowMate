@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { TimelineGroupData, TaskItem } from '../reviewTypes'
 import { formatMonthDayLabel } from '../reviewUtils'
 import { TimelineGroup } from './TimelineGroup'
@@ -9,6 +9,9 @@ type TimelineListProps = {
   viewMode: 'weekly' | 'monthly'
   miniDayLabels: Array<{ id: number; label: string }>
   onSelectTask?: (task: TaskItem) => void
+  todayKey?: string
+  title?: string
+  highlightKey?: string
 }
 
 const groupItemsByDate = (
@@ -61,10 +64,24 @@ export function TimelineList({
   viewMode,
   miniDayLabels,
   onSelectTask,
+  todayKey,
+  title,
+  highlightKey,
 }: TimelineListProps) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
-    () => new Set(groups.map((group) => group.key)),
+    () => new Set(groups.filter((g) => g.taskCount > 0).map((g) => g.key)),
   )
+
+  useEffect(() => {
+    setExpandedKeys((prev) => {
+      const validKeys = new Set(groups.map((g) => g.key))
+      const next = new Set([...prev].filter((k) => validKeys.has(k)))
+      groups.forEach((g) => {
+        if (g.taskCount > 0 && !next.has(g.key)) next.add(g.key)
+      })
+      return next.size === prev.size && [...next].every((k) => prev.has(k)) ? prev : next
+    })
+  }, [groups])
 
   const toggleGroup = (key: string) => {
     setExpandedKeys((prev) => {
@@ -79,7 +96,10 @@ export function TimelineList({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-card-item">
+      {title && (
+        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+      )}
       {groups.map((group, index) => {
         const isExpanded = expandedKeys.has(group.key)
         const hasCompleted = group.completedTasks.length > 0
@@ -90,6 +110,11 @@ export function TimelineList({
             ? groupItemsByDate(group.completedTasks, group.incompleteTasks)
             : []
 
+        const matchKey = highlightKey ?? todayKey
+        const isGroupToday = matchKey
+          ? group.key === `daily-${matchKey}` || group.key.startsWith(`weekly-${matchKey}-`)
+          : false
+
         return (
           <TimelineGroup
             key={`${viewMode}-${group.key}-${index}`}
@@ -99,16 +124,17 @@ export function TimelineList({
             incompleteCount={group.incompleteTasks.length}
             isExpanded={isExpanded}
             onToggle={() => toggleGroup(group.key)}
+            isToday={isGroupToday}
           >
             {!hasCompleted && !hasIncomplete && (
-              <p className="text-sm text-text-tertiary">태스크가 없어요.</p>
+              <p className="text-sm text-text-tertiary">이 기간에 작업한 내역이 없어요. 할 일을 완료하면 타임라인이 만들어져요.</p>
             )}
 
             {showMonthly && (hasCompleted || hasIncomplete) && (
-              <div className="space-y-1.5">
+              <div className="space-y-element">
                 {dateGroups.map((dateGroup) => (
-                  <div key={dateGroup.dateKey} className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
+                  <div key={dateGroup.dateKey} className="space-y-element">
+                    <div className="flex items-center gap-list text-[11px] font-semibold text-text-tertiary">
                       <span>{formatMonthDayLabel(dateGroup.dateKey)}</span>
                       <div className="h-px flex-1 bg-surface-sunken" />
                     </div>
@@ -117,8 +143,8 @@ export function TimelineList({
                       dateGroup.incomplete,
                       miniDayLabels,
                     ).map((miniDayGroup) => (
-                      <div key={miniDayGroup.id} className="space-y-1.5">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
+                      <div key={miniDayGroup.id} className="space-y-element">
+                        <div className="flex items-center gap-list text-[11px] font-semibold text-text-tertiary">
                           <span>{miniDayGroup.label}</span>
                           <div className="h-px flex-1 bg-surface-sunken" />
                         </div>
@@ -144,14 +170,14 @@ export function TimelineList({
             )}
 
             {!showMonthly && (hasCompleted || hasIncomplete) && (
-              <div className="space-y-1.5">
+              <div className="space-y-element">
                 {buildMiniDaySections(
                   group.completedTasks,
                   group.incompleteTasks,
                   miniDayLabels,
                 ).map((miniDayGroup) => (
-                  <div key={miniDayGroup.id} className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
+                  <div key={miniDayGroup.id} className="space-y-element">
+                    <div className="flex items-center gap-list text-[11px] font-semibold text-text-tertiary">
                       <span>{miniDayGroup.label}</span>
                       <div className="h-px flex-1 bg-surface-sunken" />
                     </div>

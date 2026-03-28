@@ -202,7 +202,7 @@ export function ReviewTextarea({
   return (
     <section
       ref={containerRef}
-      className={`rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm ${
+      className={`rounded-2xl border border-border-default bg-surface-card p-card shadow-sm ${
         isEditing ? '' : 'cursor-pointer'
       }`}
       onClick={!isEditing ? enterEdit : undefined}
