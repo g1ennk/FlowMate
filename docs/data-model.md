@@ -1,5 +1,9 @@
 # FlowMate Data Model
 
+> Last updated: 2026-03-28
+>
+> 관련 문서: [Architecture](architecture.md) · [API Reference](api.md)
+
 ## 1. 개념적 모델링
 
 ### 1) 핵심 개념

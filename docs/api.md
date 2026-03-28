@@ -1,5 +1,7 @@
 # API Reference – FlowMate
 
+> Last updated: 2026-03-28
+
 Base URL: `/api`
 
 - 기본 요청/응답 Content-Type: `application/json`
@@ -126,7 +128,7 @@ Set-Cookie:
 
 **Errors**
 
-- `400 BAD_REQUEST` state 불일치, state 만료, 인가 코드 오류
+- `400 BAD_REQUEST` state 불일치, state 만료(TTL 5분), 인가 코드 오류
 
 ---
 
@@ -320,7 +322,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 - `sessionCount`, `sessionFocusSeconds`는 Session API로만 변경된다
 - `reviewRound`, `originalTodoId`는 PATCH로 수정하지 않는다
 
-**Response** `200` `Todo`
+**Response** `200` `Todo` (2.1 목록 조회의 Todo 객체와 동일한 구조)
 
 ---
 
@@ -661,7 +663,7 @@ Member Access JWT 전용.
 
 - idle 상태(`state_json = null`)는 제외된다.
 - 24시간이 지난 stale row는 정리 대상이며 응답에서도 제외된다.
-- 다른 리스트 endpoint와 달리 배열을 직접 반환한다.
+- 다른 리스트 endpoint와 달리 배열을 직접 반환한다. 타이머 상태는 SSE 수신 후 즉시 병합하는 런타임 스냅샷이므로 `ListResponse` 래핑 없이 최소한의 구조로 전달한다.
 
 ---
 
@@ -922,6 +924,8 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 | daily   | `periodStart`와 같은 날 |
 | weekly  | `periodStart + 6일`  |
 | monthly | 해당 월 마지막 날          |
+
+서버는 클라이언트가 보낸 `periodEnd`를 그대로 저장하며, `periodStart <= periodEnd`만 검증한다.
 
 **Response** `200` `Review`
 

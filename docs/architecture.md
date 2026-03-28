@@ -1,5 +1,9 @@
 # FlowMate 아키텍처
 
+> Last updated: 2026-03-28
+>
+> 관련 문서: [API Reference](api.md) · [Data Model](data-model.md)
+
 ## 1. AWS 기반 시스템 아키텍처
 
 - 프론트엔드는 S3 + CloudFront를 통해 정적 React SPA로 제공한다.
