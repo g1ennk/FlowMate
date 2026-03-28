@@ -392,6 +392,42 @@ export function MoonIcon({ size, className, ...props }: IconProps) {
   )
 }
 
+export function ListBulletIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8.25 6.75h7.5M8.25 12h7.5m-7.5 5.25h7.5M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+      />
+    </svg>
+  )
+}
+
+export function SunIcon({ size, className, ...props }: IconProps) {
+  return (
+    <svg
+      {...defaultProps}
+      className={className ?? (size ? undefined : defaultProps.className)}
+      width={size}
+      height={size}
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3v1.5M18.364 5.636l-1.06 1.06M21 12h-1.5M18.364 18.364l-1.06-1.06M12 19.5V21M7.757 17.303l-1.061 1.061M4.5 12H3M7.757 6.697 6.696 5.636M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"
+      />
+    </svg>
+  )
+}
+
 // 옵션 3: 커피 아이콘 (더 단순화)
 export function CoffeeIcon({ size, className, ...props }: IconProps) {
   return (

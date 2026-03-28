@@ -7,7 +7,6 @@ const ReviewPage = lazy(() =>
   import('../features/review/ReviewPage').then((module) => ({ default: module.ReviewPage }))
 )
 const PomodoroSettingsPage = lazy(() => import('../features/settings/PomodoroSettingsPage'))
-const BoardingPage = lazy(() => import('../features/boarding/BoardingPage'))
 const LoginPage = lazy(() => import('../features/auth/LoginPage'))
 const AuthCallback = lazy(() => import('../features/auth/AuthCallback'))
 const NotFoundPage = lazy(() => import('./NotFoundPage'))
@@ -15,7 +14,7 @@ const NotFoundPage = lazy(() => import('./NotFoundPage'))
 export const router = createBrowserRouter([
   {
     path: '/boarding',
-    element: <BoardingPage />,
+    element: <Navigate to="/login" replace />,
   },
   {
     path: '/login',

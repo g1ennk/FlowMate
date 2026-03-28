@@ -33,13 +33,13 @@ describe('AppLayoutGate', () => {
     useAuthStore.setState(initialAuthStore, true)
   })
 
-  it('redirects to boarding when onboarding has not been completed', () => {
+  it('redirects to login when onboarding has not been completed', () => {
     setOnboardingSeen(false)
     useAuthStore.setState({ initialized: true, state: null })
 
     renderGate()
 
-    expect(screen.getByText('boarding page')).toBeInTheDocument()
+    expect(screen.getByText('login page')).toBeInTheDocument()
   })
 
   it('renders nothing while auth initialization is pending', () => {

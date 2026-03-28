@@ -1,20 +1,21 @@
 import { Suspense } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CheckCircleIcon, DocumentIcon, SettingsIcon } from '../ui/Icons'
+import { useThemeStore } from '../store/themeStore'
+import { EditIcon, ListBulletIcon, MoonIcon, SettingsIcon, SunIcon } from '../ui/Icons'
 
 const tabs = [
   {
     to: '/todos',
     label: '계획',
     icon: (active: boolean) => (
-      <CheckCircleIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
+      <ListBulletIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
     ),
   },
   {
     to: '/review',
     label: '회고',
     icon: (active: boolean) => (
-      <DocumentIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
+      <EditIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.5} />
     ),
   },
   {
@@ -27,8 +28,11 @@ const tabs = [
 ]
 
 function AppLayout() {
+  const resolved = useThemeStore((s) => s.resolved)
+  const setTheme = useThemeStore((s) => s.setTheme)
+
   return (
-    <div className="flex min-h-dvh flex-col bg-gray-50">
+    <div className="flex min-h-dvh flex-col bg-surface-base">
       <main
         className="flex-1 overflow-y-auto"
         style={{ paddingBottom: 'calc(var(--bottom-nav-height) + var(--safe-bottom))' }}
@@ -36,7 +40,7 @@ function AppLayout() {
         <div className="mx-auto w-full max-w-lg px-5 py-6">
           <Suspense
             fallback={
-              <div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-400">
+              <div className="flex min-h-[50vh] items-center justify-center text-sm text-text-tertiary">
                 불러오는 중...
               </div>
             }
@@ -46,8 +50,21 @@ function AppLayout() {
         </div>
       </main>
 
+      <button
+        type="button"
+        onClick={() => setTheme(resolved === 'dark' ? 'light' : 'dark')}
+        className="fixed z-50 flex h-10 w-10 items-center justify-center rounded-full bg-surface-card text-text-secondary shadow-md transition-colors hover:bg-hover-strong"
+        style={{
+          right: 'max(1rem, var(--safe-right, 0px))',
+          bottom: 'calc(var(--bottom-nav-height) + var(--safe-bottom) + 1rem)',
+        }}
+        aria-label={resolved === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+      >
+        {resolved === 'dark' ? <SunIcon className="h-4.5 w-4.5" /> : <MoonIcon className="h-4.5 w-4.5" />}
+      </button>
+
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white px-4"
+        className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-border-default bg-surface-card px-4"
         style={{
           height: 'calc(var(--bottom-nav-height) + var(--safe-bottom))',
           paddingBottom: 'var(--safe-bottom)',
@@ -58,15 +75,15 @@ function AppLayout() {
             key={tab.to}
             to={tab.to}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center gap-0.5 rounded-xl px-6 py-2 transition-colors ${
-                isActive ? 'text-emerald-600' : 'text-gray-400'
+              `flex flex-col items-center justify-center gap-0.5 rounded-lg px-4 py-1.5 transition-colors ${
+                isActive ? 'bg-accent-muted text-text-primary' : 'text-border-default'
               }`
             }
           >
             {({ isActive }) => (
               <>
                 {tab.icon(isActive)}
-                <span className="text-[10px] font-medium">{tab.label}</span>
+                <span className={`text-[11px] ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
               </>
             )}
           </NavLink>

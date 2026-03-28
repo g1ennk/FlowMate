@@ -10,7 +10,6 @@ import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
 import { useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
 import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
 import { userTextInputClass } from '../../lib/userTextStyles'
-import { usePwaInstall } from '../pwa/usePwaInstall'
 import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
 
 const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
@@ -23,45 +22,12 @@ const PERIOD_OPTIONS = [
   { value: 'am', label: '오전' },
   { value: 'pm', label: '오후' },
 ] as const
-const INSTALL_CARD_DISMISS_KEY = 'flowmate:settings:install-card-dismissed-until:v1'
-const INSTALL_CARD_DISMISS_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const WHEEL_SCROLL_END_COMMIT_DELAY_MS = 120
 const WHEEL_LIVE_SELECT_BIAS = 0.35
 const WHEEL_ITEM_HEIGHT = 40
 const WHEEL_VISIBLE_COUNT = 5
 const WHEEL_PADDING = (WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT - WHEEL_ITEM_HEIGHT) / 2
 
-const readInstallCardDismissed = () => {
-  if (typeof window === 'undefined') return false
-  try {
-    const raw = window.localStorage.getItem(INSTALL_CARD_DISMISS_KEY)
-    if (!raw) return false
-    const dismissedUntil = Number(raw)
-    if (!Number.isFinite(dismissedUntil)) {
-      window.localStorage.removeItem(INSTALL_CARD_DISMISS_KEY)
-      return false
-    }
-    if (dismissedUntil <= Date.now()) {
-      window.localStorage.removeItem(INSTALL_CARD_DISMISS_KEY)
-      return false
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-const persistInstallCardDismissed = () => {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(
-      INSTALL_CARD_DISMISS_KEY,
-      String(Date.now() + INSTALL_CARD_DISMISS_TTL_MS),
-    )
-  } catch {
-    // ignore localStorage write failures
-  }
-}
 
 type SettingsRowProps = {
   label: string
@@ -84,13 +50,13 @@ function SettingsRow({ label, value, onClick, disabled = false }: SettingsRowPro
       onClick={onClick}
       disabled={disabled}
       className={`flex min-h-12 w-full items-center justify-between rounded-xl px-4 py-3.5 text-left transition-colors ${
-        disabled ? 'cursor-not-allowed text-gray-400' : 'hover:bg-gray-50'
+        disabled ? 'cursor-not-allowed text-text-tertiary' : 'hover:bg-hover'
       }`}
     >
-      <span className={`text-sm font-medium ${disabled ? 'text-gray-400' : 'text-gray-900'}`}>{label}</span>
+      <span className={`text-sm font-medium ${disabled ? 'text-text-tertiary' : 'text-text-primary'}`}>{label}</span>
       <span className="flex items-center gap-1.5">
-        <span className={`text-sm ${disabled ? 'text-gray-300' : 'text-gray-500'}`}>{value}</span>
-        <ChevronRightIcon className={`h-4 w-4 ${disabled ? 'text-gray-300' : 'text-gray-300'}`} />
+        <span className={`text-sm ${disabled ? 'text-text-disabled' : 'text-text-secondary'}`}>{value}</span>
+        <ChevronRightIcon className={`h-4 w-4 ${disabled ? 'text-text-disabled' : 'text-text-tertiary'}`} />
       </span>
     </button>
   )
@@ -104,13 +70,13 @@ function SectionHeader({
 }: SectionHeaderProps) {
   return (
     <div className="mb-3 flex items-center justify-between gap-3">
-      <p className="text-sm font-medium text-gray-500">{title}</p>
+      <p className="text-sm font-medium text-text-secondary">{title}</p>
       {actionLabel && onActionClick && (
         <button
           type="button"
           onClick={onActionClick}
           disabled={actionDisabled}
-          className="text-xs font-semibold text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:text-gray-300"
+          className="text-xs font-medium text-text-tertiary transition-colors hover:text-text-secondary disabled:cursor-not-allowed disabled:text-text-disabled"
         >
           {actionLabel}
         </button>
@@ -207,10 +173,10 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
   }
 
   return (
-    <div className="relative h-[200px] rounded-2xl bg-gray-50">
-      <div className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2 h-10 rounded-xl bg-emerald-100/50" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-2xl bg-gradient-to-b from-gray-50 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 rounded-b-2xl bg-gradient-to-t from-gray-50 to-transparent" />
+    <div className="relative h-[200px] rounded-2xl bg-surface-base">
+      <div className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2 h-10 rounded-xl bg-accent-muted/50" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-2xl bg-gradient-to-b from-surface-base to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 rounded-b-2xl bg-gradient-to-t from-surface-base to-transparent" />
       <div
         ref={scrollRef}
         aria-label={ariaLabel}
@@ -229,8 +195,8 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
               key={`${String(item.value)}-${index}`}
               type="button"
               onClick={() => onSelectIndex(index)}
-              className={`flex h-10 w-full snap-center items-center justify-center text-sm font-semibold transition-colors ${
-                isSelected ? 'text-emerald-700' : 'text-gray-400'
+              className={`flex h-10 w-full snap-center items-center justify-center text-sm font-medium transition-colors ${
+                isSelected ? 'text-accent-text' : 'text-text-tertiary'
               }`}
               style={{ height: WHEEL_ITEM_HEIGHT }}
             >
@@ -248,7 +214,6 @@ function PomodoroSettingsPage() {
   const { data: settingsData, isLoading } = useSettings()
   const updateSettings = useUpdatePomodoroSettings()
   const updateMiniDays = useUpdateMiniDaysSettings()
-  const { canInstall, isInstalled, isStandalone, isIos, isAndroid, promptInstall } = usePwaInstall()
   const logout = useAuthStore((s) => s.logout)
   const authState = useAuthStore((s) => s.state)
   const navigate = useNavigate()
@@ -258,7 +223,6 @@ function PomodoroSettingsPage() {
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
   const [miniDayEditor, setMiniDayEditor] = useState<MiniDayRange>(defaultMiniDaysSettings.day1)
   const [miniDayEditField, setMiniDayEditField] = useState<'start' | 'end'>('start')
-  const [installCardDismissed, setInstallCardDismissed] = useState<boolean>(() => readInstallCardDismissed())
   const lastSettingsSavedToastAtRef = useRef(0)
   const [timeDraft, setTimeDraft] = useState<{
     period: 'am' | 'pm'
@@ -564,39 +528,16 @@ function PomodoroSettingsPage() {
         ? '상단 저장을 누르면 적용됩니다'
         : '변경한 뒤 상단 저장을 누르면 적용됩니다'
   const miniDaySaveStateTone = updateMiniDays.isPending
-    ? 'text-emerald-600'
+    ? 'text-accent'
     : activeMiniDayErrorMessage
-      ? 'text-red-500'
-      : 'text-gray-500'
+      ? 'text-state-error'
+      : 'text-text-secondary'
   const hourIndex = Math.max(0, HOUR_OPTIONS.indexOf(timeDraft.hour))
   const minuteIndex = Math.max(0, MINUTE_OPTIONS.indexOf(timeDraft.minute))
   const periodIndex = timeDraft.period === 'am' ? 0 : 1
   const hourItems = HOUR_OPTIONS.map((hour) => ({ value: hour, label: `${hour}` }))
   const minuteItems = MINUTE_OPTIONS.map((minute) => ({ value: minute, label: minute.toString().padStart(2, '0') }))
   const periodItems = PERIOD_OPTIONS.map((period) => ({ value: period.value, label: period.label }))
-  const shouldShowInstallCard =
-    !installCardDismissed &&
-    !isInstalled &&
-    !isStandalone &&
-    (canInstall || isIos || isAndroid)
-
-  const handleInstallApp = async () => {
-    const result = await promptInstall()
-    if (result === 'accepted') {
-      toast.success('앱 설치가 완료되었습니다', { id: 'pwa-install-accepted' })
-      setInstallCardDismissed(true)
-      return
-    }
-    if (result === 'dismissed') {
-      toast('설치를 취소했습니다', { id: 'pwa-install-dismissed' })
-    }
-  }
-
-  const handleDismissInstallCard = () => {
-    setInstallCardDismissed(true)
-    persistInstallCardDismissed()
-  }
-
   const handleLogout = async () => {
     if (!window.confirm('로그아웃 할까요?')) return
     await logout()
@@ -605,9 +546,9 @@ function PomodoroSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="animate-fade-in-up space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">설정</h1>
+        <h1 className="text-2xl font-bold text-text-primary">설정</h1>
       </header>
 
       <section>
@@ -617,7 +558,7 @@ function PomodoroSettingsPage() {
           onActionClick={handleResetSessionDefaults}
           actionDisabled={isLoading || updateSettings.isPending || isSessionDefault}
         />
-        <div className="space-y-1 rounded-2xl bg-white p-1 shadow-sm">
+        <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
           <SettingsRow
             label="Flow 시간"
             value={`${values.flowMin}분`}
@@ -643,7 +584,7 @@ function PomodoroSettingsPage() {
           onActionClick={handleResetAutomationDefaults}
           actionDisabled={isLoading || updateSettings.isPending || isAutomationDefault}
         />
-        <div className="space-y-1 rounded-2xl bg-white p-1 shadow-sm">
+        <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
           <div className="rounded-xl px-3 py-3">
             <Switch
               label="휴식 시간 자동 시작"
@@ -672,7 +613,7 @@ function PomodoroSettingsPage() {
           onActionClick={handleResetMiniDaysDefaults}
           actionDisabled={!settingsData || updateMiniDays.isPending || isMiniDaysDefault}
         />
-        <div className="space-y-1 rounded-2xl bg-white p-1 shadow-sm">
+        <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
           {([
             { key: 'day1', title: miniDaysBase.day1.label, range: formatMiniDayRange(miniDaysBase.day1) },
             { key: 'day2', title: miniDaysBase.day2.label, range: formatMiniDayRange(miniDaysBase.day2) },
@@ -686,78 +627,18 @@ function PomodoroSettingsPage() {
             />
           ))}
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-text-secondary">
           미분류는 고정이며, 시간 구간은 연속일 필요가 없습니다.
         </p>
       </section>
 
-      {shouldShowInstallCard && (
-        <section>
-          <p className="mb-3 text-sm font-medium text-gray-500">앱 설치</p>
-          <div className="rounded-2xl bg-white p-4 shadow-sm">
-            <p className="text-sm font-semibold text-gray-900">FlowMate 앱을 홈 화면에 설치하세요</p>
-            <p className="mt-1 text-xs text-gray-500">
-              앱처럼 실행하고 오프라인에서도 기본 화면을 열 수 있습니다.
-            </p>
-
-            {canInstall && (
-              <button
-                type="button"
-                onClick={handleInstallApp}
-                className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
-              >
-                앱 설치
-              </button>
-            )}
-
-            <div className="mt-3 space-y-3">
-              <div className={`rounded-xl border p-3 ${
-                isIos ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-100 bg-gray-50'
-              }`}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-gray-900">iPhone / iPad (Safari)</p>
-                  {isIos && <span className="text-[10px] font-semibold text-emerald-700">현재 기기</span>}
-                </div>
-                <ol className="mt-2 space-y-1 pl-4 text-xs text-gray-600 list-decimal">
-                  <li>Safari 하단의 공유 버튼을 누르세요</li>
-                  <li>홈 화면에 추가를 선택하세요</li>
-                  <li>추가를 눌러 설치를 완료하세요</li>
-                </ol>
-              </div>
-
-              <div className={`rounded-xl border p-3 ${
-                isAndroid ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-100 bg-gray-50'
-              }`}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-gray-900">Android (Chrome)</p>
-                  {isAndroid && <span className="text-[10px] font-semibold text-emerald-700">현재 기기</span>}
-                </div>
-                <ol className="mt-2 space-y-1 pl-4 text-xs text-gray-600 list-decimal">
-                  <li>브라우저 메뉴(⋮)를 여세요</li>
-                  <li>앱 설치 또는 홈 화면에 추가를 선택하세요</li>
-                  <li>설치/추가를 눌러 완료하세요</li>
-                </ol>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleDismissInstallCard}
-              className="mt-3 text-xs font-medium text-gray-400 transition-colors hover:text-gray-600"
-            >
-              일주일 동안 숨기기
-            </button>
-          </div>
-        </section>
-      )}
-
       {authState?.type === 'member' && (
         <section>
-          <div className="rounded-2xl bg-white p-1 shadow-sm">
+          <div className="rounded-2xl bg-surface-card p-1 shadow-sm">
             <button
               type="button"
               onClick={handleLogout}
-              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-red-500 transition-colors hover:bg-red-50"
+              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-state-error transition-colors hover:bg-state-error-subtle"
             >
               로그아웃
             </button>
@@ -767,11 +648,11 @@ function PomodoroSettingsPage() {
 
       {authState?.type === 'guest' && (
         <section>
-          <div className="rounded-2xl bg-white p-1 shadow-sm">
+          <div className="rounded-2xl bg-surface-card p-1 shadow-sm">
             <button
               type="button"
               onClick={() => navigate('/login')}
-              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
+              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-accent transition-colors hover:bg-accent-subtle"
             >
               로그인
             </button>
@@ -789,7 +670,7 @@ function PomodoroSettingsPage() {
             key={preset}
             label={`${preset}분`}
             rightIcon={values.flowMin === preset ? (
-              <CheckIcon className="h-4 w-4 text-emerald-500" />
+              <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
             onClick={() => {
               commitSettings({ flowMin: preset })
@@ -805,13 +686,13 @@ function PomodoroSettingsPage() {
         onClose={() => setActiveSheet(null)}
         title="휴식 시간"
       >
-        <p className="px-2 pb-2 pt-1 text-xs font-semibold text-gray-400">짧은 휴식</p>
+        <p className="px-2 pb-2 pt-1 text-xs font-semibold text-text-tertiary">짧은 휴식</p>
         {SHORT_BREAK_PRESETS.map((preset) => (
           <BottomSheetItem
             key={`short-${preset}`}
             label={`${preset}분`}
             rightIcon={values.breakMin === preset ? (
-              <CheckIcon className="h-4 w-4 text-emerald-500" />
+              <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
             onClick={() => {
               commitSettings({ breakMin: preset })
@@ -819,13 +700,13 @@ function PomodoroSettingsPage() {
             }}
           />
         ))}
-        <p className="px-2 pb-2 pt-4 text-xs font-semibold text-gray-400">긴 휴식</p>
+        <p className="px-2 pb-2 pt-4 text-xs font-semibold text-text-tertiary">긴 휴식</p>
         {LONG_BREAK_PRESETS.map((preset) => (
           <BottomSheetItem
             key={`long-${preset}`}
             label={`${preset}분`}
             rightIcon={values.longBreakMin === preset ? (
-              <CheckIcon className="h-4 w-4 text-emerald-500" />
+              <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
             onClick={() => {
               commitSettings({ longBreakMin: preset })
@@ -846,7 +727,7 @@ function PomodoroSettingsPage() {
             key={preset}
             label={`${preset} 세션`}
             rightIcon={values.cycleEvery === preset ? (
-              <CheckIcon className="h-4 w-4 text-emerald-500" />
+              <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
             onClick={() => {
               commitSettings({ cycleEvery: preset })
@@ -867,7 +748,7 @@ function PomodoroSettingsPage() {
             type="button"
             onClick={handleSaveMiniDay}
             disabled={!!activeMiniDayErrorMessage || updateMiniDays.isPending || !isMiniDayDirty}
-            className="rounded-lg px-2 py-1 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
+            className="rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle hover:text-accent-text disabled:cursor-not-allowed disabled:text-text-disabled disabled:hover:bg-transparent"
           >
             저장
           </button>
@@ -875,7 +756,7 @@ function PomodoroSettingsPage() {
       >
         <div className="space-y-4 pb-6">
           <div
-            className="sticky bottom-0 -mx-5 space-y-4 bg-white px-5 pt-3"
+            className="sticky bottom-0 -mx-5 space-y-4 bg-surface-card px-5 pt-3"
             style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
           >
             <div>
@@ -884,58 +765,58 @@ function PomodoroSettingsPage() {
                 value={miniDayEditor.label}
                 onChange={(e) => updateMiniDayEditorField('label', e.target.value)}
                 placeholder="미니 데이 1"
-                className={`w-full rounded-xl border border-gray-200 bg-white px-4 py-3 ${userTextInputClass} text-gray-900 placeholder:text-gray-400 focus:border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100`}
+                className={`w-full rounded-xl border border-border-default bg-surface-card px-4 py-3 ${userTextInputClass} text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-subtle`}
               />
-              <p className="mt-2 px-1 text-xs text-gray-400">
+              <p className="mt-2 px-1 text-xs text-text-tertiary">
                 이름도 바꿀 수 있어요. 예: 오전/오후/저녁, 집중 시간, 회의 시간
               </p>
             </div>
 
             <div className="space-y-2">
-              <div className="rounded-2xl bg-gray-50 p-1.5">
+              <div className="rounded-2xl bg-surface-base p-1.5">
                 <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
                     onClick={() => handleSelectMiniDayField('start')}
                     className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
                       miniDayEditField === 'start'
-                        ? 'border-emerald-200 bg-white shadow-sm'
-                        : 'border-transparent text-gray-500 hover:bg-white/70'
+                        ? 'border-accent bg-surface-card shadow-sm'
+                        : 'border-transparent text-text-secondary hover:bg-surface-card/70'
                     }`}
                   >
                     <p className={`text-xs font-medium ${
-                      miniDayEditField === 'start' ? 'text-emerald-700' : 'text-gray-500'
+                      miniDayEditField === 'start' ? 'text-accent-text' : 'text-text-secondary'
                     }`}>
                       시작
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-gray-900">{startValueLabel}</p>
+                    <p className="mt-1 text-lg font-semibold text-text-primary">{startValueLabel}</p>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSelectMiniDayField('end')}
                     className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
                       miniDayEditField === 'end'
-                        ? 'border-emerald-200 bg-white shadow-sm'
-                        : 'border-transparent text-gray-500 hover:bg-white/70'
+                        ? 'border-accent bg-surface-card shadow-sm'
+                        : 'border-transparent text-text-secondary hover:bg-surface-card/70'
                     }`}
                   >
                     <p className={`text-xs font-medium ${
-                      miniDayEditField === 'end' ? 'text-emerald-700' : 'text-gray-500'
+                      miniDayEditField === 'end' ? 'text-accent-text' : 'text-text-secondary'
                     }`}>
                       종료
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-gray-900">{endValueLabel}</p>
+                    <p className="mt-1 text-lg font-semibold text-text-primary">{endValueLabel}</p>
                   </button>
                 </div>
               </div>
 
               {activeMiniDayErrorMessage && (
-                <p className="text-xs font-medium text-red-500">{activeMiniDayErrorMessage}</p>
+                <p className="text-xs font-medium text-state-error">{activeMiniDayErrorMessage}</p>
               )}
             </div>
 
-            <div className="space-y-3 rounded-2xl bg-gray-50 px-3 py-3">
-              <p className="text-xs font-medium text-gray-500">
+            <div className="space-y-3 rounded-2xl bg-surface-base px-3 py-3">
+              <p className="text-xs font-medium text-text-secondary">
                 {miniDayEditField === 'start' ? '시작 시간 선택' : '종료 시간 선택'}
               </p>
 
@@ -967,9 +848,9 @@ function PomodoroSettingsPage() {
               </div>
             </div>
 
-            <div className="text-center text-sm font-medium text-gray-700">
-              <span className="text-gray-900">{previewRange}</span>
-              <span className="text-gray-400"> · </span>
+            <div className="text-center text-sm font-medium text-text-secondary">
+              <span className="text-text-primary">{previewRange}</span>
+              <span className="text-text-tertiary"> · </span>
               <span>{previewDuration}</span>
             </div>
 

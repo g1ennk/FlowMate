@@ -9,7 +9,7 @@ function AppLayoutGate() {
   const seen = getOnboardingSeen()
 
   if (!seen) {
-    return <Navigate to="/boarding" replace />
+    return <Navigate to="/login" replace />
   }
 
   // init() 완료 전엔 아무것도 렌더링하지 않음

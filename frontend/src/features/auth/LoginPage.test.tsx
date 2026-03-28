@@ -76,14 +76,6 @@ describe('LoginPage', () => {
     })
   })
 
-  it('redirects to onboarding until onboarding is completed', () => {
-    setOnboardingSeen(false)
-
-    renderLoginPage()
-
-    expect(screen.getByText('boarding page')).toBeInTheDocument()
-  })
-
   it('redirects to todos when a member session already exists', () => {
     useAuthStore.setState({
       state: {
@@ -107,7 +99,7 @@ describe('LoginPage', () => {
 
     renderLoginPage()
 
-    await user.click(screen.getByRole('button', { name: /게스트로 계속하기/ }))
+    await user.click(screen.getByRole('button', { name: /게스트로 둘러보기/ }))
 
     expect(await screen.findByText('todos page')).toBeInTheDocument()
   })
@@ -129,7 +121,7 @@ describe('LoginPage', () => {
 
     renderLoginPage()
 
-    await user.click(screen.getByRole('button', { name: /카카오로 계속하기/ }))
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
 
     await waitFor(() => {
       expect(window.fetch).toHaveBeenCalledWith('/api/auth/kakao/authorize-url')
@@ -152,7 +144,7 @@ describe('LoginPage', () => {
 
     renderLoginPage()
 
-    await user.click(screen.getByRole('button', { name: /카카오로 계속하기/ }))
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
 
     await waitFor(() => {
       expect(mocked.toastError).toHaveBeenCalledWith(
