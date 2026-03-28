@@ -59,7 +59,7 @@ function TodoDatePickerCalendar({
   return (
     <>
       <div className="flex items-center justify-between px-1">
-        <p className="text-xl font-semibold text-gray-900">
+        <p className="text-xl font-semibold text-text-primary">
           {visibleMonth.getFullYear()}년 {visibleMonth.getMonth() + 1}월
         </p>
         <div className="flex items-center gap-1">
@@ -68,7 +68,7 @@ function TodoDatePickerCalendar({
             onClick={() =>
               setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))
             }
-            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-hover-strong hover:text-text-secondary"
             aria-label="이전 달"
           >
             <ChevronLeftIcon className="h-5 w-5" />
@@ -78,7 +78,7 @@ function TodoDatePickerCalendar({
             onClick={() =>
               setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))
             }
-            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-hover-strong hover:text-text-secondary"
             aria-label="다음 달"
           >
             <ChevronRightIcon className="h-5 w-5" />
@@ -86,7 +86,7 @@ function TodoDatePickerCalendar({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-y-2 text-center text-xs font-semibold text-gray-400">
+      <div className="grid grid-cols-7 gap-y-2 text-center text-xs font-semibold text-text-tertiary">
         {WEEKDAYS.map((weekday) => (
           <span key={weekday}>{weekday}</span>
         ))}
@@ -104,15 +104,15 @@ function TodoDatePickerCalendar({
           const dayOfWeek = date.getDay()
           const toneClassName =
             dayOfWeek === 0
-              ? 'text-rose-400'
+              ? 'text-cal-sunday'
               : dayOfWeek === 6
-                ? 'text-blue-500'
-                : 'text-gray-900'
+                ? 'text-cal-saturday'
+                : 'text-text-primary'
           const buttonClassName = isSelected
-            ? 'bg-gray-950 text-white shadow-sm'
+            ? 'bg-text-primary text-text-inverse shadow-sm'
             : isToday
-              ? 'bg-gray-100 text-gray-900'
-              : `hover:bg-gray-100 ${toneClassName}`
+              ? 'bg-surface-sunken text-text-primary'
+              : `hover:bg-hover-strong ${toneClassName}`
 
           return (
             <button
@@ -125,7 +125,7 @@ function TodoDatePickerCalendar({
               <span className="flex flex-col items-center leading-none">
                 <span>{date.getDate()}</span>
                 {isToday ? (
-                  <span className={`mt-0.5 text-[9px] font-semibold ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+                  <span className={`mt-0.5 text-[11px] font-semibold ${isSelected ? 'text-text-inverse/80' : 'text-text-secondary'}`}>
                     오늘
                   </span>
                 ) : null}
@@ -180,8 +180,8 @@ export function TodoDatePickerSheet({
           disabled={confirmDisabled}
           className={`mt-2 w-full rounded-2xl px-4 py-3 text-sm font-semibold transition-colors ${
             confirmDisabled
-              ? 'cursor-not-allowed bg-gray-100 text-gray-400'
-              : 'bg-gray-950 text-white hover:bg-gray-800'
+              ? 'cursor-not-allowed bg-surface-sunken text-text-tertiary'
+              : 'bg-text-primary text-text-inverse hover:opacity-80'
           }`}
         >
           {confirmLabel}

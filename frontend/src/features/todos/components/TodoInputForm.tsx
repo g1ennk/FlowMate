@@ -50,7 +50,7 @@ export function TodoInputForm({
   return (
     <div className="rounded-xl p-2">
       <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
-        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent" />
+        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border-strong bg-transparent" />
         <textarea
           {...register('title')}
           ref={(e) => {
@@ -115,7 +115,7 @@ export function TodoInputForm({
             }
             onClose()
           }}
-          className={`w-full bg-transparent ${userTextInputClass} text-gray-900 outline-none placeholder:text-gray-400 resize-none overflow-hidden min-h-[20px]`}
+          className={`w-full bg-transparent ${userTextInputClass} text-text-primary outline-none placeholder:text-text-tertiary resize-none overflow-hidden min-h-[20px]`}
           rows={1}
         />
       </div>

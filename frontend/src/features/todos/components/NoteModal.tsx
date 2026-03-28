@@ -50,19 +50,19 @@ export function NoteModal({
             <>
               <button
                 onClick={onDeleteNote}
-                className="h-8 w-14 justify-self-start whitespace-nowrap rounded-md text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700"
+                className="h-8 w-14 justify-self-start whitespace-nowrap rounded-md text-sm font-medium text-state-error transition-colors hover:bg-state-error-subtle hover:text-state-error-text"
               >
                 삭제
               </button>
               <h3
-                className="min-w-0 truncate text-center text-base font-semibold text-gray-900"
+                className="min-w-0 truncate text-center text-base font-semibold text-text-primary"
                 title={title}
               >
                 {title}
               </h3>
               <button
                 onClick={onSaveNote}
-                className="h-8 w-14 justify-self-end whitespace-nowrap rounded-md text-sm font-medium text-gray-900 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                className="h-8 w-14 justify-self-end whitespace-nowrap rounded-md text-sm font-medium text-text-primary transition-colors hover:bg-hover-strong hover:text-text-secondary"
               >
                 저장
               </button>
@@ -71,7 +71,7 @@ export function NoteModal({
             <>
               <div className="h-8 w-14" />
               <h3
-                className="min-w-0 truncate text-center text-base font-semibold text-gray-900"
+                className="min-w-0 truncate text-center text-base font-semibold text-text-primary"
                 title={title}
               >
                 {title}
@@ -97,12 +97,12 @@ export function NoteModal({
         } : undefined}
         readOnly={!noteEditMode}
         placeholder="메모를 입력하세요..."
-        className={`mb-2 h-40 w-full resize-none rounded-xl bg-yellow-50 border border-yellow-200 p-3 ${userTextInputClass} text-gray-700 outline-none placeholder:text-gray-400 ${
+        className={`mb-2 h-40 w-full resize-none rounded-xl bg-state-warning-subtle border border-[var(--color-warning)] p-3 ${userTextInputClass} text-text-secondary outline-none placeholder:text-text-tertiary ${
           !noteEditMode ? 'cursor-pointer' : ''
         }`}
       />
       {!noteEditMode && (
-        <p className="mb-4 px-1 text-xs text-gray-400">
+        <p className="mb-4 px-1 text-xs text-text-tertiary">
           탭하면 바로 편집 모드로 전환됩니다
         </p>
       )}

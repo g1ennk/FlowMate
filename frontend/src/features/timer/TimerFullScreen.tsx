@@ -170,15 +170,15 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     if (effectiveMode === 'stopwatch') {
       // Flexible timer: 휴식 중이면 에메랄드
       if (timer?.flexiblePhase === 'break_suggested' || timer?.flexiblePhase === 'break_free') {
-        return 'bg-emerald-600'
+        return 'bg-timer-break-bg'
       }
-      return 'bg-black'
+      return 'bg-timer-focus-bg'
     }
     if (effectiveMode === 'pomodoro') {
-      if (timer?.phase === 'flow' || !isActive) return 'bg-black' // Flow 또는 시작 전: 블랙
-      return 'bg-emerald-600' // Break: 홈 버튼 색
+      if (timer?.phase === 'flow' || !isActive) return 'bg-timer-focus-bg' // Flow 또는 시작 전: 블랙
+      return 'bg-timer-break-bg' // Break: 홈 버튼 색
     }
-    return 'bg-black'
+    return 'bg-timer-focus-bg'
   }
 
   return createPortal(
@@ -199,15 +199,15 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         <button
           onClick={handleClose}
           aria-label="타이머 닫기"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-gray-800"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-timer-focus-text hover:bg-timer-btn-hover"
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
-        <h1 className="text-base font-medium text-white">{effectiveMode === 'pomodoro' ? '뽀모도로 타이머' : '일반 타이머'}</h1>
+        <h1 className="text-base font-medium text-timer-focus-text">{effectiveMode === 'pomodoro' ? '뽀모도로 타이머' : '일반 타이머'}</h1>
         {/* 리셋 버튼 (항상 표시) */}
         <button
           onClick={() => setShowResetModal(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-gray-800"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-timer-focus-text hover:bg-timer-btn-hover"
           title="전체 리셋"
         >
           <ArrowPathIcon className="h-5 w-5" />
@@ -218,7 +218,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       <div className="flex flex-1 flex-col px-6">
         <div className="flex flex-1 flex-col items-center justify-center">
         {/* Todo 제목 */}
-        <h2 className="mb-8 text-center text-lg font-medium text-white">{todoTitle}</h2>
+        <h2 className="mb-8 text-center text-lg font-medium text-timer-focus-text">{todoTitle}</h2>
 
         {/* 타이머 표시 */}
         {effectiveMode === 'stopwatch' ? (
@@ -227,7 +227,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             // 집중 모드
           <>
             {/* 집중 라벨 */}
-              <p className="mb-4 text-center text-base font-semibold text-emerald-400">
+              <p className="mb-4 text-center text-base font-semibold text-accent">
               Flow
             </p>
 
@@ -245,7 +245,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 
                 return (
                   <div className="mb-2 flex flex-col items-center">
-                    <p className="text-center text-6xl font-light tabular-nums tracking-tight text-gray-300">
+                    <p className="text-center text-6xl font-light tabular-nums tracking-tight text-timer-focus-text">
                       {formatStopwatch(displayMs)}
                     </p>
                     <InlineSegmentToggle
@@ -291,10 +291,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                         key={i}
                         className={`relative overflow-hidden rounded-full transition-all duration-500 ease-out ${
                           isActuallyCompleted
-                            ? 'h-2.5 w-2.5 bg-emerald-400 shadow-sm'  // 완료된 Flow: 초록색
+                            ? 'h-2.5 w-2.5 bg-accent shadow-sm'  // 완료된 Flow: 초록색
                             : isCurrent
-                                ? 'h-2.5 w-2.5 bg-gray-700/80 shadow-sm animate-pulse'  // 진행 중: 짧은 도트 (카운트업, 프로그레스바 없음)
-                                : 'h-2.5 w-2.5 bg-gray-700/50'  // 시작 전 또는 예정: 동일한 회색
+                                ? 'h-2.5 w-2.5 bg-timer-btn shadow-sm animate-pulse'  // 진행 중: 짧은 도트 (카운트업, 프로그레스바 없음)
+                                : 'h-2.5 w-2.5 bg-timer-btn'  // 시작 전 또는 예정: 동일한 회색
                         }`}
                       >
                         {/* 카운트다운에만 프로그레스바 표시 (일반 타이머 집중은 카운트업이므로 프로그레스바 없음) */}
@@ -311,10 +311,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   onClick={isRunning ? () => pause(todoId) : () => resume(todoId)}
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                     {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
                   </div>
-                  <span className="text-xs font-medium text-gray-300">{isRunning ? '일시정지' : '재개'}</span>
+                  <span className="text-xs font-medium text-timer-focus-text">{isRunning ? '일시정지' : '재개'}</span>
                 </button>
 
                 {/* 휴식 버튼 */}
@@ -323,10 +323,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   disabled={timer?.status === 'idle' || timer?.flexiblePhase !== 'focus'}
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                     <StopIcon className="h-6 w-6" />
                   </div>
-                  <span className="text-xs font-medium text-gray-300">휴식</span>
+                  <span className="text-xs font-medium text-timer-focus-text">휴식</span>
                 </button>
 
                 {/* 완료 버튼 - 완료된 할일에서는 숨김 */}
@@ -336,10 +336,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                     disabled={updateTodoIsPending}
                     className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-hover text-text-inverse">
                       <CheckIcon className="h-6 w-6" />
                     </div>
-                    <span className="text-xs font-medium text-gray-300">완료</span>
+                    <span className="text-xs font-medium text-timer-focus-text">완료</span>
                   </button>
                 )}
               </div>
@@ -371,14 +371,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 return (
                   <>
                     {/* 휴식 라벨 */}
-                    <p className="mb-4 text-center text-base font-semibold text-white">
+                    <p className="mb-4 text-center text-base font-semibold text-timer-focus-text">
                       {breakLabel}
                     </p>
 
                     {/* 타이머 숫자 / 휴식 표시 기준 토글 */}
                     {canToggleBreak ? (
                       <div className="mb-2 flex flex-col items-center">
-                        <p className="text-center text-6xl font-light tabular-nums tracking-tight text-white">
+                        <p className="text-center text-6xl font-light tabular-nums tracking-tight text-timer-focus-text">
                           {formatStopwatch(displayMs)}
                         </p>
                         <InlineSegmentToggle
@@ -393,7 +393,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                       </div>
                     ) : (
                       <>
-                        <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-white">
+                        <p className="mb-2 text-center text-6xl font-light tabular-nums tracking-tight text-timer-focus-text">
                           {isRecommended
                             ? formatCountdown(displayMs)
                             : formatStopwatch(displayMs)
@@ -440,18 +440,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                         key={i}
                         className={`relative overflow-hidden rounded-full transition-all duration-500 ease-out shadow-sm ${
                           isCompleted
-                            ? isInBreak ? 'bg-white/90' : 'bg-emerald-400'  // 완료된 Flow: 휴식 중이면 흰색, 집중 중이면 초록색
+                            ? isInBreak ? 'bg-timer-btn-text' : 'bg-accent'  // 완료된 Flow: 휴식 중이면 밝은색, 집중 중이면 초록색
                             : isCurrent && isRecommendedBreak
-                                ? 'h-3 w-10 bg-gray-700/80 shadow-md'  // 추천 휴식 진행 중: 긴 도트 (카운트다운)
+                                ? 'h-3 w-10 bg-timer-btn shadow-md'  // 추천 휴식 진행 중: 긴 도트 (카운트다운)
                                 : isCurrent
-                                    ? 'h-2.5 w-2.5 bg-gray-700/60'  // 자유 휴식 진행 중: 짧은 도트 (카운트업, 프로그레스바 없음)
-                                    : 'h-2.5 w-2.5 bg-gray-700/60'  // 시작 전 또는 예정
+                                    ? 'h-2.5 w-2.5 bg-timer-btn'  // 자유 휴식 진행 중: 짧은 도트 (카운트업, 프로그레스바 없음)
+                                    : 'h-2.5 w-2.5 bg-timer-btn'  // 시작 전 또는 예정
                         }`}
                       >
                         {/* 추천 휴식(카운트다운)일 때만 프로그레스바 표시 */}
                         {isCurrent && isRecommendedBreak && (
                           <span
-                            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-emerald-500/50 shadow-sm transition-all duration-300"
+                            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-accent to-accent/80 shadow-accent/50 shadow-sm transition-all duration-300"
                             style={{ width: `${progress}%` }}
                           />
                         )}
@@ -468,10 +468,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   onClick={isRunning ? () => pause(todoId) : () => resume(todoId)}
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                     {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
                   </div>
-                  <span className="text-xs font-medium text-white">{isRunning ? '일시정지' : '재개'}</span>
+                  <span className="text-xs font-medium text-timer-focus-text">{isRunning ? '일시정지' : '재개'}</span>
                 </button>
 
                 {/* 집중 시작 버튼 */}
@@ -481,10 +481,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   }}
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                     <StopIcon className="h-6 w-6" />
                   </div>
-                  <span className="text-xs font-medium text-white">Flow 시작</span>
+                  <span className="text-xs font-medium text-timer-focus-text">Flow 시작</span>
                 </button>
 
                 {/* 완료 버튼 - 완료된 할일에서는 숨김 */}
@@ -494,10 +494,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                     disabled={updateTodoIsPending}
                     className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-emerald-600">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn-text text-accent">
                       <CheckIcon className="h-6 w-6" />
                     </div>
-                    <span className="text-xs font-medium text-white">완료</span>
+                    <span className="text-xs font-medium text-timer-break-text">완료</span>
                 </button>
               )}
             </div>
@@ -509,7 +509,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             {/* Phase 라벨 */}
             <p
               className={`mb-4 text-center text-base font-semibold transition-colors ${
-                timer?.phase === 'flow' ? 'text-emerald-400' : 'text-white'
+                timer?.phase === 'flow' ? 'text-accent' : 'text-timer-break-text'
               }`}
             >
               {timer?.phase ? PHASE_LABELS[timer.phase] : 'Flow'}
@@ -518,7 +518,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
             {/* 타이머 숫자 */}
             <p
               className={`mb-2 text-center text-6xl font-light tabular-nums tracking-tight transition-colors ${
-                timer?.phase === 'flow' ? 'text-gray-300' : 'text-white'
+                timer?.phase === 'flow' ? 'text-timer-focus-text' : 'text-timer-break-text'
               }`}
             >
               {formatCountdown(remainingMs)}
@@ -550,16 +550,16 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                       key={i}
                       className={`relative overflow-hidden rounded-full transition-all duration-500 ease-out ${
                       isActuallyCompleted
-                        ? `h-2.5 w-2.5 shadow-sm ${isFlow ? 'bg-emerald-400' : 'bg-white/90'}`  // 완료된 세션: Flow 중 초록색, Break 중 흰색
+                        ? `h-2.5 w-2.5 shadow-sm ${isFlow ? 'bg-accent' : 'bg-timer-btn-text'}`  // 완료된 세션: Flow 중 초록색, Break 중 밝은색
                         : isCurrent
-                            ? 'h-3 w-10 bg-gray-700/80 shadow-md'  // 현재 진행 중: 긴 도트, 회색 배경 (시작 후)
-                            : 'h-2.5 w-2.5 bg-gray-700/50'  // 시작 전 또는 예정: 동일한 회색
+                            ? 'h-3 w-10 bg-timer-btn shadow-md'  // 현재 진행 중: 긴 도트 (시작 후)
+                            : 'h-2.5 w-2.5 bg-timer-btn'  // 시작 전 또는 예정
                       }`}
                     >
                       {/* 진행 중일 때만 프로그레스 표시 */}
                       {isCurrent && (
                         <span
-                          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-emerald-500/50 shadow-sm transition-all duration-300"
+                          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-accent to-accent/80 shadow-accent/50 shadow-sm transition-all duration-300"
                           style={{ width: `${progress}%` }}
                         />
                       )}
@@ -576,10 +576,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 onClick={isRunning ? () => pause(todoId) : () => resume(todoId)}
                 className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
               >
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                   {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
                 </div>
-                <span className={`text-xs font-medium ${isFlow ? 'text-gray-300' : 'text-white'}`}>
+                <span className={`text-xs font-medium ${isFlow ? 'text-timer-focus-text' : 'text-timer-break-text'}`}>
                   {isRunning ? '일시정지' : '재개'}
                 </span>
               </button>
@@ -592,10 +592,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 }}
                 className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
               >
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-700 text-white">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                   <StopIcon className="h-6 w-6" />
                 </div>
-                <span className={`text-xs font-medium ${isFlow ? 'text-gray-300' : 'text-white'}`}>
+                <span className={`text-xs font-medium ${isFlow ? 'text-timer-focus-text' : 'text-timer-break-text'}`}>
                   {isFlow ? '휴식' : 'Flow 시작'}
                 </span>
               </button>
@@ -608,11 +608,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className={`flex h-14 w-14 items-center justify-center rounded-full ${
-                    isFlow ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-600'
+                    isFlow ? 'bg-accent-hover text-text-inverse' : 'bg-timer-btn-text text-accent'
                   }`}>
                     <CheckIcon className="h-6 w-6" />
                   </div>
-                  <span className={`text-xs font-medium ${isFlow ? 'text-gray-300' : 'text-white'}`}>
+                  <span className={`text-xs font-medium ${isFlow ? 'text-timer-focus-text' : 'text-timer-break-text'}`}>
                     완료
                   </span>
                 </button>
@@ -680,33 +680,33 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         }
         
         return (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
-          <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
-            <h3 className="mb-2 text-center text-lg font-semibold text-white">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-overlay px-6">
+          <div className="w-full max-w-sm rounded-2xl bg-timer-modal-bg p-6">
+            <h3 className="mb-2 text-center text-lg font-semibold text-timer-modal-text">
               타이머를 완료하시겠습니까?
             </h3>
-              <p className="mb-4 text-center text-sm text-gray-400">
+              <p className="mb-4 text-center text-sm text-timer-modal-secondary">
               현재 진행 상황이 저장되고 타이머가 초기화됩니다.
             </p>
-              
+
               {/* 총계 표시 (일반 타이머 및 뽀모도로) */}
               {totalSessions > 0 && (
-                <div className="mb-6 rounded-lg bg-gray-700/50 p-4">
+                <div className="mb-6 rounded-lg bg-timer-modal-subtle p-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-300">총 세션 (Flow)</span>
-                    <span className="text-lg font-semibold text-emerald-400">{totalSessions}개</span>
+                    <span className="text-sm font-medium text-timer-modal-secondary">총 세션 (Flow)</span>
+                    <span className="text-lg font-semibold text-accent">{totalSessions}개</span>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-300">총 Flow 시간</span>
-                    <span className="text-lg font-semibold text-emerald-400">{totalFocusTime}</span>
+                    <span className="text-sm font-medium text-timer-modal-secondary">총 Flow 시간</span>
+                    <span className="text-lg font-semibold text-accent">{totalFocusTime}</span>
                   </div>
                 </div>
               )}
-              
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCompleteModal(false)}
-                className="flex-1 rounded-full bg-gray-700 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-600"
+                className="flex-1 rounded-full bg-timer-modal-subtle py-3 text-sm font-medium text-timer-modal-text transition-colors hover:bg-timer-btn-hover"
               >
                 취소
               </button>
@@ -715,7 +715,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   setShowCompleteModal(false)
                   handleComplete()
                 }}
-                className="flex-1 rounded-full bg-emerald-600 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+                className="flex-1 rounded-full bg-accent-hover py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent"
               >
                 확인
               </button>
@@ -727,18 +727,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
       {/* 리셋 확인 모달 */}
       {showResetModal && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
-          <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
-            <h3 className="mb-2 text-center text-lg font-semibold text-white">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-overlay px-6">
+          <div className="w-full max-w-sm rounded-2xl bg-timer-modal-bg p-6">
+            <h3 className="mb-2 text-center text-lg font-semibold text-timer-modal-text">
               타이머를 리셋하시겠습니까?
             </h3>
-            <p className="mb-6 text-center text-sm text-gray-400">
+            <p className="mb-6 text-center text-sm text-timer-modal-secondary">
               현재 실행 중인 타이머만 초기화됩니다.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowResetModal(false)}
-                className="flex-1 rounded-full bg-gray-700 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-600"
+                className="flex-1 rounded-full bg-timer-modal-subtle py-3 text-sm font-medium text-timer-modal-text transition-colors hover:bg-timer-btn-hover"
               >
                 취소
               </button>
@@ -769,7 +769,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
                   toast.success('타이머가 초기화되었습니다', { id: 'timer-reset' })
                 }}
-                className="flex-1 rounded-full bg-red-600 py-3 text-sm font-medium text-white transition-colors hover:bg-red-500"
+                className="flex-1 rounded-full bg-state-error py-3 text-sm font-medium text-text-inverse transition-opacity hover:opacity-85"
               >
                 확인
               </button>
@@ -791,14 +791,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         const currentSessionFocusMs = Math.max(0, currentFocusMs - initialMs)
         
         return (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50 px-6">
-            <div className="w-full max-w-sm rounded-2xl bg-gray-800 p-6">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-overlay px-6">
+            <div className="w-full max-w-sm rounded-2xl bg-timer-modal-bg p-6">
               {/* 헤더 */}
               <div className="mb-6 text-center">
-                <h3 className="text-2xl font-bold text-white">
+                <h3 className="text-2xl font-bold text-timer-modal-text">
                   {Math.floor(currentSessionFocusMs / 60000)}분
                 </h3>
-                <p className="mt-1 text-sm text-gray-400">
+                <p className="mt-1 text-sm text-timer-modal-secondary">
                   Flow 완료
                 </p>
               </div>
@@ -811,18 +811,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                     const suggestion = calculateBreakSuggestion(currentSessionFocusMs)
                     handleStartBreak(suggestion.targetMs)
                   }}
-                  className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-left transition-colors hover:bg-emerald-500"
+                  className="w-full rounded-xl bg-accent-hover px-4 py-4 text-left transition-colors hover:bg-accent"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-base font-semibold text-white">
+                      <div className="text-base font-semibold text-text-inverse">
                         추천 휴식
                       </div>
-                      <div className="mt-0.5 text-sm text-emerald-100">
+                      <div className="mt-0.5 text-sm text-accent-muted">
                         Flow의 20%
                       </div>
                     </div>
-                    <div className="text-2xl font-bold text-white">
+                    <div className="text-2xl font-bold text-text-inverse">
                       {calculateBreakSuggestion(currentSessionFocusMs).targetMinutes}'
                     </div>
                   </div>
@@ -833,18 +833,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 onClick={() => {
                   handleStartBreak(null)
                 }}
-                className="w-full rounded-xl bg-gray-700 px-4 py-4 text-left transition-colors hover:bg-gray-600"
+                className="w-full rounded-xl bg-timer-modal-subtle px-4 py-4 text-left transition-colors hover:bg-timer-btn-hover"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-base font-semibold text-white">
+                    <div className="text-base font-semibold text-timer-modal-text">
                       자유 휴식
                     </div>
-                    <div className="mt-0.5 text-sm text-gray-400">
+                    <div className="mt-0.5 text-sm text-timer-modal-secondary">
                       원하는 시간만큼
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-gray-400">
+                  <div className="text-2xl font-bold text-timer-modal-secondary">
                     ∞
                   </div>
                 </div>
@@ -853,7 +853,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 {/* 취소 */}
                 <button
                   onClick={() => setShowBreakSelection(false)}
-                  className="w-full rounded-xl bg-transparent py-3 text-sm font-medium text-gray-400 transition-colors hover:text-gray-300"
+                  className="w-full rounded-xl bg-transparent py-3 text-sm font-medium text-timer-modal-secondary transition-colors hover:text-timer-modal-text"
                 >
                   취소
                 </button>

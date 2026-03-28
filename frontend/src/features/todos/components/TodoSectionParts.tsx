@@ -30,14 +30,14 @@ export function SectionGuideCard({
 }) {
   return (
     <div
-      className="mx-2 mb-2 rounded-2xl border border-gray-100 bg-gradient-to-b from-gray-50 to-white px-3 py-2.5 transition-colors"
+      className="mx-2 mb-2 rounded-2xl border border-border-subtle bg-gradient-to-b from-surface-base to-surface-card px-3 py-2.5 transition-colors"
     >
-      <p className="text-sm font-semibold text-gray-900">{content.headline}</p>
+      <p className="text-sm font-semibold text-text-primary">{content.headline}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={onAdd}
-          className="inline-flex h-7 items-center gap-1.5 rounded-full bg-emerald-500 px-3 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+          className="inline-flex h-7 items-center gap-1.5 rounded-full bg-accent px-3 text-xs font-semibold text-text-inverse transition-colors hover:bg-accent-hover"
         >
           <PlusIcon className="h-3 w-3" />
           <span>{content.ctaLabel}</span>
@@ -50,7 +50,7 @@ export function SectionGuideCard({
 export function CrossSectionPreviewSlot() {
   return (
     <div className="pointer-events-none mx-2 my-1">
-      <div className="h-11 rounded-xl border-2 border-emerald-300/85 bg-transparent" />
+      <div className="h-11 rounded-xl border-2 border-accent/85 bg-transparent" />
     </div>
   )
 }

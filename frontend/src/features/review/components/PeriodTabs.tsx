@@ -13,7 +13,7 @@ type PeriodTabsProps = {
 
 export function PeriodTabs({ value, onChange }: PeriodTabsProps) {
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-white p-2 shadow-sm">
+    <div className="flex items-center gap-2 rounded-2xl bg-surface-card p-2 shadow-sm">
       {TABS.map((tab) => {
         const isActive = value === tab.value
         return (
@@ -21,10 +21,10 @@ export function PeriodTabs({ value, onChange }: PeriodTabsProps) {
             key={tab.value}
             type="button"
             onClick={() => onChange(tab.value)}
-            className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+            className={`flex-1 rounded-xl transition-colors ${
               isActive
-                ? 'bg-emerald-500 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-accent px-3 py-2.5 text-sm font-bold text-text-inverse'
+                : 'bg-surface-sunken px-3 py-2 text-sm font-medium text-text-secondary hover:bg-hover-strong'
             }`}
           >
             {tab.label}

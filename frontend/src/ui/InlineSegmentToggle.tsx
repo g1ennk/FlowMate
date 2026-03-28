@@ -23,7 +23,7 @@ export function InlineSegmentToggle({
             aria-pressed={active}
             className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
               active
-                ? 'bg-white text-gray-900'
+                ? 'bg-surface-card text-text-primary'
                 : 'text-white/70 hover:text-white'
             }`}
           >

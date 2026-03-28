@@ -44,10 +44,10 @@ function AuthCallback() {
   }, [login, navigate])
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-white">
+    <div className="flex min-h-dvh items-center justify-center bg-surface-card">
       <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-        <p className="text-sm text-gray-500">로그인 처리 중...</p>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+        <p className="text-sm text-text-secondary">로그인 처리 중...</p>
       </div>
     </div>
   )

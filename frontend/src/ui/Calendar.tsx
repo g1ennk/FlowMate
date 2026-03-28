@@ -196,7 +196,7 @@ export function Calendar({
 
   return (
     <div
-      className="rounded-2xl bg-white p-4 shadow-sm"
+      className="rounded-2xl bg-surface-card p-4 shadow-sm"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -205,7 +205,7 @@ export function Calendar({
         {/* 왼쪽 영역 (년월, 오늘, 화살표) - 6칸 차지 */}
         <div className="col-span-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-gray-900">
+            <h2 className="text-lg font-bold text-text-primary">
               {viewMode === 'year' ? `${year}년` : `${year}년 ${month + 1}월`}
             </h2>
             {/* 오늘 버튼 */}
@@ -213,8 +213,8 @@ export function Calendar({
               onClick={goToToday}
               className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                 isToday(selectedDate)
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                  ? 'bg-accent text-text-inverse'
+                  : 'bg-accent-subtle text-accent hover:bg-accent-muted'
               }`}
             >
               오늘
@@ -224,13 +224,13 @@ export function Calendar({
             {/* 화살표 */}
             <button
               onClick={goToPrev}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-text-tertiary hover:bg-hover-strong"
             >
               <ChevronLeftIcon className="h-5 w-5" />
             </button>
             <button
               onClick={goToNext}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-text-tertiary hover:bg-hover-strong"
             >
               <ChevronRightIcon className="h-5 w-5" />
             </button>
@@ -239,7 +239,7 @@ export function Calendar({
         {/* 오른쪽 영역 (월/주 버튼) - 일요일 열에 맞춤 */}
         <div className="flex items-center justify-center">
           {allowedViewModes.length <= 3 ? (
-            <div className="inline-flex rounded-full bg-gray-100 p-0.5">
+            <div className="inline-flex rounded-full bg-surface-sunken p-0.5">
               {allowedViewModes.map((mode) => {
                 const active = mode === viewMode
                 return (
@@ -248,8 +248,8 @@ export function Calendar({
                     onClick={() => setViewMode(mode)}
                     className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                       active
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
+                        ? 'bg-surface-card text-text-primary shadow-sm'
+                        : 'text-text-secondary hover:text-text-secondary'
                     }`}
                     aria-pressed={active}
                     aria-label={`${VIEW_LABELS[mode]} 보기`}
@@ -269,7 +269,7 @@ export function Calendar({
                 const nextMode = allowedViewModes[nextIndex] ?? viewMode
                 setViewMode(nextMode)
               }}
-              className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
+              className="rounded-full bg-surface-sunken px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-hover-strong"
             >
               {VIEW_LABELS[viewMode]}
             </button>
@@ -286,9 +286,9 @@ export function Calendar({
             const hasData = (mark?.total ?? 0) > 0
             const isComplete = hasData && mark?.done === mark?.total
             const indicator = isComplete
-              ? 'bg-emerald-400'
+              ? 'bg-accent'
               : hasData
-              ? 'bg-yellow-300'
+              ? 'bg-[var(--color-warning)]'
               : ''
 
             return (
@@ -298,11 +298,11 @@ export function Calendar({
                   onSelectDate(date)
                   onMonthChange(date)
                 }}
-                className={`flex flex-col items-center justify-center rounded-xl border border-gray-100 px-3 py-3 text-sm font-medium transition-all ${
-                  isSelected ? 'ring-2 ring-emerald-500 ring-offset-2' : 'hover:bg-gray-50'
+                className={`flex flex-col items-center justify-center rounded-xl border border-border-subtle px-3 py-3 text-sm font-medium transition-all ${
+                  isSelected ? 'ring-2 ring-accent ring-offset-2' : 'hover:bg-hover'
                 }`}
               >
-                <span className="text-gray-700">{index + 1}월</span>
+                <span className="text-text-secondary">{index + 1}월</span>
                 {showIndicators && indicator && (
                   <span className={`mt-2 h-2 w-2 rounded-full ${indicator}`} />
                 )}
@@ -318,7 +318,7 @@ export function Calendar({
               <div
                 key={day}
                 className={`text-center text-xs font-medium ${
-                  i === 5 ? 'text-blue-500' : i === 6 ? 'text-red-500' : 'text-gray-400'
+                  i === 5 ? 'text-cal-saturday' : i === 6 ? 'text-cal-sunday' : 'text-text-tertiary'
                 }`}
               >
                 {day}
@@ -346,23 +346,23 @@ export function Calendar({
               if (mark && mark.total > 0) {
                 if (mark.done === mark.total) {
                   // 완료: 초록색
-                  bgColor = 'bg-emerald-100'
+                  bgColor = 'bg-accent-muted'
                 } else {
                   // 미완료 (부분 완료 포함): 노란색
-                  bgColor = 'bg-yellow-50'
+                  bgColor = 'bg-state-warning-subtle'
                 }
               }
 
               // 텍스트 색상 결정
               let textColor = ''
               if (isSelected) {
-                textColor = 'text-gray-900 font-semibold'
+                textColor = 'text-text-primary font-semibold'
               } else if (isSaturday) {
-                textColor = 'text-blue-500'
+                textColor = 'text-cal-saturday'
               } else if (isSunday) {
-                textColor = 'text-red-500'
+                textColor = 'text-cal-sunday'
               } else {
-                textColor = 'text-gray-700'
+                textColor = 'text-text-secondary'
               }
 
               return (
@@ -370,12 +370,12 @@ export function Calendar({
                   key={dateKey}
                   onClick={() => onSelectDate(date)}
                   className={`relative flex aspect-square flex-col items-center justify-center rounded-xl text-sm transition-colors ${bgColor} ${textColor} ${
-                    isSelected ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-gray-200'
+                    isSelected ? 'ring-2 ring-accent' : 'hover:ring-2 hover:ring-border-default'
                   }`}
                 >
                   {/* 오늘 표시 */}
                   {isTodayDate && (
-                    <span className="absolute top-0.5 text-[9px] font-semibold text-emerald-600">
+                    <span className="absolute top-0.5 text-[11px] font-semibold text-accent">
                       오늘
                     </span>
                   )}
@@ -383,10 +383,10 @@ export function Calendar({
                   {/* 진행도 표시: 남은 개수 또는 완료 체크 */}
                   {showIndicators && mark && mark.total > 0 && (
                     <span
-                      className={`mt-0.5 text-[10px] font-medium leading-none ${
+                      className={`mt-0.5 text-[11px] font-medium leading-none ${
                         mark.done === mark.total
-                          ? 'text-emerald-600'
-                          : 'text-gray-500'
+                          ? 'text-accent'
+                          : 'text-text-secondary'
                       }`}
                     >
                       {mark.done === mark.total ? '✓' : mark.total - mark.done}

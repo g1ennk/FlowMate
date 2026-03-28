@@ -246,7 +246,7 @@ function TodosPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="animate-fade-in-up space-y-5">
       <Calendar
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
@@ -256,14 +256,14 @@ function TodosPage() {
         onViewModeChange={handleCalendarViewModeChange}
       />
 
-      <div className="rounded-2xl bg-white p-4 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="rounded-2xl bg-surface-card p-4 shadow-sm">
+        <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-text-primary">
               {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
             </h2>
             {blockFocusStats.totalAll > 0 && (
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+              <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-xs font-semibold text-accent-text">
                 총 Flow · {formatTimerHoursMinutes(blockFocusStats.totalAll)}
               </span>
             )}
@@ -279,7 +279,7 @@ function TodosPage() {
               daySections.forEach((sectionItem) => { next[sectionItem.id] = true })
               setOpenSections(next)
             }}
-            className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-600"
+            className="flex items-center gap-1 text-xs font-medium text-text-tertiary hover:text-text-secondary"
           >
             <span>{isAllOpen ? '모두 접기' : '모두 펼침'}</span>
             <ChevronRightIcon
@@ -288,7 +288,7 @@ function TodosPage() {
           </button>
         </div>
 
-        {isLoading && <div className="py-8 text-center text-sm text-gray-400">불러오는 중...</div>}
+        {isLoading && <div className="py-8 text-center text-sm text-text-tertiary">불러오는 중...</div>}
 
         {!isLoading && (
           <DndContext
@@ -299,7 +299,7 @@ function TodosPage() {
             onDragCancel={dnd.handleDragCancel}
             onDragEnd={dnd.handleDragEnd}
           >
-            <div className="space-y-6">
+            <div className="space-y-2">
               {daySections.map((section, index) => {
                 const containerId = getContainerId(section.id)
                 const sectionTodos = dnd.getTodosForContainer(containerId)
@@ -331,9 +331,9 @@ function TodosPage() {
                 return (
                   <section
                     key={section.id}
-                    className={`${index === 0 ? '' : 'border-t border-gray-100 pt-5'} space-y-2`}
+                    className={`${index === 0 ? '' : 'border-t border-border-subtle pt-4'} space-y-1.5`}
                   >
-                    <ActiveSectionDrop id={containerId} className="space-y-2 pb-3">
+                    <ActiveSectionDrop id={containerId} className="space-y-1.5 pb-2">
                       {() => (
                         <>
                           <div className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-2 rounded-xl px-2 py-1">
@@ -346,7 +346,7 @@ function TodosPage() {
                               }
                               aria-label={`${section.title} 섹션 ${isSectionOpen ? '접기' : '펼치기'}`}
                               aria-expanded={isSectionOpen}
-                              className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+                              className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-text-tertiary hover:bg-hover-strong"
                             >
                               <ChevronRightIcon
                                 className={`h-3 w-3 transition-transform ${isSectionOpen ? 'rotate-90' : ''}`}
@@ -354,14 +354,14 @@ function TodosPage() {
                             </button>
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="text-sm font-semibold text-gray-900">{section.title}</h3>
+                                <h3 className="text-sm font-semibold text-text-primary">{section.title}</h3>
                                 {totalCount > 0 && (
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-text-tertiary">
                                     남음 {activeTodos.length} · 완료 {doneTodos.length}
                                   </span>
                                 )}
                                 {isCurrentTimeSection && (
-                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                  <span className="rounded-full bg-accent-muted px-2 py-0.5 text-[11px] font-semibold text-accent-text">
                                     현재 시간대
                                   </span>
                                 )}
@@ -370,7 +370,7 @@ function TodosPage() {
                                 <div className="mt-0.5 flex min-h-[18px] flex-wrap items-center gap-2">
                                   {hasRangeMeta && (
                                     <span
-                                      className={`text-xs text-gray-400 ${
+                                      className={`text-xs text-text-tertiary ${
                                         showRangeOnMobile ? 'inline-flex' : 'hidden sm:inline-flex'
                                       }`}
                                     >
@@ -379,7 +379,7 @@ function TodosPage() {
                                   )}
                                   {hasFlowMeta && (
                                     <span
-                                      className={`rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ${
+                                      className={`rounded-full bg-accent-subtle px-2 py-0.5 text-xs font-semibold text-accent-text ${
                                         showFlowOnMobile ? 'inline-flex' : 'hidden sm:inline-flex'
                                       }`}
                                     >
@@ -395,15 +395,15 @@ function TodosPage() {
                                 setInputDay((current) => (current === section.id ? null : section.id))
                               }}
                               aria-label={`${section.title} 할 일 추가`}
-                              className="mt-0.5 inline-flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-emerald-700 transition-colors hover:bg-gray-100"
+                              className="mt-0.5 inline-flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-accent-text transition-colors hover:bg-hover-strong"
                             >
-                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
+                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-text-inverse">
                                 <PlusIcon className="h-2.5 w-2.5" />
                               </span>
                             </button>
                           </div>
                           {isSectionOpen && (
-                            <div className="min-h-[44px] space-y-1 rounded-lg py-1">
+                            <div className="min-h-[44px] space-y-0.5 rounded-lg py-0.5">
                               {!shouldShowInput && isEmptySection && shouldShowPriorityGuide && (
                                 <SectionGuideCard
                                   content={getSectionGuideContent({
@@ -519,8 +519,8 @@ function TodosPage() {
           className="fixed left-0 right-0 z-[10000] flex justify-center px-6 pointer-events-none"
           style={{ bottom: 'calc(80px + var(--safe-bottom))' }}
         >
-          <div className="animate-fade-in rounded-2xl bg-gray-900 px-6 py-4 shadow-2xl pointer-events-auto">
-            <p className="text-sm text-white font-medium">
+          <div className="animate-fade-in rounded-2xl bg-text-primary px-6 py-4 shadow-2xl pointer-events-auto">
+            <p className="text-sm text-text-inverse font-medium">
               {actions.timerErrorMessage}
             </p>
           </div>

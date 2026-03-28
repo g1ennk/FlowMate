@@ -106,14 +106,14 @@ export function ReviewPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center text-sm text-gray-400">
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-text-tertiary">
         회고를 불러오는 중...
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="animate-fade-in-up space-y-5">
       <PeriodTabs value={period} onChange={handlePeriodChange} />
 
       <PeriodNavigator
@@ -134,12 +134,14 @@ export function ReviewPage() {
         onNext={handleNext}
       />
 
-      <StatsSummary
-        totalFocusSeconds={stats.totalFocusSeconds}
-        totalFlows={stats.totalFlows}
-        completedCount={stats.completedCount}
-        comparison={stats.comparison}
-      />
+      <div className="mt-6">
+        <StatsSummary
+          totalFocusSeconds={stats.totalFocusSeconds}
+          totalFlows={stats.totalFlows}
+          completedCount={stats.completedCount}
+          comparison={stats.comparison}
+        />
+      </div>
 
       {period === 'daily' && (
         <DailyTaskList

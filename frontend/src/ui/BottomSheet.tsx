@@ -125,8 +125,8 @@ export function BottomSheet({
     >
       {/* 배경 */}
       <div
-        className={`absolute inset-0 bg-black/40 transition-opacity duration-300 ${
-          isOpen ? 'opacity-100' : 'opacity-0'
+        className={`absolute inset-0 bg-surface-overlay transition-opacity duration-300 ${
+          isOpen ? 'opacity-100 animate-overlay-in' : 'opacity-0'
         }`}
         onClick={onClose}
       />
@@ -135,9 +135,9 @@ export function BottomSheet({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
         <div className="w-full sm:max-w-lg sm:px-5">
           <div
-            className={`pointer-events-auto flex w-full max-h-[85dvh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl ${
+            className={`pointer-events-auto flex w-full max-h-[85dvh] flex-col overflow-hidden rounded-t-3xl bg-surface-card shadow-xl ${
               shouldDisableSheetTransition ? 'transition-none' : 'transition-transform duration-300 ease-out'
-            } ${panelClassName}`}
+            } ${isOpen ? 'animate-slide-up' : ''} ${panelClassName}`}
             style={{
               transform: isOpen ? `translateY(${dragOffsetY}px)` : 'translateY(100%)',
             }}
@@ -164,7 +164,7 @@ export function BottomSheet({
                 onPointerUp={(e) => finishDrag(e)}
                 onPointerCancel={(e) => finishDrag(e, true)}
               >
-                <div className="h-1 w-10 rounded-full bg-gray-300" />
+                <div className="h-1 w-10 rounded-full bg-border-strong" />
               </div>
             )}
 
@@ -172,10 +172,10 @@ export function BottomSheet({
             {title && (
               <div
                 className={`relative px-5 pb-3 ${
-                  showHeaderDivider ? 'border-b border-gray-100' : ''
+                  showHeaderDivider ? 'border-b border-border-subtle' : ''
                 }`}
               >
-                <h3 className={`text-center text-base font-semibold text-gray-900 truncate ${titleClassName}`}>{title}</h3>
+                <h3 className={`text-center text-base font-semibold text-text-primary truncate ${titleClassName}`}>{title}</h3>
                 {headerAction && (
                   <div className={`absolute top-1/2 -translate-y-1/2 ${showCloseButton ? 'right-12' : 'right-4'}`}>
                     {headerAction}
@@ -186,7 +186,7 @@ export function BottomSheet({
                     type="button"
                     aria-label={closeButtonAriaLabel}
                     onClick={onClose}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 transition-colors hover:text-gray-600"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-text-tertiary transition-colors hover:text-text-secondary"
                   >
                     <CloseIcon className="h-4 w-4" />
                   </button>
@@ -239,8 +239,8 @@ export function BottomSheetItem({
         disabled
           ? 'cursor-not-allowed opacity-40'
           : variant === 'danger'
-            ? 'text-red-500 hover:bg-red-50'
-            : 'text-gray-700 hover:bg-gray-50'
+            ? 'text-state-error hover:bg-state-error-subtle'
+            : 'text-text-secondary hover:bg-hover'
       } ${className}`}
     >
       {icon && <span className="flex h-6 w-6 items-center justify-center">{icon}</span>}
@@ -278,11 +278,11 @@ export function BottomSheetActionButton({
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-center justify-center gap-1.5 rounded-xl py-4 bg-gray-50 text-gray-900 transition-colors hover:bg-gray-100"
+      className="flex flex-col items-center justify-center gap-1.5 rounded-xl py-4 bg-surface-base text-text-primary transition-colors hover:bg-hover-strong"
     >
       {icon && (
         <span className={`flex h-6 w-6 items-center justify-center ${
-          variant === 'danger' ? 'text-red-500' : 'text-blue-500'
+          variant === 'danger' ? 'text-state-error' : 'text-blue-500'
         }`}>
           {icon}
         </span>

@@ -21,10 +21,10 @@ export function DailyTaskList({
     .filter((group) => group.items.length > 0)
 
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm">
+    <section className="rounded-2xl bg-surface-card p-4 shadow-sm">
       <div className="space-y-2 md:max-h-72 md:overflow-y-auto md:pr-1">
         {!hasTasks && (
-          <p className="text-sm text-gray-400">표시할 태스크가 없어요.</p>
+          <p className="text-sm text-text-tertiary">표시할 태스크가 없어요.</p>
         )}
 
         {miniDayGroups.map((group) => {
@@ -32,9 +32,9 @@ export function DailyTaskList({
           const incomplete = group.items.filter((item) => !item.isDone)
           return (
             <div key={group.id} className="space-y-1.5">
-              <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
                 <span>{group.label}</span>
-                <div className="h-px flex-1 bg-gray-100" />
+                <div className="h-px flex-1 bg-surface-sunken" />
               </div>
               {completed.map((item) => (
                 <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />

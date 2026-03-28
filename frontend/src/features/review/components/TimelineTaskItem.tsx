@@ -21,8 +21,8 @@ export function TimelineTaskItem({ item, dateLabel, onSelect }: TimelineTaskItem
       <div
         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
           isDone
-            ? 'border-emerald-500 bg-emerald-500 text-white'
-            : 'border-gray-300 bg-white'
+            ? 'border-accent bg-accent text-text-inverse'
+            : 'border-border-strong bg-surface-card'
         }`}
       >
         {isDone && <CheckIcon className="h-3 w-3" strokeWidth={3} />}
@@ -30,18 +30,18 @@ export function TimelineTaskItem({ item, dateLabel, onSelect }: TimelineTaskItem
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-baseline gap-2">
             {dateLabel && (
-              <span className="text-[11px] font-medium text-gray-400">
+              <span className="text-[11px] font-medium text-text-tertiary">
                 {dateLabel}
               </span>
             )}
             <ReviewTaskLabel
               task={item}
               wrapperClassName="min-w-0 inline-flex max-w-full flex-wrap items-center gap-2"
-              titleClassName="truncate text-sm text-gray-900"
+              titleClassName="truncate text-sm text-text-primary"
             />
           </div>
         </div>
-      <span className="text-[11px] text-gray-400">{timeLabel}</span>
+      <span className="text-[11px] text-text-tertiary">{timeLabel}</span>
     </button>
   )
 }

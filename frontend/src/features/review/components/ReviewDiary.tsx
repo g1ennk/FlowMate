@@ -30,17 +30,17 @@ export function ReviewDiary({
     <button
       type="button"
       onClick={onOpen}
-      className="w-full rounded-2xl bg-white p-4 text-left shadow-sm transition-colors hover:bg-gray-50"
+      className="w-full rounded-2xl bg-surface-card p-4 text-left shadow-sm transition-colors hover:bg-hover"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-          <p className="mt-1 text-xs text-gray-400">태스크 {totalTasks}개 기반으로 기록됩니다.</p>
+          <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+          <p className="mt-1 text-xs text-text-tertiary">태스크 {totalTasks}개 기반으로 기록됩니다.</p>
         </div>
-        <span className="text-xs font-semibold text-emerald-600">{content ? '열기' : '작성'}</span>
+        <span className="text-xs font-semibold text-accent">{content ? '열기' : '작성'}</span>
       </div>
 
-      <p className={`mt-3 line-clamp-2 ${userTextDisplayClass} text-gray-900`}>
+      <p className={`mt-3 line-clamp-2 ${userTextDisplayClass} text-text-primary`}>
         {isLoading ? '회고를 불러오는 중...' : content || '짧게라도 남겨두면 다음 회고가 훨씬 쉬워집니다.'}
       </p>
     </button>

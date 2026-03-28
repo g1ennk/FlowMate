@@ -9,12 +9,12 @@ type ReviewTaskLabelProps = {
 }
 
 const DEFAULT_BADGE_CLASS_NAME =
-  'inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium leading-none text-emerald-700'
+  'inline-flex shrink-0 items-center rounded-full border border-accent bg-accent-subtle px-2 py-0.5 text-[11px] font-medium leading-none text-accent-text'
 
 export function ReviewTaskLabel({
   task,
   wrapperClassName = 'inline-flex max-w-full flex-wrap items-center gap-2',
-  titleClassName = 'text-sm text-gray-900',
+  titleClassName = 'text-sm text-text-primary',
   badgeClassName = DEFAULT_BADGE_CLASS_NAME,
 }: ReviewTaskLabelProps) {
   const reviewBadgeLabel = getTodoReviewBadgeLabel(task.reviewRound, task.isDone)

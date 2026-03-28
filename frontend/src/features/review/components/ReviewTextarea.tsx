@@ -202,7 +202,7 @@ export function ReviewTextarea({
   return (
     <section
       ref={containerRef}
-      className={`rounded-2xl border border-gray-200 bg-white p-4 shadow-sm ${
+      className={`rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm ${
         isEditing ? '' : 'cursor-pointer'
       }`}
       onClick={!isEditing ? enterEdit : undefined}
@@ -220,14 +220,14 @@ export function ReviewTextarea({
       }
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
         {isEditing ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleDelete}
               disabled={isSaving}
-              className="rounded-full px-3 py-1 text-xs font-semibold text-rose-500 hover:bg-rose-50 disabled:opacity-60"
+              className="rounded-full px-3 py-1 text-xs font-semibold text-state-error hover:bg-state-error-subtle disabled:opacity-60"
             >
               삭제
             </button>
@@ -235,7 +235,7 @@ export function ReviewTextarea({
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+              className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-text-inverse disabled:opacity-60"
             >
               저장
             </button>
@@ -259,17 +259,17 @@ export function ReviewTextarea({
             }
           }}
           placeholder="무엇이 잘 됐는지, 다음엔 무엇을 바꿀지 적어보세요."
-          className={`mt-3 min-h-[140px] w-full resize-none rounded-xl border border-emerald-300 bg-white p-3 ${userTextInputClass} text-gray-700 outline-none placeholder:text-gray-400`}
+          className={`mt-3 min-h-[140px] w-full resize-none rounded-xl border border-accent bg-surface-card p-3 ${userTextInputClass} text-text-secondary outline-none placeholder:text-text-tertiary`}
         />
       ) : (
         <div className="mt-3 rounded-xl p-3 text-left">
-          <p className={`${userTextDisplayClass} text-gray-700`}>
+          <p className={`${userTextDisplayClass} text-text-secondary`}>
             {review.isLoading
               ? '회고를 불러오는 중...'
               : content || '회고를 작성해보세요.'}
           </p>
           {!review.isLoading && (
-            <p className="mt-2 text-xs text-gray-400">
+            <p className="mt-2 text-xs text-text-tertiary">
               탭해서 작성/수정할 수 있어요
             </p>
           )}

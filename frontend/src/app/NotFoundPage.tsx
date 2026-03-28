@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 function NotFoundPage() {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-sunken">
         <svg
-          className="h-8 w-8 text-gray-400"
+          className="h-8 w-8 text-text-tertiary"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -18,15 +18,15 @@ function NotFoundPage() {
           />
         </svg>
       </div>
-      <h1 className="mb-1 text-lg font-semibold text-gray-900">
+      <h1 className="mb-1 text-lg font-semibold text-text-primary">
         페이지를 찾을 수 없습니다
       </h1>
-      <p className="mb-6 text-sm text-gray-500">
+      <p className="mb-6 text-sm text-text-secondary">
         잘못된 경로이거나 이동된 페이지입니다.
       </p>
       <Link
         to="/todos"
-        className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600"
+        className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
       >
         Todo로 돌아가기
       </Link>

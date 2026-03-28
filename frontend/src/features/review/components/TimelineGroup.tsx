@@ -21,22 +21,22 @@ export function TimelineGroup({
   children,
 }: TimelineGroupProps) {
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm">
+    <div className="rounded-2xl bg-surface-card p-4 shadow-sm">
       <button
         type="button"
         onClick={onToggle}
         className="flex w-full items-center gap-2 text-left"
       >
         <ChevronRightIcon
-          className={`h-4 w-4 text-gray-400 transition-transform ${
+          className={`h-4 w-4 text-text-tertiary transition-transform ${
             isExpanded ? 'rotate-90' : ''
           }`}
         />
-        <span className="text-sm font-semibold text-gray-900">{label}</span>
-        <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+        <span className="text-sm font-semibold text-text-primary">{label}</span>
+        <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
           <span>{taskCount}개</span>
-          <span className="hidden text-gray-300 sm:inline">|</span>
-          <span className="text-emerald-600">완료 {completedCount}</span>
+          <span className="hidden text-text-disabled sm:inline">|</span>
+          <span className="text-accent">완료 {completedCount}</span>
           <span>미완료 {incompleteCount}</span>
         </div>
       </button>

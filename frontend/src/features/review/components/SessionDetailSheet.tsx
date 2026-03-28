@@ -63,63 +63,63 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
       showHeaderDivider={false}
       contentClassName="space-y-4"
     >
-      <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3">
+      <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-3">
         <ReviewTaskLabel
           task={task}
-          titleClassName="text-sm font-semibold text-gray-900"
+          titleClassName="text-sm font-semibold text-text-primary"
         />
-        <p className="mt-1 text-xs text-gray-400">{task.date}</p>
+        <p className="mt-1 text-xs text-text-tertiary">{task.date}</p>
         <div className="mt-3 grid grid-cols-3 gap-3">
           <div>
-            <p className="text-[11px] text-gray-400">총 집중</p>
+            <p className="text-[11px] text-text-tertiary">총 집중</p>
             {focusLabel && (
-              <p className="mt-1 text-base font-semibold text-gray-900">{focusLabel}</p>
+              <p className="mt-1 text-base font-semibold text-text-primary">{focusLabel}</p>
             )}
           </div>
           <div>
-            <p className="text-[11px] text-gray-400">Flow</p>
-            <p className="mt-1 text-base font-semibold text-emerald-600">{task.flowCount}회</p>
+            <p className="text-[11px] text-text-tertiary">Flow</p>
+            <p className="mt-1 text-base font-semibold text-accent">{task.flowCount}회</p>
           </div>
           <div>
-            <p className="text-[11px] text-gray-400">휴식</p>
-            <p className="mt-1 text-base font-semibold text-gray-900">
+            <p className="text-[11px] text-text-tertiary">휴식</p>
+            <p className="mt-1 text-base font-semibold text-text-primary">
               {totalBreakSeconds > 0 ? formatFocusTime(totalBreakSeconds) : '-'}
             </p>
           </div>
         </div>
         {insightLabel && (
-          <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+          <p className="mt-3 rounded-xl bg-accent-subtle px-3 py-2 text-xs font-medium text-accent-text">
             {insightLabel}
           </p>
         )}
       </div>
 
       <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-gray-900">세션 기록</h4>
+        <h4 className="text-sm font-semibold text-text-primary">세션 기록</h4>
         {isLoading ? (
-          <div className="rounded-xl border border-gray-100 px-3 py-4 text-center text-xs text-gray-400">
+          <div className="rounded-xl border border-border-subtle px-3 py-4 text-center text-xs text-text-tertiary">
             세션 기록 불러오는 중...
           </div>
         ) : isError ? (
-          <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-4 text-center text-xs text-red-500">
+          <div className="rounded-xl border border-border-subtle bg-state-error-subtle px-3 py-4 text-center text-xs text-state-error">
             세션 목록을 불러오지 못했습니다.
           </div>
         ) : sessions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center text-xs text-gray-400">
+          <div className="rounded-xl border border-dashed border-border-default px-3 py-4 text-center text-xs text-text-tertiary">
             기록된 세션이 없어요.
           </div>
         ) : (
-          <div className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+          <div className="divide-y divide-border-subtle rounded-xl border border-border-subtle">
             {sessions.map((session, index) => (
               <div
                 key={`${task.id}-session-${session.id}`}
                 className="flex items-center justify-between px-3 py-2"
               >
                 <div className="space-y-0.5">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-text-primary">
                     Flow {session.sessionOrder ?? index + 1}
                   </p>
-                  <p className="text-[11px] text-gray-400">
+                  <p className="text-[11px] text-text-tertiary">
                     {[
                       formatSessionTime(session.createdAt)
                         ? `${formatSessionTime(session.createdAt)} 시작`
@@ -133,7 +133,7 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
                   </p>
                 </div>
                 {session.sessionFocusSeconds >= 60 && (
-                  <span className="text-sm font-semibold text-emerald-600">
+                  <span className="text-sm font-semibold text-accent">
                     {formatFocusTime(session.sessionFocusSeconds)}
                   </span>
                 )}

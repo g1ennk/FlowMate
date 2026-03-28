@@ -1,11 +1,185 @@
 @import "tailwindcss";
 
+/* ── Color Token System ─────────────────────────────── */
+
 :root {
   --safe-top: env(safe-area-inset-top);
   --safe-right: env(safe-area-inset-right);
   --safe-bottom: env(safe-area-inset-bottom);
   --safe-left: env(safe-area-inset-left);
   --bottom-nav-height: 64px;
+
+  /* Surfaces */
+  --color-surface-base: #fafafa;
+  --color-surface-card: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-sunken: #f3f4f6;
+  --color-surface-overlay: rgba(0, 0, 0, 0.4);
+
+  /* Text */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary: #9ca3af;
+  --color-text-inverse: #ffffff;
+  --color-text-disabled: #d1d5db;
+
+  /* Brand / Accent */
+  --color-accent: #10b981;
+  --color-accent-hover: #059669;
+  --color-accent-subtle: #ecfdf5;
+  --color-accent-muted: #d1fae5;
+  --color-accent-text: #047857;
+
+  /* Borders */
+  --color-border-default: #e5e7eb;
+  --color-border-subtle: #f3f4f6;
+  --color-border-strong: #d1d5db;
+
+  /* States */
+  --color-error: #ef4444;
+  --color-error-subtle: #fef2f2;
+  --color-error-text: #b91c1c;
+  --color-warning: #f59e0b;
+  --color-warning-subtle: #fefce8;
+  --color-success: #10b981;
+  --color-success-subtle: #ecfdf5;
+
+  /* Hover */
+  --color-hover: #f9fafb;
+  --color-hover-strong: #f3f4f6;
+
+  /* Timer — 항상 다크 컨텍스트 */
+  --color-timer-focus-bg: #1e1e1e;
+  --color-timer-focus-text: #ececec;
+  --color-timer-break-bg: #1a2e2a;
+  --color-timer-break-text: #d1fae5;
+  --color-timer-btn: rgba(255, 255, 255, 0.12);
+  --color-timer-btn-hover: rgba(255, 255, 255, 0.2);
+  --color-timer-btn-text: #ececec;
+  --color-timer-modal-bg: #2b2b2b;
+  --color-timer-modal-text: #ececec;
+  --color-timer-modal-secondary: #a0a0a0;
+  --color-timer-modal-subtle: #363636;
+
+  /* Scrollbar */
+  --color-scrollbar: #d1d5db;
+  --color-scrollbar-hover: #9ca3af;
+
+  /* Selection */
+  --color-selection-bg: #d1fae5;
+  --color-selection-text: #111827;
+
+  /* Nav */
+  --color-nav-active: #059669;
+  --color-nav-inactive: #9ca3af;
+
+  /* Calendar */
+  --color-cal-sunday: #ef4444;
+  --color-cal-saturday: #3b82f6;
+}
+
+.dark {
+  --color-surface-base: #1e1e1e;
+  --color-surface-card: #2b2b2b;
+  --color-surface-elevated: #363636;
+  --color-surface-sunken: #171717;
+  --color-surface-overlay: rgba(0, 0, 0, 0.6);
+
+  --color-text-primary: #ececec;
+  --color-text-secondary: #a0a0a0;
+  --color-text-tertiary: #6b6b6b;
+  --color-text-inverse: #1e1e1e;
+  --color-text-disabled: #4a4a4a;
+
+  --color-accent: #34d399;
+  --color-accent-hover: #6ee7b7;
+  --color-accent-subtle: rgba(52, 211, 153, 0.1);
+  --color-accent-muted: rgba(52, 211, 153, 0.2);
+  --color-accent-text: #6ee7b7;
+
+  --color-border-default: #3a3a3a;
+  --color-border-subtle: #2b2b2b;
+  --color-border-strong: #505050;
+
+  --color-error: #f87171;
+  --color-error-subtle: rgba(248, 113, 113, 0.1);
+  --color-error-text: #fca5a5;
+  --color-warning: #fbbf24;
+  --color-warning-subtle: rgba(251, 191, 36, 0.1);
+  --color-success: #34d399;
+  --color-success-subtle: rgba(52, 211, 153, 0.1);
+
+  --color-hover: #323232;
+  --color-hover-strong: #3a3a3a;
+
+  /* Timer 토큰은 :root과 동일 (항상 다크 컨텍스트) — 재선언 불필요 */
+
+  --color-scrollbar: #505050;
+  --color-scrollbar-hover: #6b6b6b;
+
+  --color-selection-bg: rgba(52, 211, 153, 0.3);
+  --color-selection-text: #ececec;
+
+  --color-nav-active: #34d399;
+  --color-nav-inactive: #6b6b6b;
+
+  --color-cal-sunday: #f87171;
+  --color-cal-saturday: #60a5fa;
+}
+
+/* ── Tailwind Theme Tokens ──────────────────────────── */
+
+@theme inline {
+  --color-surface-base: var(--color-surface-base);
+  --color-surface-card: var(--color-surface-card);
+  --color-surface-elevated: var(--color-surface-elevated);
+  --color-surface-sunken: var(--color-surface-sunken);
+  --color-surface-overlay: var(--color-surface-overlay);
+
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-text-inverse: var(--color-text-inverse);
+  --color-text-disabled: var(--color-text-disabled);
+
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-subtle: var(--color-accent-subtle);
+  --color-accent-muted: var(--color-accent-muted);
+  --color-accent-text: var(--color-accent-text);
+
+  --color-border-default: var(--color-border-default);
+  --color-border-subtle: var(--color-border-subtle);
+  --color-border-strong: var(--color-border-strong);
+
+  --color-state-error: var(--color-error);
+  --color-state-error-subtle: var(--color-error-subtle);
+  --color-state-error-text: var(--color-error-text);
+  --color-state-warning: var(--color-warning);
+  --color-state-warning-subtle: var(--color-warning-subtle);
+  --color-state-success: var(--color-success);
+  --color-state-success-subtle: var(--color-success-subtle);
+
+  --color-hover: var(--color-hover);
+  --color-hover-strong: var(--color-hover-strong);
+
+  --color-timer-focus-bg: var(--color-timer-focus-bg);
+  --color-timer-focus-text: var(--color-timer-focus-text);
+  --color-timer-break-bg: var(--color-timer-break-bg);
+  --color-timer-break-text: var(--color-timer-break-text);
+  --color-timer-btn: var(--color-timer-btn);
+  --color-timer-btn-hover: var(--color-timer-btn-hover);
+  --color-timer-btn-text: var(--color-timer-btn-text);
+  --color-timer-modal-bg: var(--color-timer-modal-bg);
+  --color-timer-modal-text: var(--color-timer-modal-text);
+  --color-timer-modal-secondary: var(--color-timer-modal-secondary);
+  --color-timer-modal-subtle: var(--color-timer-modal-subtle);
+
+  --color-nav-active: var(--color-nav-active);
+  --color-nav-inactive: var(--color-nav-inactive);
+
+  --color-cal-sunday: var(--color-cal-sunday);
+  --color-cal-saturday: var(--color-cal-saturday);
 }
 
 *,
@@ -25,9 +199,10 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100dvh;
-  background: #fafafa;
-  color: #1a1a1a;
+  background: var(--color-surface-base);
+  color: var(--color-text-primary);
   line-height: 1.5;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 #root {
@@ -42,8 +217,8 @@ a {
 }
 
 ::selection {
-  background: #d1fae5;
-  color: #1a1a1a;
+  background: var(--color-selection-bg);
+  color: var(--color-selection-text);
 }
 
 input[type="number"]::-webkit-inner-spin-button,
@@ -56,24 +231,66 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* ── Animations ─────────────────────────────────────── */
+
 @keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes check-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
 
+.animate-fade-in-up {
+  animation: fade-in-up 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+.animate-check-pop {
+  animation: check-pop 0.25s ease-out;
+}
+
+.animate-overlay-in {
+  animation: overlay-in 0.15s ease-out;
+}
+
 .bottom-sheet-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db transparent;
+  scrollbar-color: var(--color-scrollbar) transparent;
   scrollbar-gutter: stable;
 }
 
@@ -86,12 +303,12 @@ input[type="number"] {
 }
 
 .bottom-sheet-scroll::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--color-scrollbar);
   border-radius: 9999px;
 }
 
 .bottom-sheet-scroll::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--color-scrollbar-hover);
 }
 
 /* Prevent iOS Safari auto-zoom on input focus (font-size must be >= 16px). */

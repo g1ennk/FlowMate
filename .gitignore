@@ -20,3 +20,7 @@ frontend/.vite/
 
 # Git worktrees
 .worktrees/
+
+# Claude Code skills lock
+skills-lock.json
+.impeccable.md

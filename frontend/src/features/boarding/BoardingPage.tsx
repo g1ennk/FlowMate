@@ -61,30 +61,30 @@ function BoardingIllustration({ slide }: { slide: Slide }) {
   const MainIcon = slide.main
   const accentClass =
     slide.tone === 'todo'
-      ? 'bg-emerald-500 shadow-emerald-200'
+      ? 'bg-accent shadow-emerald-200'
       : slide.tone === 'timer'
-        ? 'bg-emerald-600 shadow-emerald-200'
-        : 'bg-emerald-500 shadow-emerald-100'
+        ? 'bg-accent-hover shadow-emerald-200'
+        : 'bg-accent shadow-emerald-100'
   const badgeTone =
     slide.tone === 'review'
-      ? 'bg-emerald-100 text-emerald-700'
-      : 'bg-emerald-50 text-emerald-600'
+      ? 'bg-accent-muted text-accent-text'
+      : 'bg-accent-subtle text-accent'
 
   return (
     <div className="relative flex w-full items-center justify-center">
-      <div className="pointer-events-none absolute -top-10 right-6 h-24 w-24 rounded-full bg-emerald-100/70 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-6 left-8 h-20 w-20 rounded-full bg-emerald-50/80 blur-3xl" />
+      <div className="pointer-events-none absolute -top-10 right-6 h-24 w-24 rounded-full bg-accent-muted/70 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-6 left-8 h-20 w-20 rounded-full bg-accent-subtle/80 blur-3xl" />
 
-      <div className="relative h-[286px] w-[194px] rounded-[2.5rem] border border-emerald-100 bg-white shadow-[0_24px_60px_-40px_rgba(16,185,129,0.55)]">
-        <div className="absolute left-1/2 top-3 h-1.5 w-12 -translate-x-1/2 rounded-full bg-gray-200" />
-        <div className="absolute inset-4 rounded-[1.8rem] bg-gradient-to-b from-emerald-50 via-white to-white p-4">
-          <div className="flex items-center justify-between text-[10px] font-semibold text-gray-400">
+      <div className="relative h-[286px] w-[194px] rounded-3xl border border-accent bg-surface-card shadow-[0_24px_60px_-40px_rgba(16,185,129,0.55)]">
+        <div className="absolute left-1/2 top-3 h-1.5 w-12 -translate-x-1/2 rounded-full bg-border-default" />
+        <div className="absolute inset-4 rounded-[1.8rem] bg-gradient-to-b from-accent-subtle via-surface-card to-surface-card p-4">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-text-tertiary">
             <span>Flow</span>
             <span>Mate</span>
           </div>
 
           <div className="mt-6 flex items-center justify-center">
-            <div className={`flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-lg ${accentClass}`}>
+            <div className={`flex h-16 w-16 items-center justify-center rounded-2xl text-text-inverse shadow-lg ${accentClass}`}>
               <MainIcon className="h-8 w-8" strokeWidth={1.8} />
             </div>
           </div>
@@ -93,14 +93,14 @@ function BoardingIllustration({ slide }: { slide: Slide }) {
             {slide.chips.map((chip) => (
               <span
                 key={chip}
-                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${badgeTone}`}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${badgeTone}`}
               >
                 {chip}
               </span>
             ))}
           </div>
 
-          <div className="mt-5 rounded-2xl border border-emerald-100/70 bg-white/85 px-3 py-2 text-center text-[10px] font-medium leading-4 text-gray-600 shadow-sm break-keep [text-wrap:balance]">
+          <div className="mt-5 rounded-2xl border border-accent/70 bg-surface-card/85 px-3 py-2 text-center text-[11px] font-medium leading-4 text-text-secondary shadow-sm break-keep [text-wrap:balance]">
             <span className="inline-block max-w-[12.5ch]">{slide.caption}</span>
           </div>
         </div>
@@ -136,23 +136,23 @@ function BoardingPage() {
   }
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-white">
-      <div className="pointer-events-none absolute -top-40 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-emerald-100/60 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 right-0 h-64 w-64 rounded-full bg-emerald-50/80 blur-3xl" />
+    <div className="relative min-h-dvh overflow-hidden bg-surface-card">
+      <div className="pointer-events-none absolute -top-40 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-accent-muted/60 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 right-0 h-64 w-64 rounded-full bg-accent-subtle/80 blur-3xl" />
 
       <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 py-10">
         <header className="flex items-center justify-between gap-3">
-          <div className="text-lg font-semibold tracking-tight text-gray-900">
-            <span className="text-emerald-500">Flow</span>Mate
+          <div className="text-lg font-semibold tracking-tight text-text-primary">
+            <span className="text-accent">Flow</span>Mate
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-semibold text-emerald-600 sm:block">
+            <div className="hidden rounded-full bg-accent-subtle px-3 py-1 text-[11px] font-semibold text-accent sm:block">
               계획 · 실행 · 회고
             </div>
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-full px-2.5 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+              className="rounded-full px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-hover-strong hover:text-text-secondary"
             >
               건너뛰기
             </button>
@@ -165,25 +165,25 @@ function BoardingPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <div className="flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-600">
+                <div className="flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
                   <span>{slide.eyebrow}</span>
-                  <span className="text-gray-300">•</span>
-                  <span className="text-gray-400">{step + 1}/{slides.length}</span>
+                  <span className="text-text-disabled">•</span>
+                  <span className="text-text-tertiary">{step + 1}/{slides.length}</span>
                 </div>
               </div>
-              <h1 className="break-keep text-2xl font-semibold tracking-tight text-gray-900 sm:text-[1.75rem]">
+              <h1 className="break-keep text-2xl font-bold tracking-tight text-text-primary sm:text-[1.75rem]">
                 {slide.title}
               </h1>
-              <p className="mx-auto max-w-md break-keep text-sm leading-6 text-gray-500">
+              <p className="mx-auto max-w-md break-keep text-sm leading-6 text-text-secondary">
                 {slide.description}
               </p>
               <ul className="mx-auto max-w-sm space-y-1.5 text-left">
                 {slide.bullets.map((bullet) => (
                   <li
                     key={bullet}
-                    className="grid grid-cols-[8px_1fr] items-start gap-x-2 break-keep text-[13px] leading-5 text-gray-600"
+                    className="grid grid-cols-[8px_1fr] items-start gap-x-2 break-keep text-[13px] leading-5 text-text-secondary"
                   >
-                    <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-accent" />
                     <span>{bullet}</span>
                   </li>
                 ))}
@@ -201,8 +201,8 @@ function BoardingPage() {
               aria-label="이전"
               className={`flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
                 step === 0
-                  ? 'text-gray-300'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                  ? 'text-text-disabled'
+                  : 'text-text-secondary hover:bg-hover-strong hover:text-text-primary'
               }`}
             >
               <ChevronLeftIcon className="h-5 w-5" strokeWidth={2} />
@@ -214,7 +214,7 @@ function BoardingPage() {
                 <span
                   key={String(index)}
                   className={`h-2 w-2 rounded-full transition-colors ${
-                    index === step ? 'bg-emerald-500' : 'bg-gray-200'
+                    index === step ? 'bg-accent' : 'bg-border-default'
                   }`}
                 />
               ))}
@@ -224,7 +224,7 @@ function BoardingPage() {
               type="button"
               onClick={handleNext}
               aria-label={step === slides.length - 1 ? '시작하기' : '다음'}
-              className="flex items-center gap-1 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+              className="flex items-center gap-1 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-accent-hover"
             >
               <span>{step === slides.length - 1 ? '시작하기' : '다음'}</span>
               <ChevronRightIcon className="h-5 w-5" strokeWidth={2} />

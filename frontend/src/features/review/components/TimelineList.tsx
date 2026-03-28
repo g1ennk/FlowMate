@@ -101,16 +101,16 @@ export function TimelineList({
             onToggle={() => toggleGroup(group.key)}
           >
             {!hasCompleted && !hasIncomplete && (
-              <p className="text-sm text-gray-400">태스크가 없어요.</p>
+              <p className="text-sm text-text-tertiary">태스크가 없어요.</p>
             )}
 
             {showMonthly && (hasCompleted || hasIncomplete) && (
               <div className="space-y-1.5">
                 {dateGroups.map((dateGroup) => (
                   <div key={dateGroup.dateKey} className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
                       <span>{formatMonthDayLabel(dateGroup.dateKey)}</span>
-                      <div className="h-px flex-1 bg-gray-100" />
+                      <div className="h-px flex-1 bg-surface-sunken" />
                     </div>
                     {buildMiniDaySections(
                       dateGroup.completed,
@@ -118,9 +118,9 @@ export function TimelineList({
                       miniDayLabels,
                     ).map((miniDayGroup) => (
                       <div key={miniDayGroup.id} className="space-y-1.5">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
                           <span>{miniDayGroup.label}</span>
-                          <div className="h-px flex-1 bg-gray-100" />
+                          <div className="h-px flex-1 bg-surface-sunken" />
                         </div>
                         {miniDayGroup.completed.map((item) => (
                           <TimelineTaskItem
@@ -151,9 +151,9 @@ export function TimelineList({
                   miniDayLabels,
                 ).map((miniDayGroup) => (
                   <div key={miniDayGroup.id} className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-400">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-text-tertiary">
                       <span>{miniDayGroup.label}</span>
-                      <div className="h-px flex-1 bg-gray-100" />
+                      <div className="h-px flex-1 bg-surface-sunken" />
                     </div>
                     {miniDayGroup.completed.map((item) => (
                       <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />

@@ -105,7 +105,7 @@ export function TodoItem({
       <div className="rounded-xl p-2">
         <div className="flex items-start gap-3 rounded-lg px-2 py-1 -mx-2 -my-1">
           {/* 체크박스 (비활성) */}
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-transparent opacity-50 mt-0.5" />
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border-strong bg-transparent opacity-50 mt-0.5" />
 
           {/* 입력 필드 */}
           <textarea
@@ -125,12 +125,12 @@ export function TodoItem({
               if (e.key === 'Escape') onCancelEdit()
             }}
             onBlur={onSaveEdit}
-            className={`flex-1 bg-transparent ${userTextInputClass} text-gray-900 outline-none resize-none overflow-hidden min-h-[20px]`}
+            className={`flex-1 bg-transparent ${userTextInputClass} text-text-primary outline-none resize-none overflow-hidden min-h-[20px]`}
             rows={1}
           />
 
           {/* 더보기 버튼 (비활성) */}
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-300 opacity-50">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-disabled opacity-50">
             <MoreVerticalIcon className="h-4 w-4" />
           </div>
         </div>
@@ -142,7 +142,7 @@ export function TodoItem({
   return (
     <div className="rounded-xl p-2">
       <div
-        className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-gray-50"
+        className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-hover"
       >
         {/* 체크박스 */}
         <button
@@ -150,11 +150,11 @@ export function TodoItem({
           aria-label={`${title}${reviewBadgeLabel ? ` ${reviewBadgeLabel}` : ''} ${isDone ? '완료 취소' : '완료'}`}
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
             isDone
-              ? 'border-emerald-500 bg-emerald-500 text-white'
-              : 'border-gray-300 bg-transparent hover:border-emerald-500'
+              ? 'border-accent bg-accent text-text-inverse'
+              : 'border-border-strong bg-transparent hover:border-accent'
           }`}
         >
-          {isDone && <CheckIcon className="h-3 w-3" strokeWidth={3} />}
+          {isDone && <CheckIcon className="h-3 w-3 animate-check-pop" strokeWidth={3} />}
         </button>
 
         {/* 내용 */}
@@ -166,13 +166,13 @@ export function TodoItem({
           >
             <span
               className={`${userTextDisplayClass} ${
-                isDone ? 'text-gray-400 line-through' : 'text-gray-900'
+                isDone ? 'text-text-tertiary line-through' : 'text-text-primary'
               }`}
             >
               {title}
             </span>
             {reviewBadgeLabel && (
-              <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium leading-none text-emerald-700">
+              <span className="inline-flex shrink-0 items-center rounded-full border border-accent bg-accent-subtle px-2 py-0.5 text-[11px] font-semibold leading-none text-accent-text">
                 {reviewBadgeLabel}
               </span>
             )}
@@ -182,14 +182,14 @@ export function TodoItem({
             <button
               onClick={onOpenTimer}
               className={`mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors ${
-                isDone ? 'cursor-default' : 'hover:bg-gray-50 cursor-pointer'
+                isDone ? 'cursor-default' : 'hover:bg-hover cursor-pointer'
               }`}
             >
               {/* 아이콘: 휴식=Stop, 집중=Clock | 색깔: 뽀모=빨강, 일반=초록 */}
               {!isDone && isActiveTimer && (isBreakPhase || activeTimerPhase === 'short' || activeTimerPhase === 'long') ? (
                 <StopIcon
                   className={`h-3.5 w-3.5 shrink-0 ${
-                    activeTimerMode === 'pomodoro' ? 'text-red-500' : 'text-emerald-400'
+                    activeTimerMode === 'pomodoro' ? 'text-state-error' : 'text-accent'
                   }`}
                 />
               ) : (
@@ -197,11 +197,11 @@ export function TodoItem({
                   className={`h-3.5 w-3.5 shrink-0 ${
                     // 완료: 진한 초록색
                     isDone
-                      ? 'text-emerald-600'
+                      ? 'text-accent'
                     // 진행 중: 모드에 따라 색 구분
                     : isActiveTimer && activeTimerMode === 'pomodoro'
-                      ? 'text-red-500'        // 뽀모도로: 빨간색
-                      : 'text-emerald-400'    // 일반: 초록색
+                      ? 'text-state-error'        // 뽀모도로: 빨간색
+                      : 'text-accent'    // 일반: 초록색
                   }`}
                 />
               )}
@@ -209,11 +209,11 @@ export function TodoItem({
                 <span className={`text-xs font-medium tabular-nums ${
                     // 완료: 진한 초록색
                   isDone
-                      ? 'text-emerald-600'
+                      ? 'text-accent'
                   // 진행 중/휴식 중: 모드에 따라 색 구분
                   : isActiveTimer && activeTimerMode === 'pomodoro'
-                    ? 'text-red-500'        // 뽀모도로: 빨간색
-                    : 'text-emerald-400'    // 일반: 초록색
+                    ? 'text-state-error'        // 뽀모도로: 빨간색
+                    : 'text-accent'    // 일반: 초록색
                 }`}>
                   {focusTimeDisplay}
                 </span>
@@ -225,7 +225,7 @@ export function TodoItem({
         {/* 더보기 버튼 */}
         <button
           onClick={onOpenMenu}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-500"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-disabled transition-colors hover:bg-hover-strong hover:text-text-secondary"
         >
           <MoreVerticalIcon className="h-4 w-4" />
         </button>
@@ -235,10 +235,10 @@ export function TodoItem({
       {note && (
         <div className="ml-6 mt-2">
           <div
-            className="cursor-pointer rounded-lg bg-yellow-50 border border-yellow-200 px-2 py-1"
+            className="cursor-pointer rounded-lg bg-state-warning-subtle border border-[var(--color-warning)] px-2 py-1"
             onClick={onOpenNote}
           >
-            <p className={`${userTextDisplayClass} text-gray-700`}>{note}</p>
+            <p className={`${userTextDisplayClass} text-text-secondary`}>{note}</p>
           </div>
         </div>
       )}

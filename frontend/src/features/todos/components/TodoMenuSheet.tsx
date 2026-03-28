@@ -92,7 +92,7 @@ export function TodoMenuSheet({
       </BottomSheetActions>
       <div className="space-y-1">
         <BottomSheetItem
-          icon={<DocumentIcon className="h-5 w-5 text-yellow-400" />}
+          icon={<DocumentIcon className="h-5 w-5 text-[var(--color-warning)]" />}
           label="메모"
           onClick={() => selectedTodo && onOpenNote(selectedTodo)}
         />
@@ -137,7 +137,7 @@ export function TodoMenuSheet({
             <>
               <div>
                 <BottomSheetItem
-                  icon={<ClockIcon className="h-5 w-5 text-emerald-500" />}
+                  icon={<ClockIcon className="h-5 w-5 text-accent" />}
                   label="일반 타이머"
                   onClick={() => {
                     if (!selectedTodo) return
@@ -158,7 +158,7 @@ export function TodoMenuSheet({
                   disabled={disableStopwatch}
                 />
                 {stopwatchDisabledReason && (
-                  <p className="px-4 pb-2 text-xs text-gray-400">
+                  <p className="px-4 pb-2 text-xs text-text-tertiary">
                     {stopwatchDisabledReason}
                   </p>
                 )}
@@ -166,7 +166,7 @@ export function TodoMenuSheet({
 
               <div>
                 <BottomSheetItem
-                  icon={<ClockIcon className="h-5 w-5 text-red-500" />}
+                  icon={<ClockIcon className="h-5 w-5 text-state-error" />}
                   label="뽀모도로 타이머"
                   onClick={() => {
                     if (!selectedTodo) return
@@ -187,7 +187,7 @@ export function TodoMenuSheet({
                   disabled={disablePomodoro}
                 />
                 {pomodoroDisabledReason && (
-                  <p className="px-4 pb-2 text-xs text-gray-400">
+                  <p className="px-4 pb-2 text-xs text-text-tertiary">
                     {pomodoroDisabledReason}
                   </p>
                 )}

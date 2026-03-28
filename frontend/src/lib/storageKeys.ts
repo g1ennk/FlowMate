@@ -17,6 +17,8 @@ export const storageKeys = {
   automationSettings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings/automation`,
   miniDaysSettings: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/settings/miniDays`,
   sharedMiniDaysSettings: `${STORAGE_PREFIX}/settings/miniDays`,
+  // 테마
+  theme: `${STORAGE_PREFIX}/ui/theme`,
   // 음악
   musicVolume: `${STORAGE_PREFIX}:music:volume`,
   legacyMusicKeys: [`${STORAGE_PREFIX}:music:trackIndex`, `${STORAGE_PREFIX}:music:enabled`] as readonly string[],

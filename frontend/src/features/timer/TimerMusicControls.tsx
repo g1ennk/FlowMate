@@ -39,7 +39,7 @@ export function TimerMusicControls({
         onChange={(event) => onChangeVolume(Number(event.target.value))}
         aria-label="배경 음악 볼륨"
         disabled={!musicEnabled}
-        className="h-0.5 w-20 cursor-pointer appearance-none rounded-full bg-white/20 accent-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+        className="h-0.5 w-20 cursor-pointer appearance-none rounded-full bg-white/20 accent-accent disabled:cursor-not-allowed disabled:opacity-40"
       />
     </div>
   )
