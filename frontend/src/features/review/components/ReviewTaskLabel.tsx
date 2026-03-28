@@ -1,4 +1,4 @@
-import { getTodoDisplayTitle, getTodoReviewBadgeLabel } from '../../todos/reviewTodoDisplay'
+import { getTodoReviewBadgeLabel } from '../../todos/reviewTodoDisplay'
 import type { TaskItem } from '../reviewTypes'
 
 type ReviewTaskLabelProps = {
@@ -17,12 +17,11 @@ export function ReviewTaskLabel({
   titleClassName = 'text-sm text-gray-900',
   badgeClassName = DEFAULT_BADGE_CLASS_NAME,
 }: ReviewTaskLabelProps) {
-  const displayTitle = getTodoDisplayTitle(task)
   const reviewBadgeLabel = getTodoReviewBadgeLabel(task.reviewRound, task.isDone)
 
   return (
     <div className={wrapperClassName}>
-      <span className={titleClassName}>{displayTitle}</span>
+      <span className={titleClassName}>{task.title}</span>
       {reviewBadgeLabel && <span className={badgeClassName}>{reviewBadgeLabel}</span>}
     </div>
   )

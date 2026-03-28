@@ -1,11 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useQueryClient } from '@tanstack/react-query'
 import { PHASE_LABELS, MIN_FLOW_MS } from '../../lib/constants'
 import { MINUTE_MS } from '../../lib/time'
-import type { PomodoroSettings, TodoList } from '../../api/types'
 import { usePomodoroSettings } from '../settings/hooks'
-import { useCreateSession, useUpdateTodo } from '../todos/hooks'
+import { useUpdateTodo } from '../todos/hooks'
 import { toast } from 'react-hot-toast'
 import {
   ChevronLeftIcon,
@@ -15,18 +13,17 @@ import {
   ArrowPathIcon,
   StopIcon,
 } from '../../ui/Icons'
+import { InlineSegmentToggle } from '../../ui/InlineSegmentToggle'
 import { TimerMusicControls } from './TimerMusicControls'
 import { useTimerMusicSession } from './useTimerMusicSession'
 import { useTimer, useTimerStore } from './timerStore'
-import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
-import { completeTaskFromTimer } from './completeHelpers'
 import { formatCountdown, formatMs, formatStopwatch } from './timerFormat'
-import { queryKeys } from '../../lib/queryKeys'
 import {
   getSessionsTotalFocusMs,
 } from '../../lib/stopwatchMetrics'
-import { applySessionAggregateDelta } from '../todos/sessionAggregateCache'
-import { normalizeSessionId } from '../../lib/sessionId'
+import { DEFAULT_POMODORO_SETTINGS } from './timerDefaults'
+import { useTimerInit } from './useTimerInit'
+import { useTimerCompletion } from './useTimerCompletion'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -37,52 +34,6 @@ type TimerFullScreenProps = {
   sessionCount: number
   initialMode?: 'stopwatch' | 'pomodoro'
   isDone?: boolean
-}
-
-const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
-  flowMin: 25,
-  breakMin: 5,
-  longBreakMin: 15,
-  cycleEvery: 4,
-  autoStartBreak: false,
-  autoStartSession: false,
-}
-
-// time formatters are extracted to timerFormat.ts
-
-function InlineSegmentToggle({
-  options,
-  value,
-  onChange,
-  className = '',
-}: {
-  options: Array<{ label: string; value: string }>
-  value: string
-  onChange: (value: string) => void
-  className?: string
-}) {
-  return (
-    <div className={`inline-flex rounded-full bg-white/10 p-0.5 ${className}`}>
-      {options.map((option) => {
-        const active = option.value === value
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            aria-pressed={active}
-            className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-              active
-                ? 'bg-white text-gray-900'
-                : 'text-white/70 hover:text-white'
-            }`}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
-  )
 }
 
 export function TimerFullScreen(props: TimerFullScreenProps) {
@@ -97,9 +48,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const baseSessionFocusSeconds = sessionFocusSeconds
 
   const { data: settings } = usePomodoroSettings()
-  const createSession = useCreateSession()
   const updateTodo = useUpdateTodo()
-  const queryClient = useQueryClient()
 
   const timer = useTimer(todoId)
   const initPomodoro = useTimerStore((s) => s.initPomodoro)
@@ -109,10 +58,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const reset = useTimerStore((s) => s.reset)
   const skipToNext = useTimerStore((s) => s.skipToNext)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const startBreak = useTimerStore((s) => s.startBreak)
   const resumeFocus = useTimerStore((s) => s.resumeFocus)
   const calculateBreakSuggestion = useTimerStore((s) => s.calculateBreakSuggestion)
-  const updateSessions = useTimerStore((s) => s.updateSessions)
 
   // Flow 상태에 따른 음악 자동 재생/정지
   // effectiveMode = selectedMode ?? timer?.mode (early return 전에 계산 필요)
@@ -136,75 +83,24 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   // Global ticker is installed in AppProviders
 
-  // 열릴 때 상태 초기화
-  // 타이머 초기화 (isOpen이 true로 변경될 때만)
-  const hasInitializedRef = useRef(false)
-  const pomodoroInitKeyRef = useRef<string | null>(null)
-  
-  useEffect(() => {
-    if (isOpen && !hasInitializedRef.current) {
-      hasInitializedRef.current = true
-      // 화면 진입 시 표시 상태를 항상 초기화해 일관된 기본값(현재 세션)을 유지한다.
+  const { pomodoroInitKeyRef } = useTimerInit({
+    isOpen,
+    todoId,
+    initialMode,
+    selectedMode,
+    baseSessionFocusSeconds,
+    settings,
+    endMusicSession,
+    onMounted: () => setMounted(true),
+    onUnmounted: () => setMounted(false),
+    onSelectedModeChange: setSelectedMode,
+    onResetDisplayState: () => {
       setShowTotalTime(false)
       setShowBreakTotal(false)
       setShowBreakSelection(false)
-      
-      const currentTimer = getTimer(todoId)
-
-      // 이미 타이머가 있고, 사용자가 다른 모드를 요청(initialMode)했다면 기존 상태를 정리하고 전환
-      if (currentTimer && currentTimer.status !== 'idle' && initialMode && initialMode !== currentTimer.mode) {
-        // 기존 타이머 상태 제거 후, 요청된 모드로 새로 시작 (paused)
-        endMusicSession()
-        reset(todoId)
-        setSelectedMode(initialMode)
-        if (initialMode === 'stopwatch') {
-          initStopwatch(todoId, baseSessionFocusSeconds * 1000, settings ?? undefined)
-        } else if (initialMode === 'pomodoro' && settings) {
-          initPomodoro(todoId, settings)
-        }
-        // DB의 timerMode도 동기화
-        updateTodo.mutate({ id: todoId, patch: { timerMode: initialMode } })
-      } else if (currentTimer && currentTimer.status !== 'idle') {
-        // 기존 타이머 유지
-        setSelectedMode(currentTimer.mode)
-      } else {
-        // 타이머가 없거나 idle 상태인 경우에만 새로 시작
-        const modeToUse = initialMode || null
-        if (modeToUse) {
-          setSelectedMode(modeToUse)
-          if (modeToUse === 'stopwatch') {
-            initStopwatch(todoId, baseSessionFocusSeconds * 1000, settings ?? undefined)
-          } else if (modeToUse === 'pomodoro' && settings) {
-            initPomodoro(todoId, settings)
-          }
-          // DB의 timerMode도 동기화
-          updateTodo.mutate({ id: todoId, patch: { timerMode: modeToUse } })
-        }
-      }
-      
-      setMounted(true)
-    } else if (!isOpen) {
-      hasInitializedRef.current = false
-      pomodoroInitKeyRef.current = null
-      setMounted(false)
-      setSelectedMode(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, todoId, initialMode, endMusicSession])
-
-  useEffect(() => {
-    if (!isOpen || !settings || !todoId) return
-    if (selectedMode !== 'pomodoro') return
-    const initKey = `${todoId}:${selectedMode}`
-    if (pomodoroInitKeyRef.current === initKey) return
-    const currentTimer = getTimer(todoId)
-    if (currentTimer && currentTimer.mode === 'pomodoro') {
-      pomodoroInitKeyRef.current = initKey
-      return
-    }
-    initPomodoro(todoId, settings)
-    pomodoroInitKeyRef.current = initKey
-  }, [isOpen, settings, selectedMode, todoId, getTimer, initPomodoro])
+    },
+    syncTimerMode: (mode) => updateTodo.mutate({ id: todoId, patch: { timerMode: mode } }),
+  })
 
   // 휴식에서 집중으로 전환될 때 현재 세션 탭으로 복귀
   const prevFlexiblePhaseRef = useRef<string | null>(null)
@@ -235,78 +131,22 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     onClose()
   }
 
-  // Note: handleStartStopwatch is not used - removed to fix build error
+  const {
+    handleComplete,
+    handleStartBreak: startBreakHandler,
+    getPlannedMs: getPlannedMsFromTimer,
+    updateTodoIsPending,
+  } = useTimerCompletion({
+    todoId,
+    settings,
+    endMusicSession,
+    onClose,
+  })
 
-  // Note: Pomodoro start is triggered via selectedMode UI elsewhere
+  const getPlannedMs = () => getPlannedMsFromTimer(timer)
 
-  // 현재 phase의 계획된 시간(ms) 계산
-  const getPlannedMs = () => getPlannedMsUtil(timer, settings)
-
-  const getNextDoneOrder = () => {
-    const data = queryClient.getQueryData<TodoList>(queryKeys.todos())
-    if (!data) return undefined
-    const current = data.items.find((item) => item.id === todoId)
-    if (!current || current.isDone) return undefined
-    const currentMiniDay = current.miniDay ?? 0
-    const doneTodos = data.items.filter(
-      (item) =>
-        item.date === current.date &&
-        item.isDone &&
-        item.id !== todoId &&
-        (item.miniDay ?? 0) === currentMiniDay,
-    )
-    const maxOrder =
-      doneTodos.length === 0 ? -1 : Math.max(...doneTodos.map((item) => item.dayOrder ?? 0))
-    return maxOrder + 1
-  }
-
-  // 뽀모도로 정지 (■) - 시간만 기록 + pause 상태로 저장 후 닫기
-  // Note: Explicit Pomodoro stop is not used in UI controls
-
-  // 일반 타이머 정지 (■) - 시간 기록 + 타이머 일시정지 유지
-  // Note: Explicit Stopwatch stop is not used in UI controls
-
-  const handleComplete = async () => {
-    if (!timer) return
-    await completeTaskFromTimer({
-      todoId,
-      timer,
-      settings: settings ?? undefined,
-      pause,
-      reset,
-      getTimer,
-      updateSessions,
-      syncSessionsImmediately: async (sessions) => {
-        for (const session of sessions) {
-          if (session.sessionFocusSeconds <= 0) continue
-          await createSession.mutateAsync({
-            todoId,
-            body: {
-              sessionFocusSeconds: session.sessionFocusSeconds,
-              breakSeconds: session.breakSeconds,
-              clientSessionId: normalizeSessionId(session.clientSessionId),
-            },
-          })
-        }
-      },
-      applySessionAggregateDelta: (delta) => {
-        applySessionAggregateDelta(queryClient, todoId, delta)
-      },
-      updateTodo: updateTodo.mutateAsync,
-      nextOrder: getNextDoneOrder(),
-      debug: timer.mode === 'stopwatch',
-    })
-    toast.success('태스크 완료! 🎉', { id: 'task-completed' })
-    endMusicSession()
-    onClose()
-  }
-
-  // 일반 타이머에서 휴식 버튼 클릭 시
-  const handleStartBreak = async (targetMs: number | null) => {
-    if (!timer) return
-
-    // 정책: Focus 종료(휴식 진입) 시점에 세션을 확정하고 휴식으로 전환한다.
-    startBreak(todoId, targetMs)
+  const handleStartBreak = (targetMs: number | null) => {
+    startBreakHandler(targetMs)
     setShowBreakSelection(false)
   }
 
@@ -316,10 +156,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   if (!mounted) return null
 
-  // 타이머 값 계산
-  const remainingMs = timer?.endAt 
-    ? Math.max(0, timer.endAt - Date.now())  // running: 실시간 계산
-    : (timer?.remainingMs ?? (settings?.flowMin ?? 25) * MINUTE_MS)  // paused/waiting: 저장된 값
+  // 타이머 값 계산 — 렌더마다 현재 시각 기준으로 남은 시간을 계산해야 하므로 Date.now() 사용이 의도적
+  // eslint-disable-next-line react-hooks/purity
+  const remainingMs = timer?.endAt
+    ? Math.max(0, timer.endAt - Date.now())
+    : (timer?.remainingMs ?? (settings?.flowMin ?? 25) * MINUTE_MS)
   const isFlow = timer?.phase === 'flow'
 
   // formatCountdown은 timerFormat.ts에서 제공
@@ -492,7 +333,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 {!isDone && (
                   <button
                     onClick={() => setShowCompleteModal(true)}
-                    disabled={updateTodo.isPending}
+                    disabled={updateTodoIsPending}
                     className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white">
@@ -650,7 +491,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 {!isDone && (
                   <button
                     onClick={() => setShowCompleteModal(true)}
-                    disabled={updateTodo.isPending}
+                    disabled={updateTodoIsPending}
                     className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-emerald-600">
@@ -763,7 +604,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               {!isDone && (
                 <button
                   onClick={() => setShowCompleteModal(true)}
-                  disabled={updateTodo.isPending}
+                  disabled={updateTodoIsPending}
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className={`flex h-14 w-14 items-center justify-center rounded-full ${
@@ -822,6 +663,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           if (isFlowInProgress) {
             // 현재 Flow의 실제 경과 시간 계산
             const plannedMs = getPlannedMs()
+            // eslint-disable-next-line react-hooks/purity
             const remaining = timer.remainingMs ?? (timer.endAt ? Math.max(0, timer.endAt - Date.now()) : plannedMs)
             currentFlowMs = Math.max(0, plannedMs - remaining)
           }
@@ -941,7 +783,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         // 현재 세션의 집중 시간 계산 (전체 누적이 아닌 현재 Flow만)
         let currentFocusMs = timer.focusElapsedMs ?? 0
         if (timer.status === 'running' && timer.focusStartedAt) {
-          // running 상태일 때는 실시간 delta 추가
+          // eslint-disable-next-line react-hooks/purity
           const delta = Date.now() - timer.focusStartedAt
           currentFocusMs = currentFocusMs + delta
         }

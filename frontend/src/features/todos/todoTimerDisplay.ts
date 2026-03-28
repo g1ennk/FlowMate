@@ -1,5 +1,3 @@
-type SessionRecord = { sessionFocusSeconds: number; breakSeconds: number }
-
 type TodoTimerDisplayArgs = {
   isDone: boolean
   sessionFocusSeconds: number
@@ -9,8 +7,6 @@ type TodoTimerDisplayArgs = {
   breakElapsedMs?: number
   breakTargetMs?: number
   flexiblePhase?: 'focus' | 'break_suggested' | 'break_free' | null
-  sessions?: SessionRecord[]
-  initialFocusMs?: number
 }
 
 export function getTodoDisplayTimeSeconds({
@@ -22,12 +18,7 @@ export function getTodoDisplayTimeSeconds({
   breakElapsedMs,
   breakTargetMs,
   flexiblePhase,
-  sessions = [],
-  initialFocusMs = 0,
 }: TodoTimerDisplayArgs) {
-  void sessions
-  void initialFocusMs
-
   if (isDone || !isActiveTimer) {
     return sessionFocusSeconds
   }

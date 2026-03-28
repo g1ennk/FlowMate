@@ -11,6 +11,7 @@ import { useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } fro
 import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
 import { userTextInputClass } from '../../lib/userTextStyles'
 import { usePwaInstall } from '../pwa/usePwaInstall'
+import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
 
 const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
 const SHORT_BREAK_PRESETS = [5, 10, 15, 20, 30]
@@ -29,15 +30,6 @@ const WHEEL_LIVE_SELECT_BIAS = 0.35
 const WHEEL_ITEM_HEIGHT = 40
 const WHEEL_VISIBLE_COUNT = 5
 const WHEEL_PADDING = (WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT - WHEEL_ITEM_HEIGHT) / 2
-
-const defaultSettings: PomodoroSettings = {
-  flowMin: 25,
-  breakMin: 5,
-  longBreakMin: 15,
-  cycleEvery: 4,
-  autoStartBreak: false,
-  autoStartSession: false,
-}
 
 const readInstallCardDismissed = () => {
   if (typeof window === 'undefined') return false
@@ -289,12 +281,12 @@ function PomodoroSettingsPage() {
 
   const values = useMemo(
     () => ({
-      flowMin: data?.flowMin ?? defaultSettings.flowMin,
-      breakMin: data?.breakMin ?? defaultSettings.breakMin,
-      longBreakMin: data?.longBreakMin ?? defaultSettings.longBreakMin,
-      cycleEvery: data?.cycleEvery ?? defaultSettings.cycleEvery,
-      autoStartBreak: data?.autoStartBreak ?? defaultSettings.autoStartBreak,
-      autoStartSession: data?.autoStartSession ?? defaultSettings.autoStartSession,
+      flowMin: data?.flowMin ?? DEFAULT_POMODORO_SETTINGS.flowMin,
+      breakMin: data?.breakMin ?? DEFAULT_POMODORO_SETTINGS.breakMin,
+      longBreakMin: data?.longBreakMin ?? DEFAULT_POMODORO_SETTINGS.longBreakMin,
+      cycleEvery: data?.cycleEvery ?? DEFAULT_POMODORO_SETTINGS.cycleEvery,
+      autoStartBreak: data?.autoStartBreak ?? DEFAULT_POMODORO_SETTINGS.autoStartBreak,
+      autoStartSession: data?.autoStartSession ?? DEFAULT_POMODORO_SETTINGS.autoStartSession,
       ...overrides,
     }),
     [data, overrides],
@@ -362,14 +354,14 @@ function PomodoroSettingsPage() {
   }, [activeMiniDay, miniDaysBase, miniDayEditor])
 
   const isSessionDefault =
-    values.flowMin === defaultSettings.flowMin &&
-    values.breakMin === defaultSettings.breakMin &&
-    values.longBreakMin === defaultSettings.longBreakMin &&
-    values.cycleEvery === defaultSettings.cycleEvery
+    values.flowMin === DEFAULT_POMODORO_SETTINGS.flowMin &&
+    values.breakMin === DEFAULT_POMODORO_SETTINGS.breakMin &&
+    values.longBreakMin === DEFAULT_POMODORO_SETTINGS.longBreakMin &&
+    values.cycleEvery === DEFAULT_POMODORO_SETTINGS.cycleEvery
 
   const isAutomationDefault =
-    values.autoStartBreak === defaultSettings.autoStartBreak &&
-    values.autoStartSession === defaultSettings.autoStartSession
+    values.autoStartBreak === DEFAULT_POMODORO_SETTINGS.autoStartBreak &&
+    values.autoStartSession === DEFAULT_POMODORO_SETTINGS.autoStartSession
 
   const isMiniDaysDefault = (Object.keys(defaultMiniDaysSettings) as Array<keyof MiniDaysSettings>).every((key) => {
     const current = miniDaysBase[key]
@@ -490,10 +482,10 @@ function PomodoroSettingsPage() {
     }
     if (!window.confirm('뽀모도로 세션 설정을 기본값으로 복원할까요?')) return
     commitSettings({
-      flowMin: defaultSettings.flowMin,
-      breakMin: defaultSettings.breakMin,
-      longBreakMin: defaultSettings.longBreakMin,
-      cycleEvery: defaultSettings.cycleEvery,
+      flowMin: DEFAULT_POMODORO_SETTINGS.flowMin,
+      breakMin: DEFAULT_POMODORO_SETTINGS.breakMin,
+      longBreakMin: DEFAULT_POMODORO_SETTINGS.longBreakMin,
+      cycleEvery: DEFAULT_POMODORO_SETTINGS.cycleEvery,
     })
   }
 
@@ -504,8 +496,8 @@ function PomodoroSettingsPage() {
     }
     if (!window.confirm('자동화 설정을 기본값으로 복원할까요?')) return
     commitSettings({
-      autoStartBreak: defaultSettings.autoStartBreak,
-      autoStartSession: defaultSettings.autoStartSession,
+      autoStartBreak: DEFAULT_POMODORO_SETTINGS.autoStartBreak,
+      autoStartSession: DEFAULT_POMODORO_SETTINGS.autoStartSession,
     })
   }
 

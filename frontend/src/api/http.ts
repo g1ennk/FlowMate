@@ -45,6 +45,9 @@ async function parseError(response: Response): Promise<ApiError> {
   }
 }
 
+// 동시 401 발생 시 refresh()를 한 번만 호출하도록 싱글턴 Promise
+let refreshPromise: Promise<void> | null = null
+
 export async function http<T>(method: HttpMethod, path: string, options: RequestOptions<T> = {}) {
   const { schema, headers, body, ...rest } = options
   const token = useAuthStore.getState().getToken()
@@ -64,7 +67,15 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
   // 401 → 토큰 재발급 후 1회 재시도
   if (response.status === 401) {
     const typeBefore = useAuthStore.getState().state?.type
-    await useAuthStore.getState().refresh()
+    if (!refreshPromise) {
+      refreshPromise = useAuthStore
+        .getState()
+        .refresh()
+        .finally(() => {
+          refreshPromise = null
+        })
+    }
+    await refreshPromise
     // 회원 세션이 만료되어 refresh 실패 → logout() → 게스트로 전환된 경우
     // 게스트 토큰으로 재시도하면 다른 계정에 데이터가 쓰이므로 에러를 던진다
     if (typeBefore === 'member' && useAuthStore.getState().state?.type !== 'member') {

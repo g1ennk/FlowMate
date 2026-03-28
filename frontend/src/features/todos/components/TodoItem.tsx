@@ -7,8 +7,11 @@ import {
 } from '../../../ui/Icons'
 import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
 import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDisplay'
+import { useTimerStore } from '../../timer/timerStore'
+import { getTimerInfo } from '../../timer/useTimerInfo'
 
 export type TodoItemProps = {
+  todoId: string
   title: string
   reviewBadgeLabel?: string | null
   note?: string | null
@@ -26,21 +29,10 @@ export type TodoItemProps = {
   onOpenMenu?: () => void
   onOpenTimer?: () => void
   onOpenNote?: () => void
-  // 실시간 타이머 정보
-  isActiveTimer?: boolean
-  activeTimerMode?: 'stopwatch' | 'pomodoro' // 타이머 모드
-  activeTimerElapsedMs?: number
-  activeTimerRemainingMs?: number // 뽀모도로용 (카운트다운)
-  activeTimerPhase?: 'flow' | 'short' | 'long' // 뽀모도로 phase
-  breakElapsedMs?: number // Flexible 타이머 휴식 시간
-  breakTargetMs?: number // 추천 휴식 목표 시간 (카운트다운용)
-  isBreakPhase?: boolean // 휴식 중인지 여부
-  flexiblePhase?: 'focus' | 'break_suggested' | 'break_free' | null // 일반 타이머 phase
-  sessions?: Array<{ sessionFocusSeconds: number; breakSeconds: number }> // 세션 기록 (집중 시간 계산용)
-  initialFocusMs?: number // 현재 세션의 시작점 (정확한 계산용)
 }
 
 export function TodoItem({
+  todoId,
   title,
   reviewBadgeLabel,
   note,
@@ -56,19 +48,22 @@ export function TodoItem({
   onOpenMenu,
   onOpenTimer,
   onOpenNote,
-  isActiveTimer,
-  activeTimerMode,
-  activeTimerElapsedMs,
-  activeTimerRemainingMs,
-  activeTimerPhase,
-  breakElapsedMs,
-  breakTargetMs,
-  isBreakPhase,
-  flexiblePhase,
-  sessions = [],
-  initialFocusMs = 0,
 }: TodoItemProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 이 todo의 타이머만 구독 → 타이머가 tick해도 이 컴포넌트만 리렌더링
+  const timer = useTimerStore((s) => s.timers[todoId])
+  const {
+    isActiveTimer,
+    activeTimerElapsedMs,
+    activeTimerRemainingMs,
+    activeTimerPhase,
+    breakElapsedMs,
+    breakTargetMs,
+    isBreakPhase,
+    flexiblePhase,
+  } = getTimerInfo(timer)
+  const activeTimerMode = timer?.mode
 
   // 편집 모드: 자동 높이/포커스 처리
   useEffect(() => {
@@ -98,8 +93,6 @@ export function TodoItem({
     breakElapsedMs,
     breakTargetMs,
     flexiblePhase,
-    sessions,
-    initialFocusMs,
   })
 
   const focusTimeDisplay = formatTimerSeconds(totalFocusSeconds)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { formatDateKey } from '../../ui/calendarUtils'
+import { formatDateKey } from '../../lib/time'
 import { useTodos } from '../todos/hooks'
 import { useTimerStore } from '../timer/timerStore'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'

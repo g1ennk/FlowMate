@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
-import { formatDateKey } from './calendarUtils'
+import { formatDateKey } from '../lib/time'
 
 export type ViewMode = 'day' | 'week' | 'month' | 'year'
 

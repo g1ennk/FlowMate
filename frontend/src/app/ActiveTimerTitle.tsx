@@ -41,8 +41,6 @@ export function ActiveTimerTitle() {
       breakElapsedMs: timerInfo.breakElapsedMs,
       breakTargetMs: timerInfo.breakTargetMs,
       flexiblePhase: timerInfo.flexiblePhase,
-      sessions: timer.sessions ?? [],
-      initialFocusMs: timer.initialFocusMs ?? 0,
     })
 
     const timeLabel = formatTimerMinutesSeconds(displaySeconds)

@@ -7,6 +7,7 @@ export function useReview(type: ReviewType, periodStart: string) {
   return useQuery({
     queryKey: queryKeys.review(type, periodStart),
     queryFn: () => reviewApi.get(type, periodStart),
+    staleTime: 30_000,
   })
 }
 

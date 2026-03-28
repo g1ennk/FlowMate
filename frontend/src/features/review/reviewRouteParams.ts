@@ -1,4 +1,4 @@
-import { formatDateKey } from '../../ui/calendarUtils'
+import { formatDateKey } from '../../lib/time'
 import type { PeriodType } from './reviewTypes'
 import { parseDateKey } from './reviewUtils'
 

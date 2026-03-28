@@ -1,4 +1,18 @@
+import type { PomodoroSessionSettings, PomodoroSettings } from '../../api/types'
 import type { SingleTimerState } from './timerTypes'
+
+export const DEFAULT_SESSION_SETTINGS: PomodoroSessionSettings = {
+  flowMin: 25,
+  breakMin: 5,
+  longBreakMin: 15,
+  cycleEvery: 4,
+}
+
+export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
+  ...DEFAULT_SESSION_SETTINGS,
+  autoStartBreak: false,
+  autoStartSession: false,
+}
 
 export const initialSingleTimerState: SingleTimerState = {
   mode: 'pomodoro',

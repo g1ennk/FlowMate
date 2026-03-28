@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { DEFAULT_MUSIC_TRACK_INDEX, MUSIC_TRACKS } from './musicTracks'
+import { storageKeys } from '../../lib/storageKeys'
 
-const STORAGE_KEY_VOLUME = 'flowmate:music:volume'
-const LEGACY_STORAGE_KEYS = ['flowmate:music:trackIndex', 'flowmate:music:enabled']
+const STORAGE_KEY_VOLUME = storageKeys.musicVolume
+const LEGACY_STORAGE_KEYS = storageKeys.legacyMusicKeys
 export const DEFAULT_MUSIC_VOLUME = 0.35
 
 export type PersistedMusicPrefs = {
@@ -59,6 +60,7 @@ function clampVolume(value: number) {
 }
 
 function createInitialSessionState(): MusicSessionState {
+  clearLegacyMusicStorage()
   return {
     enabled: false,
     currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
@@ -66,8 +68,6 @@ function createInitialSessionState(): MusicSessionState {
     volume: readStoredVolume(),
   }
 }
-
-clearLegacyMusicStorage()
 
 let audioElement: HTMLAudioElement | null = null
 

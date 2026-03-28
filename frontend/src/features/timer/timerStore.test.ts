@@ -201,3 +201,79 @@ describe('useTimerStore pomodoro elapsed boundary handling', () => {
     })
   })
 })
+
+describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-06T09:00:00.000Z'))
+    useTimerStore.getState().clearAll()
+  })
+
+  afterEach(() => {
+    useTimerStore.getState().clearAll()
+    vi.useRealTimers()
+  })
+
+  const remoteTimer: SingleTimerState = {
+    mode: 'pomodoro',
+    phase: 'flow',
+    status: 'running',
+    endAt: Date.now() + 600_000,
+    remainingMs: 600_000,
+    elapsedMs: 0,
+    initialFocusMs: 0,
+    startedAt: Date.now(),
+    cycleCount: 1,
+    settingsSnapshot: null,
+    flexiblePhase: null,
+    focusElapsedMs: 0,
+    breakElapsedMs: 0,
+    breakTargetMs: null,
+    breakCompleted: false,
+    focusStartedAt: null,
+    breakStartedAt: null,
+    breakSessionPendingUpdate: false,
+    sessions: [],
+  }
+
+  it('applyRemoteState with serverTime > last applies the state', () => {
+    useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
+
+    expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
+    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
+  })
+
+  it('applyRemoteState with same serverTime applies the state', () => {
+    useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
+
+    const updated: SingleTimerState = { ...remoteTimer, status: 'paused', endAt: null }
+    useTimerStore.getState().applyRemoteState(TODO_ID, updated, 100)
+
+    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('paused')
+  })
+
+  it('applyRemoteState with serverTime < last is dropped', () => {
+    useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 200)
+
+    const stale: SingleTimerState = { ...remoteTimer, status: 'paused', endAt: null }
+    useTimerStore.getState().applyRemoteState(TODO_ID, stale, 100)
+
+    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
+  })
+
+  it('applyRemoteReset with serverTime > last removes the timer', () => {
+    useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
+    expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 200)
+    expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
+  })
+
+  it('applyRemoteReset with same serverTime removes the timer', () => {
+    useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
+    expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
+    expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
+  })
+})

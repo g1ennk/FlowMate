@@ -5,7 +5,5 @@ export const queryKeys = {
   review: (type: string, periodStart: string) => ['reviews', type, periodStart] as const,
   reviewList: (type: string, from: string, to: string) => ['reviews', type, from, to] as const,
   settings: () => ['settings'] as const,
-  pomodoroSessionSettings: () => ['settings', 'pomodoroSession'] as const,
-  automationSettings: () => ['settings', 'automation'] as const,
   miniDaysSettings: () => ['settings', 'miniDays'] as const,
 }

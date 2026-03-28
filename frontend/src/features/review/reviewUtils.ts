@@ -1,6 +1,6 @@
 import type { MiniDaysSettings, Todo } from '../../api/types'
 import type { SingleTimerState } from '../timer/timerTypes'
-import { formatDateKey } from '../../ui/calendarUtils'
+import { formatDateKey } from '../../lib/time'
 import type {
   DistributionBucket,
   PeriodComparison,

@@ -1,5 +1,5 @@
 import type { Todo } from '../../api/types'
-import { formatDateKey } from '../../ui/calendarUtils'
+import { formatDateKey } from '../../lib/time'
 
 export type TodoRelativeDateKind = 'past' | 'today' | 'future'
 

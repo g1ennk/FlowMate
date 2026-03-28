@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import type { ApiError } from '../../api/http'
@@ -9,18 +9,15 @@ import {
   useScheduleReviewTodo,
   useUpdateTodo,
 } from './hooks'
-import type { Todo, TodoList } from '../../api/types'
-import { useTimerStore, type TimerMode } from '../timer/timerStore'
+import type { Todo } from '../../api/types'
+import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
-import { checkTimerConflict, getTimerConflictMessage } from '../timer/timerHelpers'
 import { completeTaskFromTimer } from '../timer/completeHelpers'
 import { applySessionAggregateDelta } from './sessionAggregateCache'
 import { normalizeSessionId } from '../../lib/sessionId'
-import { queryKeys } from '../../lib/queryKeys'
-import {
-  getNextTodoDayOrder,
-  getOffsetDateKey,
-} from './todoDateActionHelpers'
+import { useNoteModal } from './useNoteModal'
+import { useDatePickerActions } from './useDatePickerActions'
+import { useTimerOpenState } from './useTimerOpenState'
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error !== null && 'message' in error) {
@@ -45,35 +42,26 @@ export function useTodoActions(selectedDateKey: string) {
 
   const { data: settings } = usePomodoroSettings()
 
-  // 타이머 store
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const timers = useTimerStore((s) => s.timers)
   const updateSessions = useTimerStore((s) => s.updateSessions)
 
   // 편집 상태
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
 
-  // 메모 상태
+  // 메모 상태 (extracted)
+  const noteModal = useNoteModal()
+
+  // 타이머 상태 (extracted)
+  const timerOpen = useTimerOpenState()
+
+  // 날짜 액션 상태 (extracted)
+  const datePicker = useDatePickerActions()
+
+  // 선택된 todo (더보기 메뉴용)
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
-  const [showNoteModal, setShowNoteModal] = useState(false)
-  const [noteText, setNoteText] = useState('')
-  const [noteEditMode, setNoteEditMode] = useState(false) // 읽기/편집 모드
-  const [noteTodo, setNoteTodo] = useState<Todo | null>(null) // 메모 관련 todo
-
-  // 타이머 풀스크린 상태
-  const [timerTodo, setTimerTodo] = useState<Todo | null>(null)
-  const [timerMode, setTimerMode] = useState<TimerMode | null>(null)
-
-  // 타이머 에러 메시지 (BottomSheet 내부에 표시)
-  const [timerErrorMessage, setTimerErrorMessage] = useState<string | null>(null)
-
-  // 날짜 액션 상태
-  const [datePickerMode, setDatePickerMode] = useState<'move' | 'duplicate' | null>(null)
-  const [datePickerTodo, setDatePickerTodo] = useState<Todo | null>(null)
-  const [datePickerSelectedDate, setDatePickerSelectedDate] = useState('')
 
   // === Todo CRUD ===
   const handleCreate = async (title: string, miniDay: number = 0, dayOrder: number) => {
@@ -87,7 +75,6 @@ export function useTodoActions(selectedDateKey: string) {
   }
 
   const handleToggleDone = async (id: string, next: boolean, nextOrder?: number) => {
-    // 완료로 변경하는 경우, 타이머가 실행 중이면 시간 저장
     if (next) {
       const timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
@@ -122,17 +109,12 @@ export function useTodoActions(selectedDateKey: string) {
         return
       }
     } else {
-      // 미완료로 변경하는 경우, 타이머 상태는 유지 (일시정지 상태로)
-      // reset을 호출하지 않아서 이전 기록(sessions, timerMode 등)이 유지됨
       const timer = getTimer(id)
       if (timer && timer.status === 'running') {
-        // 실행 중이면 일시정지만
         pause(id)
       }
-      // 타이머 상태는 유지 (다시 열 때 이전 기록이 보임)
     }
 
-    // 완료 상태 변경
     updateTodo.mutate({
       id,
       patch: {
@@ -143,9 +125,7 @@ export function useTodoActions(selectedDateKey: string) {
   }
 
   const handleDelete = (id: string) => {
-    // 타이머 상태 및 sessions 완전 삭제
     reset(id)
-    // Todo 삭제
     deleteTodo.mutate(id)
     setSelectedTodo(null)
   }
@@ -170,168 +150,26 @@ export function useTodoActions(selectedDateKey: string) {
     setEditingTitle('')
   }
 
-  // === 메모 ===
+  // === 메모 (delegate to useNoteModal, clear selectedTodo) ===
   const handleOpenNote = (todo: Todo) => {
-    setNoteTodo(todo)
-    setNoteText(todo.note ?? '')
-    setNoteEditMode(false) // 읽기 전용으로 시작
-    setShowNoteModal(true)
-    setSelectedTodo(null) // 다른 모달 닫기
+    noteModal.handleOpenNote(todo)
+    setSelectedTodo(null)
   }
 
-  const handleEditNote = () => {
-    setNoteEditMode(true)
+  // === 타이머 (delegate to useTimerOpenState) ===
+  const handleOpenTimer = (todo: Todo, currentMode: Parameters<typeof timerOpen.handleOpenTimer>[1]) => {
+    timerOpen.handleOpenTimer(todo, currentMode, setSelectedTodo)
   }
 
-  const handleSaveNote = async () => {
-    if (!noteTodo) return
-    await updateTodo.mutateAsync({ id: noteTodo.id, patch: { note: noteText || null } })
-    setShowNoteModal(false)
-    setNoteTodo(null)
-    setNoteEditMode(false)
-    toast.success('메모 저장됨', { id: 'note-saved' })
-  }
-
-  const handleDeleteNote = async () => {
-    if (!noteTodo) return
-    await updateTodo.mutateAsync({ id: noteTodo.id, patch: { note: null } })
-    setShowNoteModal(false)
-    setNoteTodo(null)
-    setNoteEditMode(false)
-    toast.success('메모 삭제됨', { id: 'note-deleted' })
-  }
-
-  const handleCloseNote = () => {
-    setShowNoteModal(false)
-    setNoteTodo(null)
-    setNoteEditMode(false)
-  }
-
-  // === 타이머 ===
-  const handleOpenTimer = (todo: Todo, currentMode: TimerMode | null) => {
-    // 완료된 태스크는 타이머를 열 수 없음
-    if (todo.isDone) {
-      toast.error('완료된 태스크는 타이머를 시작할 수 없습니다', { id: 'completed-task-timer' })
-      return
-    }
-
-    // 다른 태스크에서 실행 중인 타이머가 있는지 체크
-    const [hasConflict, conflictMode] = checkTimerConflict(timers, todo.id)
-    if (hasConflict && conflictMode) {
-      toast.error(getTimerConflictMessage(conflictMode), { id: 'timer-already-running' })
-      return
-    }
-
-    // 우선순위(일관화): 사용자 선택(currentMode) > 실행/일시정지 중인 로컬 타이머 > DB(timerMode) > null
-    const timer = getTimer(todo.id)
-    const modeToUse: TimerMode | null =
-      currentMode || (timer && timer.status !== 'idle' ? timer.mode : null) || todo.timerMode || null
-
-    // 모드가 있으면 타이머 화면 열기
-    if (modeToUse) {
-      setTimerTodo(todo)
-      setTimerMode(modeToUse)
-      setSelectedTodo(null)
-      // 사용자 선택에 의해 명시적으로 모드가 지정된 경우, DB(timerMode)도 동기화
-      if (currentMode && todo.timerMode !== currentMode) {
-        updateTodo.mutate({ id: todo.id, patch: { timerMode: currentMode } })
-      }
-    } else {
-      // 타이머가 진행 중이지 않으면 더보기 메뉴 열기
-      setSelectedTodo(todo)
-    }
-  }
-
-  const handleCloseTimer = () => {
-    setTimerTodo(null)
-    setTimerMode(null)
-  }
-
-  const getCachedTodos = () => {
-    return queryClient.getQueryData<TodoList>(queryKeys.todos())?.items ?? []
-  }
-
-  const closeDatePicker = () => {
-    setDatePickerMode(null)
-    setDatePickerTodo(null)
-    setDatePickerSelectedDate('')
-  }
-
+  // === 날짜 액션 (delegate to useDatePickerActions, clear selectedTodo) ===
   const openMoveDatePicker = (todo: Todo) => {
     setSelectedTodo(null)
-    setDatePickerMode('move')
-    setDatePickerTodo(todo)
-    setDatePickerSelectedDate(todo.date)
+    datePicker.openMoveDatePicker(todo)
   }
 
   const openDuplicateDatePicker = (todo: Todo) => {
     setSelectedTodo(null)
-    setDatePickerMode('duplicate')
-    setDatePickerTodo(todo)
-    setDatePickerSelectedDate(todo.date)
-  }
-
-  const handleMoveTodo = async (todo: Todo, targetDateKey: string, successMessage = '날짜를 변경했어요') => {
-    setSelectedTodo(null)
-    if (todo.date === targetDateKey) {
-      closeDatePicker()
-      return
-    }
-
-    const nextOrder = getNextTodoDayOrder(getCachedTodos(), {
-      targetDateKey,
-      targetMiniDay: todo.miniDay ?? 0,
-      targetIsDone: todo.isDone,
-    })
-
-    closeDatePicker()
-    await updateTodo.mutateAsync({
-      id: todo.id,
-      patch: {
-        date: targetDateKey,
-        dayOrder: nextOrder,
-      },
-    })
-    toast.success(successMessage, { id: 'todo-date-moved' })
-  }
-
-  const handleDuplicateTodo = async (
-    todo: Todo,
-    targetDateKey: string,
-    successMessage = '새 할 일을 추가했어요',
-  ) => {
-    setSelectedTodo(null)
-    const nextOrder = getNextTodoDayOrder(getCachedTodos(), {
-      targetDateKey,
-      targetMiniDay: 0,
-      targetIsDone: false,
-    })
-
-    closeDatePicker()
-    await createTodo.mutateAsync({
-      title: todo.title,
-      note: todo.note,
-      date: targetDateKey,
-      miniDay: 0,
-      dayOrder: nextOrder,
-    })
-    toast.success(successMessage, { id: 'todo-duplicated' })
-  }
-
-  const handleMoveTodoToToday = async (todo: Todo) => {
-    await handleMoveTodo(todo, getOffsetDateKey(0), '오늘로 이동했어요')
-  }
-
-  const handleMoveTodoToTomorrow = async (todo: Todo) => {
-    await handleMoveTodo(todo, getOffsetDateKey(1), '내일로 이동했어요')
-  }
-
-  const handleDuplicateTodoToToday = async (todo: Todo) => {
-    await handleDuplicateTodo(todo, getOffsetDateKey(0), '오늘 할 일을 추가했어요')
-  }
-
-  const handleDuplicateTodoToTomorrow = async (todo: Todo) => {
-    await handleDuplicateTodo(todo, getOffsetDateKey(1), '내일 할 일을 추가했어요')
+    datePicker.openDuplicateDatePicker(todo)
   }
 
   const handleScheduleReview = async (todo: Todo) => {
@@ -352,30 +190,6 @@ export function useTodoActions(selectedDateKey: string) {
     }
   }
 
-  const confirmDatePicker = async () => {
-    if (!datePickerTodo || !datePickerMode || !datePickerSelectedDate) return
-
-    if (datePickerMode === 'move') {
-      await handleMoveTodo(datePickerTodo, datePickerSelectedDate)
-      return
-    }
-
-    await handleDuplicateTodo(datePickerTodo, datePickerSelectedDate)
-  }
-
-  // Note: handleStopTimer와 handleCompleteTask는 TimerFullScreen에서 직접 처리됩니다.
-  // 여기서는 제거되었습니다.
-
-  // 타이머 에러 메시지 자동 숨김 (2초 후)
-  useEffect(() => {
-    if (timerErrorMessage) {
-      const timer = setTimeout(() => {
-        setTimerErrorMessage(null)
-      }, 2000)
-      return () => clearTimeout(timer)
-    }
-  }, [timerErrorMessage])
-
   return {
     // 뮤테이션 상태
     isCreating: createTodo.isPending,
@@ -388,22 +202,22 @@ export function useTodoActions(selectedDateKey: string) {
     // 메모 상태
     selectedTodo,
     setSelectedTodo,
-    showNoteModal,
-    noteText,
-    setNoteText,
-    noteEditMode,
-    noteTodo,
+    showNoteModal: noteModal.showNoteModal,
+    noteText: noteModal.noteText,
+    setNoteText: noteModal.setNoteText,
+    noteEditMode: noteModal.noteEditMode,
+    noteTodo: noteModal.noteTodo,
 
     // 타이머 상태
-    timerTodo,
-    timerMode,
-    timerErrorMessage,
-    setTimerErrorMessage,
-    datePickerOpen: !!datePickerMode && !!datePickerTodo,
-    datePickerMode,
-    datePickerTodo,
-    datePickerSelectedDate,
-    setDatePickerSelectedDate,
+    timerTodo: timerOpen.timerTodo,
+    timerMode: timerOpen.timerMode,
+    timerErrorMessage: timerOpen.timerErrorMessage,
+    setTimerErrorMessage: timerOpen.setTimerErrorMessage,
+    datePickerOpen: datePicker.datePickerOpen,
+    datePickerMode: datePicker.datePickerMode,
+    datePickerTodo: datePicker.datePickerTodo,
+    datePickerSelectedDate: datePicker.datePickerSelectedDate,
+    setDatePickerSelectedDate: datePicker.setDatePickerSelectedDate,
 
     // 핸들러
     handleCreate,
@@ -413,20 +227,20 @@ export function useTodoActions(selectedDateKey: string) {
     handleSaveEdit,
     handleCancelEdit,
     handleOpenNote,
-    handleEditNote,
-    handleSaveNote,
-    handleDeleteNote,
-    handleCloseNote,
+    handleEditNote: noteModal.handleEditNote,
+    handleSaveNote: noteModal.handleSaveNote,
+    handleDeleteNote: noteModal.handleDeleteNote,
+    handleCloseNote: noteModal.handleCloseNote,
     handleOpenTimer,
-    handleCloseTimer,
-    closeDatePicker,
+    handleCloseTimer: timerOpen.handleCloseTimer,
+    closeDatePicker: datePicker.closeDatePicker,
     openMoveDatePicker,
     openDuplicateDatePicker,
-    confirmDatePicker,
-    handleMoveTodoToToday,
-    handleMoveTodoToTomorrow,
-    handleDuplicateTodoToToday,
-    handleDuplicateTodoToTomorrow,
+    confirmDatePicker: datePicker.confirmDatePicker,
+    handleMoveTodoToToday: datePicker.handleMoveTodoToToday,
+    handleMoveTodoToTomorrow: datePicker.handleMoveTodoToTomorrow,
+    handleDuplicateTodoToToday: datePicker.handleDuplicateTodoToToday,
+    handleDuplicateTodoToTomorrow: datePicker.handleDuplicateTodoToTomorrow,
     handleScheduleReview,
   }
 }

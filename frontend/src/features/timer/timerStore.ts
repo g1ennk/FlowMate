@@ -71,13 +71,9 @@ export function getIsApplyingRemote() {
 
 const computeEndAt = (minutes: number) => Date.now() + minutes * MINUTE
 
-const getBreakType = (cycleCount: number, cycleEvery: number): { phase: 'short' | 'long'; duration: number; isLong: boolean } => {
+const getBreakType = (cycleCount: number, cycleEvery: number): { phase: 'short' | 'long'; isLong: boolean } => {
   const isLong = cycleCount % cycleEvery === 0
-  return {
-    phase: isLong ? 'long' : 'short',
-    duration: 0, // 나중에 settings에서 가져옴
-    isLong,
-  }
+  return { phase: isLong ? 'long' : 'short', isLong }
 }
 
 // === Store ===
@@ -201,7 +197,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     applyRemoteState: (todoId, remoteState, serverTime) => {
       const last = seenServerTimes.get(todoId) ?? 0
-      if (serverTime <= last) return
+      if (serverTime < last) return
 
       seenServerTimes.set(todoId, serverTime)
       applyingRemote = true
@@ -213,7 +209,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     applyRemoteReset: (todoId, serverTime) => {
       const last = seenServerTimes.get(todoId) ?? 0
-      if (serverTime <= last) return
+      if (serverTime < last) return
 
       seenServerTimes.set(todoId, serverTime)
       applyingRemote = true
@@ -541,14 +537,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         
         if (timer.mode === 'stopwatch') {
           if (timer.flexiblePhase === 'focus' && timer.focusStartedAt) {
-            // 집중 시간 카운트업
             const now = Date.now()
             const delta = now - timer.focusStartedAt
-            // resumeFocus에서 초기값으로 100ms를 설정했을 수 있으므로, delta를 더할 때 이를 고려
-            // initialFocusMs를 기준으로 계산해야 정확함
-            const initialMs = timer.initialFocusMs ?? 0
-            const baseElapsed = timer.focusElapsedMs - initialMs
-            const newFocusElapsed = initialMs + baseElapsed + delta
+            const newFocusElapsed = timer.focusElapsedMs + delta
             updates[todoId] = {
               ...timer,
               focusElapsedMs: newFocusElapsed,

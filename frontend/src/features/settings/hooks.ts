@@ -9,13 +9,7 @@ import {
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
 import { defaultMiniDaysSettings, normalizeMiniDaysSettings } from '../../lib/miniDays'
-
-const defaultSessionSettings: PomodoroSessionSettings = {
-  flowMin: 25,
-  breakMin: 5,
-  longBreakMin: 15,
-  cycleEvery: 4,
-}
+import { DEFAULT_SESSION_SETTINGS } from '../timer/timerDefaults'
 
 export function useSettings() {
   return useQuery({
@@ -67,7 +61,7 @@ export function useUpdatePomodoroSettings() {
   return useMutation({
     mutationFn: async (patch: Partial<PomodoroSettings>) => {
       const current = qc.getQueryData<Settings>(queryKeys.settings())
-      const currentSession = current?.pomodoroSession ?? defaultSessionSettings
+      const currentSession = current?.pomodoroSession ?? DEFAULT_SESSION_SETTINGS
       const currentAutomation: Required<AutomationSettings> = {
         autoStartBreak: current?.automation.autoStartBreak ?? false,
         autoStartSession: current?.automation.autoStartSession ?? false,
@@ -114,11 +108,6 @@ export function useUpdatePomodoroSettings() {
       }
     },
     onSuccess: (data) => {
-      qc.setQueryData(queryKeys.pomodoroSessionSettings(), data.session)
-      qc.setQueryData(queryKeys.automationSettings(), {
-        autoStartBreak: data.automation.autoStartBreak,
-        autoStartSession: data.automation.autoStartSession,
-      })
       qc.setQueryData<Settings>(queryKeys.settings(), (old) => ({
         pomodoroSession: data.session,
         automation: {
@@ -139,7 +128,7 @@ export function useUpdateMiniDaysSettings() {
       const normalized = normalizeMiniDaysSettings(data)
       qc.setQueryData(queryKeys.miniDaysSettings(), normalized)
       qc.setQueryData<Settings>(queryKeys.settings(), (old) => ({
-        pomodoroSession: old?.pomodoroSession ?? defaultSessionSettings,
+        pomodoroSession: old?.pomodoroSession ?? DEFAULT_SESSION_SETTINGS,
         automation: {
           autoStartBreak: old?.automation.autoStartBreak ?? false,
           autoStartSession: old?.automation.autoStartSession ?? false,

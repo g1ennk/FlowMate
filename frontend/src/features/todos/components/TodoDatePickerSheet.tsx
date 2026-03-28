@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { BottomSheet } from '../../../ui/BottomSheet'
 import { ChevronLeftIcon, ChevronRightIcon } from '../../../ui/Icons'
-import { formatDateKey } from '../../../ui/calendarUtils'
+import { formatDateKey } from '../../../lib/time'
 import { parseDateKey } from '../todoDateActionHelpers'
 
 type TodoDatePickerSheetProps = {
