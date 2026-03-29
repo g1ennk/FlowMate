@@ -1,7 +1,6 @@
 import { act, fireEvent, screen, within } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultMiniDaysSettings } from '../../lib/miniDays'
 import { storageKeys } from '../../lib/storageKeys'
 import { useAuthStore } from '../../store/authStore'
 import { renderApp } from '../../test/renderApp'
@@ -48,24 +47,7 @@ function readStoredTodos() {
   >
 }
 
-type MiniDaysOverrides = {
-  day1?: Partial<(typeof defaultMiniDaysSettings)['day1']>
-  day2?: Partial<(typeof defaultMiniDaysSettings)['day2']>
-  day3?: Partial<(typeof defaultMiniDaysSettings)['day3']>
-}
 
-function seedMiniDaysSettings(overrides: MiniDaysOverrides = {}) {
-  window.localStorage.setItem(
-    storageKeys.settings('local'),
-    JSON.stringify({
-      miniDays: {
-        day1: { ...defaultMiniDaysSettings.day1, ...(overrides.day1 ?? {}) },
-        day2: { ...defaultMiniDaysSettings.day2, ...(overrides.day2 ?? {}) },
-        day3: { ...defaultMiniDaysSettings.day3, ...(overrides.day3 ?? {}) },
-      },
-    }),
-  )
-}
 
 function seedCalendarViewMode(mode: string) {
   window.localStorage.setItem(storageKeys.todosCalendarViewMode, mode)
@@ -77,21 +59,6 @@ function setGuestAuth() {
     state: {
       type: 'guest',
       token: 'guest-token',
-    },
-  })
-}
-
-function setMemberAuth(nickname: string) {
-  useAuthStore.setState({
-    initialized: true,
-    state: {
-      type: 'member',
-      accessToken: 'member-token',
-      user: {
-        id: 'user-1',
-        email: null,
-        nickname,
-      },
     },
   })
 }
@@ -225,59 +192,6 @@ describe('TodosPage', () => {
     expect(screen.getByRole('button', { name: '주 보기' })).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('shows a guest greeting for the current mini-day guide on today', async () => {
-    await renderTodosPage({
-      routeDateKey: selectedDateKey,
-      now: new Date(2026, 0, 9, 9, 0, 0),
-      items: [],
-    })
-
-    expect(screen.getByText('게스트님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '오전에 추가' })).toBeInTheDocument()
-  })
-
-  it('adds 님 to a member nickname in the current mini-day guide', async () => {
-    setMemberAuth('김민석')
-
-    await renderTodosPage({
-      routeDateKey: selectedDateKey,
-      now: new Date(2026, 0, 9, 9, 0, 0),
-      items: [],
-    })
-
-    expect(screen.getByText('김민석님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?')).toBeInTheDocument()
-  })
-
-  it('does not duplicate 님 in the current mini-day guide', async () => {
-    setMemberAuth('김민석님')
-
-    await renderTodosPage({
-      routeDateKey: selectedDateKey,
-      now: new Date(2026, 0, 9, 9, 0, 0),
-      items: [],
-    })
-
-    expect(screen.getByText('김민석님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?')).toBeInTheDocument()
-    expect(
-      screen.queryByText('김민석님님, 좋은 아침이에요. 오전에 어떤 일부터 시작할까요?'),
-    ).not.toBeInTheDocument()
-  })
-
-  it('uses the configured mini-day label in the personalized guide', async () => {
-    seedMiniDaysSettings({
-      day1: { label: '집중' },
-    })
-
-    await renderTodosPage({
-      routeDateKey: selectedDateKey,
-      now: new Date(2026, 0, 9, 9, 0, 0),
-      items: [],
-    })
-
-    expect(screen.getByText('게스트님, 좋은 아침이에요. 집중에 어떤 일부터 시작할까요?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '집중에 추가' })).toBeInTheDocument()
-  })
-
   it('keeps all sections collapsed for today when the current time is outside mini-day ranges', async () => {
     await renderTodosPage({
       routeDateKey: selectedDateKey,
@@ -294,31 +208,6 @@ describe('TodosPage', () => {
     expectSectionCollapsed('저녁')
     expect(screen.queryByText('미분류 할 일')).not.toBeInTheDocument()
     expect(screen.queryByText('오전 할 일')).not.toBeInTheDocument()
-  })
-
-  it('shows a personalized guide for today uncategorized section', async () => {
-    await renderTodosPage({
-      routeDateKey: selectedDateKey,
-      now: new Date(2026, 0, 9, 2, 0, 0),
-      items: [],
-    })
-
-    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
-
-    expect(screen.getByText('게스트님, 떠오른 일을 먼저 적어둘까요?')).toBeInTheDocument()
-  })
-
-  it('keeps uncategorized guide neutral for non-today dates', async () => {
-    await renderTodosPage({
-      routeDateKey: selectedDateKey,
-      now: new Date(2026, 0, 15, 9, 0, 0),
-      items: [],
-    })
-
-    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
-
-    expect(screen.getByText('떠오른 일을 먼저 적어둘까요?')).toBeInTheDocument()
-    expect(screen.queryByText('게스트님, 떠오른 일을 먼저 적어둘까요?')).not.toBeInTheDocument()
   })
 
   it('opens only populated sections for past dates', async () => {
@@ -386,15 +275,11 @@ describe('TodosPage', () => {
     expect(screen.getByText('1월 10일')).toBeInTheDocument()
     expect(screen.getByText('1월 10일 오전 할 일')).toBeInTheDocument()
 
-    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
-    expect(screen.getByText('떠오른 일을 먼저 적어둘까요?')).toBeInTheDocument()
-
     fireEvent.click(screen.getByRole('button', { name: /^11\b/ }))
 
     expect(screen.getByText('1월 11일')).toBeInTheDocument()
     expect(screen.getByText('1월 11일 오후 할 일')).toBeInTheDocument()
     expect(screen.queryByText('1월 10일 오전 할 일')).not.toBeInTheDocument()
-    expect(screen.queryByText('떠오른 일을 먼저 적어둘까요?')).not.toBeInTheDocument()
     expectSectionCollapsed('미분류')
     expectSectionCollapsed('오전')
     expectSectionExpanded('오후')

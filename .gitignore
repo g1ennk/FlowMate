@@ -24,6 +24,7 @@ frontend/.vite/
 # Claude Code skills lock
 skills-lock.json
 .impeccable.md
+.superpowers
 
 # 테스트 결과
 frontend/test-results/
