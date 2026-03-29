@@ -54,6 +54,9 @@ export const buildGroupedTodos = (list: Todo[], daySections: Array<{ id: number 
   return grouped
 }
 
+export const sectionHasTodos = (grouped: GroupedTodos, sectionId: number): boolean =>
+  (grouped[sectionId]?.length ?? 0) > 0
+
 export const getNextDayOrder = (list: Array<{ dayOrder?: number }>) =>
   list.length === 0 ? 0 : Math.max(...list.map((todo) => todo.dayOrder ?? 0)) + 1
 
@@ -103,7 +106,7 @@ export const buildInitialOpenSections = ({
   }
 
   daySections.forEach((section) => {
-    next[section.id] = (groupedTodos[section.id]?.length ?? 0) > 0
+    next[section.id] = sectionHasTodos(groupedTodos, section.id)
   })
 
   return next
@@ -127,17 +130,6 @@ const getMiniDayGreeting = (sectionId: number) => {
       return '좋은 저녁이에요.'
     default:
       return null
-  }
-}
-
-export const readStoredTodosCalendarViewMode = (): TodosCalendarViewMode => {
-  try {
-    const stored = window.localStorage.getItem(storageKeys.todosCalendarViewMode)
-    return stored && TODOS_CALENDAR_VIEW_MODES.includes(stored as TodosCalendarViewMode)
-      ? (stored as TodosCalendarViewMode)
-      : 'week'
-  } catch {
-    return 'week'
   }
 }
 
@@ -170,5 +162,16 @@ export const getSectionGuideContent = (
   return {
     headline: `${title}에 어떤 일부터 시작할까요?`,
     ctaLabel: `${title}에 추가`,
+  }
+}
+
+export const readStoredTodosCalendarViewMode = (): TodosCalendarViewMode => {
+  try {
+    const stored = window.localStorage.getItem(storageKeys.todosCalendarViewMode)
+    return stored && TODOS_CALENDAR_VIEW_MODES.includes(stored as TodosCalendarViewMode)
+      ? (stored as TodosCalendarViewMode)
+      : 'week'
+  } catch {
+    return 'week'
   }
 }

@@ -37,6 +37,7 @@ import {
   getNextDayOrder,
   getSectionGuideContent,
   parseDateParam,
+  sectionHasTodos,
   readStoredTodosCalendarViewMode,
   TODOS_CALENDAR_VIEW_MODES,
   type DaySectionMeta,
@@ -88,7 +89,7 @@ function TodosPage() {
     }
 
     return [
-      { id: 0, title: '미분류', range: '' },
+      { id: 0, title: '미분류', range: '언제든' },
       {
         id: 1,
         title: miniDaysSettings.day1.label,
@@ -167,7 +168,11 @@ function TodosPage() {
     reorderTodosMutate: reorderTodos.mutate,
   })
 
-  const isAllOpen = daySections.every((section) => openSections[section.id])
+  const sectionsWithTodos = daySections.filter(
+    (section) => sectionHasTodos(groupedTodos, section.id),
+  )
+  const isAllOpen =
+    sectionsWithTodos.length > 0 && sectionsWithTodos.every((section) => openSections[section.id])
 
   const blockFocusStats = useMemo(() => {
     const totals: Record<number, number> = {}
@@ -185,6 +190,13 @@ function TodosPage() {
   const openQuickInputForSection = (sectionId: number) => {
     setOpenSections((prev) => ({ ...prev, [sectionId]: true }))
     setInputDay(sectionId)
+  }
+
+  const closeInputForSection = (sectionId: number) => {
+    setInputDay(null)
+    if (!sectionHasTodos(groupedTodos, sectionId)) {
+      setOpenSections((prev) => ({ ...prev, [sectionId]: false }))
+    }
   }
 
   const handleTodoDateAction = (todo: Todo, kind: TodoDateActionKind) => {
@@ -313,7 +325,9 @@ function TodosPage() {
                   return
                 }
                 const next: Record<number, boolean> = {}
-                daySections.forEach((sectionItem) => { next[sectionItem.id] = true })
+                daySections.forEach((sectionItem) => {
+                  next[sectionItem.id] = sectionHasTodos(groupedTodos, sectionItem.id)
+                })
                 setOpenSections(next)
               }}
               className="flex items-center gap-1 text-xs font-medium text-text-tertiary hover:text-text-secondary"
@@ -351,7 +365,7 @@ function TodosPage() {
                 const isCurrentTimeSection = isSelectedDateToday && section.id === defaultOpenId
                 const shouldShowInput = inputDay === section.id
                 const isEmptySection = totalCount === 0
-                const shouldShowPriorityGuide = isCurrentTimeSection || section.id === 0
+                const shouldShowGuide = isCurrentTimeSection || section.id === 0
                 const inputAtTop = shouldShowInput && activeTodos.length === 0
                 const inputBetween = shouldShowInput && activeTodos.length > 0
                 const hasRangeMeta = section.range.trim().length > 0
@@ -441,8 +455,8 @@ function TodosPage() {
                             </button>
                           </div>
                           {isSectionOpen && (
-                            <div className="min-h-[44px] space-y-0.5 rounded-lg py-0.5">
-                              {!shouldShowInput && isEmptySection && shouldShowPriorityGuide && (
+                            <div className="space-y-0.5 rounded-lg py-0.5">
+                              {!shouldShowInput && isEmptySection && shouldShowGuide && (
                                 <SectionGuideCard
                                   content={getSectionGuideContent({
                                     section,
@@ -452,6 +466,11 @@ function TodosPage() {
                                   })}
                                   onAdd={() => openQuickInputForSection(section.id)}
                                 />
+                              )}
+                              {!shouldShowInput && isEmptySection && !shouldShowGuide && (
+                                <p className="px-2 py-list text-sm text-text-tertiary">
+                                  + 버튼으로 할 일을 추가해보세요.
+                                </p>
                               )}
                               <SortableContext
                                 id={containerId}
@@ -463,7 +482,7 @@ function TodosPage() {
                                     sectionId={section.id}
                                     nextActiveOrder={nextActiveOrder}
                                     onCreate={actions.handleCreate}
-                                    onClose={() => setInputDay(null)}
+                                    onClose={() => closeInputForSection(section.id)}
                                   />
                                 )}
                                 {previewActiveInsertIndex === 0 && activeTodos.length === 0 && (
@@ -483,7 +502,7 @@ function TodosPage() {
                                     sectionId={section.id}
                                     nextActiveOrder={nextActiveOrder}
                                     onCreate={actions.handleCreate}
-                                    onClose={() => setInputDay(null)}
+                                    onClose={() => closeInputForSection(section.id)}
                                   />
                                 )}
                                 {doneTodos.map((todo) =>

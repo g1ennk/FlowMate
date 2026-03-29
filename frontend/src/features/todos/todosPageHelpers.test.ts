@@ -132,6 +132,28 @@ describe('buildInitialOpenSections', () => {
     expect(result[3]).toBe(false)
   })
 
+  it('opens defaultOpenId section when it has todos', () => {
+    const groupedTodos: GroupedTodos = {
+      0: [],
+      1: [],
+      2: [makeTodo({ id: 'x', miniDay: 2, dayOrder: 0 })],
+      3: [],
+    }
+
+    const result = buildInitialOpenSections({
+      selectedDateKey: '2026-03-28',
+      todayDateKey: '2026-03-28',
+      defaultOpenId: 2,
+      daySections: DAY_SECTIONS_META,
+      groupedTodos,
+    })
+
+    expect(result[2]).toBe(true)
+    expect(result[0]).toBe(false)
+    expect(result[1]).toBe(false)
+    expect(result[3]).toBe(false)
+  })
+
   it('opens sections with todos when selected date is not today', () => {
     const groupedTodos: GroupedTodos = {
       0: [],

@@ -159,6 +159,11 @@ git push origin main
 - `docs/api.md` — 전체 API 계약 (엔드포인트, 요청/응답 스키마, 에러 코드)
 - `docs/data-model.md` — 개념·논리·물리 데이터 모델 + 설계 근거
 
+### Superpowers 산출물 (.superpowers/ — gitignored, 로컬 참고용)
+
+- brainstorm, plan, critique 등 superpowers 스킬이 생성하는 산출물은 `.superpowers/`에 저장
+- `docs/` 루트의 정식 문서(architecture.md, api.md, data-model.md)에 저장하지 않음
+
 ### 참고 문서 (agent/ — gitignored, 로컬 참고용)
 
 - `agent/guide/concepts/` — 백엔드(10편), 프론트엔드(1편), 인프라(9편) 학습 가이드
