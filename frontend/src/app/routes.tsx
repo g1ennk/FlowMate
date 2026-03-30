@@ -1,6 +1,7 @@
 import { lazy } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import AppLayoutGate from './AppLayoutGate'
+import RouteErrorBoundary from './RouteErrorBoundary'
 
 const TodosPage = lazy(() => import('../features/todos/TodosPage'))
 const ReviewPage = lazy(() =>
@@ -19,14 +20,17 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/auth/callback',
     element: <AuthCallback />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/',
     element: <AppLayoutGate />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <Navigate to="/todos" replace /> },
       { path: 'todos', element: <TodosPage /> },

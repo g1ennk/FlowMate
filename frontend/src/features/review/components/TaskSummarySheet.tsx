@@ -25,7 +25,6 @@ export function TaskSummarySheet({
       isOpen={isOpen}
       onClose={onClose}
       title={title}
-      showCloseButton
       panelClassName="max-h-[90vh]"
       contentClassName="grid grid-cols-2 gap-3"
     >

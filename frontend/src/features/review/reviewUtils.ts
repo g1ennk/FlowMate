@@ -63,8 +63,7 @@ export function formatTaskDateLabel(dateKey: string): string {
 
 export function formatMonthDayLabel(dateKey: string): string {
   const date = parseDateKey(dateKey)
-  const weekday = WEEKDAY_SHORT_LABELS[date.getDay()] ?? ''
-  return `${date.getMonth() + 1}/${date.getDate()}(${weekday})`
+  return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
 export function getPeriodRange(type: PeriodType, baseDate: Date): PeriodRange {
@@ -77,9 +76,6 @@ export function getPeriodRange(type: PeriodType, baseDate: Date): PeriodRange {
   } else if (type === 'weekly') {
     start = startOfWeek(baseDate)
     end = endOfWeek(baseDate)
-  } else if (type === 'monthly') {
-    start = startOfMonth(baseDate)
-    end = endOfMonth(baseDate)
   } else {
     start = startOfMonth(baseDate)
     end = endOfMonth(baseDate)
@@ -93,14 +89,13 @@ export function getPeriodRange(type: PeriodType, baseDate: Date): PeriodRange {
   }
 }
 
-export function shiftBaseDate(type: PeriodType, baseDate: Date, delta: number) {
+export function shiftBaseDate(type: PeriodType, baseDate: Date, delta: number): Date {
   if (type === 'daily') return addDays(baseDate, delta)
   if (type === 'weekly') return addDays(baseDate, delta * 7)
-  if (type === 'monthly') return new Date(baseDate.getFullYear(), baseDate.getMonth() + delta, 1)
   return new Date(baseDate.getFullYear(), baseDate.getMonth() + delta, 1)
 }
 
-export function formatPeriodLabel(type: PeriodType, baseDate: Date) {
+export function formatPeriodLabel(type: PeriodType, baseDate: Date): string {
   if (type === 'daily') {
     return baseDate.toLocaleDateString('ko-KR', {
       year: 'numeric',
@@ -124,85 +119,87 @@ export function formatPeriodLabel(type: PeriodType, baseDate: Date) {
     return `${startLabel} ~ ${endLabel}`
   }
 
-  if (type === 'monthly') {
-    return baseDate.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-    })
-  }
-
   return baseDate.toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: 'long',
   })
 }
 
-const getEffectiveFocusSeconds = (
+function getEffectiveFocusSeconds(
   todo: Todo,
   _timers: Record<string, SingleTimerState>,
-) => {
+): number {
   void _timers
   return todo.sessionFocusSeconds
 }
 
-const getEffectiveFlowCount = (
+function getEffectiveFlowCount(
   todo: Todo,
   _timers: Record<string, SingleTimerState>,
-) => {
+): number {
   void _timers
   return todo.sessionCount
 }
 
-const getTodoMiniDay = (todo: Todo) => (typeof todo.miniDay === 'number' ? todo.miniDay : 0)
-const getTodoDayOrder = (todo: Todo) => (typeof todo.dayOrder === 'number' ? todo.dayOrder : 0)
-const getTodoCreatedAt = (todo: Todo) => new Date(todo.createdAt).getTime()
+function getTodoMiniDay(todo: Todo): number {
+  return typeof todo.miniDay === 'number' ? todo.miniDay : 0
+}
 
-const compareTodoOrder = (a: Todo, b: Todo) => {
+function getTodoDayOrder(todo: Todo): number {
+  return typeof todo.dayOrder === 'number' ? todo.dayOrder : 0
+}
+
+function compareTodoOrder(a: Todo, b: Todo): number {
   const miniDayDiff = getTodoMiniDay(a) - getTodoMiniDay(b)
   if (miniDayDiff !== 0) return miniDayDiff
   const orderDiff = getTodoDayOrder(a) - getTodoDayOrder(b)
   if (orderDiff !== 0) return orderDiff
-  return getTodoCreatedAt(a) - getTodoCreatedAt(b)
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
 }
 
-const sortTodosByOrder = (todos: Todo[]) => [...todos].sort(compareTodoOrder)
+function sortTodosByOrder(todos: Todo[]): Todo[] {
+  return [...todos].sort(compareTodoOrder)
+}
 
-const isDateKeyInRange = (value: string, startKey: string, endKey: string) =>
-  value >= startKey && value <= endKey
+function isDateKeyInRange(value: string, startKey: string, endKey: string): boolean {
+  return value >= startKey && value <= endKey
+}
 
-const getEffectiveIsDone = (
+function getEffectiveIsDone(
   todo: Todo,
   timers: Record<string, SingleTimerState>,
-) => {
+): boolean {
   const timer = timers[todo.id]
   if (timer?.status === 'running') return false
   return todo.isDone
 }
 
-const buildTaskItem = (
+function buildTaskItem(
   todo: Todo,
   focusSeconds: number,
   flowCount: number,
   isDoneOverride?: boolean,
-): TaskItem => ({
-  id: todo.id,
-  title: todo.title,
-  reviewRound: todo.reviewRound ?? null,
-  date: todo.date,
-  isDone: typeof isDoneOverride === 'boolean' ? isDoneOverride : todo.isDone,
-  focusSeconds,
-  focusTime: formatFocusTime(focusSeconds),
-  flowCount,
-  miniDay: typeof todo.miniDay === 'number' ? todo.miniDay : 0,
-})
+): TaskItem {
+  return {
+    id: todo.id,
+    title: todo.title,
+    reviewRound: todo.reviewRound ?? null,
+    date: todo.date,
+    isDone: typeof isDoneOverride === 'boolean' ? isDoneOverride : todo.isDone,
+    focusSeconds,
+    focusTime: formatFocusTime(focusSeconds),
+    flowCount,
+    miniDay: getTodoMiniDay(todo),
+  }
+}
 
-const buildDistribution = (
+function buildDistribution(
   type: PeriodType,
   todos: Todo[],
   range: PeriodRange,
   miniDaysSettings: MiniDaysSettings,
   focusById: Map<string, number>,
-): DistributionBucket[] => {
+): DistributionBucket[] {
   if (type === 'daily') {
     const buckets = [
       { id: 0, label: '미분류' },
@@ -213,8 +210,7 @@ const buildDistribution = (
 
     return buckets.map((bucket) => {
       const seconds = todos.reduce((sum, todo) => {
-        const miniDay = typeof todo.miniDay === 'number' ? todo.miniDay : 0
-        if (miniDay !== bucket.id) return sum
+        if (getTodoMiniDay(todo) !== bucket.id) return sum
         return sum + (focusById.get(todo.id) ?? 0)
       }, 0)
 
@@ -266,7 +262,7 @@ const buildDistribution = (
   return []
 }
 
-const withPeak = (items: DistributionBucket[]) => {
+function withPeak(items: DistributionBucket[]) {
   const max = Math.max(0, ...items.map((item) => item.seconds))
   return items.map((item) => ({
     ...item,
@@ -274,11 +270,11 @@ const withPeak = (items: DistributionBucket[]) => {
   }))
 }
 
-const buildTotals = (
+function buildTotals(
   todos: Todo[],
   timers: Record<string, SingleTimerState>,
   range: PeriodRange,
-) => {
+) {
   const periodTodos = todos.filter((todo) =>
     isDateKeyInRange(todo.date, range.startKey, range.endKey),
   )
@@ -294,12 +290,12 @@ const buildTotals = (
   )
 }
 
-const buildComparison = (
+function buildComparison(
   todos: Todo[],
   timers: Record<string, SingleTimerState>,
   type: PeriodType,
   baseDate: Date,
-): PeriodComparison => {
+): PeriodComparison {
   const previousDate = shiftBaseDate(type, baseDate, -1)
   const previousRange = getPeriodRange(type, previousDate)
   const previousTotals = buildTotals(todos, timers, previousRange)
@@ -430,8 +426,7 @@ export function buildTasksByDate(
 
 export function formatDailyGroupLabel(dateKey: string): string {
   const date = parseDateKey(dateKey)
-  const weekday = WEEKDAY_SHORT_LABELS[date.getDay()] ?? ''
-  return `${date.getMonth() + 1}/${date.getDate()} (${weekday})`
+  return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
 export function formatWeeklyGroupLabel(
