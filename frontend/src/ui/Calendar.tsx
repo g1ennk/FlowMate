@@ -285,11 +285,12 @@ export function Calendar({
             const mark = monthMarks[index]
             const hasData = (mark?.total ?? 0) > 0
             const isComplete = hasData && mark?.done === mark?.total
-            const indicator = isComplete
-              ? 'bg-accent'
-              : hasData
-              ? 'bg-[var(--color-warning)]'
-              : ''
+            let indicator = ''
+            if (isComplete) {
+              indicator = 'bg-accent'
+            } else if (hasData) {
+              indicator = 'bg-[var(--color-warning)]'
+            }
 
             return (
               <button
@@ -314,20 +315,23 @@ export function Calendar({
         <>
           {/* 요일 헤더 */}
           <div className="mb-2 grid grid-cols-7 gap-1">
-            {WEEKDAYS.map((day, i) => (
-              <div
-                key={day}
-                className={`text-center text-xs font-medium ${
-                  i === 5 ? 'text-cal-saturday' : i === 6 ? 'text-cal-sunday' : 'text-text-tertiary'
-                }`}
-              >
-                {day}
-              </div>
-            ))}
+            {WEEKDAYS.map((day, i) => {
+              let colorClass = 'text-text-tertiary'
+              if (i === 5) colorClass = 'text-cal-saturday'
+              if (i === 6) colorClass = 'text-cal-sunday'
+              return (
+                <div
+                  key={day}
+                  className={`text-center text-xs font-medium ${colorClass}`}
+                >
+                  {day}
+                </div>
+              )
+            })}
           </div>
 
           {/* 날짜 그리드 */}
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-x-1 gap-y-1.5">
             {days.map((date, index) => {
               if (!date) {
                 return <div key={`empty-${index}`} className="aspect-square" />
@@ -375,11 +379,11 @@ export function Calendar({
                 >
                   {/* 오늘 표시 */}
                   {isTodayDate && (
-                    <span className="absolute top-0.5 text-[11px] font-semibold text-accent">
+                    <span className="text-[9px] font-semibold leading-none text-accent">
                       오늘
                     </span>
                   )}
-                  <span className={isTodayDate ? 'mt-2' : ''}>{date.getDate()}</span>
+                  <span>{date.getDate()}</span>
                   {/* 진행도 표시: 남은 개수 또는 완료 체크 */}
                   {showIndicators && mark && mark.total > 0 && (
                     <span

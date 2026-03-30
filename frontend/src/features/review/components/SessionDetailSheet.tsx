@@ -13,7 +13,7 @@ type SessionDetailSheetProps = {
   onClose: () => void
 }
 
-const formatSessionTime = (value: string) => {
+function formatSessionTime(value: string): string | null {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
   return new Intl.DateTimeFormat('ko-KR', {
@@ -32,13 +32,12 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
     (max, session) => Math.max(max, session.sessionFocusSeconds),
     0,
   )
-  const taskFocusSeconds = task?.focusSeconds ?? 0
-  const taskFocusTime = task?.focusTime ?? null
-  const focusLabel = totalFocusSeconds >= 60
-      ? formatFocusTime(totalFocusSeconds)
-      : taskFocusSeconds >= 60
-      ? taskFocusTime
-      : null
+  let focusLabel: string | null = null
+  if (totalFocusSeconds >= 60) {
+    focusLabel = formatFocusTime(totalFocusSeconds)
+  } else if ((task?.focusSeconds ?? 0) >= 60) {
+    focusLabel = task?.focusTime ?? null
+  }
   const breakRatioPercent =
     totalFocusSeconds > 0 ? Math.round((totalBreakSeconds / totalFocusSeconds) * 100) : 0
   const insightLabel =
@@ -59,7 +58,6 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
       isOpen={isOpen}
       onClose={onClose}
       title="세션 상세"
-      showCloseButton
       showHeaderDivider={false}
       contentClassName="space-y-card"
     >
@@ -120,16 +118,15 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
                     Flow {session.sessionOrder ?? index + 1}
                   </p>
                   <p className="text-[11px] text-text-tertiary">
-                    {[
-                      formatSessionTime(session.createdAt)
-                        ? `${formatSessionTime(session.createdAt)} 시작`
-                        : null,
-                      session.breakSeconds > 0
+                    {(() => {
+                      const startTime = formatSessionTime(session.createdAt)
+                      const breakLabel = session.breakSeconds > 0
                         ? `휴식 ${formatFocusTime(session.breakSeconds)}`
-                        : '휴식 없음',
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+                        : '휴식 없음'
+                      return startTime
+                        ? `${startTime} 시작 · ${breakLabel}`
+                        : breakLabel
+                    })()}
                   </p>
                 </div>
                 {session.sessionFocusSeconds >= 60 && (
