@@ -1,4 +1,4 @@
-package kr.io.flowmate.timer.dto;
+package kr.io.flowmate.timer.dto.request;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;

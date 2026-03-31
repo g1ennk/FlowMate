@@ -9,7 +9,7 @@ public enum TimerMode {
     STOPWATCH("stopwatch"),
     POMODORO("pomodoro");
 
-    private String value;
+    private final String value;
 
     TimerMode(String value) {
         this.value = value;

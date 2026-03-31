@@ -1,10 +1,13 @@
 package kr.io.flowmate.auth.service;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletResponse;
 import kr.io.flowmate.auth.domain.RefreshToken;
 import kr.io.flowmate.auth.domain.SocialAccount;
 import kr.io.flowmate.auth.domain.User;
-import kr.io.flowmate.auth.dto.*;
+import kr.io.flowmate.auth.dto.request.*;
+import kr.io.flowmate.auth.dto.response.*;
+import kr.io.flowmate.auth.exception.AuthenticationFailedException;
 import kr.io.flowmate.auth.jwt.JwtProperties;
 import kr.io.flowmate.auth.jwt.JwtProvider;
 import kr.io.flowmate.auth.oauth.OAuthProvider;
@@ -13,6 +16,7 @@ import kr.io.flowmate.auth.oauth.OAuthUserInfo;
 import kr.io.flowmate.auth.repository.RefreshTokenRepository;
 import kr.io.flowmate.auth.repository.SocialAccountRepository;
 import kr.io.flowmate.auth.repository.UserRepository;
+import kr.io.flowmate.common.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -67,11 +71,10 @@ public class AuthService {
     @Transactional
     public LoginResponse login(String providerName, String code,
                                String stateToken, HttpServletResponse httpResponse) {
-        // 1. state JWT 검증 (서명 + role=state 확인)
-        if (!jwtProvider.validateToken(stateToken)
-                || !"state".equals(jwtProvider.extractRole(stateToken))) {
-            throw new IllegalArgumentException("유효하지 않은 state입니다.");
-        }
+        // 1. state JWT 검증 (단일 파싱으로 서명 + role=state 확인)
+        Claims stateClaims = jwtProvider.parseClaims(stateToken)
+                .filter(c -> "state".equals(c.get("role", String.class)))
+                .orElseThrow(() -> new AuthenticationFailedException("유효하지 않은 state입니다."));
 
         // 2. provider 선택
         OAuthProvider provider = oAuthProviderRegistry.get(providerName);
@@ -82,25 +85,24 @@ public class AuthService {
         // 4. 사용자 정보 조회
         OAuthUserInfo userInfo = provider.getUserInfo(socialAccessToken);
 
-        // 5. SocialAccount 조회 -> 없으면 User + SocialAccount 신규 생성
+        // 5. SocialAccount 조회 -> 없으면 User + SocialAccount 신규 생성, 있으면 프로필 동기화
         Optional<SocialAccount> existingAccount = socialAccountRepository
                 .findByProviderAndProviderUserId(providerName, userInfo.providerId());
-        boolean isNewUser = existingAccount.isEmpty();
 
-        SocialAccount socialAccount = existingAccount.orElseGet(() -> {
-            User newUser = userRepository.save(
-                    User.create(userInfo.email(), userInfo.nickname()));
-            return socialAccountRepository.save(
-                    SocialAccount.create(newUser.getId(), providerName, userInfo.providerId())
-            );
-        });
-
-        // 6. 기존 회원이면 소셜 프로필 동기화 (신규 회원은 create에서 이미 설정됨)
-        User user = userRepository.findById(socialAccount.getUserId())
-                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
-        if (!isNewUser) {
+        User user;
+        if (existingAccount.isPresent()) {
+            user = userRepository.findById(existingAccount.get().getUserId())
+                    .orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다."));
             user.updateProfile(userInfo.email(), userInfo.nickname());
+        } else {
+            user = userRepository.save(User.create(userInfo.email(), userInfo.nickname()));
+            socialAccountRepository.save(
+                    SocialAccount.create(user.getId(), providerName, userInfo.providerId()));
         }
+
+        // 6. 기존 활성 RT 모두 폐기 (동일 계정 반복 로그인 시 RT 누적 방지)
+        refreshTokenRepository.findAllActiveByUserId(user.getId(), Instant.now())
+                .forEach(RefreshToken::revoke);
 
         // 7. 새 Refresh Token 발급 -> SHA-256 해시 -> DB 저장
         String rawRefreshToken = UUID.randomUUID().toString();
@@ -124,14 +126,14 @@ public class AuthService {
         String tokenHash = sha256(rawRefreshToken);
 
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 Refresh Token"));
+                .orElseThrow(() -> new AuthenticationFailedException("유효하지 않은 Refresh Token"));
 
         if (!refreshToken.isValid()) {
-            throw new IllegalArgumentException("만료 또는 폐기된 Refresh Token");
+            throw new AuthenticationFailedException("만료 또는 폐기된 Refresh Token");
         }
 
         User user = userRepository.findById(refreshToken.getUserId())
-                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다."));
 
         // RTR: 기존 RT revoke + 새 RT 발급 + 쿠키 교체
         refreshToken.revoke();
@@ -160,7 +162,7 @@ public class AuthService {
      */
     public UserResponse me(String userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다."));
         return UserResponse.from(user);
     }
 

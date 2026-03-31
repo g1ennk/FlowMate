@@ -2,12 +2,12 @@ package kr.io.flowmate.todo.controller;
 
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
-import kr.io.flowmate.common.util.CurrentUserResolver;
-import kr.io.flowmate.todo.dto.TodoCreateRequest;
-import kr.io.flowmate.todo.dto.TodoReorderRequest;
-import kr.io.flowmate.todo.dto.TodoResponse;
-import kr.io.flowmate.todo.dto.TodoScheduleReviewResponse;
-import kr.io.flowmate.todo.dto.TodoUpdateRequest;
+import kr.io.flowmate.common.web.CurrentUser;
+import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
+import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
+import kr.io.flowmate.todo.dto.response.TodoResponse;
+import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
+import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
 import kr.io.flowmate.todo.service.TodoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,105 +24,61 @@ import java.util.List;
 public class TodoController {
 
     private final TodoService todoService;
-    private final CurrentUserResolver currentUserResolver;
 
-    /**
-     * Todo 목록 조회
-     * - GET /api/todos
-     * - GET /api/todos?date=yyyy-MM-dd
-     */
     @GetMapping
     public ResponseEntity<ListResponse<TodoResponse>> getTodos(
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+            @CurrentUser String userId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
     ) {
-        String userId = currentUserResolver.resolve();
         List<TodoResponse> todos = todoService.getTodos(userId, date);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
 
-    /**
-     * Todo 생성
-     * - POST /api/todos
-     */
     @PostMapping
     public ResponseEntity<TodoResponse> createTodo(
-            @Valid
-            @RequestBody TodoCreateRequest createRequest
+            @CurrentUser String userId,
+            @Valid @RequestBody TodoCreateRequest createRequest
     ) {
-        String userId = currentUserResolver.resolve();
         TodoResponse todo = todoService.createTodo(userId, createRequest);
         return ResponseEntity.status(HttpStatus.CREATED).body(todo);
     }
 
-    /**
-     * Todo 수정
-     * - PATCH /api/todos/{id}
-     */
     @PatchMapping("/{id}")
     public ResponseEntity<TodoResponse> updateTodo(
+            @CurrentUser String userId,
             @PathVariable String id,
-            @Valid
-            @RequestBody TodoUpdateRequest updateRequest
+            @Valid @RequestBody TodoUpdateRequest updateRequest
     ) {
-        String userId = currentUserResolver.resolve();
         TodoResponse todo = todoService.updateTodo(userId, id, updateRequest);
         return ResponseEntity.ok(todo);
     }
 
-    /**
-     * Todo 삭제
-     * DELETE /api/todos/{id}
-     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTodo(
+            @CurrentUser String userId,
             @PathVariable String id
     ) {
-        String userId = currentUserResolver.resolve();
         todoService.deleteTodo(userId, id);
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Todo 순서 변경
-     * - PUT /api/todos/reorder
-     */
     @PutMapping("/reorder")
     public ResponseEntity<ListResponse<TodoResponse>> reorderTodos(
+            @CurrentUser String userId,
             @Valid @RequestBody TodoReorderRequest reorderRequest
     ) {
-        String userId = currentUserResolver.resolve();
         List<TodoResponse> todos = todoService.reorderTodos(userId, reorderRequest);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
 
     @PostMapping("/{id}/review-schedule")
     public ResponseEntity<TodoScheduleReviewResponse> scheduleReview(
+            @CurrentUser String userId,
             @PathVariable String id
     ) {
-        String userId = currentUserResolver.resolve();
         TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, id);
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status)
                 .body(new TodoScheduleReviewResponse(result.item(), result.created()));
     }
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

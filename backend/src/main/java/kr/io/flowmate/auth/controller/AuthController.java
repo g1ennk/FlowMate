@@ -2,12 +2,13 @@ package kr.io.flowmate.auth.controller;
 
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import kr.io.flowmate.auth.dto.*;
+import kr.io.flowmate.auth.dto.request.*;
+import kr.io.flowmate.auth.dto.response.*;
 import kr.io.flowmate.auth.service.AuthService;
+import kr.io.flowmate.common.web.CurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -74,8 +75,7 @@ public class AuthController {
      * 내 정보 (MEMBER 전용 - SecurityConfig에서 role 제한)
      */
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> me(Authentication authentication) {
-        String userId = (String) authentication.getPrincipal();
+    public ResponseEntity<UserResponse> me(@CurrentUser String userId) {
         return ResponseEntity.ok(authService.me(userId));
     }
 }

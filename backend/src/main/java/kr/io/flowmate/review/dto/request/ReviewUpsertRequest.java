@@ -24,5 +24,6 @@ public class ReviewUpsertRequest {
     private LocalDate periodEnd;
 
     @NotBlank(message = "content is required")
+    @jakarta.validation.constraints.Size(max = 10000, message = "content must be at most 10000 characters")
     private String content;
 }

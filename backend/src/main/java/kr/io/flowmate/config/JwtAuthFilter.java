@@ -1,5 +1,6 @@
 package kr.io.flowmate.config;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,22 +30,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = extractToken(request);
 
-        if (token != null && jwtProvider.validateToken(token)) {
-            String subject = jwtProvider.extractSubject(token);
-            String role = jwtProvider.extractRole(token);
+        if (token != null) {
+            jwtProvider.parseClaims(token).ifPresent(claims -> {
+                String subject = claims.getSubject();
+                String role = claims.get("role", String.class);
 
-            // state JWT는 OAuth CSRF 방어용 토큰 — API 인증 수단으로 사용 불가
-            if ("guest".equals(role) || "member".equals(role)) {
-                // principal = subject(게스트면 clientId, 회원이면 userId)
-                UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(
-                                subject,
-                                null,
-                                List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
-                        );
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(auth);
-            }
+                // state JWT는 OAuth CSRF 방어용 토큰 — API 인증 수단으로 사용 불가
+                if ("guest".equals(role) || "member".equals(role)) {
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(
+                                    subject,
+                                    null,
+                                    List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
+                            );
+                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
+            });
         }
 
         filterChain.doFilter(request, response);

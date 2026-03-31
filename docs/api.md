@@ -565,8 +565,7 @@ Member Access JWT 전용.
 
 **Errors**
 
-- `400 BAD_REQUEST` 유효하지 않은 token
-- `400 BAD_REQUEST` Member 아님
+- `401 UNAUTHORIZED` 유효하지 않은 token 또는 Member 아님
 
 ---
 
@@ -871,10 +870,10 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 - `type`: `daily | weekly | monthly`
 - `periodStart`: daily는 임의 날짜, weekly는 월요일, monthly는 매월 1일
 
-**Response** `200`
+**Response**
 
-- 존재하면 `Review`
-- 없으면 본문으로 JSON `null`을 반환한다.
+- 존재하면 `200` + `Review`
+- 없으면 `204 No Content` (body 없음)
 
 ---
 
@@ -957,18 +956,18 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 }
 ```
 
-| 코드 / 상태            | HTTP | 설명                                                     |
-|--------------------|------|--------------------------------------------------------|
-| `VALIDATION_ERROR` | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                            |
-| `BAD_REQUEST`      | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, 무효 RT, SSE query token 검증 실패 등 |
-| `NOT_FOUND`        | 404  | 리소스 없음 또는 타 사용자 소유                                     |
-| `INTERNAL_ERROR`   | 500  | 처리되지 않은 예외                                             |
-| `UNAUTHORIZED`     | 401  | Spring Security 인증 실패. body가 비어 있을 수 있음                |
-| `FORBIDDEN`        | 403  | Spring Security 인가 실패. body가 비어 있을 수 있음                |
+| 코드 / 상태            | HTTP | 설명                                                   |
+|--------------------|------|------------------------------------------------------|
+| `VALIDATION_ERROR` | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                          |
+| `BAD_REQUEST`      | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합 등                             |
+| `UNAUTHORIZED`     | 401  | 인증 실패 — 만료/폐기 RT, 유효하지 않은 state, SSE 토큰 검증 실패 등    |
+| `FORBIDDEN`        | 403  | Spring Security 인가 실패                                |
+| `NOT_FOUND`        | 404  | 리소스 없음 또는 타 사용자 소유                                   |
+| `CONFLICT`         | 409  | 데드락 재시도 소진 (`CannotAcquireLockException`)            |
+| `INTERNAL_ERROR`   | 500  | 처리되지 않은 예외                                           |
 
 참고:
 
-- 현재 구현에는 `409 CONFLICT`를 반환하는 경로가 없다.
-- `GET /api/timer/sse`는 SecurityFilter가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member가 `400 BAD_REQUEST`로
-  내려온다.
-- `UNAUTHORIZED`, `FORBIDDEN`은 Spring Security가 만드는 HTTP 상태이며, `ApiError.error.code`를 항상 의미하지는 않는다.
+- `UNAUTHORIZED`는 두 경로로 발생한다: (1) Spring Security 필터 — body가 비어 있을 수 있음, (2) `AuthenticationFailedException` — `ApiError` body 포함.
+- `GET /api/timer/sse`는 SecurityFilter가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member가 `401 UNAUTHORIZED`로 내려온다.
+- SSE 비동기 예외: 타임아웃 `503`, 클라이언트 연결 종료 `204` (정상 종료로 간주).

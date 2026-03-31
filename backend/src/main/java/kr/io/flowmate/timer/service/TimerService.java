@@ -1,8 +1,8 @@
 package kr.io.flowmate.timer.service;
 
 import kr.io.flowmate.timer.domain.TimerState;
-import kr.io.flowmate.timer.dto.TimerStatePushRequest;
-import kr.io.flowmate.timer.dto.TimerStateResponse;
+import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
+import kr.io.flowmate.timer.dto.response.TimerStateResponse;
 import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
@@ -84,21 +84,17 @@ public class TimerService {
 
     @Transactional
     public List<TimerStateResponse> getActiveStates(String userId) {
-        // 현재 user의 timer_states row를 전부 가져옴
-        List<TimerState> states = timerStateRepository.findAllByUserIdOrderByUpdatedAtDesc(userId);
-
-        // TTL 기준 시각 계산하여 24시간이 넘은 row는 stale로 보고 정리 대상
+        // TTL 기준 시각을 조회 전에 계산하여 일관성 보장
         Instant threshold = Instant.now().minus(24, ChronoUnit.HOURS);
 
-        // TTL cleanup
-        states.stream()
-                .filter(state -> state.getUpdatedAt().isBefore(threshold))
-                .forEach(state -> timerStateRepository.deleteByUserIdAndTodoId(userId, state.getTodoId()));
+        // TTL cleanup — bulk DELETE (clearAutomatically=true로 1차 캐시 갱신)
+        timerStateRepository.deleteStaleByUserId(userId, threshold);
 
-        // 반환할 active state를 골라서 DTO로 변환
+        // cleanup 후 남은 row만 조회
+        List<TimerState> states = timerStateRepository.findAllByUserIdOrderByUpdatedAtDesc(userId);
+
+        // soft delete(idle) row 제외: state_json != null 인 것만 active로 반환
         return states.stream()
-                .filter(s -> !s.getUpdatedAt().isBefore(threshold))
-                // soft delete(idle) row 제외: state_json != null 인 것만 active로 본다
                 .filter(s -> s.getStateJson() != null)
                 .map(s -> {
                     try {
@@ -130,7 +126,7 @@ public class TimerService {
             // 해당 user의 모든 SSE 연결에 브로드캐스트
             sseEmitterRegistry.broadcast(userId, event);
         } catch (JacksonException e) {
-            // 브로드캐스트 실패: 클라이언트는 GET /api/timer/state 로 보정 가능
+            log.warn("SSE broadcast 직렬화 실패. userId={}, todoId={}", userId, todoId, e);
         }
     }
 

@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -22,11 +23,10 @@ public class ReviewService {
 
     private final ReviewRepository reviewRepository;
 
-    public ReviewResponse getReview(String userId, ReviewType type, LocalDate periodStart) {
+    public Optional<ReviewResponse> getReview(String userId, ReviewType type, LocalDate periodStart) {
         validatePeriodRule(type, periodStart);
         return reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, type, periodStart)
-                .map(ReviewResponse::from)
-                .orElse(null);
+                .map(ReviewResponse::from);
     }
 
     public List<ReviewResponse> getReviews(String userId, ReviewType type, LocalDate from, LocalDate to) {

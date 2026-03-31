@@ -59,10 +59,10 @@ class SessionServiceTest {
         // then
         assertThat(result.created()).isTrue();
         SessionResponse response = result.session();
-        assertThat(response.getTodoId()).isEqualTo(todoId);
-        assertThat(response.getSessionFocusSeconds()).isEqualTo(1500);
-        assertThat(response.getBreakSeconds()).isEqualTo(300);
-        assertThat(response.getSessionOrder()).isEqualTo(1);
+        assertThat(response.todoId()).isEqualTo(todoId);
+        assertThat(response.sessionFocusSeconds()).isEqualTo(1500);
+        assertThat(response.breakSeconds()).isEqualTo(300);
+        assertThat(response.sessionOrder()).isEqualTo(1);
 
         assertThat(todo.getSessionCount()).isEqualTo(1);
         assertThat(todo.getSessionFocusSeconds()).isEqualTo(1500);
@@ -91,7 +91,7 @@ class SessionServiceTest {
 
         // then
         assertThat(result.created()).isFalse();
-        assertThat(result.session().getSessionOrder()).isEqualTo(2);
+        assertThat(result.session().sessionOrder()).isEqualTo(2);
 
         assertThat(todo.getSessionCount()).isEqualTo(0);
         assertThat(todo.getSessionFocusSeconds()).isEqualTo(0);
@@ -126,22 +126,6 @@ class SessionServiceTest {
     }
 
     @Test
-    @DisplayName("createSession: sessionFocusSeconds가 0 이하면 예외")
-    void createSession_sessionFocusSeconds0이하_예외() {
-        // given
-        String userId = "11111111-1111-4111-8111-111111111111";
-        String todoId = "22222222-2222-4222-8222-222222222222";
-        SessionCreateRequest request = request(0, 0, "33333333-3333-4333-8333-333333333333");
-
-        // when / then
-        assertThatThrownBy(() -> sessionService.createSession(userId, todoId, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("sessionFocusSeconds must be >= 1");
-
-        verifyNoInteractions(todoRepository, sessionRepository);
-    }
-
-    @Test
     @DisplayName("createSession: sessionOrder 자동 증가")
     void createSession_sessionOrder자동증가() {
         // given
@@ -163,7 +147,7 @@ class SessionServiceTest {
         SessionService.CreateSessionResult result = sessionService.createSession(userId, todoId, request);
 
         // then
-        assertThat(result.session().getSessionOrder()).isEqualTo(4);
+        assertThat(result.session().sessionOrder()).isEqualTo(4);
     }
 
     @Test
@@ -188,7 +172,7 @@ class SessionServiceTest {
         // then
         assertThat(result.created()).isFalse();
         assertThat(existing.getBreakSeconds()).isEqualTo(300);
-        assertThat(result.session().getBreakSeconds()).isEqualTo(300);
+        assertThat(result.session().breakSeconds()).isEqualTo(300);
         assertThat(todo.getSessionCount()).isEqualTo(1);
         assertThat(todo.getSessionFocusSeconds()).isEqualTo(1200);
         verify(sessionRepository, never()).save(any(TodoSession.class));
@@ -216,7 +200,7 @@ class SessionServiceTest {
         // then
         assertThat(result.created()).isFalse();
         assertThat(existing.getBreakSeconds()).isEqualTo(300);
-        assertThat(result.session().getBreakSeconds()).isEqualTo(300);
+        assertThat(result.session().breakSeconds()).isEqualTo(300);
         verify(sessionRepository, never()).save(any(TodoSession.class));
     }
 
@@ -252,7 +236,7 @@ class SessionServiceTest {
         assertThat(result.created()).isTrue();
         assertThat(todo.getSessionCount()).isEqualTo(2);
         assertThat(todo.getSessionFocusSeconds()).isEqualTo(75);
-        assertThat(result.session().getSessionOrder()).isEqualTo(2);
+        assertThat(result.session().sessionOrder()).isEqualTo(2);
     }
 
     @Test
@@ -318,8 +302,8 @@ class SessionServiceTest {
 
         // then
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getSessionOrder()).isEqualTo(1);
-        assertThat(result.get(1).getSessionOrder()).isEqualTo(2);
+        assertThat(result.get(0).sessionOrder()).isEqualTo(1);
+        assertThat(result.get(1).sessionOrder()).isEqualTo(2);
     }
 
     private SessionCreateRequest request(int focus, Integer rest, String clientSessionId) {

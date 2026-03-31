@@ -2,14 +2,13 @@ package kr.io.flowmate.review.controller;
 
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
-import kr.io.flowmate.common.util.CurrentUserResolver;
+import kr.io.flowmate.common.web.CurrentUser;
 import kr.io.flowmate.review.domain.ReviewType;
 import kr.io.flowmate.review.dto.request.ReviewUpsertRequest;
 import kr.io.flowmate.review.dto.response.ReviewResponse;
 import kr.io.flowmate.review.service.ReviewService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,19 +21,15 @@ import java.util.List;
 public class ReviewController {
 
     private final ReviewService reviewService;
-    private final CurrentUserResolver currentUserResolver;
 
     @GetMapping
     public ResponseEntity<?> getReviews(
+            @CurrentUser String userId,
             @RequestParam String type,
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodStart,
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodStart,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        String userId = currentUserResolver.resolve();
         ReviewType reviewType = ReviewType.fromValue(type);
 
         boolean hasPeriodStart = periodStart != null;
@@ -46,13 +41,9 @@ public class ReviewController {
         }
 
         if (hasPeriodStart) {
-            ReviewResponse review = reviewService.getReview(userId, reviewType, periodStart);
-            if (review == null) {
-                return ResponseEntity.ok()
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body("null");
-            }
-            return ResponseEntity.ok(review);
+            return reviewService.getReview(userId, reviewType, periodStart)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.noContent().build());
         }
 
         if (hasFrom && hasTo) {
@@ -65,20 +56,19 @@ public class ReviewController {
 
     @PutMapping
     public ResponseEntity<ReviewResponse> upsertReview(
+            @CurrentUser String userId,
             @Valid @RequestBody ReviewUpsertRequest upsertRequest
     ) {
-        String userId = currentUserResolver.resolve();
         ReviewResponse review = reviewService.upsertReview(userId, upsertRequest);
         return ResponseEntity.ok(review);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteReview(
+            @CurrentUser String userId,
             @PathVariable String id
     ) {
-        String userId = currentUserResolver.resolve();
         reviewService.deleteReview(userId, id);
         return ResponseEntity.noContent().build();
     }
-
 }

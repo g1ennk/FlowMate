@@ -2,10 +2,10 @@ package kr.io.flowmate.todo.service;
 
 import kr.io.flowmate.todo.domain.TimerMode;
 import kr.io.flowmate.todo.domain.Todo;
-import kr.io.flowmate.todo.dto.TodoCreateRequest;
-import kr.io.flowmate.todo.dto.TodoReorderRequest;
-import kr.io.flowmate.todo.dto.TodoResponse;
-import kr.io.flowmate.todo.dto.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
+import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
+import kr.io.flowmate.todo.dto.response.TodoResponse;
+import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true) // 서비스 클래스에 readOnly를 붙이고, 쓰기 메서드에만 따로 @Tractional을 붙이는 패턴
@@ -33,13 +36,10 @@ public class TodoService {
 
         List<Todo> todos;
 
-        // 전체 조회
         if (date == null) {
-            todos = todoRepository.findAllByUserIdOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId);
-        }
-        // 특정 날짜 조회
-        else {
-            todos = todoRepository.findAllByUserIdAndDateOrderByMiniDayAscDayOrderAscCreatedAtAsc(userId, date);
+            todos = todoRepository.findAllByUserId(userId);
+        } else {
+            todos = todoRepository.findAllByUserIdAndDate(userId, date);
         }
 
         // 조회된 엔티티 목록을 전부 순회하면서, 각 응답 DTO로 변환하여 리스트로 만들어 반환한다.
@@ -137,18 +137,20 @@ public class TodoService {
      */
     @Transactional
     public List<TodoResponse> reorderTodos(String userId, TodoReorderRequest request) {
-        // 각 Todo의 순서 업데이트
-        for (TodoReorderRequest.Item item : request.getItems()) {
-            Todo todo = findTodoByIdAndUserId(item.getId(), userId);
+        // bulk 조회로 N+1 방지
+        List<String> ids = request.getItems().stream()
+                .map(TodoReorderRequest.Item::getId).toList();
+        Map<String, Todo> todoMap = todoRepository.findAllByIdInAndUserId(ids, userId).stream()
+                .collect(Collectors.toMap(Todo::getId, Function.identity()));
 
+        for (TodoReorderRequest.Item item : request.getItems()) {
+            Todo todo = todoMap.get(item.getId());
+            if (todo == null) throw new TodoNotFoundException(item.getId());
             todo.updateDayOrder(item.getDayOrder());
             todo.updateMiniDay(item.getMiniDay());
         }
 
-        // 전체 목록 조회하여 다시 반환
-        List<Todo> allTodos = todoRepository
-                .findAllByUserIdOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId);
-        return allTodos.stream()
+        return todoRepository.findAllByUserId(userId).stream()
                 .map(TodoResponse::from)
                 .toList();
     }

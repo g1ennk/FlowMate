@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -11,16 +12,23 @@ import javax.crypto.SecretKey;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HexFormat;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
 public class JwtProvider {
 
     private final JwtProperties props;
+    private SecretKey cachedKey;
+
+    @PostConstruct
+    void init() {
+        byte[] keyBytes = HexFormat.of().parseHex(props.getSecret());
+        this.cachedKey = Keys.hmacShaKeyFor(keyBytes);
+    }
 
     private SecretKey secretKey() {
-        byte[] keyBytes = HexFormat.of().parseHex(props.getSecret());
-        return Keys.hmacShaKeyFor(keyBytes);
+        return cachedKey;
     }
 
     /**
@@ -66,13 +74,20 @@ public class JwtProvider {
                 .getPayload();
     }
 
-    public boolean validateToken(String token) {
+    /**
+     * 토큰을 파싱하여 Claims를 Optional로 반환한다.
+     * 서명 오류/만료 시 empty. JwtAuthFilter에서 단일 파싱에 사용.
+     */
+    public Optional<Claims> parseClaims(String token) {
         try {
-            parseToken(token);
-            return true;
+            return Optional.of(parseToken(token));
         } catch (JwtException | IllegalArgumentException e) {
-            return false;
+            return Optional.empty();
         }
+    }
+
+    public boolean validateToken(String token) {
+        return parseClaims(token).isPresent();
     }
 
     public String extractSubject(String token) {

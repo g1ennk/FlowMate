@@ -1,6 +1,7 @@
 package kr.io.flowmate.common.web;
 
 import jakarta.validation.ConstraintViolationException;
+import kr.io.flowmate.auth.exception.AuthenticationFailedException;
 import kr.io.flowmate.common.error.ApiError;
 import kr.io.flowmate.common.exception.NotFoundException;
 import org.slf4j.Logger;
@@ -59,6 +60,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleMissingParameter(MissingServletRequestParameterException ex) {
         ApiError body = ApiError.of("BAD_REQUEST", ex.getParameterName() + " parameter is required");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    // 인증 실패 (만료/폐기 RT, 유효하지 않은 state 등)를 401로 반환
+    @ExceptionHandler(AuthenticationFailedException.class)
+    public ResponseEntity<ApiError> handleAuthenticationFailed(AuthenticationFailedException ex) {
+        ApiError body = ApiError.of("UNAUTHORIZED", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     // 도메인 NotFoundException을 404로 반환

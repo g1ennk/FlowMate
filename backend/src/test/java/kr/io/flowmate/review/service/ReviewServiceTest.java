@@ -46,11 +46,11 @@ class ReviewServiceTest {
         when(reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart))
                 .thenReturn(Optional.of(review));
 
-        ReviewResponse result = reviewService.getReview(userId, ReviewType.DAILY, periodStart);
+        Optional<ReviewResponse> result = reviewService.getReview(userId, ReviewType.DAILY, periodStart);
 
-        assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo("daily");
-        assertThat(result.getContent()).isEqualTo("좋았던 점");
+        assertThat(result).isPresent();
+        assertThat(result.get().type()).isEqualTo("daily");
+        assertThat(result.get().content()).isEqualTo("좋았던 점");
     }
 
     @Test
@@ -62,9 +62,9 @@ class ReviewServiceTest {
         when(reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart))
                 .thenReturn(Optional.empty());
 
-        ReviewResponse result = reviewService.getReview(userId, ReviewType.DAILY, periodStart);
+        Optional<ReviewResponse> result = reviewService.getReview(userId, ReviewType.DAILY, periodStart);
 
-        assertThat(result).isNull();
+        assertThat(result).isEmpty();
     }
 
     @Test
@@ -88,8 +88,8 @@ class ReviewServiceTest {
         List<ReviewResponse> result = reviewService.getReviews(userId, ReviewType.DAILY, from, to);
 
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getContent()).isEqualTo("1일");
-        assertThat(result.get(1).getContent()).isEqualTo("2일");
+        assertThat(result.get(0).content()).isEqualTo("1일");
+        assertThat(result.get(1).content()).isEqualTo("2일");
     }
 
     @Test
@@ -105,8 +105,8 @@ class ReviewServiceTest {
 
         ReviewResponse result = reviewService.upsertReview(userId, request);
 
-        assertThat(result.getType()).isEqualTo("daily");
-        assertThat(result.getContent()).isEqualTo("첫 회고");
+        assertThat(result.type()).isEqualTo("daily");
+        assertThat(result.content()).isEqualTo("첫 회고");
         verify(reviewRepository).save(any(Review.class));
     }
 
@@ -123,7 +123,7 @@ class ReviewServiceTest {
 
         ReviewResponse result = reviewService.upsertReview(userId, request);
 
-        assertThat(result.getContent()).isEqualTo("수정된 내용");
+        assertThat(result.content()).isEqualTo("수정된 내용");
         verify(reviewRepository, never()).save(any());
     }
 
@@ -143,7 +143,7 @@ class ReviewServiceTest {
 
         ReviewResponse result = reviewService.upsertReview(userId, request);
 
-        assertThat(result.getContent()).isEqualTo("동시성 내용");
+        assertThat(result.content()).isEqualTo("동시성 내용");
         verify(reviewRepository).save(any(Review.class));
         verify(reviewRepository, times(2))
                 .findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart);

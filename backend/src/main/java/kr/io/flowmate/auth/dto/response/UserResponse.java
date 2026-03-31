@@ -1,4 +1,4 @@
-package kr.io.flowmate.auth.dto;
+package kr.io.flowmate.auth.dto.response;
 
 import kr.io.flowmate.auth.domain.User;
 

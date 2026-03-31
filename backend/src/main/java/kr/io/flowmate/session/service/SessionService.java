@@ -38,10 +38,7 @@ public class SessionService {
             String todoId,
             SessionCreateRequest request
     ) {
-        Integer requestedFocusSeconds = request.getSessionFocusSeconds();
-        if (requestedFocusSeconds == null || requestedFocusSeconds <= 0) {
-            throw new IllegalArgumentException("sessionFocusSeconds must be >= 1");
-        }
+        int requestedFocusSeconds = request.getSessionFocusSeconds();
 
         Todo todo = todoRepository.findByIdAndUserIdForUpdate(todoId, userId)
                 .orElseThrow(() -> new TodoNotFoundException(todoId));

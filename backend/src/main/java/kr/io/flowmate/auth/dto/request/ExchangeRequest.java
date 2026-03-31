@@ -1,4 +1,4 @@
-package kr.io.flowmate.auth.dto;
+package kr.io.flowmate.auth.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 

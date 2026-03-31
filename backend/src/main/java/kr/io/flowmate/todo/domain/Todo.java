@@ -63,42 +63,20 @@ public class Todo {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    // 신규 Todo 생성용 정적 팩토리(static factory)로 생성 시 기본 상태를 강제한다.
     public static Todo create(String userId, String title, String note, LocalDate date, int miniDay, int dayOrder) {
-        Todo todo = new Todo();
-        Instant now = Instant.now();
-
-        todo.id = UUID.randomUUID().toString();
-        todo.userId = userId;
-        todo.title = title;
-        todo.note = note;
-        todo.date = date;
-        todo.miniDay = miniDay;
-        todo.dayOrder = dayOrder;
-        todo.done = false;
-        todo.sessionCount = 0;
-        todo.sessionFocusSeconds = 0;
-        todo.timerMode = null;
-        todo.reviewRound = null;
-        todo.originalTodoId = null;
-        todo.createdAt = now;
-        todo.updatedAt = now;
-        return todo;
+        return createBase(userId, title, note, date, miniDay, dayOrder, null, null);
     }
 
-    public static Todo createReview(
-            String userId,
-            String originalTodoId,
-            String title,
-            String note,
-            LocalDate date,
-            int miniDay,
-            int dayOrder,
-            int reviewRound
-    ) {
+    public static Todo createReview(String userId, String originalTodoId, String title,
+                                    String note, LocalDate date, int miniDay, int dayOrder, int reviewRound) {
+        return createBase(userId, title, note, date, miniDay, dayOrder, originalTodoId, reviewRound);
+    }
+
+    private static Todo createBase(String userId, String title, String note,
+                                   LocalDate date, int miniDay, int dayOrder,
+                                   String originalTodoId, Integer reviewRound) {
         Todo todo = new Todo();
         Instant now = Instant.now();
-
         todo.id = UUID.randomUUID().toString();
         todo.userId = userId;
         todo.title = title;
@@ -165,11 +143,9 @@ public class Todo {
 
     @PrePersist
     public void onCreate() {
-        if (this.createdAt == null) {
-            Instant now = Instant.now();
-            this.createdAt = now;
-            this.updatedAt = now;
-        }
+        Instant now = Instant.now();
+        if (this.createdAt == null) this.createdAt = now;
+        if (this.updatedAt == null) this.updatedAt = now;
     }
 
     @PreUpdate
