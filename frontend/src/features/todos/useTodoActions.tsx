@@ -294,10 +294,22 @@ export function useTodoActions(selectedDateKey: string) {
     openMoveDatePicker,
     openDuplicateDatePicker,
     confirmDatePicker: datePicker.confirmDatePicker,
-    handleMoveTodoToToday: datePicker.handleMoveTodoToToday,
-    handleMoveTodoToTomorrow: datePicker.handleMoveTodoToTomorrow,
-    handleDuplicateTodoToToday: datePicker.handleDuplicateTodoToToday,
-    handleDuplicateTodoToTomorrow: datePicker.handleDuplicateTodoToTomorrow,
+    handleMoveTodoToToday: async (todo: Todo) => {
+      setSelectedTodo(null)
+      await datePicker.handleMoveTodoToToday(todo)
+    },
+    handleMoveTodoToTomorrow: async (todo: Todo) => {
+      setSelectedTodo(null)
+      await datePicker.handleMoveTodoToTomorrow(todo)
+    },
+    handleDuplicateTodoToToday: async (todo: Todo) => {
+      setSelectedTodo(null)
+      await datePicker.handleDuplicateTodoToToday(todo)
+    },
+    handleDuplicateTodoToTomorrow: async (todo: Todo) => {
+      setSelectedTodo(null)
+      await datePicker.handleDuplicateTodoToTomorrow(todo)
+    },
     handleScheduleReview,
   }
 }
