@@ -190,6 +190,7 @@ git push origin main
 - DB 스키마 변경은 반드시 Flyway 마이그레이션 (`V{N}__description.sql`)
 - 프로필: `local` (개발), `dev` (개발 서버), `prod` (운영) — 환경변수로 DB/CORS/쿠키보안 분리
 - 디자인 시스템: `.impeccable.md` 참고 — Pretendard 폰트, emerald(#10b981) 주색상, 4px 그리드, 모바일 퍼스트 (max 512px)
+- 커밋 Co-Authored-By: FE 관련 커밋(scope `frontend` 또는 내용이 FE 중심)에만 `Co-Authored-By: Claude <noreply@anthropic.com>` 추가. BE/infra/ai-service/docs/ci 커밋에는 붙이지 않음
 
 ## Source of Truth 우선순위
 
