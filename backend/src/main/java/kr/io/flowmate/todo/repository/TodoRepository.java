@@ -1,10 +1,10 @@
 package kr.io.flowmate.todo.repository;
 
-import kr.io.flowmate.todo.domain.Todo;
 import jakarta.persistence.LockModeType;
+import kr.io.flowmate.todo.domain.Todo;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -22,6 +22,14 @@ public interface TodoRepository extends JpaRepository<Todo, String> {
             String userId,
             LocalDate date
     );
+
+    // 기간 범위의 Todo를 UI 표시 순서대로 조회
+    List<Todo> findAllByUserIdAndDateBetweenOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(
+            String userId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
 
     // 특정 Todo 조회
     Optional<Todo> findByIdAndUserId(String id, String userId);

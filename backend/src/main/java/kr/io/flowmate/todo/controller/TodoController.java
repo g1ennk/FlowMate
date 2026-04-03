@@ -3,11 +3,7 @@ package kr.io.flowmate.todo.controller;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
 import kr.io.flowmate.common.util.CurrentUserResolver;
-import kr.io.flowmate.todo.dto.TodoCreateRequest;
-import kr.io.flowmate.todo.dto.TodoReorderRequest;
-import kr.io.flowmate.todo.dto.TodoResponse;
-import kr.io.flowmate.todo.dto.TodoScheduleReviewResponse;
-import kr.io.flowmate.todo.dto.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.*;
 import kr.io.flowmate.todo.service.TodoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -30,14 +26,19 @@ public class TodoController {
      * Todo 목록 조회
      * - GET /api/todos
      * - GET /api/todos?date=yyyy-MM-dd
+     * - GET /api/todos?from=yyyy-MM-dd&to=yyyy-MM-dd
      */
     @GetMapping
     public ResponseEntity<ListResponse<TodoResponse>> getTodos(
             @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
         String userId = currentUserResolver.resolve();
-        List<TodoResponse> todos = todoService.getTodos(userId, date);
+        List<TodoResponse> todos = todoService.getTodos(userId, date, from, to);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
 
