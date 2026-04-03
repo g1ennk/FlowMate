@@ -505,3 +505,23 @@ export function buildWeeklyGroups(
 
   return groups
 }
+
+export function computeStreak(
+  reviews: { periodStart: string }[],
+  currentPeriodStart: string,
+  periodType: PeriodType,
+): number {
+  const dates = new Set(reviews.map((r) => r.periodStart))
+  dates.add(currentPeriodStart)
+  let streak = 0
+  let current = parseDateKey(currentPeriodStart)
+  while (dates.has(formatDateKey(current))) {
+    streak++
+    current = shiftBaseDate(periodType, current, -1)
+  }
+  return streak
+}
+
+export function getPreviousPeriodStart(type: PeriodType, baseDate: Date): string {
+  return formatDateKey(shiftBaseDate(type, baseDate, -1))
+}

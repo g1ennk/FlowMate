@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { queryClient } from '../../app/queryClient'
+import { storageKeys } from '../../lib/storageKeys'
 
 function AuthCallback() {
   const navigate = useNavigate()
@@ -33,7 +34,9 @@ function AuthCallback() {
       try {
         await login(provider, code, stateFromUrl)
         queryClient.clear()
-        navigate('/todos', { replace: true })
+        const returnTo = sessionStorage.getItem(storageKeys.oauthReturnTo) || '/todos'
+        sessionStorage.removeItem(storageKeys.oauthReturnTo)
+        navigate(returnTo, { replace: true })
       } catch (e) {
         console.error('[AuthCallback] 로그인 실패', e)
         navigate('/login', { replace: true })

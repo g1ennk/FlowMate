@@ -94,6 +94,7 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
       ...rest,
     })
     if (!retryResponse.ok) throw await parseError(retryResponse)
+    if (retryResponse.status === 204) return undefined as T
     if (schema) return schema.parse(await retryResponse.json())
     return undefined as T
   }
@@ -101,6 +102,8 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
   if (!response.ok) {
     throw await parseError(response)
   }
+
+  if (response.status === 204) return undefined as T
 
   if (schema) {
     const json = await response.json()

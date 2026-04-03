@@ -21,6 +21,10 @@ export const storageKeys = {
   theme: `${STORAGE_PREFIX}/ui/theme`,
   // 코치마크
   coachMarksSeen: `${STORAGE_PREFIX}/ui/coach-marks-seen`,
+  // 전환 퍼널
+  guestReviewCount: `${STORAGE_PREFIX}/ui/guest-review-count`,
+  // OAuth 복귀 경로 (sessionStorage)
+  oauthReturnTo: `${STORAGE_PREFIX}/auth/oauth-return-to`,
   // 음악
   musicVolume: `${STORAGE_PREFIX}:music:volume`,
   legacyMusicKeys: [`${STORAGE_PREFIX}:music:trackIndex`, `${STORAGE_PREFIX}:music:enabled`] as readonly string[],

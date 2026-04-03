@@ -1,55 +1,42 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
+import { userTextDisplayClass } from '../../../lib/userTextStyles'
 import type { PeriodType } from '../reviewTypes'
-import { useDeleteReview, useReview, useUpsertReview } from '../hooks'
+import { formatDateKey } from '../../../lib/time'
+import { useDeleteReview, useReview, useReviewList, useUpsertReview } from '../hooks'
+import { computeStreak } from '../reviewUtils'
+import { storageKeys } from '../../../lib/storageKeys'
+import { useAiReportSheet } from '../hooks/useAiReportSheet'
+import { formatReportAsKpt } from '../kptParser'
+import { AiReportSheet } from './AiReportSheet'
+import { KptText } from './KptText'
 
 type ReviewTextareaProps = {
   title: string
   periodType: PeriodType
   periodStart: string
   periodEnd: string
+  completedTodoCount: number
+  totalSessionCount: number
 }
 
-const REVIEW_DRAFT_STORAGE_PREFIX = 'flowmate:review-draft:v1'
-
-const getReviewDraftStorageKey = (periodType: PeriodType, periodStart: string) =>
-  `${REVIEW_DRAFT_STORAGE_PREFIX}:${periodType}:${periodStart}`
-
-const loadStoredDraft = (key: string) => {
-  if (typeof window === 'undefined') return null
-  try {
-    const value = window.localStorage.getItem(key)
-    return typeof value === 'string' ? value : null
-  } catch {
-    return null
-  }
+const REVIEW_PLACEHOLDERS: Record<PeriodType, string> = {
+  daily: '오늘 뭘 해냈고, 내일은 뭘 바꿔볼까요?',
+  weekly: '이번 주 가장 잘한 것과 아쉬운 패턴은?',
+  monthly: '이번 달 성장한 점과 다음 달 방향은?',
 }
 
-const saveStoredDraft = (key: string, value: string) => {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(key, value)
-  } catch {
-    // localStorage 접근 실패는 무시한다.
-  }
-}
-
-const clearStoredDraft = (key: string) => {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem(key)
-  } catch {
-    // localStorage 접근 실패는 무시한다.
-  }
-}
 
 export function ReviewTextarea({
   title,
   periodType,
   periodStart,
   periodEnd,
+  completedTodoCount,
+  totalSessionCount,
 }: ReviewTextareaProps) {
+  const navigate = useNavigate()
   const review = useReview(periodType, periodStart)
   const upsert = useUpsertReview()
   const remove = useDeleteReview()
@@ -58,13 +45,26 @@ export function ReviewTextarea({
   const [isEditing, setIsEditing] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const restoredDraftToastShownRef = useRef<string | null>(null)
-  const draftStorageKey = useMemo(
-    () => getReviewDraftStorageKey(periodType, periodStart),
-    [periodStart, periodType],
-  )
+  const handleSaveRef = useRef<() => void>(() => {})
   const isSaving = upsert.isPending || remove.isPending
   const isDirty = draft !== content
+
+  const {
+    aiReport, isAiLoading, canRegenerate,
+    isSheetOpen, isPreview, isThinData, isMember,
+    isSheetOpenRef, sheetClosedAtRef,
+    closeSheet, requestAiReport, handleRegenerate,
+  } = useAiReportSheet(periodType, periodStart, completedTodoCount, totalSessionCount)
+
+  const streakFrom = useMemo(() => {
+    const d = new Date(periodStart)
+    if (periodType === 'daily') d.setDate(d.getDate() - 7)
+    else if (periodType === 'weekly') d.setDate(d.getDate() - 28)
+    else d.setMonth(d.getMonth() - 3)
+    return formatDateKey(d)
+  }, [periodStart, periodType])
+
+  const { data: recentReviews } = useReviewList(periodType, streakFrom, periodStart)
 
   const exitEdit = useCallback((resetDraft = true) => {
     if (resetDraft) {
@@ -73,24 +73,17 @@ export function ReviewTextarea({
     setIsEditing(false)
   }, [content])
 
-  const discardDraftAndExit = useCallback(() => {
-    clearStoredDraft(draftStorageKey)
-    exitEdit(true)
-  }, [draftStorageKey, exitEdit])
-
   const enterEdit = useCallback(() => {
-    const storedDraft = loadStoredDraft(draftStorageKey)
-    if (storedDraft !== null && storedDraft !== content) {
-      setDraft(storedDraft)
-      if (restoredDraftToastShownRef.current !== draftStorageKey) {
-        toast('임시 저장된 초안을 불러왔어요', { id: 'review-draft-restored' })
-        restoredDraftToastShownRef.current = draftStorageKey
-      }
-    } else {
-      setDraft(content)
-    }
+    setDraft(content)
     setIsEditing(true)
-  }, [content, draftStorageKey])
+  }, [content])
+
+  const autoResize = useCallback(() => {
+    const node = textareaRef.current
+    if (!node) return
+    node.style.height = 'auto'
+    node.style.height = `${Math.min(320, Math.max(200, node.scrollHeight))}px`
+  }, [])
 
   useEffect(() => {
     if (!isEditing || !textareaRef.current) return
@@ -98,29 +91,18 @@ export function ReviewTextarea({
     node.focus()
     const length = node.value.length
     node.setSelectionRange(length, length)
-  }, [isEditing])
-
-  useEffect(() => {
-    if (!isEditing) return
-    const hasMeaningfulChange = draft !== content
-    if (!hasMeaningfulChange) {
-      clearStoredDraft(draftStorageKey)
-      return
-    }
-    const timer = window.setTimeout(() => {
-      saveStoredDraft(draftStorageKey, draft)
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [content, draft, draftStorageKey, isEditing])
+    autoResize()
+  }, [isEditing, autoResize])
 
   useEffect(() => {
     if (!isEditing) return
     const handlePointerDown = (event: PointerEvent) => {
+      if (isSheetOpenRef.current || Date.now() - sheetClosedAtRef.current < 300) return
       const node = containerRef.current
       if (!node) return
       if (node.contains(event.target as Node)) return
       if (isDirty) {
-        toast('저장하지 않은 변경사항이 있어요', { id: 'review-unsaved-changes' })
+        handleSaveRef.current()
         return
       }
       exitEdit(true)
@@ -129,30 +111,33 @@ export function ReviewTextarea({
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
     }
-  }, [exitEdit, isDirty, isEditing])
+  }, [exitEdit, isDirty, isEditing, isSheetOpenRef, sheetClosedAtRef])
+
+  const executeDelete = () => {
+    if (!review.data?.id) {
+      setDraft('')
+      setIsEditing(false)
+      return
+    }
+    remove.mutate(
+      { id: review.data.id, type: periodType, periodStart },
+      {
+        onSuccess: () => {
+          toast.success('회고를 삭제했어요', { id: 'review-delete-success' })
+          setDraft('')
+          setIsEditing(false)
+        },
+        onError: () => {
+          toast.error('회고 삭제에 실패했어요', { id: 'review-delete-failed' })
+        },
+      },
+    )
+  }
 
   const handleSave = () => {
     const trimmed = draft.trim()
     if (!trimmed) {
-      if (review.data?.id) {
-        remove.mutate(
-          { id: review.data.id, type: periodType, periodStart },
-          {
-            onSuccess: () => {
-              toast.success('회고를 삭제했어요', { id: 'review-delete-success' })
-              clearStoredDraft(draftStorageKey)
-              setDraft('')
-              setIsEditing(false)
-            },
-            onError: () => {
-              toast.error('회고 삭제에 실패했어요', { id: 'review-delete-failed' })
-            },
-          },
-        )
-        return
-      }
-      clearStoredDraft(draftStorageKey)
-      setIsEditing(false)
+      executeDelete()
       return
     }
 
@@ -165,9 +150,35 @@ export function ReviewTextarea({
       },
       {
         onSuccess: () => {
-          toast.success('회고를 저장했어요', { id: 'review-save-success' })
-          clearStoredDraft(draftStorageKey)
+          const STREAK_UNIT = { daily: '일', weekly: '주', monthly: '개월' } as const
+          const streak = computeStreak(
+            recentReviews?.items ?? [],
+            periodStart,
+            periodType,
+          )
+          if (streak >= 3) {
+            toast.success(`${streak}${STREAK_UNIT[periodType]} 연속 기록 중!`, { id: 'review-save-success' })
+          } else if (streak === 2) {
+            toast.success(`2${STREAK_UNIT[periodType]} 연속 회고를 기록했어요`, { id: 'review-save-success' })
+          } else {
+            toast.success('회고를 저장했어요', { id: 'review-save-success' })
+          }
           setIsEditing(false)
+
+          if (!isMember) {
+            try {
+              const count = Number(localStorage.getItem(storageKeys.guestReviewCount) || '0') + 1
+              localStorage.setItem(storageKeys.guestReviewCount, String(count))
+              if (count === 3) {
+                setTimeout(() => {
+                  toast('회고를 꾸준히 쓰고 있네요. 로그인하면 AI 분석과 기기 간 동기화를 쓸 수 있어요', {
+                    id: 'guest-upgrade-nudge',
+                    duration: 5000,
+                  })
+                }, 1500)
+              }
+            } catch { /* private browsing / storage quota */ }
+          }
         },
         onError: () => {
           toast.error('회고 저장에 실패했어요', { id: 'review-save-failed' })
@@ -176,27 +187,53 @@ export function ReviewTextarea({
     )
   }
 
-  const handleDelete = () => {
-    if (!review.data?.id) {
-      clearStoredDraft(draftStorageKey)
-      setDraft('')
-      setIsEditing(false)
-      return
-    }
-    remove.mutate(
-      { id: review.data.id, type: periodType, periodStart },
+  useEffect(() => {
+    handleSaveRef.current = handleSave
+  })
+
+  const saveReportContent = (text: string, afterSave: () => void) => {
+    upsert.mutate(
+      { type: periodType, periodStart, periodEnd, content: text },
       {
         onSuccess: () => {
-          toast.success('회고를 삭제했어요', { id: 'review-delete-success' })
-          clearStoredDraft(draftStorageKey)
-          setDraft('')
-          setIsEditing(false)
+          afterSave()
         },
         onError: () => {
-          toast.error('회고 삭제에 실패했어요', { id: 'review-delete-failed' })
+          toast.error('회고 저장에 실패했어요', { id: 'review-save-failed' })
         },
       },
     )
+  }
+
+  const handleStartWithAi = () => {
+    if (!aiReport) return
+    const kpt = formatReportAsKpt(aiReport)
+    const question = aiReport.referenceQuestion
+    const text = question ? `${kpt}\n\n> ${question}` : kpt
+    closeSheet()
+    saveReportContent(text, () => {
+      setDraft(text + (question ? '\n' : ''))
+      setIsEditing(true)
+      toast.success('회고를 저장했어요. 한 줄 더 써보세요', { id: 'review-save-success' })
+      requestAnimationFrame(() => {
+        const node = textareaRef.current
+        if (!node) return
+        autoResize()
+        const len = node.value.length
+        node.setSelectionRange(len, len)
+        node.focus()
+      })
+    })
+  }
+
+  const handleSaveAsIs = () => {
+    if (!aiReport) return
+    const text = formatReportAsKpt(aiReport)
+    closeSheet()
+    saveReportContent(text, () => {
+      setIsEditing(false)
+      toast.success('회고를 저장했어요', { id: 'review-save-success' })
+    })
   }
 
   return (
@@ -221,13 +258,22 @@ export function ReviewTextarea({
     >
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-        {isEditing ? (
-          <div className="flex items-center gap-2">
+        {isEditing && (
+          <div className="flex items-center">
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={(e) => { e.stopPropagation(); requestAiReport() }}
+              disabled={isAiLoading || isSaving}
+              className="rounded-full px-3 py-2 text-xs font-semibold text-accent transition-colors hover:bg-accent-subtle disabled:opacity-60"
+            >
+              {isAiLoading ? '생성 중...' : 'AI 레포트'}
+            </button>
+            <div className="mx-0.5 h-3 w-px bg-border-subtle" />
+            <button
+              type="button"
+              onClick={executeDelete}
               disabled={isSaving}
-              className="rounded-full px-3 py-1 text-xs font-semibold text-state-error hover:bg-state-error-subtle disabled:opacity-60"
+              className="rounded-full px-3 py-2 text-xs font-semibold text-state-error hover:bg-state-error-subtle disabled:opacity-60"
             >
               삭제
             </button>
@@ -235,19 +281,19 @@ export function ReviewTextarea({
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-text-inverse disabled:opacity-60"
+              className="rounded-full bg-accent px-3 py-2 text-xs font-semibold text-text-inverse disabled:opacity-60"
             >
               저장
             </button>
           </div>
-        ) : null}
+        )}
       </div>
 
       {isEditing ? (
         <textarea
           ref={textareaRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); autoResize() }}
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
               event.preventDefault()
@@ -255,26 +301,58 @@ export function ReviewTextarea({
             }
             if (event.key === 'Escape') {
               event.preventDefault()
-              discardDraftAndExit()
+              exitEdit(true)
             }
           }}
-          placeholder="무엇이 잘 됐는지, 다음엔 무엇을 바꿀지 적어보세요."
-          className={`mt-3 min-h-[140px] w-full resize-none rounded-xl border border-accent bg-surface-card p-3 ${userTextInputClass} text-text-secondary outline-none placeholder:text-text-tertiary`}
+          placeholder={REVIEW_PLACEHOLDERS[periodType]}
+          className={`mt-3 max-h-80 w-full resize-none overflow-y-auto rounded-xl border border-accent bg-surface-card p-3 ${userTextDisplayClass} text-text-secondary outline-none placeholder:text-text-tertiary`}
         />
       ) : (
         <div className="mt-3 rounded-xl p-3 text-left">
-          <p className={`${userTextDisplayClass} text-text-secondary`}>
-            {review.isLoading
-              ? '회고를 불러오는 중...'
-              : content || '회고를 작성해보세요.'}
-          </p>
-          {!review.isLoading && (
-            <p className="mt-2 text-xs text-text-tertiary">
-              탭해서 작성/수정할 수 있어요
+          {review.isLoading ? (
+            <p className={`${userTextDisplayClass} text-text-secondary`}>
+              회고를 불러오는 중...
             </p>
+          ) : content ? (
+            <KptText content={content} />
+          ) : (
+            <div className="space-y-2">
+              <p className={`${userTextDisplayClass} text-text-secondary`}>
+                회고를 작성해보세요.
+              </p>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-text-tertiary">탭해서 직접 쓰거나</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); requestAiReport() }}
+                  disabled={isAiLoading}
+                  className="font-semibold text-accent hover:text-accent-text disabled:opacity-60"
+                >
+                  {isAiLoading ? '생성 중...' : 'AI 레포트로 시작'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
+      <AiReportSheet
+        isOpen={isSheetOpen}
+        onClose={closeSheet}
+        report={aiReport}
+        isCached={canRegenerate}
+        isRegenerating={isAiLoading}
+        hasExistingReview={!!review.data?.id}
+        onStartWithAi={handleStartWithAi}
+        onSaveAsIs={handleSaveAsIs}
+        onRegenerate={handleRegenerate}
+        isPreview={isPreview}
+        isThinData={isThinData}
+        onLogin={() => {
+          sessionStorage.setItem(storageKeys.oauthReturnTo, `/review?period=${periodType}&date=${periodStart}`)
+          closeSheet()
+          navigate('/login')
+        }}
+      />
     </section>
   )
 }

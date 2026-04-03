@@ -6,4 +6,5 @@ export const queryKeys = {
   reviewList: (type: string, from: string, to: string) => ['reviews', type, from, to] as const,
   settings: () => ['settings'] as const,
   miniDaysSettings: () => ['settings', 'miniDays'] as const,
+  aiReport: (type: string, periodStart: string) => ['ai-report', type, periodStart] as const,
 }

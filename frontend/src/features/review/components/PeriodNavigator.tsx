@@ -8,6 +8,7 @@ type PeriodNavigatorProps = {
   onJumpToCurrent?: () => void
   onPrev: () => void
   onNext: () => void
+  reviewCount?: number
 }
 
 export function PeriodNavigator({
@@ -18,6 +19,7 @@ export function PeriodNavigator({
   onJumpToCurrent,
   onPrev,
   onNext,
+  reviewCount,
 }: PeriodNavigatorProps) {
   return (
     <div className="grid grid-cols-[36px_1fr_36px] items-center rounded-2xl bg-surface-card px-card py-card-item shadow-sm">
@@ -45,6 +47,11 @@ export function PeriodNavigator({
           >
             {jumpLabel}
           </button>
+        )}
+        {reviewCount !== undefined && reviewCount > 0 && (
+          <p className="text-[11px] text-text-tertiary">
+            이번 달 {reviewCount}일 기록
+          </p>
         )}
       </div>
       <button
