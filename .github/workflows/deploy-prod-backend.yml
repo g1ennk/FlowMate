@@ -7,7 +7,7 @@ on:
     paths:
       - 'backend/**'
       - 'infra/prod/**'
-      - '.github/workflows/deploy-backend-prod.yml'
+      - '.github/workflows/deploy-prod-backend.yml'
   workflow_dispatch:
     inputs:
       version:

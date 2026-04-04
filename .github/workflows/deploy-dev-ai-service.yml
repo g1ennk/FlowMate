@@ -6,7 +6,7 @@ on:
       - develop
     paths:
       - 'ai-service/**'
-      - '.github/workflows/deploy-ai-service-dev.yml'
+      - '.github/workflows/deploy-dev-ai-service.yml'
   workflow_dispatch:
 
 env:

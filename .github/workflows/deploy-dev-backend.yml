@@ -7,7 +7,7 @@ on:
     paths:
       - 'backend/**'
       - 'infra/dev/**'
-      - '.github/workflows/deploy-backend-dev.yml'
+      - '.github/workflows/deploy-dev-backend.yml'
   workflow_dispatch:
 
 env:
