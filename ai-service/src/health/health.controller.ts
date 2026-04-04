@@ -1,18 +1,17 @@
 import { Controller, Get } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { DataSource } from 'typeorm';
+import { HealthCheckService, TypeOrmHealthIndicator } from '@nestjs/terminus';
 
 @Controller('health')
-@SkipThrottle()
+@SkipThrottle() // 모니터링 도구의 주기적 호출을 고려해 Rate Limiting 제외
 export class HealthController {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly health: HealthCheckService,
+    private readonly db: TypeOrmHealthIndicator,
+  ) {}
 
   @Get()
   check() {
-    const dbOk = this.dataSource.isInitialized;
-    return {
-      status: dbOk ? 'ok' : 'degraded',
-      db: dbOk ? 'connected' : 'disconnected',
-    };
+    return this.health.check([() => this.db.pingCheck('database')]);
   }
 }

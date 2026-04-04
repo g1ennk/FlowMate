@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, Matches } from 'class-validator';
+import { IsDateString, IsIn, IsNotEmpty } from 'class-validator';
 import { REPORT_TYPES, type ReportType } from '../report.entity';
 
 export class ReportQueryDto {
@@ -6,8 +6,7 @@ export class ReportQueryDto {
   type: ReportType;
 
   @IsNotEmpty()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'periodStart must be yyyy-MM-dd format',
-  })
+  // 빈 문자열이 IsDateString을 통과하는 것을 방지하기 위해 IsNotEmpty 병행 사용
+  @IsDateString()
   periodStart: string;
 }

@@ -30,7 +30,6 @@ public interface TodoRepository extends JpaRepository<Todo, String> {
             LocalDate endDate
     );
 
-
     // 특정 Todo 조회
     Optional<Todo> findByIdAndUserId(String id, String userId);
 

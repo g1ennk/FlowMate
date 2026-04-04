@@ -1,5 +1,6 @@
-import { FlowmateTodo } from '../../flowmate-client/flowmate-client.service';
+import type { FlowmateTodo } from '../../flowmate-client/flowmate-client.service';
 
+// 투두 배열에서 완료/미완료, 집중 시간, 완료율 집계 — daily/weekly/monthly 프롬프트 공통 사용
 export function computeTodoStats(todos: FlowmateTodo[]) {
   const completed = todos.filter((t) => t.isDone);
   const incomplete = todos.filter((t) => !t.isDone);
@@ -11,6 +12,8 @@ export function computeTodoStats(todos: FlowmateTodo[]) {
   return { completed, incomplete, totalFocus, totalSessions, completionRate };
 }
 
+// 초 → '시간 분' 문자열 변환 — 프롬프트 텍스트에 사용
+// 예: 4500 → '1시간 15분', 1800 → '30분'
 export function focusTime(seconds: number): string {
   const total = Math.round(seconds / 60);
   const hours = Math.floor(total / 60);
@@ -19,6 +22,7 @@ export function focusTime(seconds: number): string {
   return `${minutes}분`;
 }
 
+// 날짜/주차별 부분 집합 요약 — weekly/monthly 프롬프트의 그룹핑에 사용
 export function groupFocusSummary(items: FlowmateTodo[]): {
   done: number;
   focus: number;

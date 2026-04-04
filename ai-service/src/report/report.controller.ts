@@ -1,27 +1,24 @@
 import {
-  Controller,
-  Post,
-  Get,
   Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
   Query,
   Req,
   Res,
   UseGuards,
-  HttpCode,
-  HttpStatus,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { BearerToken } from '../common/decorators/bearer-token.decorator';
 import { ReportService } from './report.service';
 import { ReportQueryDto } from './dto/generate-report.dto';
+import type { AuthenticatedRequest } from '../common/types/authenticated-request.interface';
 
-interface AuthenticatedRequest extends Request {
-  user: { userId: string };
-}
-
-@Controller()
+@Controller('report')
 @UseGuards(JwtAuthGuard)
 export class ReportController {
   constructor(private readonly reportService: ReportService) {}
@@ -32,9 +29,8 @@ export class ReportController {
   async generate(
     @Body() dto: ReportQueryDto,
     @Req() req: AuthenticatedRequest,
+    @BearerToken() token: string,
   ) {
-    const token = req.headers.authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
-    if (!token) throw new UnauthorizedException();
     return this.reportService.generate(
       req.user.userId,
       dto.type,
@@ -54,6 +50,7 @@ export class ReportController {
       dto.type,
       dto.periodStart,
     );
+    // 리포트 미존재 시 204 반환 — 클라이언트가 생성 여부를 판단하도록
     if (!report) {
       res.status(204);
       return;

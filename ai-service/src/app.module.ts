@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { ReportModule } from './report/report.module';
-import { HealthController } from './health/health.controller';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -23,11 +23,12 @@ import { HealthController } from './health/health.controller';
         synchronize: false,
       }),
     }),
+    // IP당 60초/60회 — AI 생성 엔드포인트 보호
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
     AuthModule,
+    HealthModule,
     ReportModule,
   ],
-  controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

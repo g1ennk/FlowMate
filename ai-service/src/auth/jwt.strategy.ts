@@ -13,6 +13,7 @@ interface JwtPayload {
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
+    // Spring 서버와 공유하는 시크릿 키 — hex 문자열로 저장된 값을 바이트 배열로 변환
     const hexSecret = config.getOrThrow<string>('JWT_SECRET');
     const keyBytes = Buffer.from(hexSecret, 'hex');
 
@@ -25,9 +26,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload) {
+    // guest 토큰은 ai-service 접근 불가 - member만 허용
     if (payload.role !== 'member') {
       throw new UnauthorizedException('Member access required');
     }
-    return { userId: payload.sub, role: payload.role };
+    return { userId: payload.sub };
   }
 }

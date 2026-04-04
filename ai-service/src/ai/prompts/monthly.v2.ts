@@ -1,5 +1,7 @@
-import type { FlowmateReview } from '../../flowmate-client/flowmate-client.service';
-import { FlowmateTodo } from '../../flowmate-client/flowmate-client.service';
+import type {
+  FlowmateReview,
+  FlowmateTodo,
+} from '../../flowmate-client/flowmate-client.service';
 import {
   COMMON_RULES,
   computeTodoStats,
@@ -27,6 +29,7 @@ export function buildMonthlyPrompt(
 
   const byWeek = new Map<number, FlowmateTodo[]>();
   for (const t of todos) {
+    // '2024-04-15' → day=15 → weekNum=3 (Math.ceil(15/7))
     const day = Number(t.date.split('-')[2]);
     const weekNum = Math.ceil(day / 7);
     const list = byWeek.get(weekNum) ?? [];
@@ -34,14 +37,16 @@ export function buildMonthlyPrompt(
     byWeek.set(weekNum, list);
   }
 
+  // 주차 오름차순 정렬 후 주차별 완료 수 + 집중 시간 요약
   const weeklySummaries = [...byWeek.entries()]
     .sort(([a], [b]) => a - b)
     .map(([week, items]) => {
       const { done, focus } = groupFocusSummary(items);
-      return `- ${week}주차: ${items.length}개 중 ${done}개 완료, 집중 ${focusTime(focus)}분`;
+      return `- ${week}주차: ${items.length}개 중 ${done}개 완료, 집중 ${focusTime(focus)}`;
     })
     .join('\n');
 
+  // weeklyReviews가 있을 때만 섹션 추가 — 없으면 Try 분석 섹션 자체 생략
   let weeklyTrySection = '';
   if (weeklyReviews && weeklyReviews.length > 0) {
     const tries = weeklyReviews
@@ -68,6 +73,7 @@ ${weeklySummaries || '(데이터 없음)'}
 
 ## 미완료 투두 (상위 10개)
 ${
+  // 월간은 미완료가 많을 수 있어서 10개로 제한, 초과 시 나머지 수 표시
   incomplete
     .slice(0, 10)
     .map((t) => `- ${t.title} (${t.date})`)
