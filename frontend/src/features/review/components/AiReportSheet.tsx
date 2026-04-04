@@ -10,6 +10,7 @@ type AiReportSheetProps = {
   report: AiReport | null
   isCached: boolean
   isRegenerating: boolean
+  regenerateError?: string | null
   hasExistingReview: boolean
   onStartWithAi: () => void
   onSaveAsIs: () => void
@@ -65,6 +66,7 @@ export function AiReportSheet({
   onStartWithAi,
   onSaveAsIs,
   onRegenerate,
+  regenerateError,
   isPreview,
   isThinData,
   onLogin,
@@ -117,6 +119,11 @@ export function AiReportSheet({
             <p className="mt-0.5 text-[11px] text-text-tertiary">
               투두를 완료하면 더 정확한 분석을 받을 수 있어요
             </p>
+          </div>
+        )}
+        {regenerateError && (
+          <div className="rounded-lg bg-state-error-subtle px-3 py-2 text-center">
+            <p className="text-xs font-medium text-state-error">{regenerateError}</p>
           </div>
         )}
         {isRegenerating ? (

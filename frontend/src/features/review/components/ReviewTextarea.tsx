@@ -50,7 +50,7 @@ export function ReviewTextarea({
   const isDirty = draft !== content
 
   const {
-    aiReport, isAiLoading, canRegenerate,
+    aiReport, isAiLoading, canRegenerate, regenerateError,
     isSheetOpen, isPreview, isThinData, isMember,
     isSheetOpenRef, sheetClosedAtRef,
     closeSheet, requestAiReport, handleRegenerate,
@@ -345,6 +345,7 @@ export function ReviewTextarea({
         onStartWithAi={handleStartWithAi}
         onSaveAsIs={handleSaveAsIs}
         onRegenerate={handleRegenerate}
+        regenerateError={regenerateError}
         isPreview={isPreview}
         isThinData={isThinData}
         onLogin={() => {

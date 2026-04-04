@@ -56,17 +56,30 @@ export function useAiReportSheet(
         ? (err as { status: number }).status : undefined
       if (status === 429) {
         toast.error('잠시 후 다시 시도해주세요')
+      } else if (status === 400) {
+        toast('이 기간에 완료한 할 일이 없어서 분석할 수 없어요', { id: 'ai-report-no-data' })
       } else {
         toast.error('AI 서비스에 문제가 생겼어요')
       }
     }
   }, [isMember, isThinData, fetchOrGenerate, openSheet])
 
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
+
   const handleRegenerate = useCallback(async () => {
+    setRegenerateError(null)
     try {
       await regenerate()
-    } catch {
-      toast.error('다시 생성에 실패했어요')
+    } catch (err: unknown) {
+      const status = typeof err === 'object' && err !== null && 'status' in err
+        ? (err as { status: number }).status : undefined
+      if (status === 429) {
+        setRegenerateError('잠시 후 다시 시도해주세요')
+      } else if (status === 400) {
+        setRegenerateError('이 기간에 완료한 할 일이 없어서 분석할 수 없어요')
+      } else {
+        setRegenerateError('다시 생성에 실패했어요')
+      }
     }
   }, [regenerate])
 
@@ -74,6 +87,7 @@ export function useAiReportSheet(
     aiReport,
     isAiLoading,
     canRegenerate,
+    regenerateError,
     isSheetOpen,
     isPreview,
     isThinData,

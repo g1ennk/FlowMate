@@ -523,5 +523,6 @@ export function computeStreak(
 }
 
 export function getPreviousPeriodStart(type: PeriodType, baseDate: Date): string {
-  return formatDateKey(shiftBaseDate(type, baseDate, -1))
+  const prev = shiftBaseDate(type, baseDate, -1)
+  return getPeriodRange(type, prev).startKey
 }
