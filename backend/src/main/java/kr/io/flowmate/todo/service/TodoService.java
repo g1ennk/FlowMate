@@ -27,19 +27,33 @@ public class TodoService {
 
     /**
      * Todo 목록 조회
-     * - date가 null이면 전체 조회, 있으면 특정 날짜만 조회
+     * - from + to 있으면 기간 범위 조회
+     * - date 있으면 특정 날짜 조회
+     * - 모두 null이면 전체 조회
      */
-    public List<TodoResponse> getTodos(String userId, LocalDate date) {
+    public List<TodoResponse> getTodos(String userId, LocalDate date, LocalDate from, LocalDate to) {
 
         List<Todo> todos;
 
-        // 전체 조회
-        if (date == null) {
-            todos = todoRepository.findAllByUserIdOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId);
+        if (date != null && (from != null || to != null)) {
+            throw new IllegalArgumentException("date and from/to cannot be combined");
         }
-        // 특정 날짜 조회
-        else {
+        if ((from == null) != (to == null)) {
+            throw new IllegalArgumentException("from and to must both be present");
+        }
+
+        if (from != null && to != null) {
+            // 기간 범위 조회
+            if (from.isAfter(to)) {
+                throw new IllegalArgumentException("from must not be after to");
+            }
+            todos = todoRepository.findAllByUserIdAndDateBetweenOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId, from, to);
+        } else if (date != null) {
+            // 특정 날짜 조회
             todos = todoRepository.findAllByUserIdAndDateOrderByMiniDayAscDayOrderAscCreatedAtAsc(userId, date);
+        } else {
+            // 전체 조회
+            todos = todoRepository.findAllByUserIdOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId);
         }
 
         // 조회된 엔티티 목록을 전부 순회하면서, 각 응답 DTO로 변환하여 리스트로 만들어 반환한다.

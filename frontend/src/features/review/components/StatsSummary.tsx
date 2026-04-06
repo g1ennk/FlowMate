@@ -6,6 +6,8 @@ type StatsSummaryProps = {
   totalFlows: number
   completedCount: number
   comparison?: PeriodComparison
+  hasReview?: boolean
+  onScrollToReview?: () => void
 }
 
 function renderDelta(value: number, unitFormatter?: (value: number) => string): React.ReactNode {
@@ -26,8 +28,20 @@ export function StatsSummary({
   totalFlows,
   completedCount,
   comparison,
+  hasReview,
+  onScrollToReview,
 }: StatsSummaryProps) {
   const isEmpty = totalFocusSeconds === 0 && totalFlows === 0 && completedCount === 0
+
+  const scrollButton = onScrollToReview ? (
+    <button
+      type="button"
+      onClick={onScrollToReview}
+      className="mt-card-item w-full text-center text-xs font-medium text-accent hover:text-accent-text"
+    >
+      {hasReview ? '회고 보기 ↓' : '회고 쓰기 ↓'}
+    </button>
+  ) : null
 
   if (isEmpty) {
     return (
@@ -36,6 +50,7 @@ export function StatsSummary({
         <p className="py-2 text-center text-sm text-text-tertiary">
           첫 Flow를 시작하면 집중 시간과 완료 기록이 여기에 표시돼요
         </p>
+        {scrollButton}
       </section>
     )
   }
@@ -85,6 +100,7 @@ export function StatsSummary({
           )}
         </div>
       </div>
+      {scrollButton}
     </section>
   )
 }

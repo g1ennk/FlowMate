@@ -51,7 +51,7 @@ class TodoServiceTest {
                 .thenReturn(todos);
 
         // when
-        List<TodoResponse> result = todoService.getTodos(userId, null);
+        List<TodoResponse> result = todoService.getTodos(userId, null, null, null);
 
         // then
         assertThat(result).hasSize(2);
@@ -71,13 +71,42 @@ class TodoServiceTest {
                 .thenReturn(todos);
 
         // when
-        List<TodoResponse> result = todoService.getTodos(userId, date);
+        List<TodoResponse> result = todoService.getTodos(userId, date, null, null);
 
         // then
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getDate()).isEqualTo(date);
         verify(todoRepository).findAllByUserIdAndDateOrderByMiniDayAscDayOrderAscCreatedAtAsc(userId, date);
     }
+
+    @Test
+    @DisplayName("기간 범위로 투두를 조회한다")
+    void getTodos_withDateRange_returnsFilteredTodos() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        LocalDate from = LocalDate.of(2026, 3, 24);
+        LocalDate to = LocalDate.of(2026, 3, 30);
+        Todo todo = Todo.create(userId, "테스트", null, from, 0, 0);
+        when(todoRepository.findAllByUserIdAndDateBetweenOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId, from, to))
+                .thenReturn(List.of(todo));
+
+        List<TodoResponse> result = todoService.getTodos(userId, null, from, to);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getTitle()).isEqualTo("테스트");
+    }
+
+    @Test
+    @DisplayName("getTodos: from이 to보다 늦으면 IllegalArgumentException")
+    void getTodos_fromAfterTo_예외() {
+        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+        LocalDate from = LocalDate.of(2026, 3, 30);
+        LocalDate to = LocalDate.of(2026, 3, 24);
+
+        assertThatThrownBy(() -> todoService.getTodos(userId, null, from, to))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("from must not be after to");
+    }
+
 
     @Test
     @DisplayName("createTodo: 모든 필드가 있으면 그대로 저장")

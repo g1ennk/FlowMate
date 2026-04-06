@@ -1,12 +1,12 @@
-name: Deploy Frontend (dev)
+name: Deploy Frontend (prod)
 
 on:
   push:
     branches:
-      - develop
+      - main
     paths:
       - 'frontend/**'
-      - '.github/workflows/deploy-frontend-dev.yml'
+      - '.github/workflows/deploy-prod-frontend.yml'
   workflow_dispatch:
 
 jobs:
@@ -30,9 +30,10 @@ jobs:
       - name: Build
         working-directory: frontend
         run: |
-          echo "VITE_API_BASE_URL=${{ secrets.DEV_VITE_API_BASE_URL }}" > .env.dev
-          echo "VITE_KAKAO_REDIRECT_URI=${{ secrets.DEV_VITE_KAKAO_REDIRECT_URI }}" >> .env.dev
-          pnpm build --mode dev
+          echo "VITE_API_BASE_URL=${{ secrets.PROD_VITE_API_BASE_URL }}" > .env.prod
+          echo "VITE_KAKAO_REDIRECT_URI=${{ secrets.PROD_VITE_KAKAO_REDIRECT_URI }}" >> .env.prod
+          echo "VITE_ENABLE_PWA=1" >> .env.prod
+          pnpm build --mode prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -42,10 +43,10 @@ jobs:
           aws-region: ap-northeast-2
 
       - name: Upload to S3
-        run: aws s3 sync frontend/dist/ s3://${{ secrets.DEV_S3_BUCKET }} --delete
+        run: aws s3 sync frontend/dist/ s3://${{ secrets.PROD_S3_BUCKET }} --delete
 
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.DEV_CLOUDFRONT_ID }} \
+            --distribution-id ${{ secrets.PROD_CLOUDFRONT_ID }} \
             --paths "/*"

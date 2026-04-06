@@ -30,14 +30,19 @@ public class TodoController {
      * Todo 목록 조회
      * - GET /api/todos
      * - GET /api/todos?date=yyyy-MM-dd
+     * - GET /api/todos?from=yyyy-MM-dd&to=yyyy-MM-dd
      */
     @GetMapping
     public ResponseEntity<ListResponse<TodoResponse>> getTodos(
             @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
         String userId = currentUserResolver.resolve();
-        List<TodoResponse> todos = todoService.getTodos(userId, date);
+        List<TodoResponse> todos = todoService.getTodos(userId, date, from, to);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
 
@@ -108,10 +113,6 @@ public class TodoController {
     }
 
 }
-
-
-
-
 
 
 

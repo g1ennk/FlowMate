@@ -34,9 +34,16 @@ export function useDeleteReview() {
   })
 }
 
-export function useReviewList(type: ReviewType, from: string, to: string) {
+export function useReviewList(
+  type: ReviewType,
+  from: string,
+  to: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery<ReviewList>({
     queryKey: queryKeys.reviewList(type, from, to),
     queryFn: () => reviewApi.list(type, from, to),
+    staleTime: 5 * 60 * 1000,
+    enabled: options?.enabled,
   })
 }

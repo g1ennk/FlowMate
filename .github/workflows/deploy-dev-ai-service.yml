@@ -1,18 +1,17 @@
-name: Deploy Backend (dev)
+name: Deploy AI Service (dev)
 
 on:
   push:
     branches:
       - develop
     paths:
-      - 'backend/**'
-      - 'infra/dev/**'
-      - '.github/workflows/deploy-backend-dev.yml'
+      - 'ai-service/**'
+      - '.github/workflows/deploy-dev-ai-service.yml'
   workflow_dispatch:
 
 env:
   AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: flowmate-backend
+  ECR_REPOSITORY: flowmate-ai-service
 
 jobs:
   build-and-push:
@@ -21,11 +20,6 @@ jobs:
       image_uri: ${{ steps.build.outputs.image_uri }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: 21
-          distribution: temurin
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -44,7 +38,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./ai-service
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
@@ -59,6 +53,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEV_EC2_SSH_KEY }}
           script: |
+            set -euo pipefail
             aws ecr get-login-password --region ap-northeast-2 | \
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
             cd ~/FlowMate
@@ -66,6 +61,7 @@ jobs:
             git checkout develop
             git reset --hard origin/develop
             cd infra/dev
-            export ECR_IMAGE_URI=${{ needs.build-and-push.outputs.image_uri }}
-            ECR_IMAGE_URI=$ECR_IMAGE_URI docker compose up -d --remove-orphans backend alloy
-            docker compose ps
+            export AI_SERVICE_IMAGE=${{ needs.build-and-push.outputs.image_uri }}
+            docker compose pull ai-service
+            docker compose up -d --remove-orphans ai-service postgres
+            docker compose ps ai-service postgres

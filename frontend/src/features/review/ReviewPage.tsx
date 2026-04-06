@@ -11,16 +11,19 @@ import { PeriodTabs } from './components/PeriodTabs'
 import { DailyTaskList } from './components/DailyTaskList'
 import { TimelineList } from './components/TimelineList'
 import { ReviewTextarea } from './components/ReviewTextarea'
+import { PreviousTryBanner } from './components/PreviousTryBanner'
 import { SessionDetailSheet } from './components/SessionDetailSheet'
 import {
   buildPeriodStats,
   buildDailyGroups,
   buildWeeklyGroups,
   getPeriodRange,
+  getPreviousPeriodStart,
   shiftBaseDate,
   formatPeriodLabel,
   buildTasksByDate,
 } from './reviewUtils'
+import { useReview, useReviewList } from './hooks'
 import { getReviewRouteState } from './reviewRouteParams'
 import { useReviewScrollMemory } from './useReviewScrollMemory'
 import type { TaskItem } from './reviewTypes'
@@ -64,10 +67,15 @@ export function ReviewPage() {
   )
 
   const reviewRange = getPeriodRange(period, baseDate)
+  const { data: currentReview } = useReview(period, reviewRange.startKey)
   const today = new Date()
   const todayKey = formatDateKey(today)
   const currentWeekStartKey = getPeriodRange('weekly', today).startKey
   const currentMonthStartKey = getPeriodRange('monthly', today).startKey
+
+  const monthRange = getPeriodRange('monthly', baseDate)
+  const { data: monthlyReviews } = useReviewList('daily', monthRange.startKey, monthRange.endKey)
+  const monthlyReviewCount = monthlyReviews?.items?.length ?? 0
   const tasksByDate = buildTasksByDate(data?.items ?? [], timers, reviewRange)
   const dailyTasks = period === 'daily' ? tasksByDate[reviewRange.startKey] ?? [] : []
   const weeklyGroups =
@@ -140,6 +148,7 @@ export function ReviewPage() {
         onJumpToCurrent={handleJumpToCurrent}
         onPrev={handlePrev}
         onNext={handleNext}
+        reviewCount={monthlyReviewCount}
       />
 
       <div className="mt-section">
@@ -148,6 +157,10 @@ export function ReviewPage() {
           totalFlows={stats.totalFlows}
           completedCount={stats.completedCount}
           comparison={stats.comparison}
+          hasReview={!!currentReview?.content}
+          onScrollToReview={() =>
+            document.getElementById('review-card')?.scrollIntoView({ behavior: 'smooth' })
+          }
         />
       </div>
 
@@ -184,13 +197,26 @@ export function ReviewPage() {
         />
       )}
 
-      <ReviewTextarea
-        key={`review-${period}-${reviewRange.startKey}`}
-        title={DIARY_TITLES[period]}
+      <PreviousTryBanner
         periodType={period}
-        periodStart={reviewRange.startKey}
-        periodEnd={reviewRange.endKey}
+        previousPeriodStart={getPreviousPeriodStart(period, baseDate)}
+        onNavigateToPrevious={() => {
+          const prevDate = shiftBaseDate(period, baseDate, -1)
+          setSearchParams({ period, date: formatDateKey(prevDate) })
+        }}
       />
+
+      <div id="review-card">
+        <ReviewTextarea
+          key={`review-${period}-${reviewRange.startKey}`}
+          title={DIARY_TITLES[period]}
+          periodType={period}
+          periodStart={reviewRange.startKey}
+          periodEnd={reviewRange.endKey}
+          completedTodoCount={stats.completedCount}
+          totalSessionCount={stats.totalFlows}
+        />
+      </div>
 
       <SessionDetailSheet
         task={selectedTask}
