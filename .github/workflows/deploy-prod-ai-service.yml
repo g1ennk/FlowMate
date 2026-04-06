@@ -1,12 +1,12 @@
-name: Deploy AI Service (dev)
+name: Deploy AI Service (prod)
 
 on:
   push:
     branches:
-      - develop
+      - main
     paths:
       - 'ai-service/**'
-      - '.github/workflows/deploy-dev-ai-service.yml'
+      - '.github/workflows/deploy-prod-ai-service.yml'
   workflow_dispatch:
 
 env:
@@ -49,18 +49,18 @@ jobs:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.DEV_EC2_HOST }}
+          host: ${{ secrets.PROD_EC2_HOST }}
           username: ubuntu
-          key: ${{ secrets.DEV_EC2_SSH_KEY }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
           script: |
             set -euo pipefail
             aws ecr get-login-password --region ap-northeast-2 | \
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
             cd ~/FlowMate
             git fetch origin
-            git checkout develop
-            git reset --hard origin/develop
-            cd infra/dev
+            git checkout main
+            git reset --hard origin/main
+            cd infra/prod
             export AI_SERVICE_IMAGE=${{ needs.build-and-push.outputs.image_uri }}
             docker compose pull ai-service
             docker compose up -d --remove-orphans ai-service postgres

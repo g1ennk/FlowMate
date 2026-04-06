@@ -24,14 +24,14 @@ services:
     networks:
       - flowmate-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
   # Spring Boot Backend
   backend:
-    image: ${ECR_IMAGE_URI:?ECR_IMAGE_URI is required}
+    image: ${ECR_IMAGE_URI:-flowmate-backend:placeholder}
     container_name: flowmate-backend-prod
     restart: always
     environment:
@@ -62,7 +62,7 @@ services:
     networks:
       - flowmate-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -84,12 +84,18 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres-data-prod:/var/lib/postgresql/data
+      - ../../ai-service/migrations/001-create-reports.sql:/docker-entrypoint-initdb.d/001-create-reports.sql:ro
     networks:
       - flowmate-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U flowmate -d flowmate_reports" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # NestJS AI Service
   ai-service:
-    image: ${AI_SERVICE_IMAGE:?AI_SERVICE_IMAGE is required}
+    image: ${AI_SERVICE_IMAGE:-flowmate-ai-service:placeholder}
     container_name: flowmate-ai-service-prod
     restart: always
     ports:
@@ -105,8 +111,8 @@ services:
       FLOWMATE_API_URL: http://backend:8080/api
       PORT: 3000
     depends_on:
-      - postgres
-      - backend
+      postgres:
+        condition: service_healthy
     networks:
       - flowmate-network
     logging:

@@ -29,7 +29,7 @@ services:
 
   # Spring Boot Backend
   backend:
-    image: ${ECR_IMAGE_URI}
+    image: ${ECR_IMAGE_URI:-flowmate-backend:placeholder}
     container_name: flowmate-backend-dev
     restart: unless-stopped
     environment:
@@ -67,7 +67,7 @@ services:
     environment:
       POSTGRES_DB: flowmate_reports
       POSTGRES_USER: flowmate
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowmate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres-data-dev:/var/lib/postgresql/data
       - ../../ai-service/migrations/001-create-reports.sql:/docker-entrypoint-initdb.d/001-create-reports.sql:ro
@@ -81,7 +81,7 @@ services:
 
   # NestJS AI Service
   ai-service:
-    image: ${AI_SERVICE_IMAGE:-flowmate-ai-service:latest}
+    image: ${AI_SERVICE_IMAGE:-flowmate-ai-service:placeholder}
     container_name: flowmate-ai-service-dev
     restart: unless-stopped
     ports:
@@ -91,7 +91,7 @@ services:
       DATABASE_PORT: 5432
       DATABASE_NAME: flowmate_reports
       DATABASE_USER: flowmate
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-flowmate}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       FLOWMATE_API_URL: http://backend:8080/api
@@ -128,7 +128,7 @@ services:
       - /:/rootfs:ro
     pid: "host"
     ports:
-      - "12345:12345"
+      - "127.0.0.1:12345:12345"
     depends_on:
       - backend
     networks:
