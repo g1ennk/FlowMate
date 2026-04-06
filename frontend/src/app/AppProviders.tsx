@@ -12,6 +12,7 @@ import { useTimerSyncEffect } from '../features/timer/useTimerSyncEffect'
 import { useTimerStore } from '../features/timer/timerStore'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
 import { useAuthStore } from '../store/authStore'
+import BackendStatusGate from './BackendStatusGate'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
@@ -47,7 +48,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     <QueryClientProvider client={queryClient}>
       <TimerSyncLayer />
       <ActiveTimerTitle />
-      {children}
+      <BackendStatusGate>{children}</BackendStatusGate>
       <Toaster
         position="top-center"
         containerStyle={{
