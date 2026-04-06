@@ -54,13 +54,19 @@ jobs:
           key: ${{ secrets.PROD_EC2_SSH_KEY }}
           script: |
             set -euo pipefail
-            aws ecr get-login-password --region ap-northeast-2 | \
-              docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
             cd ~/FlowMate
             git fetch origin
             git checkout main
             git reset --hard origin/main
             cd infra/prod
+
+            docker run --rm \
+              -e AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' \
+              -e AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' \
+              -e AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' \
+              amazon/aws-cli:2.31.18 \
+              ecr get-login-password --region ${{ env.AWS_REGION }} | \
+              docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
             export AI_SERVICE_IMAGE=${{ needs.build-and-push.outputs.image_uri }}
             docker compose pull ai-service
             docker compose up -d --remove-orphans ai-service postgres
