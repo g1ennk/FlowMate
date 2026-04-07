@@ -34,6 +34,15 @@ export default defineConfig({
             // Keep streaming SSE requests off Workbox so the browser owns the long-lived connection.
             urlPattern: ({ url }) => url.pathname.startsWith('/api/') && url.pathname !== '/api/timer/sse',
             handler: 'NetworkOnly',
+            options: {
+              plugins: [
+                {
+                  // 네트워크 실패 시 워크박스 내부 reject를 표준 fetch 에러(Response.error())로 변환.
+                  // 앱 코드의 try/catch가 정상적으로 잡고, 콘솔 unhandled rejection이 사라짐.
+                  handlerDidError: async () => Response.error(),
+                },
+              ],
+            },
           },
           {
             urlPattern: ({ request }) =>
