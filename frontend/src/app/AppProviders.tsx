@@ -12,6 +12,7 @@ import { useTimerSyncEffect } from '../features/timer/useTimerSyncEffect'
 import { useTimerStore } from '../features/timer/timerStore'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
 import { useAuthStore } from '../store/authStore'
+import { useSystemStore } from '../store/systemStore'
 import BackendStatusGate from './BackendStatusGate'
 
 const mockEnabled =
@@ -19,13 +20,17 @@ const mockEnabled =
 
 export function AppProviders({ children }: PropsWithChildren) {
   const [mockReady, setMockReady] = useState(!mockEnabled)
+  const backendStatus = useSystemStore((s) => s.status)
   useTimerTicker()
 
   // 앱 초기화 시 인증 상태 복원 (mock 모드면 MSW 준비 후 실행)
+  // 백엔드가 available로 확정된 후에만 init() 호출 — 다운 시 fetch 실패가
+  // 콘솔에 빨간 메시지로 새지 않도록 한다.
   useEffect(() => {
     if (!mockReady) return
+    if (backendStatus !== 'available') return
     useAuthStore.getState().init()
-  }, [mockReady])
+  }, [mockReady, backendStatus])
 
   useEffect(() => {
     if (!mockEnabled) return
