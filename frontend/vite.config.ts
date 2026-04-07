@@ -75,6 +75,12 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // /actuator/health도 백엔드로 proxy — 없으면 SPA fallback이 index.html을
+      // 200으로 반환해 헬스체크가 잘못 통과한다. (prod는 nginx가 별도 location으로 처리)
+      '/actuator': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
   build: {
