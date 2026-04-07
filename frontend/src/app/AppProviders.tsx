@@ -46,6 +46,9 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* TimerSyncLayer는 의도적으로 BackendStatusGate 밖에 둠 — 내부 훅들이
+          auth 상태로 self-guard되어 백엔드 다운 시 API 호출을 하지 않음.
+          타이머 tick 로직은 백엔드 상태와 무관하게 동작해야 함. */}
       <TimerSyncLayer />
       <ActiveTimerTitle />
       <BackendStatusGate>{children}</BackendStatusGate>
