@@ -379,6 +379,11 @@ function saveMiniDaysSettings(clientId: string, settings: MiniDaysSettings) {
 }
 
 export const handlers = [
+  http.get('/actuator/health', async () => {
+    await delay(latency)
+    return HttpResponse.json({ status: 'UP' }, { status: 200 })
+  }),
+
   http.get('/api/timer/state', async () => {
     await delay(latency)
     return HttpResponse.json([])
