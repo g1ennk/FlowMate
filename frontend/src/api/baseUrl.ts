@@ -16,4 +16,10 @@ export function buildApiUrl(path: string) {
   return `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`
 }
 
+export function buildHealthUrl() {
+  // apiBaseUrl: '/api' 또는 'https://api.flowmate.io.kr/api'
+  // /actuator/health는 nginx에서 별도 location으로 라우팅됨
+  return apiBaseUrl.replace(/\/api$/, '') + '/actuator/health'
+}
+
 export { apiBaseUrl }
