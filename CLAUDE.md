@@ -128,15 +128,23 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 ### main 반영 절차 (squash merge)
 
 ```bash
-git checkout main
+# 1. main에 squash merge
+git checkout main && git pull
 git merge develop --squash
 git commit -m "feat: v1.x.0 — 릴리즈 요약"
-git push origin main
+git tag v1.x.0
+git push origin main --tags
+
+# 2. [필수] develop을 main으로 정렬 — 다음 릴리즈 conflict 방지
+git checkout develop
+git reset --hard main
+git push --force-with-lease origin develop
 ```
 
-- develop의 세부 커밋 히스토리는 develop에만 보존
+- develop의 세부 커밋 히스토리는 squash 전까지만 develop에 존재, 릴리즈 후엔 main의 squash 커밋으로 대체됨
 - main은 릴리즈 단위로 1커밋 = 1버전
-- `git reset --hard develop` 방식은 사용하지 않음 (develop 히스토리가 main에 그대로 복사되므로)
+- **릴리즈 후 develop reset을 빼먹으면** develop에 "이미 main에 squash된 원본 커밋들"이 남아, 다음 `develop → main` 머지 시 3-way merge base가 과거로 잡히며 구조적 conflict가 발생함 (2026-04-08 사고 사례). 1인 개발이라 force push 안전
+- `git reset --hard develop` 방식(main을 develop으로 맞추기)은 사용하지 않음 (develop 세부 히스토리가 main에 그대로 복사되므로)
 
 ### 릴리즈 이력 (최신순)
 

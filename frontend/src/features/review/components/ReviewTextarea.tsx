@@ -82,7 +82,14 @@ export function ReviewTextarea({
     const node = textareaRef.current
     if (!node) return
     node.style.height = 'auto'
-    node.style.height = `${Math.min(320, Math.max(200, node.scrollHeight))}px`
+    node.style.height = `${Math.max(200, node.scrollHeight)}px`
+    const rect = node.getBoundingClientRect()
+    const nav = document.querySelector('nav.fixed') as HTMLElement | null
+    const navH = nav?.getBoundingClientRect().height ?? 0
+    const overflow = rect.bottom - (window.innerHeight - navH) + 24
+    if (overflow > 0) {
+      window.scrollBy({ top: overflow })
+    }
   }, [])
 
   useEffect(() => {
@@ -305,7 +312,7 @@ export function ReviewTextarea({
             }
           }}
           placeholder={REVIEW_PLACEHOLDERS[periodType]}
-          className={`mt-3 max-h-80 w-full resize-none overflow-y-auto rounded-xl border border-accent bg-surface-card p-3 ${userTextDisplayClass} text-text-secondary outline-none placeholder:text-text-tertiary`}
+          className={`mt-3 w-full resize-none overflow-hidden rounded-xl border border-accent bg-surface-card p-3 ${userTextDisplayClass} text-text-secondary outline-none placeholder:text-text-tertiary`}
         />
       ) : (
         <div className="mt-3 rounded-xl p-3 text-left">
