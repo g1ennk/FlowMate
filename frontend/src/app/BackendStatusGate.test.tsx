@@ -20,14 +20,16 @@ describe('BackendStatusGate', () => {
     vi.clearAllMocks()
   })
 
-  it('status가 unknown이면 children도 ServiceUnavailable도 렌더하지 않는다', () => {
+  it('status가 unknown이면 스플래시를 렌더한다 (children/ServiceUnavailable 아님)', () => {
     useSystemStore.setState({ status: 'unknown' })
-    const { container } = renderApp(
+    renderApp(
       <BackendStatusGate>
         <div>children content</div>
       </BackendStatusGate>,
     )
-    expect(container).toBeEmptyDOMElement()
+    expect(screen.getByText('Flow')).toBeInTheDocument()
+    expect(screen.queryByText('children content')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '잠시 쉬는 중이에요' })).not.toBeInTheDocument()
   })
 
   it('status가 unavailable이면 ServiceUnavailable을 렌더한다', () => {

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { buildApiUrl } from '../api/baseUrl'
+import { clearAuthMode, getAuthMode, setAuthMode } from '../lib/auth'
 import { storageKeys } from '../lib/storageKeys'
 import type { AuthState } from '../types/auth'
 
@@ -17,23 +18,35 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   state: null,
   initialized: false,
 
-  /** 앱 초기화: refresh token 쿠키로 복원 또는 새 게스트 토큰 발급 */
+  /**
+   * 앱 초기화: authMode 힌트로 경로 분기.
+   * - 과거에 회원으로 로그인한 적 없는 사용자(=authMode !== 'kakao')는
+   *   /auth/refresh 호출을 건너뛰어 cold load 빈 화면을 단축한다.
+   * - 회원 힌트가 있으면 refresh 시도, 실패 시 게스트로 폴백.
+   */
   init: async () => {
-    // 1. refresh token 쿠키로 access token + user 재발급 시도
-    try {
-      const res = await fetch(buildApiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        set({ state: { type: 'member', accessToken: data.accessToken, user: data.user }, initialized: true })
-        return
+    const mode = getAuthMode()
+
+    // 1. 회원 힌트가 있을 때만 refresh 시도
+    if (mode === 'kakao') {
+      try {
+        const res = await fetch(buildApiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          set({ state: { type: 'member', accessToken: data.accessToken, user: data.user }, initialized: true })
+          return
+        }
+      } catch {
+        // refresh 실패 → 게스트 폴백
       }
-    } catch {
-      // refresh 실패 시 게스트로 fallback
+      // refresh 실패: 만료된 힌트 제거
+      clearAuthMode()
     }
 
-    // 2. 게스트 토큰 확인
+    // 2. 게스트 토큰이 이미 있으면 즉시 사용 (API 호출 0회)
     const guestToken = localStorage.getItem(storageKeys.guestToken)
     if (guestToken) {
+      setAuthMode('guest')
       set({ state: { type: 'guest', token: guestToken }, initialized: true })
       return
     }
@@ -43,6 +56,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const res = await fetch(buildApiUrl('/auth/guest/token'), { method: 'POST' })
       const data = await res.json()
       localStorage.setItem(storageKeys.guestToken, data.guestToken)
+      setAuthMode('guest')
       set({ state: { type: 'guest', token: data.guestToken }, initialized: true })
     } catch {
       set({ initialized: true })
@@ -62,6 +76,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const data = await res.json()
     // accessToken, user 모두 메모리(state)에만 저장
     localStorage.removeItem(storageKeys.guestToken)
+    setAuthMode('kakao')
     set({ state: { type: 'member', accessToken: data.accessToken, user: data.user } })
   },
 
@@ -78,10 +93,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const res = await fetch(buildApiUrl('/auth/guest/token'), { method: 'POST' })
       const data = await res.json()
       localStorage.setItem(storageKeys.guestToken, data.guestToken)
+      setAuthMode('guest')
       set({ state: { type: 'guest', token: data.guestToken } })
     } catch {
       // 게스트 토큰 발급 실패 시 상태를 null로 초기화 (로그인 페이지로 리다이렉트됨)
       localStorage.removeItem(storageKeys.guestToken)
+      clearAuthMode()
       set({ state: null })
     }
   },
@@ -110,6 +127,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         // 서버 revoke 실패는 무시 (어차피 토큰이 만료됨)
       }
       localStorage.removeItem(storageKeys.guestToken)
+      clearAuthMode()
       set({ state: null })
       return
     }

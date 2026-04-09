@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom'
 import { getOnboardingSeen } from '../lib/onboarding'
 import { useAuthStore } from '../store/authStore'
 import AppLayout from './App'
+import AppSplash from './AppSplash'
 
 function AppLayoutGate() {
   const authState = useAuthStore((s) => s.state)
@@ -12,9 +13,9 @@ function AppLayoutGate() {
     return <Navigate to="/login" replace />
   }
 
-  // init() 완료 전엔 아무것도 렌더링하지 않음
+  // init() 완료 전엔 스플래시 노출 (빈 화면 방지)
   if (!initialized) {
-    return null
+    return <AppSplash />
   }
 
   if (!authState) {

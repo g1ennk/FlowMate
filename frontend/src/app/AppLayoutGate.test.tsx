@@ -42,12 +42,14 @@ describe('AppLayoutGate', () => {
     expect(screen.getByText('login page')).toBeInTheDocument()
   })
 
-  it('renders nothing while auth initialization is pending', () => {
+  it('renders splash while auth initialization is pending', () => {
     useAuthStore.setState({ initialized: false, state: null })
 
-    const { container } = renderGate()
+    renderGate()
 
-    expect(container).toBeEmptyDOMElement()
+    // Splash는 FlowMate 로고를 보여준다 (로그인 페이지로 리다이렉트되지 않음)
+    expect(screen.getByText('Flow')).toBeInTheDocument()
+    expect(screen.queryByText('login page')).not.toBeInTheDocument()
   })
 
   it('redirects to login when auth is initialized without a user session', () => {
