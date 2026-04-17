@@ -939,13 +939,15 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 | `VALIDATION_ERROR` | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                            |
 | `BAD_REQUEST`      | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, 무효 RT, SSE query token 검증 실패 등 |
 | `NOT_FOUND`        | 404  | 리소스 없음 또는 타 사용자 소유                                     |
+| `METHOD_NOT_ALLOWED` | 405 | 경로는 존재하지만 HTTP 메서드가 미지원                               |
+| `CONFLICT`         | 409  | 데드락 retry 소진 등 일시적 충돌                                  |
 | `INTERNAL_ERROR`   | 500  | 처리되지 않은 예외                                             |
 | `UNAUTHORIZED`     | 401  | Spring Security 인증 실패. body가 비어 있을 수 있음                |
 | `FORBIDDEN`        | 403  | Spring Security 인가 실패. body가 비어 있을 수 있음                |
 
 참고:
 
-- 현재 구현에는 `409 CONFLICT`를 반환하는 경로가 없다.
+- `409 CONFLICT`는 `CannotAcquireLockException`(데드락 retry 소진) 시 반환된다.
 - `GET /api/timer/sse`는 SecurityFilter가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member가 `400 BAD_REQUEST`로
   내려온다.
 - `UNAUTHORIZED`, `FORBIDDEN`은 Spring Security가 만드는 HTTP 상태이며, `ApiError.error.code`를 항상 의미하지는 않는다.
