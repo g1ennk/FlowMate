@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true) // 서비스 클래스에 readOnly를 붙이고, 쓰기 메서드에만 따로 @Tractional을 붙이는 패턴
@@ -148,18 +151,27 @@ public class TodoService {
     /**
      * Todo 순서 변경
      * - 여러 Todo의 miniDay, dayOrder를 일괄 수정
+     * - 대상 Todo를 1쿼리로 모아 조회 후 Map 조인으로 순회 (N+1 회피)
      */
     @Transactional
     public List<TodoResponse> reorderTodos(String userId, TodoReorderRequest request) {
-        // 각 Todo의 순서 업데이트
-        for (TodoReorderRequest.Item item : request.getItems()) {
-            Todo todo = findTodoByIdAndUserId(item.getId(), userId);
+        List<TodoReorderRequest.Item> items = request.getItems();
+        List<String> ids = items.stream().map(TodoReorderRequest.Item::getId).toList();
 
+        Map<String, Todo> todosById = todoRepository.findAllByIdInAndUserId(ids, userId).stream()
+                .collect(Collectors.toMap(Todo::getId, Function.identity()));
+
+        for (TodoReorderRequest.Item item : items) {
+            Todo todo = todosById.get(item.getId());
+            if (todo == null) {
+                // 요청 id 중 존재하지 않거나 다른 사용자 소유인 항목이 있으면 전체 거부
+                throw new TodoNotFoundException(item.getId());
+            }
             todo.updateDayOrder(item.getDayOrder());
             todo.updateMiniDay(item.getMiniDay());
         }
 
-        // 전체 목록 조회하여 다시 반환
+        // 변경 반영된 전체 목록을 UI 순서대로 다시 반환
         List<Todo> allTodos = todoRepository
                 .findAllByUserIdOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId);
         return allTodos.stream()

@@ -38,7 +38,6 @@ public class Todo {
     private int dayOrder;
 
     @Column(name = "is_done", nullable = false)
-    @Getter(AccessLevel.NONE)  // Lombok 자동 생성 방지 (수동 정의하므로)
     private boolean done;
 
     @Column(name = "session_count", nullable = false)
@@ -175,10 +174,6 @@ public class Todo {
     @PreUpdate
     public void onUpdate() {
         this.updatedAt = Instant.now();
-    }
-
-    public boolean isDone() {
-        return done;
     }
 
 }

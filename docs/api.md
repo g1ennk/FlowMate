@@ -208,10 +208,13 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 `GET /api/todos`
 
-쿼리 파라미터:
+쿼리 파라미터 (상호 배타):
 
-- `date` optional, `YYYY-MM-DD`
-- `date`가 없으면 사용자 전체 Todo를 `date ASC`, `miniDay ASC`, `dayOrder ASC`, `createdAt ASC` 순으로 반환한다.
+- `date` optional, `YYYY-MM-DD` — 단일 날짜 조회
+- `from` + `to` optional, `YYYY-MM-DD` — 기간 범위 조회 (둘 다 주어야 하며 `from <= to`)
+- `date`와 `from`/`to`를 동시에 주면 `400 BAD_REQUEST`
+- `from`/`to` 중 하나만 주거나 `from > to`이면 `400 BAD_REQUEST`
+- 모두 생략하면 사용자 전체 Todo를 `date ASC`, `miniDay ASC`, `dayOrder ASC`, `createdAt ASC` 순으로 반환한다.
 
 **Response** `200`
 
@@ -404,6 +407,15 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
   ]
 }
 ```
+
+**동작 규칙**
+
+- 요청 `items[].id` 중 하나라도 존재하지 않거나 타 사용자 소유이면 **전체 거부**하고 `404 NOT_FOUND`를 반환한다 (all-or-nothing, 트랜잭션 rollback).
+- 응답 `items`는 갱신 반영된 사용자 전체 Todo를 `date ASC`, `miniDay ASC`, `dayOrder ASC`, `createdAt ASC` 순으로 반환한다.
+
+**Errors**
+
+- `404 NOT_FOUND` `items[].id` 중 일부가 없거나 타 사용자 소유
 
 ---
 
