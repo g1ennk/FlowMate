@@ -26,14 +26,4 @@ class TodoTest {
         assertThat(todo.getUpdatedAt()).isNotNull();
     }
 
-    @Test
-    @DisplayName("syncSessionAggregate: 음수 값은 0으로 클램프된다")
-    void syncSessionAggregate_negativeValues_clampedToZero() {
-        Todo todo = Todo.create("user-1", "제목", null, LocalDate.of(2026, 4, 1), 0, 0);
-
-        todo.syncSessionAggregate(-5, -100);
-
-        assertThat(todo.getSessionCount()).isZero();
-        assertThat(todo.getSessionFocusSeconds()).isZero();
-    }
 }

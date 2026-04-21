@@ -11,7 +11,6 @@ public class SessionCreateRequest {
     private static final String UUID_RE =
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
-
     @NotNull(message = "sessionFocusSeconds is required")
     @Min(value = 1, message = "sessionFocusSeconds must be >= 1")
     @Max(value = 43_200, message = "sessionFocusSeconds must be <= 43200 (12 hours)")

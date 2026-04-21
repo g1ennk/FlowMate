@@ -1,4 +1,4 @@
-package kr.io.flowmate.todo.dto;
+package kr.io.flowmate.todo.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;

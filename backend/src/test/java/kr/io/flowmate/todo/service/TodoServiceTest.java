@@ -2,10 +2,11 @@ package kr.io.flowmate.todo.service;
 
 import kr.io.flowmate.todo.domain.TimerMode;
 import kr.io.flowmate.todo.domain.Todo;
-import kr.io.flowmate.todo.dto.TodoCreateRequest;
-import kr.io.flowmate.todo.dto.TodoReorderRequest;
-import kr.io.flowmate.todo.dto.TodoResponse;
-import kr.io.flowmate.todo.dto.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
+import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
+import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.response.TodoResponse;
+import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -246,7 +247,7 @@ class TodoServiceTest {
         when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(USER_ID, done.getId(), 1))
                 .thenReturn(Optional.of(existingNext));
 
-        TodoService.ScheduleReviewResult result = todoService.scheduleReview(USER_ID, done.getId());
+        TodoScheduleReviewResponse result = todoService.scheduleReview(USER_ID, done.getId());
 
         assertThat(result.created()).isFalse();
         assertThat(result.item().id()).isEqualTo(existingNext.getId());
@@ -264,7 +265,7 @@ class TodoServiceTest {
         when(todoRepository.findMaxDayOrderForUndone(USER_ID, LocalDate.of(2026, 4, 2), 0)).thenReturn(-1);
         when(todoRepository.save(any(Todo.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        TodoService.ScheduleReviewResult result = todoService.scheduleReview(USER_ID, done.getId());
+        TodoScheduleReviewResponse result = todoService.scheduleReview(USER_ID, done.getId());
 
         assertThat(result.created()).isTrue();
         ArgumentCaptor<Todo> captor = ArgumentCaptor.forClass(Todo.class);
@@ -320,7 +321,7 @@ class TodoServiceTest {
         when(todoRepository.save(any(Todo.class)))
                 .thenThrow(new DataIntegrityViolationException("unique"));
 
-        TodoService.ScheduleReviewResult result = todoService.scheduleReview(USER_ID, done.getId());
+        TodoScheduleReviewResponse result = todoService.scheduleReview(USER_ID, done.getId());
 
         assertThat(result.created()).isFalse();
         assertThat(result.item().id()).isEqualTo(raceWinner.getId());

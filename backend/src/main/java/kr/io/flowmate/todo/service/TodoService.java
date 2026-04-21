@@ -2,10 +2,11 @@ package kr.io.flowmate.todo.service;
 
 import kr.io.flowmate.todo.domain.TimerMode;
 import kr.io.flowmate.todo.domain.Todo;
-import kr.io.flowmate.todo.dto.TodoCreateRequest;
-import kr.io.flowmate.todo.dto.TodoReorderRequest;
-import kr.io.flowmate.todo.dto.TodoResponse;
-import kr.io.flowmate.todo.dto.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
+import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
+import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.response.TodoResponse;
+import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,8 +21,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional(readOnly = true) // 서비스 클래스에 readOnly를 붙이고, 쓰기 메서드에만 따로 @Tractional을 붙이는 패턴
-@RequiredArgsConstructor // 생성자 주입
+@Transactional(readOnly = true)
+@RequiredArgsConstructor
 public class TodoService {
 
     private static final int[] REVIEW_INTERVALS = {1, 2, 4, 8, 16, 32};
@@ -180,7 +181,7 @@ public class TodoService {
     }
 
     @Transactional
-    public ScheduleReviewResult scheduleReview(String userId, String todoId) {
+    public TodoScheduleReviewResponse scheduleReview(String userId, String todoId) {
         Todo todo = findTodoByIdAndUserId(todoId, userId);
 
         if (!todo.isDone()) {
@@ -199,7 +200,7 @@ public class TodoService {
                 .findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, nextRound)
                 .orElse(null);
         if (existing != null) {
-            return new ScheduleReviewResult(TodoResponse.from(existing), false);
+            return new TodoScheduleReviewResponse(TodoResponse.from(existing), false);
         }
 
         LocalDate nextDate = todo.getDate().plusDays(REVIEW_INTERVALS[currentRound]);
@@ -218,12 +219,12 @@ public class TodoService {
 
         try {
             Todo saved = todoRepository.save(reviewTodo);
-            return new ScheduleReviewResult(TodoResponse.from(saved), true);
+            return new TodoScheduleReviewResponse(TodoResponse.from(saved), true);
         } catch (DataIntegrityViolationException ex) {
             Todo collided = todoRepository
                     .findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, nextRound)
                     .orElseThrow(() -> ex);
-            return new ScheduleReviewResult(TodoResponse.from(collided), false);
+            return new TodoScheduleReviewResponse(TodoResponse.from(collided), false);
         }
     }
 
@@ -235,6 +236,11 @@ public class TodoService {
                 .orElseThrow(() -> new TodoNotFoundException(todoId));
     }
 
+    /**
+     * 복습 체인의 기준 제목을 계산한다.
+     * round 2+ 생성 시 root를 재조회해 원본 제목 변경을 미래 회차에 반영한다 (cascade).
+     * root가 없으면 source의 title로 폴백.
+     */
     private String resolveBaseTitle(String userId, Todo sourceTodo, String rootTodoId) {
         if (sourceTodo.getOriginalTodoId() == null) {
             return sourceTodo.getTitle();
@@ -243,9 +249,6 @@ public class TodoService {
         return todoRepository.findByIdAndUserId(rootTodoId, userId)
                 .map(Todo::getTitle)
                 .orElseGet(sourceTodo::getTitle);
-    }
-
-    public record ScheduleReviewResult(TodoResponse item, boolean created) {
     }
 
 }

@@ -3,11 +3,11 @@ package kr.io.flowmate.todo.controller;
 import jakarta.validation.Valid;
 import kr.io.flowmate.common.dto.ListResponse;
 import kr.io.flowmate.common.util.CurrentUserResolver;
-import kr.io.flowmate.todo.dto.TodoCreateRequest;
-import kr.io.flowmate.todo.dto.TodoReorderRequest;
-import kr.io.flowmate.todo.dto.TodoResponse;
-import kr.io.flowmate.todo.dto.TodoScheduleReviewResponse;
-import kr.io.flowmate.todo.dto.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
+import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
+import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.response.TodoResponse;
+import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.service.TodoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -101,15 +101,19 @@ public class TodoController {
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
 
+    /**
+     * Todo 복습 생성
+     * - POST /api/todos/{id}/review-schedule
+     * - 201 Created 신규 복습 Todo, 200 OK 기존 회차 재사용
+     */
     @PostMapping("/{id}/review-schedule")
     public ResponseEntity<TodoScheduleReviewResponse> scheduleReview(
             @PathVariable String id
     ) {
         String userId = currentUserResolver.resolve();
-        TodoService.ScheduleReviewResult result = todoService.scheduleReview(userId, id);
-        HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
-        return ResponseEntity.status(status)
-                .body(new TodoScheduleReviewResponse(result.item(), result.created()));
+        TodoScheduleReviewResponse response = todoService.scheduleReview(userId, id);
+        HttpStatus status = response.created() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(response);
     }
 
 }

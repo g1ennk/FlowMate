@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "todo_sessions")
@@ -52,7 +53,7 @@ public class TodoSession {
         TodoSession session = new TodoSession();
         Instant now = Instant.now();
 
-        session.id = java.util.UUID.randomUUID().toString();
+        session.id = UUID.randomUUID().toString();
         session.userId = userId;
         session.todoId = todoId;
         session.clientSessionId = clientSessionId;
@@ -73,19 +74,9 @@ public class TodoSession {
         return true;
     }
 
-    @PrePersist
-    public void onCreate() {
-        if (this.createdAt == null) {
-            Instant now = Instant.now();
-            this.createdAt = now;
-            this.updatedAt = now;
-        }
-    }
-
     @PreUpdate
     public void onUpdate() {
         this.updatedAt = Instant.now();
     }
-
 
 }

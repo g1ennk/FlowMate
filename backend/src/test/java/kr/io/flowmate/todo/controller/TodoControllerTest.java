@@ -2,7 +2,8 @@ package kr.io.flowmate.todo.controller;
 
 import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
-import kr.io.flowmate.todo.dto.TodoResponse;
+import kr.io.flowmate.todo.dto.response.TodoResponse;
+import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.service.TodoService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,7 +53,7 @@ class TodoControllerTest {
         String todoId = UUID.randomUUID().toString();
         when(currentUserResolver.resolve()).thenReturn("user-1");
         when(todoService.scheduleReview("user-1", todoId))
-                .thenReturn(new TodoService.ScheduleReviewResult(sampleResponse(todoId), true));
+                .thenReturn(new TodoScheduleReviewResponse(sampleResponse(todoId), true));
 
         mockMvc.perform(post("/api/todos/{id}/review-schedule", todoId))
                 .andExpect(status().isCreated())
@@ -65,7 +66,7 @@ class TodoControllerTest {
         String todoId = UUID.randomUUID().toString();
         when(currentUserResolver.resolve()).thenReturn("user-1");
         when(todoService.scheduleReview("user-1", todoId))
-                .thenReturn(new TodoService.ScheduleReviewResult(sampleResponse(todoId), false));
+                .thenReturn(new TodoScheduleReviewResponse(sampleResponse(todoId), false));
 
         mockMvc.perform(post("/api/todos/{id}/review-schedule", todoId))
                 .andExpect(status().isOk())
