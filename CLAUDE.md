@@ -39,7 +39,7 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 ### 전체 구조
 
 - **Frontend**: React 19 + Vite 7 + TypeScript 5.9 (strict) + Tailwind CSS 4 + PWA (프로덕션만)
-- **Backend**: Spring Boot 4.0.2 + Java 21 + MySQL 8 + Flyway
+- **Backend**: Spring Boot 4.0.5 + Java 21 + MySQL 8 + Flyway
 - **인증**: 게스트 JWT(localStorage, 90일) → 카카오 OAuth → 멤버 JWT(메모리만, 15분) + HttpOnly refresh cookie(14일, RTR)
 - **실시간 동기화**: SSE로 타이머 상태 멀티디바이스 동기화 (쿼리파라미터 토큰, EventSource 제약)
 - **배포**: EC2 + Docker Compose (백엔드+MySQL+Alloy), S3 + CloudFront (프론트엔드)

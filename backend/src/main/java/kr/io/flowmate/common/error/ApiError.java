@@ -1,15 +1,9 @@
 package kr.io.flowmate.common.error;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
 import java.util.Map;
 
-@Getter
-@AllArgsConstructor
-public class ApiError {
-
-    private Detail error;
+// 모든 API 에러의 공통 응답 포맷 — { error: { code, message, fields } }
+public record ApiError(Detail error) {
 
     // 필드 상세 오류가 없는 일반 에러
     public static ApiError of(String code, String message) {
@@ -21,12 +15,6 @@ public class ApiError {
         return new ApiError(new Detail(code, message, fields));
     }
 
-    @Getter
-    @AllArgsConstructor
-    public static class Detail {
-        private final String code;
-        private final String message;
-        private final Map<String, String> fields;
+    public record Detail(String code, String message, Map<String, String> fields) {
     }
-
 }
