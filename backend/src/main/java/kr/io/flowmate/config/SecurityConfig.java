@@ -45,7 +45,6 @@ public class SecurityConfig {
                                 "/api/timer/sse",
                                 "/actuator/**"
                         ).permitAll()
-                        .requestMatchers("/api/auth/me").hasRole("MEMBER")
                         .requestMatchers("/api/timer/state/**").hasRole("MEMBER")
                         .anyRequest().authenticated()
                 )

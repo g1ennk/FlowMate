@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import kr.io.flowmate.auth.jwt.JwtProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -41,18 +43,22 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = extractToken(request);
 
-        if (token != null && jwtProvider.validateToken(token)) {
-            String subject = jwtProvider.extractSubject(token);
-            String role = jwtProvider.extractRole(token);
+        if (token != null) {
+            try {
+                Claims claims = jwtProvider.parseToken(token);
+                String role = claims.get("role", String.class);
 
-            // state JWT 는 OAuth CSRF 방어용이라 API 인증 수단으로 사용하지 않는다
-            List<GrantedAuthority> authorities = resolveAuthorities(role);
-            if (authorities != null) {
-                // principal = subject (게스트면 clientId, 멤버면 userId)
-                UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(subject, null, authorities);
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(auth);
+                // state JWT 는 OAuth CSRF 방어용이라 API 인증 수단으로 사용하지 않는다
+                List<GrantedAuthority> authorities = resolveAuthorities(role);
+                if (authorities != null) {
+                    // principal = subject (게스트면 clientId, 멤버면 userId)
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(claims.getSubject(), null, authorities);
+                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
+            } catch (JwtException | IllegalArgumentException ignored) {
+                // 유효하지 않은 토큰 — 인증 없이 통과 (permitAll 엔드포인트에서 처리)
             }
         }
 

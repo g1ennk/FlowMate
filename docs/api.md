@@ -177,29 +177,6 @@ Cookie: `refreshToken` 자동 전송
 
 ---
 
-### 1.8 내 정보
-
-`GET /api/auth/me`
-
-**Auth** Member Access JWT
-
-**Response** `200`
-
-```json
-{
-  "id": "uuid",
-  "email": "user@example.com",
-  "nickname": "flowmate"
-}
-```
-
-**Errors**
-
-- `401` 토큰 없음 또는 만료
-- `403` Guest JWT 사용
-
----
-
 ## 2. 할 일 (Todo)
 
 Guest JWT와 Member Access JWT 모두 사용 가능.

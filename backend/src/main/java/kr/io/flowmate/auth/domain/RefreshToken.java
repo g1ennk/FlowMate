@@ -53,6 +53,13 @@ public class RefreshToken {
         return revokedAt == null && expiresAt.isAfter(Instant.now());
     }
 
+    /**
+     * 이미 폐기된 토큰이 다시 사용됨 → 탈취 의심
+     */
+    public boolean isStolenReuse() {
+        return revokedAt != null;
+    }
+
     public void revoke() {
         this.revokedAt = Instant.now();
     }

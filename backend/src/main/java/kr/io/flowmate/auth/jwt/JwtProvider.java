@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,10 +18,12 @@ import java.util.HexFormat;
 public class JwtProvider {
 
     private final JwtProperties props;
+    private SecretKey secretKey;
 
-    private SecretKey secretKey() {
+    @PostConstruct
+    void initKey() {
         byte[] keyBytes = HexFormat.of().parseHex(props.getSecret());
-        return Keys.hmacShaKeyFor(keyBytes);
+        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
     }
 
     /**
@@ -51,7 +54,7 @@ public class JwtProvider {
                 .claim("role", role)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))
-                .signWith(secretKey())
+                .signWith(secretKey)
                 .compact();
     }
 
@@ -60,7 +63,7 @@ public class JwtProvider {
      */
     public Claims parseToken(String token) {
         return Jwts.parser()
-                .verifyWith(secretKey())
+                .verifyWith(secretKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

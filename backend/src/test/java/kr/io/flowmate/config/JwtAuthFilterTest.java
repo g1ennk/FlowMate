@@ -1,5 +1,8 @@
 package kr.io.flowmate.config;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
 import kr.io.flowmate.auth.jwt.JwtProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("JwtAuthFilterTest")
+@DisplayName("JwtAuthFilter")
 class JwtAuthFilterTest {
 
     @Mock
@@ -35,24 +38,45 @@ class JwtAuthFilterTest {
     }
 
     @Test
-    @DisplayName("doFilter: 유효한 멤버 토큰이면 ROLE_MEMBER + userId principal 로 SecurityContext 설정")
+    @DisplayName("doFilter: 유효한 멤버 토큰이면 ROLE_MEMBER + userId principal")
     void doFilter_validMemberToken_setsMemberAuthentication() throws Exception {
-        stubToken("token-member", "user-42", "member");
+        when(jwtProvider.parseToken("token-member"))
+                .thenReturn(claims("user-42", "member"));
 
-        filter.doFilter(requestWithBearer("token-member"), new MockHttpServletResponse(), new MockFilterChain());
+        filter.doFilter(requestWithBearer("token-member"),
+                new MockHttpServletResponse(), new MockFilterChain());
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         assertThat(auth).isNotNull();
         assertThat(auth.getPrincipal()).isEqualTo("user-42");
-        assertThat(auth.getAuthorities()).extracting("authority").containsExactly("ROLE_MEMBER");
+        assertThat(auth.getAuthorities()).extracting("authority")
+                .containsExactly("ROLE_MEMBER");
+    }
+
+    @Test
+    @DisplayName("doFilter: 유효한 게스트 토큰이면 ROLE_GUEST + clientId principal")
+    void doFilter_validGuestToken_setsGuestAuthentication() throws Exception {
+        when(jwtProvider.parseToken("token-guest"))
+                .thenReturn(claims("client-abc", "guest"));
+
+        filter.doFilter(requestWithBearer("token-guest"),
+                new MockHttpServletResponse(), new MockFilterChain());
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getPrincipal()).isEqualTo("client-abc");
+        assertThat(auth.getAuthorities()).extracting("authority")
+                .containsExactly("ROLE_GUEST");
     }
 
     @Test
     @DisplayName("doFilter: state 토큰은 OAuth CSRF 용이라 API 인증으로 사용하지 않음")
     void doFilter_stateToken_doesNotAuthenticate() throws Exception {
-        stubToken("token-state", "uuid-1", "state");
+        when(jwtProvider.parseToken("token-state"))
+                .thenReturn(claims("uuid-1", "state"));
 
-        filter.doFilter(requestWithBearer("token-state"), new MockHttpServletResponse(), new MockFilterChain());
+        filter.doFilter(requestWithBearer("token-state"),
+                new MockHttpServletResponse(), new MockFilterChain());
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
@@ -60,28 +84,19 @@ class JwtAuthFilterTest {
     @Test
     @DisplayName("doFilter: Authorization 헤더가 없으면 SecurityContext 를 건드리지 않음")
     void doFilter_noHeader_skipsAuthentication() throws Exception {
-        filter.doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), new MockFilterChain());
+        filter.doFilter(new MockHttpServletRequest(),
+                new MockHttpServletResponse(), new MockFilterChain());
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
     @Test
-    @DisplayName("doFilter: Authorization 헤더는 있으나 Bearer prefix 가 아니면 무시")
-    void doFilter_nonBearerHeader_skipsAuthentication() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Basic abc");
+    @DisplayName("doFilter: 파싱 실패(서명 오류/만료)하면 인증 없이 통과")
+    void doFilter_parseThrows_skipsAuthentication() throws Exception {
+        when(jwtProvider.parseToken("bad")).thenThrow(new JwtException("invalid"));
 
-        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
-
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-    }
-
-    @Test
-    @DisplayName("doFilter: 검증 실패한 토큰은 SecurityContext 를 건드리지 않음")
-    void doFilter_invalidToken_skipsAuthentication() throws Exception {
-        when(jwtProvider.validateToken("bad")).thenReturn(false);
-
-        filter.doFilter(requestWithBearer("bad"), new MockHttpServletResponse(), new MockFilterChain());
+        filter.doFilter(requestWithBearer("bad"),
+                new MockHttpServletResponse(), new MockFilterChain());
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
@@ -92,9 +107,10 @@ class JwtAuthFilterTest {
         return request;
     }
 
-    private void stubToken(String token, String subject, String role) {
-        when(jwtProvider.validateToken(token)).thenReturn(true);
-        when(jwtProvider.extractSubject(token)).thenReturn(subject);
-        when(jwtProvider.extractRole(token)).thenReturn(role);
+    private Claims claims(String subject, String role) {
+        return Jwts.claims()
+                .subject(subject)
+                .add("role", role)
+                .build();
     }
 }
