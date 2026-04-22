@@ -34,23 +34,20 @@ public class TimerState {
 
     public static TimerState create(String todoId, String userId) {
         TimerState ts = new TimerState();
+        Instant now = Instant.now();
+
         ts.todoId = todoId;
         ts.userId = userId;
         ts.stateJson = null;
         ts.version = 0L;
+        ts.createdAt = now;
+        ts.updatedAt = now;
         return ts;
     }
 
     public void update(String stateJson, long version) {
         this.stateJson = stateJson;
         this.version = version;
-    }
-
-    @PrePersist
-    public void onCreate() {
-        Instant now = Instant.now();
-        this.createdAt = now;
-        this.updatedAt = now;
     }
 
     @PreUpdate
