@@ -68,15 +68,6 @@ public class Review {
         this.content = content;
     }
 
-    @PrePersist
-    public void onCreate() {
-        if (this.createdAt == null) {
-            Instant now = Instant.now();
-            this.createdAt = now;
-            this.updatedAt = now;
-        }
-    }
-
     @PreUpdate
     public void onUpdate() {
         this.updatedAt = Instant.now();

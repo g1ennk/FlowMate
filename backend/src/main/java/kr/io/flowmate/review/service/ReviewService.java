@@ -75,9 +75,6 @@ public class ReviewService {
     }
 
     private void validatePeriodRule(ReviewType type, LocalDate periodStart) {
-        if (periodStart == null) {
-            throw new IllegalArgumentException("periodStart is required");
-        }
         if (type == ReviewType.WEEKLY && periodStart.getDayOfWeek() != DayOfWeek.MONDAY) {
             throw new IllegalArgumentException("Weekly review must start on Monday");
         }
@@ -87,9 +84,6 @@ public class ReviewService {
     }
 
     private void validatePeriodRange(LocalDate from, LocalDate to) {
-        if (from == null || to == null) {
-            throw new IllegalArgumentException("period range is required");
-        }
         if (from.isAfter(to)) {
             throw new IllegalArgumentException("periodStart must be before or equal to periodEnd");
         }
