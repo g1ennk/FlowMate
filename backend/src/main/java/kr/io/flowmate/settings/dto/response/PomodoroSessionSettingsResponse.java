@@ -1,17 +1,13 @@
 package kr.io.flowmate.settings.dto.response;
 
 import kr.io.flowmate.settings.domain.UserSettings;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
 
-@Getter
-@AllArgsConstructor
-public class PomodoroSessionSettingsResponse {
-
-    private int flowMin;
-    private int breakMin;
-    private int longBreakMin;
-    private int cycleEvery;
+public record PomodoroSessionSettingsResponse(
+        int flowMin,
+        int breakMin,
+        int longBreakMin,
+        int cycleEvery
+) {
 
     public static PomodoroSessionSettingsResponse from(UserSettings settings) {
         return new PomodoroSessionSettingsResponse(

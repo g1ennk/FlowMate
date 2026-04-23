@@ -29,9 +29,8 @@ public class MiniDayRequest {
     )
     private String end;
 
-    // DTO -> VO 변환
     public MiniDay toMiniDay() {
-        return new MiniDay(label.trim(), getStartMinutes(), getEndMinutes());
+        return new MiniDay(label, getStartMinutes(), getEndMinutes());
     }
 
     public int getStartMinutes() {

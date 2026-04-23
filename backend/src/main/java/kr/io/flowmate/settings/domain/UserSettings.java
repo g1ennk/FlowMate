@@ -71,6 +71,7 @@ public class UserSettings {
     public static UserSettings createWithDefaults(String userId) {
         UserSettings settings = new UserSettings();
         settings.userId = userId;
+        settings.updatedAt = Instant.now();
 
         settings.flowMin = 25;
         settings.breakMin = 5;
@@ -140,11 +141,6 @@ public class UserSettings {
 
     public MiniDay getDay3() {
         return new MiniDay(day3Label, day3StartMin, day3EndMin);
-    }
-
-    @PrePersist
-    public void onCreate() {
-        this.updatedAt = Instant.now();
     }
 
     @PreUpdate

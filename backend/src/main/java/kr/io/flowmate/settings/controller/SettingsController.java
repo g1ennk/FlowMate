@@ -22,7 +22,6 @@ public class SettingsController {
     private final SettingsService settingsService;
     private final CurrentUserResolver currentUserResolver;
 
-    // 전체 설정 불러오기
     @GetMapping
     public ResponseEntity<SettingsResponse> getSettings() {
         String userId = currentUserResolver.resolve();
@@ -48,7 +47,6 @@ public class SettingsController {
         return ResponseEntity.ok(updated);
     }
 
-    // 미니데이
     @GetMapping("/mini-days")
     public ResponseEntity<MiniDaysSettingsResponse> getMiniDays() {
         String userId = currentUserResolver.resolve();
