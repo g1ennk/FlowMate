@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import kr.io.flowmate.common.domain.CreatedTimeEntity;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,7 +16,7 @@ import java.util.UUID;
 @Table(name = "auth_refresh_tokens")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class RefreshToken {
+public class RefreshToken extends CreatedTimeEntity {
 
     @Id
     @Column(length = 36)
@@ -33,16 +34,12 @@ public class RefreshToken {
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
     public static RefreshToken create(String userId, String tokenHash, Instant expiresAt) {
         RefreshToken rt = new RefreshToken();
         rt.id = UUID.randomUUID().toString();
         rt.userId = userId;
         rt.tokenHash = tokenHash;
         rt.expiresAt = expiresAt;
-        rt.createdAt = Instant.now();
         return rt;
     }
 

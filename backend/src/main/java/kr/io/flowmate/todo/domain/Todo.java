@@ -1,11 +1,11 @@
 package kr.io.flowmate.todo.domain;
 
 import jakarta.persistence.*;
+import kr.io.flowmate.common.domain.BaseTimeEntity;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -13,7 +13,7 @@ import java.util.UUID;
 @Table(name = "todos")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Todo {
+public class Todo extends BaseTimeEntity {
 
     @Id
     @Column(length = 36)
@@ -56,15 +56,8 @@ public class Todo {
     @Column(name = "original_todo_id", length = 36)
     private String originalTodoId;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
-
     public static Todo create(String userId, String title, String note, LocalDate date, int miniDay, int dayOrder) {
         Todo todo = new Todo();
-        Instant now = Instant.now();
 
         todo.id = UUID.randomUUID().toString();
         todo.userId = userId;
@@ -79,8 +72,6 @@ public class Todo {
         todo.timerMode = null;
         todo.reviewRound = null;
         todo.originalTodoId = null;
-        todo.createdAt = now;
-        todo.updatedAt = now;
         return todo;
     }
 
@@ -134,11 +125,6 @@ public class Todo {
 
     public void addSessionFocusSeconds(int seconds) {
         this.sessionFocusSeconds += seconds;
-    }
-
-    @PreUpdate
-    public void onUpdate() {
-        this.updatedAt = Instant.now();
     }
 
 }

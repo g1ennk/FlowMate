@@ -22,8 +22,6 @@ class TodoTest {
         assertThat(todo.getTimerMode()).isNull();
         assertThat(todo.getReviewRound()).isNull();
         assertThat(todo.getOriginalTodoId()).isNull();
-        assertThat(todo.getCreatedAt()).isNotNull();
-        assertThat(todo.getUpdatedAt()).isNotNull();
     }
 
 }

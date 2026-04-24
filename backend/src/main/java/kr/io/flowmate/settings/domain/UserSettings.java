@@ -1,17 +1,16 @@
 package kr.io.flowmate.settings.domain;
 
 import jakarta.persistence.*;
+import kr.io.flowmate.common.domain.BaseTimeEntity;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.Instant;
 
 @Entity
 @Table(name = "user_settings")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class UserSettings {
+public class UserSettings extends BaseTimeEntity {
 
     @Id
     @Column(name = "user_id", length = 36)
@@ -65,13 +64,9 @@ public class UserSettings {
     @Column(name = "day3_end_min", nullable = false)
     private int day3EndMin;
 
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
-
     public static UserSettings createWithDefaults(String userId) {
         UserSettings settings = new UserSettings();
         settings.userId = userId;
-        settings.updatedAt = Instant.now();
 
         settings.flowMin = 25;
         settings.breakMin = 5;
@@ -141,10 +136,5 @@ public class UserSettings {
 
     public MiniDay getDay3() {
         return new MiniDay(day3Label, day3StartMin, day3EndMin);
-    }
-
-    @PreUpdate
-    public void onUpdate() {
-        this.updatedAt = Instant.now();
     }
 }
