@@ -15,6 +15,7 @@ import kr.io.flowmate.auth.oauth.OAuthUserInfo;
 import kr.io.flowmate.auth.repository.RefreshTokenRepository;
 import kr.io.flowmate.auth.repository.SocialAccountRepository;
 import kr.io.flowmate.auth.repository.UserRepository;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,20 +63,20 @@ class AuthServiceTest {
     // ── login: state 검증 ──
 
     @Test
-    @DisplayName("login: state 토큰 파싱 실패(서명오류/만료) 시 IAE")
-    void login_invalidStateToken_throwsIAE() {
+    @DisplayName("login: state 토큰 파싱 실패(서명오류/만료) 시 AuthenticationFailedException")
+    void login_invalidStateToken_throwsAuthFailed() {
         when(jwtProvider.parseToken("bad-state"))
                 .thenThrow(new JwtException("invalid"));
 
         assertThatThrownBy(() ->
                 authService.login("kakao", "code", "bad-state", httpResponse))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("state");
     }
 
     @Test
-    @DisplayName("login: state 토큰의 role이 state가 아니면 IAE")
-    void login_stateTokenWrongRole_throwsIAE() {
+    @DisplayName("login: state 토큰의 role이 state가 아니면 AuthenticationFailedException")
+    void login_stateTokenWrongRole_throwsAuthFailed() {
         Claims memberClaims = Jwts.claims()
                 .subject("user-1")
                 .add("role", "member")
@@ -84,7 +85,7 @@ class AuthServiceTest {
 
         assertThatThrownBy(() ->
                 authService.login("kakao", "code", "member-token", httpResponse))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("state");
     }
 
@@ -168,13 +169,13 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("refresh: 존재하지 않는 RT면 IAE")
-    void refresh_unknownToken_throwsIAE() {
+    @DisplayName("refresh: 존재하지 않는 RT면 AuthenticationFailedException")
+    void refresh_unknownToken_throwsAuthFailed() {
         when(refreshTokenRepository.findByTokenHash(anyString()))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.refresh("unknown", httpResponse))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(AuthenticationFailedException.class);
     }
 
     @Test
@@ -193,15 +194,15 @@ class AuthServiceTest {
                 .thenReturn(List.of(activeRt));
 
         assertThatThrownBy(() -> authService.refresh("stolen", httpResponse))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(AuthenticationFailedException.class);
 
         // reuse detection: 다른 활성 토큰도 revoke됨
         assertThat(activeRt.getRevokedAt()).isNotNull();
     }
 
     @Test
-    @DisplayName("refresh: 만료된 RT(revokedAt=null)면 reuse detection 없이 IAE")
-    void refresh_expiredToken_throwsIAEWithoutReuseDetection() {
+    @DisplayName("refresh: 만료된 RT(revokedAt=null)면 reuse detection 없이 AuthenticationFailedException")
+    void refresh_expiredToken_throwsAuthFailedWithoutReuseDetection() {
         RefreshToken expiredRt = RefreshToken.create("user-1", "hash",
                 Instant.now().minusSeconds(1)); // 이미 만료
 
@@ -209,7 +210,7 @@ class AuthServiceTest {
                 .thenReturn(Optional.of(expiredRt));
 
         assertThatThrownBy(() -> authService.refresh("expired", httpResponse))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(AuthenticationFailedException.class);
 
         // 만료(revokedAt=null)는 reuse가 아니므로 findAllActive 호출 안 함
         verify(refreshTokenRepository, never()).findAllActiveByUserId(anyString(), any());

@@ -8,6 +8,7 @@ import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
 import kr.io.flowmate.todo.dto.response.TodoResponse;
 import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
+import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -188,6 +189,22 @@ class TodoServiceTest {
     }
 
     @Test
+    @DisplayName("reorderTodos: 동일 id 가 2번 이상 오면 silent last-write 대신 400 IAE 로 거부")
+    void reorderTodos_duplicateIds_throwsIAE() {
+        Todo t1 = newTodo("a", LocalDate.of(2026, 4, 1));
+        TodoReorderRequest request = reorderRequest(
+                reorderItem(t1.getId(), 1, 0),
+                reorderItem(t1.getId(), 2, 0) // 중복 id
+        );
+
+        assertThatThrownBy(() -> todoService.reorderTodos(USER_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("duplicate");
+
+        verify(todoRepository, never()).findAllByIdInAndUserId(any(), anyString());
+    }
+
+    @Test
     @DisplayName("reorderTodos: 요청 id 중 하나라도 없거나 타 사용자 소유면 TodoNotFoundException")
     void reorderTodos_missingId_throwsTodoNotFound() {
         Todo t1 = newTodo("a", LocalDate.of(2026, 4, 1));
@@ -208,19 +225,19 @@ class TodoServiceTest {
     // ── scheduleReview: 상태 검증 + 멱등 + 간격 + catch-retry + resolveBaseTitle ──
 
     @Test
-    @DisplayName("scheduleReview: 완료되지 않은 Todo면 IAE")
-    void scheduleReview_notDone_throwsIAE() {
+    @DisplayName("scheduleReview: 완료되지 않은 Todo면 TodoStateViolationException (409)")
+    void scheduleReview_notDone_throwsStateViolation() {
         Todo todo = newTodo("제목", LocalDate.of(2026, 4, 1));
         when(todoRepository.findByIdAndUserId(todo.getId(), USER_ID)).thenReturn(Optional.of(todo));
 
         assertThatThrownBy(() -> todoService.scheduleReview(USER_ID, todo.getId()))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(TodoStateViolationException.class)
                 .hasMessageContaining("완료된 Todo");
     }
 
     @Test
-    @DisplayName("scheduleReview: 6회차 복습을 모두 소진한 Todo는 IAE")
-    void scheduleReview_maxRoundExceeded_throwsIAE() {
+    @DisplayName("scheduleReview: 6회차 복습을 모두 소진한 Todo 는 TodoStateViolationException (409)")
+    void scheduleReview_maxRoundExceeded_throwsStateViolation() {
         Todo round6 = Todo.createReview(
                 USER_ID, "root-id", "제목", null,
                 LocalDate.of(2026, 4, 1), 0, 0, 6
@@ -229,7 +246,7 @@ class TodoServiceTest {
         when(todoRepository.findByIdAndUserId(round6.getId(), USER_ID)).thenReturn(Optional.of(round6));
 
         assertThatThrownBy(() -> todoService.scheduleReview(USER_ID, round6.getId()))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(TodoStateViolationException.class)
                 .hasMessageContaining("복습이 모두 완료");
     }
 

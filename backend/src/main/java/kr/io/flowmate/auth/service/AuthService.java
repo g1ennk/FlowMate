@@ -15,6 +15,7 @@ import kr.io.flowmate.auth.oauth.OAuthUserInfo;
 import kr.io.flowmate.auth.repository.RefreshTokenRepository;
 import kr.io.flowmate.auth.repository.SocialAccountRepository;
 import kr.io.flowmate.auth.repository.UserRepository;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -74,10 +75,10 @@ public class AuthService {
         try {
             stateClaims = jwtProvider.parseToken(stateToken);
         } catch (JwtException | IllegalArgumentException e) {
-            throw new IllegalArgumentException("유효하지 않은 state입니다.");
+            throw new AuthenticationFailedException("유효하지 않은 state입니다.");
         }
         if (!"state".equals(stateClaims.get("role", String.class))) {
-            throw new IllegalArgumentException("유효하지 않은 state입니다.");
+            throw new AuthenticationFailedException("유효하지 않은 state입니다.");
         }
 
         // 2. provider 선택
@@ -132,7 +133,7 @@ public class AuthService {
         String tokenHash = sha256(rawRefreshToken);
 
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 Refresh Token"));
+                .orElseThrow(() -> new AuthenticationFailedException("유효하지 않은 Refresh Token"));
 
         if (!refreshToken.isValid()) {
             // 폐기된 토큰 재사용 = 탈취 의심 → 해당 사용자의 모든 활성 토큰 revoke
@@ -140,7 +141,7 @@ public class AuthService {
                 refreshTokenRepository.findAllActiveByUserId(refreshToken.getUserId(), Instant.now())
                         .forEach(RefreshToken::revoke);
             }
-            throw new IllegalArgumentException("만료 또는 폐기된 Refresh Token");
+            throw new AuthenticationFailedException("만료 또는 폐기된 Refresh Token");
         }
 
         User user = userRepository.findById(refreshToken.getUserId())

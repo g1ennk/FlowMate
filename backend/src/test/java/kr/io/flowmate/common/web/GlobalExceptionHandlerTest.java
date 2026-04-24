@@ -1,7 +1,10 @@
 package kr.io.flowmate.common.web;
 
 import kr.io.flowmate.common.error.ApiError;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
+import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.common.exception.NotFoundException;
+import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -49,6 +52,39 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody().error().code()).isEqualTo("NOT_FOUND");
         assertThat(response.getBody().error().message()).isEqualTo("todo 없음");
+    }
+
+    @Test
+    @DisplayName("handleAuthenticationFailed: JWT·RT·SSE 토큰 실패를 401 AUTHENTICATION_FAILED 로 매핑")
+    void handleAuthenticationFailed_returns401() {
+        ResponseEntity<ApiError> response = handler.handleAuthenticationFailed(
+                new AuthenticationFailedException("유효하지 않은 토큰"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody().error().code()).isEqualTo("AUTHENTICATION_FAILED");
+        assertThat(response.getBody().error().message()).isEqualTo("유효하지 않은 토큰");
+    }
+
+    @Test
+    @DisplayName("handleIdempotencyConflict: 멱등성 키 재사용 + payload 불일치를 409 IDEMPOTENCY_CONFLICT 로 매핑")
+    void handleIdempotencyConflict_returns409() {
+        ResponseEntity<ApiError> response = handler.handleIdempotencyConflict(
+                new IdempotencyConflictException("focusSeconds mismatch"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody().error().code()).isEqualTo("IDEMPOTENCY_CONFLICT");
+        assertThat(response.getBody().error().message()).isEqualTo("focusSeconds mismatch");
+    }
+
+    @Test
+    @DisplayName("handleTodoStateViolation: 완료되지 않은 Todo 복습 스케줄 등을 409 TODO_STATE_VIOLATION 로 매핑")
+    void handleTodoStateViolation_returns409() {
+        ResponseEntity<ApiError> response = handler.handleTodoStateViolation(
+                new TodoStateViolationException("완료된 Todo만 복습 등록할 수 있습니다"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody().error().code()).isEqualTo("TODO_STATE_VIOLATION");
+        assertThat(response.getBody().error().message()).isEqualTo("완료된 Todo만 복습 등록할 수 있습니다");
     }
 
     @Test
@@ -109,6 +145,16 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody().error().code()).isEqualTo("CONFLICT");
+    }
+
+    @Test
+    @DisplayName("handleIllegalState: 방어 코드 ISE 를 500 INTERNAL_ERROR 로 고정 (catch-all Exception 에 떨어지지 않도록 전용 핸들러)")
+    void handleIllegalState_returns500() {
+        ResponseEntity<ApiError> response = handler.handleIllegalState(new IllegalStateException("사용자를 찾을 수 없습니다"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().error().code()).isEqualTo("INTERNAL_ERROR");
+        assertThat(response.getBody().error().message()).isEqualTo("서버 내부 오류");
     }
 
     @Test

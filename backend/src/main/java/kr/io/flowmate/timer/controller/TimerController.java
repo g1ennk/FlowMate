@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.validation.Valid;
 import kr.io.flowmate.auth.jwt.JwtProvider;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.timer.dto.TimerStatePushRequest;
 import kr.io.flowmate.timer.dto.TimerStateResponse;
@@ -38,11 +39,11 @@ public class TimerController {
         try {
             claims = jwtProvider.parseToken(token);
         } catch (JwtException | IllegalArgumentException e) {
-            throw new IllegalArgumentException("유효하지 않은 토큰입니다.");
+            throw new AuthenticationFailedException("유효하지 않은 토큰입니다.");
         }
 
         if (!MEMBER_ROLE.equals(claims.get("role", String.class))) {
-            throw new IllegalArgumentException("member 전용 엔드포인트입니다.");
+            throw new AuthenticationFailedException("member 전용 엔드포인트입니다.");
         }
 
         return sseEmitterRegistry.register(claims.getSubject());

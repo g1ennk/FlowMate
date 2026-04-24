@@ -8,6 +8,7 @@ import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
 import kr.io.flowmate.todo.dto.response.TodoResponse;
 import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
+import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -159,6 +161,11 @@ public class TodoService {
         List<TodoReorderRequest.Item> items = request.getItems();
         List<String> ids = items.stream().map(TodoReorderRequest.Item::getId).toList();
 
+        // 중복 id 가 있으면 마지막 쓰기만 남는 silent overwrite 가 발생하므로 사전 거부 (계약상 400)
+        if (ids.size() != Set.copyOf(ids).size()) {
+            throw new IllegalArgumentException("duplicate todo ids in reorder request");
+        }
+
         Map<String, Todo> todosById = todoRepository.findAllByIdInAndUserId(ids, userId).stream()
                 .collect(Collectors.toMap(Todo::getId, Function.identity()));
 
@@ -185,12 +192,12 @@ public class TodoService {
         Todo todo = findTodoByIdAndUserId(todoId, userId);
 
         if (!todo.isDone()) {
-            throw new IllegalArgumentException("완료된 Todo만 복습 등록할 수 있습니다");
+            throw new TodoStateViolationException("완료된 Todo만 복습 등록할 수 있습니다");
         }
 
         int currentRound = todo.getReviewRound() != null ? todo.getReviewRound() : 0;
         if (currentRound >= MAX_REVIEW_ROUND) {
-            throw new IllegalArgumentException("복습이 모두 완료된 Todo입니다");
+            throw new TodoStateViolationException("복습이 모두 완료된 Todo입니다");
         }
 
         int nextRound = currentRound + 1;

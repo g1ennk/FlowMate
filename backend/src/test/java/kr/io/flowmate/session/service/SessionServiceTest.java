@@ -1,5 +1,6 @@
 package kr.io.flowmate.session.service;
 
+import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.session.domain.TodoSession;
 import kr.io.flowmate.session.dto.request.SessionCreateRequest;
 import kr.io.flowmate.session.dto.response.SessionResponse;
@@ -94,8 +95,8 @@ class SessionServiceTest {
         when(sessionRepository.findByTodoIdAndClientSessionId(TODO_ID, CLIENT_SESSION_ID)).thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> sessionService.createSession(USER_ID, TODO_ID, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("idempotency conflict");
+                .isInstanceOf(IdempotencyConflictException.class)
+                .hasMessageContaining("sessionFocusSeconds mismatch");
 
         assertThat(todo.getSessionCount()).isZero();
         assertThat(todo.getSessionFocusSeconds()).isZero();

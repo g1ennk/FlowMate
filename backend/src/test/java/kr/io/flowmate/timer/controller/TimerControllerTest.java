@@ -3,6 +3,7 @@ package kr.io.flowmate.timer.controller;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import kr.io.flowmate.auth.jwt.JwtProvider;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
 import kr.io.flowmate.timer.dto.TimerStateResponse;
@@ -72,27 +73,37 @@ class TimerControllerTest {
     }
 
     @Test
-    @DisplayName("subscribe: parseToken 이 JwtException 을 던지면 IAE 로 감싼다 (단일 parse 로 500 누수 방지)")
-    void subscribe_invalidSignature_throwsIllegalArgument() {
+    @DisplayName("subscribe: parseToken 이 JwtException 을 던지면 AuthenticationFailedException (401) 으로 감싼다")
+    void subscribe_invalidSignature_throwsAuthFailed() {
         when(jwtProvider.parseToken("broken")).thenThrow(new JwtException("bad signature"));
 
         assertThatThrownBy(() -> timerController.subscribe("broken"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("유효하지 않은 토큰");
         verify(sseEmitterRegistry, never()).register(anyString());
     }
 
     @Test
-    @DisplayName("subscribe: role != member 이면 IAE (게스트 토큰 차단)")
-    void subscribe_nonMemberRole_throwsIllegalArgument() {
+    @DisplayName("subscribe: role != member 이면 AuthenticationFailedException (401, 게스트 토큰 차단)")
+    void subscribe_nonMemberRole_throwsAuthFailed() {
         Claims claims = mock(Claims.class);
         when(jwtProvider.parseToken("guest-token")).thenReturn(claims);
         when(claims.get("role", String.class)).thenReturn("guest");
 
         assertThatThrownBy(() -> timerController.subscribe("guest-token"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("member 전용");
         verify(sseEmitterRegistry, never()).register(anyString());
+    }
+
+    @Test
+    @DisplayName("subscribe MockMvc: 잘못된 토큰은 401 AUTHENTICATION_FAILED JSON 응답 (기존 400 → 401)")
+    void subscribe_invalidToken_returns401ViaMockMvc() throws Exception {
+        when(jwtProvider.parseToken("bad-jwt")).thenThrow(new JwtException("bad signature"));
+
+        mockMvc.perform(get("/api/timer/sse?token=bad-jwt"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTHENTICATION_FAILED"));
     }
 
     @Test

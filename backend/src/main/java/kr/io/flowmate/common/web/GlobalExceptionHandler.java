@@ -2,7 +2,10 @@ package kr.io.flowmate.common.web;
 
 import jakarta.validation.ConstraintViolationException;
 import kr.io.flowmate.common.error.ApiError;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
+import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.common.exception.NotFoundException;
+import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
@@ -77,6 +80,30 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
+    // 인증/인가 실패 (JWT·RT·SSE 토큰)를 401로 매핑
+    @ExceptionHandler(AuthenticationFailedException.class)
+    public ResponseEntity<ApiError> handleAuthenticationFailed(AuthenticationFailedException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        ApiError body = ApiError.of("AUTHENTICATION_FAILED", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
+
+    // 멱등성 키 재사용 시 페이로드 불일치 등 409 Conflict 로 매핑
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<ApiError> handleIdempotencyConflict(IdempotencyConflictException ex) {
+        log.info("Idempotency conflict: {}", ex.getMessage());
+        ApiError body = ApiError.of("IDEMPOTENCY_CONFLICT", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // Todo 상태 위반 (미완료 복습 스케줄, MAX 초과 등)을 409 Conflict 로 매핑
+    @ExceptionHandler(TodoStateViolationException.class)
+    public ResponseEntity<ApiError> handleTodoStateViolation(TodoStateViolationException ex) {
+        log.info("Todo state violation: {}", ex.getMessage());
+        ApiError body = ApiError.of("TODO_STATE_VIOLATION", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
     // 서비스 레이어의 입력/상태 오류를 400으로 반환
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgumentException(IllegalArgumentException ex) {
@@ -118,6 +145,14 @@ public class GlobalExceptionHandler {
         log.warn("Deadlock retry exhausted", ex);
         ApiError body = ApiError.of("CONFLICT", "일시적 충돌이 발생했습니다. 잠시 후 다시 시도해 주세요.");
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // 방어 코드 ISE 는 500 INTERNAL_ERROR 로 고정 (catch-all Exception 에 떨어지기 전 전용 핸들러)
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex) {
+        log.error("Illegal state (likely defensive code path)", ex);
+        ApiError body = ApiError.of("INTERNAL_ERROR", "서버 내부 오류");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 
     // 처리되지 않는 예외의 최후 방어선

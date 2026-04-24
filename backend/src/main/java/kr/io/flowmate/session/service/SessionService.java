@@ -1,5 +1,6 @@
 package kr.io.flowmate.session.service;
 
+import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.session.domain.TodoSession;
 import kr.io.flowmate.session.dto.request.SessionCreateRequest;
 import kr.io.flowmate.session.dto.response.SessionResponse;
@@ -52,8 +53,8 @@ public class SessionService {
 
         if (existing != null) {
             if (existing.getSessionFocusSeconds() != requestedFocusSeconds) {
-                throw new IllegalArgumentException(
-                        "idempotency conflict: sessionFocusSeconds mismatch for clientSessionId=" + clientSessionId
+                throw new IdempotencyConflictException(
+                        "sessionFocusSeconds mismatch for clientSessionId=" + clientSessionId
                 );
             }
             existing.increaseBreakSecondsIfGreater(request.getBreakSecondsOrDefault());

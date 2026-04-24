@@ -128,7 +128,8 @@ Set-Cookie:
 
 **Errors**
 
-- `400 BAD_REQUEST` state 불일치, state 만료(TTL 5분), 인가 코드 오류
+- `401 AUTHENTICATION_FAILED` state JWT 서명/만료 실패, state role 불일치
+- `400 BAD_REQUEST` 인가 코드 오류 (Kakao 외부 응답 실패)
 
 ---
 
@@ -156,11 +157,11 @@ Set-Cookie: 새 `refreshToken`으로 교체
 
 **Errors**
 
-- `401 Unauthorized` `refreshToken` 쿠키 없음
-- `400 BAD_REQUEST` refreshToken 무효, 만료, 폐기
+- `401 Unauthorized` `refreshToken` 쿠키 없음 (Spring Security 기본 401, body 비어 있을 수 있음)
+- `401 AUTHENTICATION_FAILED` `refreshToken` 무효 · 만료 · 폐기 (서비스 예외 → `AuthenticationFailedException`)
 
-- 쿠키가 없으면 controller가 즉시 `401`을 반환한다.
-- 쿠키는 있지만 토큰 검증에 실패하면 service 예외가 `GlobalExceptionHandler`를 통해 `400`으로 매핑된다.
+- 쿠키가 없으면 controller 가 즉시 `401` 을 반환한다.
+- 쿠키는 있지만 토큰 검증에 실패하면 service 가 `AuthenticationFailedException` 을 던져 `GlobalExceptionHandler` 가 `401` JSON 응답으로 매핑한다.
 
 ---
 
@@ -358,7 +359,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 **Errors**
 
-- `400 BAD_REQUEST` 미완료 Todo, 6회차 초과
+- `409 TODO_STATE_VIOLATION` 미완료 Todo, 6회차 초과 (`TodoStateViolationException`)
 - `404 NOT_FOUND` Todo 없음 또는 타 사용자 소유
 
 ---
@@ -415,6 +416,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 **Errors**
 
+- `400 BAD_REQUEST` `items[].id` 에 중복이 있으면 silent last-write 대신 전체 거부
 - `404 NOT_FOUND` `items[].id` 중 일부가 없거나 타 사용자 소유
 
 ---
@@ -519,7 +521,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 **Errors**
 
-- `400 BAD_REQUEST` `sessionFocusSeconds` 불일치 멱등 충돌
+- `409 IDEMPOTENCY_CONFLICT` 동일 `clientSessionId` 재사용 시 `sessionFocusSeconds` 불일치 (`IdempotencyConflictException`)
 - `404 NOT_FOUND` Todo 없음 또는 타 사용자 소유
 
 ---
@@ -554,8 +556,8 @@ Member Access JWT 전용.
 
 **Errors**
 
-- `400 BAD_REQUEST` 유효하지 않은 token
-- `400 BAD_REQUEST` Member 아님
+- `401 AUTHENTICATION_FAILED` 유효하지 않은 토큰 (서명 오류, 만료, 파싱 실패)
+- `401 AUTHENTICATION_FAILED` member 아님 (게스트 토큰 차단)
 
 ---
 
@@ -946,20 +948,22 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 }
 ```
 
-| 코드 / 상태            | HTTP | 설명                                                     |
-|--------------------|------|--------------------------------------------------------|
-| `VALIDATION_ERROR` | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                            |
-| `BAD_REQUEST`      | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, 무효 RT, SSE query token 검증 실패 등 |
-| `NOT_FOUND`        | 404  | 리소스 없음 또는 타 사용자 소유                                     |
-| `METHOD_NOT_ALLOWED` | 405 | 경로는 존재하지만 HTTP 메서드가 미지원                               |
-| `CONFLICT`         | 409  | 데드락 retry 소진 등 일시적 충돌                                  |
-| `INTERNAL_ERROR`   | 500  | 처리되지 않은 예외                                             |
-| `UNAUTHORIZED`     | 401  | Spring Security 인증 실패. body가 비어 있을 수 있음                |
-| `FORBIDDEN`        | 403  | Spring Security 인가 실패. body가 비어 있을 수 있음                |
+| 코드 / 상태                    | HTTP | 설명                                                                 |
+|----------------------------|------|--------------------------------------------------------------------|
+| `VALIDATION_ERROR`         | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                                        |
+| `BAD_REQUEST`              | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, VO 불변식 위반 등                               |
+| `AUTHENTICATION_FAILED`    | 401  | JWT · Refresh Token · SSE subscribe 토큰 검증 실패 (`AuthenticationFailedException`) |
+| `NOT_FOUND`                | 404  | 리소스 없음 또는 타 사용자 소유                                                 |
+| `METHOD_NOT_ALLOWED`       | 405  | 경로는 존재하지만 HTTP 메서드가 미지원                                           |
+| `CONFLICT`                 | 409  | 데드락 retry 소진 등 일시적 충돌                                              |
+| `IDEMPOTENCY_CONFLICT`     | 409  | 동일 idempotency key 재사용 + payload 불일치 (세션 `sessionFocusSeconds` mismatch 등) |
+| `TODO_STATE_VIOLATION`     | 409  | Todo 상태 위반 (미완료 복습 스케줄, MAX_REVIEW_ROUND 초과 등)                    |
+| `INTERNAL_ERROR`           | 500  | 처리되지 않은 예외, 방어 코드 ISE                                              |
+| `UNAUTHORIZED`             | 401  | Spring Security 인증 실패. body 가 비어 있을 수 있음                           |
+| `FORBIDDEN`                | 403  | Spring Security 인가 실패. body 가 비어 있을 수 있음                           |
 
 참고:
 
-- `409 CONFLICT`는 `CannotAcquireLockException`(데드락 retry 소진) 시 반환된다.
-- `GET /api/timer/sse`는 SecurityFilter가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member가 `400 BAD_REQUEST`로
-  내려온다.
-- `UNAUTHORIZED`, `FORBIDDEN`은 Spring Security가 만드는 HTTP 상태이며, `ApiError.error.code`를 항상 의미하지는 않는다.
+- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 retry 소진) 에만 사용된다. `IDEMPOTENCY_CONFLICT` / `TODO_STATE_VIOLATION` 은 별도 code 로 구분.
+- `GET /api/timer/sse` 는 SecurityFilter 가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member 가 `401 AUTHENTICATION_FAILED` 로 내려온다 (이전 버전에서는 400 이었음 — Phase 2 에서 semantic 정합 교체).
+- `UNAUTHORIZED`, `FORBIDDEN` 은 Spring Security 가 만드는 HTTP 상태이며, `ApiError.error.code` 를 항상 의미하지는 않는다. 서비스 레이어에서 던지는 도메인 401 은 `AUTHENTICATION_FAILED` code 를 사용한다.
