@@ -5,8 +5,9 @@ import io.jsonwebtoken.JwtException;
 import kr.io.flowmate.auth.jwt.JwtProvider;
 import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import kr.io.flowmate.common.util.CurrentUserResolver;
+import kr.io.flowmate.common.web.CurrentUserArgumentResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
-import kr.io.flowmate.timer.dto.TimerStateResponse;
+import kr.io.flowmate.timer.dto.response.TimerStateResponse;
 import kr.io.flowmate.timer.service.SseEmitterRegistry;
 import kr.io.flowmate.timer.service.TimerService;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +54,7 @@ class TimerControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(timerController)
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .setCustomArgumentResolvers(new CurrentUserArgumentResolver(currentUserResolver))
                 .build();
     }
 

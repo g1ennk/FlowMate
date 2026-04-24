@@ -6,7 +6,7 @@ import io.jsonwebtoken.Jwts;
 import kr.io.flowmate.auth.domain.RefreshToken;
 import kr.io.flowmate.auth.domain.SocialAccount;
 import kr.io.flowmate.auth.domain.User;
-import kr.io.flowmate.auth.dto.LoginResponse;
+import kr.io.flowmate.auth.dto.response.LoginResponse;
 import kr.io.flowmate.auth.jwt.JwtProperties;
 import kr.io.flowmate.auth.jwt.JwtProvider;
 import kr.io.flowmate.auth.oauth.OAuthProvider;

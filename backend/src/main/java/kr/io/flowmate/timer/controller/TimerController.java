@@ -4,10 +4,10 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.validation.Valid;
 import kr.io.flowmate.auth.jwt.JwtProvider;
+import kr.io.flowmate.common.annotation.CurrentUser;
 import kr.io.flowmate.common.exception.AuthenticationFailedException;
-import kr.io.flowmate.common.util.CurrentUserResolver;
-import kr.io.flowmate.timer.dto.TimerStatePushRequest;
-import kr.io.flowmate.timer.dto.TimerStateResponse;
+import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
+import kr.io.flowmate.timer.dto.response.TimerStateResponse;
 import kr.io.flowmate.timer.service.SseEmitterRegistry;
 import kr.io.flowmate.timer.service.TimerService;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +28,6 @@ public class TimerController {
     private final JwtProvider jwtProvider;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final TimerService timerService;
-    private final CurrentUserResolver currentUserResolver;
 
     @GetMapping(value = "/sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter subscribe(@RequestParam String token) {
@@ -52,22 +51,17 @@ public class TimerController {
     // 타이머 상태를 서버에 저장하는 엔드포인트
     @PutMapping("/state/{todoId}")
     public ResponseEntity<TimerStateResponse> pushState(
+            @CurrentUser String userId,
             @PathVariable String todoId,
             @Valid @RequestBody TimerStatePushRequest request
     ) {
-        // 현재 로그인 사용자(userId) 추출
-        String userId = currentUserResolver.resolve();
-
         // 실제 저장/버전 증가/soft delete/SSE broadcast는 서비스에 맡긴다.
         return ResponseEntity.ok(timerService.upsertState(userId, todoId, request));
     }
 
     //  앱 시작 시 현재 진행 중인 타이머 상태를 복원하기 위한 엔드포인트
     @GetMapping("/state")
-    public ResponseEntity<List<TimerStateResponse>> getActiveStates() {
-        // 현재 로그인 사용자(userId) 추출
-        String userId = currentUserResolver.resolve();
-
+    public ResponseEntity<List<TimerStateResponse>> getActiveStates(@CurrentUser String userId) {
         // 서비스에서 active state만 조회해서 반환
         return ResponseEntity.ok(timerService.getActiveStates(userId));
     }

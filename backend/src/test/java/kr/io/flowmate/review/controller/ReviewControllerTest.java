@@ -1,6 +1,7 @@
 package kr.io.flowmate.review.controller;
 
 import kr.io.flowmate.common.util.CurrentUserResolver;
+import kr.io.flowmate.common.web.CurrentUserArgumentResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
 import kr.io.flowmate.review.domain.ReviewType;
 import kr.io.flowmate.review.dto.response.ReviewResponse;
@@ -46,6 +47,7 @@ class ReviewControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(reviewController)
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .setCustomArgumentResolvers(new CurrentUserArgumentResolver(currentUserResolver))
                 .build();
     }
 

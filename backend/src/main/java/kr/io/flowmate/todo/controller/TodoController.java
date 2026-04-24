@@ -1,8 +1,8 @@
 package kr.io.flowmate.todo.controller;
 
 import jakarta.validation.Valid;
+import kr.io.flowmate.common.annotation.CurrentUser;
 import kr.io.flowmate.common.dto.ListResponse;
-import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
 import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
 import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
@@ -24,7 +24,6 @@ import java.util.List;
 public class TodoController {
 
     private final TodoService todoService;
-    private final CurrentUserResolver currentUserResolver;
 
     /**
      * Todo 목록 조회
@@ -34,6 +33,7 @@ public class TodoController {
      */
     @GetMapping
     public ResponseEntity<ListResponse<TodoResponse>> getTodos(
+            @CurrentUser String userId,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false)
@@ -41,7 +41,6 @@ public class TodoController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        String userId = currentUserResolver.resolve();
         List<TodoResponse> todos = todoService.getTodos(userId, date, from, to);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
@@ -52,10 +51,10 @@ public class TodoController {
      */
     @PostMapping
     public ResponseEntity<TodoResponse> createTodo(
+            @CurrentUser String userId,
             @Valid
             @RequestBody TodoCreateRequest createRequest
     ) {
-        String userId = currentUserResolver.resolve();
         TodoResponse todo = todoService.createTodo(userId, createRequest);
         return ResponseEntity.status(HttpStatus.CREATED).body(todo);
     }
@@ -66,11 +65,11 @@ public class TodoController {
      */
     @PatchMapping("/{id}")
     public ResponseEntity<TodoResponse> updateTodo(
+            @CurrentUser String userId,
             @PathVariable String id,
             @Valid
             @RequestBody TodoUpdateRequest updateRequest
     ) {
-        String userId = currentUserResolver.resolve();
         TodoResponse todo = todoService.updateTodo(userId, id, updateRequest);
         return ResponseEntity.ok(todo);
     }
@@ -81,9 +80,9 @@ public class TodoController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTodo(
+            @CurrentUser String userId,
             @PathVariable String id
     ) {
-        String userId = currentUserResolver.resolve();
         todoService.deleteTodo(userId, id);
         return ResponseEntity.noContent().build();
     }
@@ -94,9 +93,9 @@ public class TodoController {
      */
     @PutMapping("/reorder")
     public ResponseEntity<ListResponse<TodoResponse>> reorderTodos(
+            @CurrentUser String userId,
             @Valid @RequestBody TodoReorderRequest reorderRequest
     ) {
-        String userId = currentUserResolver.resolve();
         List<TodoResponse> todos = todoService.reorderTodos(userId, reorderRequest);
         return ResponseEntity.ok(new ListResponse<>(todos));
     }
@@ -108,9 +107,9 @@ public class TodoController {
      */
     @PostMapping("/{id}/review-schedule")
     public ResponseEntity<TodoScheduleReviewResponse> scheduleReview(
+            @CurrentUser String userId,
             @PathVariable String id
     ) {
-        String userId = currentUserResolver.resolve();
         TodoScheduleReviewResponse response = todoService.scheduleReview(userId, id);
         HttpStatus status = response.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status).body(response);

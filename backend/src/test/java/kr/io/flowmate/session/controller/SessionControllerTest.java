@@ -1,6 +1,7 @@
 package kr.io.flowmate.session.controller;
 
 import kr.io.flowmate.common.util.CurrentUserResolver;
+import kr.io.flowmate.common.web.CurrentUserArgumentResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
 import kr.io.flowmate.session.dto.response.SessionResponse;
 import kr.io.flowmate.session.service.SessionService;
@@ -39,6 +40,7 @@ class SessionControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(sessionController)
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .setCustomArgumentResolvers(new CurrentUserArgumentResolver(currentUserResolver))
                 .build();
     }
 

@@ -1,6 +1,7 @@
 package kr.io.flowmate.todo.controller;
 
 import kr.io.flowmate.common.util.CurrentUserResolver;
+import kr.io.flowmate.common.web.CurrentUserArgumentResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
 import kr.io.flowmate.todo.dto.response.TodoResponse;
 import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
@@ -44,6 +45,7 @@ class TodoControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(todoController)
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .setCustomArgumentResolvers(new CurrentUserArgumentResolver(currentUserResolver))
                 .build();
     }
 

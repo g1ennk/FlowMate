@@ -1,7 +1,7 @@
 package kr.io.flowmate.settings.controller;
 
 import jakarta.validation.Valid;
-import kr.io.flowmate.common.util.CurrentUserResolver;
+import kr.io.flowmate.common.annotation.CurrentUser;
 import kr.io.flowmate.settings.dto.request.AutomationSettingsRequest;
 import kr.io.flowmate.settings.dto.request.MiniDaysSettingsRequest;
 import kr.io.flowmate.settings.dto.request.PomodoroSessionSettingsRequest;
@@ -20,45 +20,42 @@ import org.springframework.web.bind.annotation.*;
 public class SettingsController {
 
     private final SettingsService settingsService;
-    private final CurrentUserResolver currentUserResolver;
 
     @GetMapping
-    public ResponseEntity<SettingsResponse> getSettings() {
-        String userId = currentUserResolver.resolve();
+    public ResponseEntity<SettingsResponse> getSettings(@CurrentUser String userId) {
         SettingsResponse settings = settingsService.getSettings(userId);
         return ResponseEntity.ok(settings);
     }
 
     @PutMapping("/pomodoro-session")
     public ResponseEntity<PomodoroSessionSettingsResponse> updatePomodoroSession(
+            @CurrentUser String userId,
             @Valid @RequestBody PomodoroSessionSettingsRequest updateRequest
     ) {
-        String userId = currentUserResolver.resolve();
         PomodoroSessionSettingsResponse updated = settingsService.updatePomodoro(userId, updateRequest);
         return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/automation")
     public ResponseEntity<AutomationSettingsResponse> updateAutomation(
+            @CurrentUser String userId,
             @Valid @RequestBody AutomationSettingsRequest updateRequest
     ) {
-        String userId = currentUserResolver.resolve();
         AutomationSettingsResponse updated = settingsService.updateAutomation(userId, updateRequest);
         return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/mini-days")
-    public ResponseEntity<MiniDaysSettingsResponse> getMiniDays() {
-        String userId = currentUserResolver.resolve();
+    public ResponseEntity<MiniDaysSettingsResponse> getMiniDays(@CurrentUser String userId) {
         MiniDaysSettingsResponse settings = settingsService.getMiniDays(userId);
         return ResponseEntity.ok(settings);
     }
 
     @PutMapping("/mini-days")
     public ResponseEntity<MiniDaysSettingsResponse> updateMiniDays(
+            @CurrentUser String userId,
             @Valid @RequestBody MiniDaysSettingsRequest updateRequest
     ) {
-        String userId = currentUserResolver.resolve();
         MiniDaysSettingsResponse updated = settingsService.updateMiniDays(userId, updateRequest);
         return ResponseEntity.ok(updated);
     }

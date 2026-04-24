@@ -1,8 +1,8 @@
 package kr.io.flowmate.review.controller;
 
 import jakarta.validation.Valid;
+import kr.io.flowmate.common.annotation.CurrentUser;
 import kr.io.flowmate.common.dto.ListResponse;
-import kr.io.flowmate.common.util.CurrentUserResolver;
 import kr.io.flowmate.review.domain.ReviewType;
 import kr.io.flowmate.review.dto.request.ReviewUpsertRequest;
 import kr.io.flowmate.review.dto.response.ReviewResponse;
@@ -22,10 +22,10 @@ import java.util.List;
 public class ReviewController {
 
     private final ReviewService reviewService;
-    private final CurrentUserResolver currentUserResolver;
 
     @GetMapping
     public ResponseEntity<?> getReviews(
+            @CurrentUser String userId,
             @RequestParam String type,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodStart,
@@ -34,7 +34,6 @@ public class ReviewController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        String userId = currentUserResolver.resolve();
         ReviewType reviewType = ReviewType.fromValue(type);
 
         boolean hasPeriodStart = periodStart != null;
@@ -65,18 +64,18 @@ public class ReviewController {
 
     @PutMapping
     public ResponseEntity<ReviewResponse> upsertReview(
+            @CurrentUser String userId,
             @Valid @RequestBody ReviewUpsertRequest upsertRequest
     ) {
-        String userId = currentUserResolver.resolve();
         ReviewResponse review = reviewService.upsertReview(userId, upsertRequest);
         return ResponseEntity.ok(review);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteReview(
+            @CurrentUser String userId,
             @PathVariable String id
     ) {
-        String userId = currentUserResolver.resolve();
         reviewService.deleteReview(userId, id);
         return ResponseEntity.noContent().build();
     }

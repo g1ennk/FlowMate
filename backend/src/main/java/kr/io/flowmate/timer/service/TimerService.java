@@ -1,8 +1,8 @@
 package kr.io.flowmate.timer.service;
 
 import kr.io.flowmate.timer.domain.TimerState;
-import kr.io.flowmate.timer.dto.TimerStatePushRequest;
-import kr.io.flowmate.timer.dto.TimerStateResponse;
+import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
+import kr.io.flowmate.timer.dto.response.TimerStateResponse;
 import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;

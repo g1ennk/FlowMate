@@ -2,6 +2,7 @@ package kr.io.flowmate.settings.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kr.io.flowmate.common.util.CurrentUserResolver;
+import kr.io.flowmate.common.web.CurrentUserArgumentResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
 import kr.io.flowmate.settings.domain.UserSettings;
 import kr.io.flowmate.settings.dto.request.MiniDayRequest;
@@ -45,9 +46,10 @@ class SettingsControllerTest {
 
     @BeforeEach
     void setUp() {
-        SettingsController controller = new SettingsController(settingsService, currentUserResolver);
+        SettingsController controller = new SettingsController(settingsService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .setCustomArgumentResolvers(new CurrentUserArgumentResolver(currentUserResolver))
                 .build();
     }
 

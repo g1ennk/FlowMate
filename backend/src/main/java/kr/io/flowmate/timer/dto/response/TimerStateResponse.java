@@ -1,4 +1,4 @@
-package kr.io.flowmate.timer.dto;
+package kr.io.flowmate.timer.dto.response;
 
 public record TimerStateResponse(
         String todoId,
