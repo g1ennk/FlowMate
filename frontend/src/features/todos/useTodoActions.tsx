@@ -130,12 +130,13 @@ export function useTodoActions(selectedDateKey: string) {
 
   // 언마운트 시 pending delete 즉시 실행
   useEffect(() => {
+    const pendingTimers = pendingDeleteTimers.current
     return () => {
-      pendingDeleteTimers.current.forEach((timer, id) => {
+      pendingTimers.forEach((timer, id) => {
         clearTimeout(timer)
         deleteTodoRef.current(id)
       })
-      pendingDeleteTimers.current.clear()
+      pendingTimers.clear()
     }
   }, [])
 

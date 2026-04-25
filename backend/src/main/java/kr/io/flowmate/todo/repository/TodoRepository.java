@@ -33,6 +33,9 @@ public interface TodoRepository extends JpaRepository<Todo, String> {
     // 특정 Todo 조회
     Optional<Todo> findByIdAndUserId(String id, String userId);
 
+    // reorder 등에서 여러 Todo를 1쿼리로 모아 조회 (N+1 회피)
+    List<Todo> findAllByIdInAndUserId(List<String> ids, String userId);
+
     Optional<Todo> findByUserIdAndOriginalTodoIdAndReviewRound(String userId, String originalTodoId, Integer reviewRound);
 
     // 세션 생성 시 순번 계산 레이스를 줄이기 위해 Todo 행을 잠근다.

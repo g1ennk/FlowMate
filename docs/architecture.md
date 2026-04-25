@@ -95,6 +95,8 @@ sequenceDiagram
 
 - Guest 사용자는 Guest JWT로 시작하고, 회원 로그인 후에는 Member Access JWT + Refresh Token 조합으로 전환된다.
 - refresh 시 기존 RT를 즉시 revoke하고 새 RT로 교체하므로, 이미 폐기된 RT로는 이후 재발급이 성공하지 않는다.
+- 폐기된 RT로 재사용을 시도하면 토큰 탈취로 간주하여 해당 사용자의 모든 활성 RT를 revoke한다 (Reuse Detection).
+- 로그인은 기존 활성 RT를 유지한 채 새 RT를 추가 발급한다. 같은 회원이 여러 디바이스에서 동시에 세션을 유지할 수 있으며, SSE 멀티디바이스 동기화 전제와 정합한다.
 
 ## 3. SSE 아키텍처
 
@@ -122,7 +124,7 @@ sequenceDiagram
     S ->> R: register(userId)
     R -->> M: connected
     D ->> S: PUT /api/timer/state/{todoId}
-    S ->> S: 상태 저장 + serverTime 갱신
+    S ->> S: 상태 저장 + version 갱신
     S ->> R: broadcast(userId, timer-state)
     R -->> D: timer-state
     R -->> M: timer-state

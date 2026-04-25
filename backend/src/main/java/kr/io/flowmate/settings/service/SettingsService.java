@@ -21,7 +21,6 @@ public class SettingsService {
 
     private final SettingsRepository settingsRepository;
 
-    // 전체 세팅값 조회
     public SettingsResponse getSettings(String userId) {
         UserSettings settings = getOrDefault(userId);
         return SettingsResponse.from(settings);
@@ -46,7 +45,6 @@ public class SettingsService {
         return AutomationSettingsResponse.from(settings);
     }
 
-    // 미니데이
     public MiniDaysSettingsResponse getMiniDays(String userId) {
         UserSettings settings = getOrDefault(userId);
         return MiniDaysSettingsResponse.from(settings);
@@ -62,7 +60,6 @@ public class SettingsService {
         );
         return MiniDaysSettingsResponse.from(settings);
     }
-
 
     private UserSettings getOrDefault(String userId) {
         return settingsRepository.findById(userId).orElse(UserSettings.createWithDefaults(userId));

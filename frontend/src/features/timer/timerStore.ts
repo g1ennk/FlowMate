@@ -43,8 +43,8 @@ type TimerActions = {
   getTimer: (todoId: string) => SingleTimerState | undefined
   ackAutoSession: (todoId: string) => void
   syncWithNow: () => void
-  applyRemoteState: (todoId: string, state: SingleTimerState, serverTime: number) => void
-  applyRemoteReset: (todoId: string, serverTime: number) => void
+  applyRemoteState: (todoId: string, state: SingleTimerState, version: number) => void
+  applyRemoteReset: (todoId: string, version: number) => void
   clearAll: () => void
   // Flexible timer 액션
   startBreak: (todoId: string, targetMs: number | null) => void
@@ -59,7 +59,7 @@ type TimerStore = TimerState & TimerActions
 const MINUTE = 60_000
 
 let applyingRemote = false
-const seenServerTimes = new Map<string, number>()
+const seenVersions = new Map<string, number>()
 
 export function getIsApplyingRemote() {
   return applyingRemote
@@ -195,11 +195,11 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     getTimer: (todoId) => get().timers[todoId],
 
-    applyRemoteState: (todoId, remoteState, serverTime) => {
-      const last = seenServerTimes.get(todoId) ?? 0
-      if (serverTime < last) return
+    applyRemoteState: (todoId, remoteState, version) => {
+      const last = seenVersions.get(todoId) ?? 0
+      if (version < last) return
 
-      seenServerTimes.set(todoId, serverTime)
+      seenVersions.set(todoId, version)
       applyingRemote = true
       set((state) => ({
         timers: { ...state.timers, [todoId]: hydrateState(remoteState) },
@@ -207,11 +207,11 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       applyingRemote = false
     },
 
-    applyRemoteReset: (todoId, serverTime) => {
-      const last = seenServerTimes.get(todoId) ?? 0
-      if (serverTime < last) return
+    applyRemoteReset: (todoId, version) => {
+      const last = seenVersions.get(todoId) ?? 0
+      if (version < last) return
 
-      seenServerTimes.set(todoId, serverTime)
+      seenVersions.set(todoId, version)
       applyingRemote = true
 
       const existing = get().timers[todoId]
@@ -225,7 +225,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     },
 
     clearAll: () => {
-      seenServerTimes.clear()
+      seenVersions.clear()
       set({ timers: {}, pendingAutoSessions: {} })
     },
 

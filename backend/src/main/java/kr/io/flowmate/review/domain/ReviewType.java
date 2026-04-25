@@ -1,8 +1,5 @@
 package kr.io.flowmate.review.domain;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
-
 import java.util.Arrays;
 
 public enum ReviewType {
@@ -17,12 +14,10 @@ public enum ReviewType {
         this.value = value;
     }
 
-    @JsonValue
     public String getValue() {
         return value;
     }
 
-    @JsonCreator
     public static ReviewType fromValue(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("type is required");

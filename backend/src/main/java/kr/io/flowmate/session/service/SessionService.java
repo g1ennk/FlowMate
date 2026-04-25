@@ -1,5 +1,6 @@
 package kr.io.flowmate.session.service;
 
+import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.session.domain.TodoSession;
 import kr.io.flowmate.session.dto.request.SessionCreateRequest;
 import kr.io.flowmate.session.dto.response.SessionResponse;
@@ -21,33 +22,30 @@ public class SessionService {
     private final TodoSessionRepository sessionRepository;
     private final TodoRepository todoRepository;
 
-    @Transactional
     public List<SessionResponse> getSessions(String userId, String todoId) {
-        Todo todo = findTodoByIdAndUserId(todoId, userId);
-        reconcileTodoAggregate(todoId, todo);
+        todoRepository.findByIdAndUserId(todoId, userId)
+                .orElseThrow(() -> new TodoNotFoundException(todoId));
         return sessionRepository.findAllByTodoIdOrderBySessionOrderAsc(todoId)
                 .stream()
                 .map(SessionResponse::from)
                 .toList();
     }
 
-    // 세션 생성 (멱등 처리)
+    // Todo 행 PESSIMISTIC_WRITE + 멱등 조회 + 세션 insert + Todo 집계 갱신을
+    // 하나의 트랜잭션으로 묶어 원자성을 보장한다. DB uniq (todo_id, client_session_id) 가 최후 방어선.
+    // 세션 삭제 API 를 추가하게 되면 집계 감소 경로 + reconcile 재도입 검토가 필요하다.
     @Transactional
     public CreateSessionResult createSession(
             String userId,
             String todoId,
             SessionCreateRequest request
     ) {
-        Integer requestedFocusSeconds = request.getSessionFocusSeconds();
-        if (requestedFocusSeconds == null || requestedFocusSeconds <= 0) {
-            throw new IllegalArgumentException("sessionFocusSeconds must be >= 1");
-        }
+        int requestedFocusSeconds = request.getSessionFocusSeconds();
 
         Todo todo = todoRepository.findByIdAndUserIdForUpdate(todoId, userId)
                 .orElseThrow(() -> new TodoNotFoundException(todoId));
-        reconcileTodoAggregate(todoId, todo);
 
-        String clientSessionId = request.getClientSessionId().trim();
+        String clientSessionId = request.getClientSessionId();
 
         TodoSession existing = sessionRepository
                 .findByTodoIdAndClientSessionId(todoId, clientSessionId)
@@ -55,8 +53,8 @@ public class SessionService {
 
         if (existing != null) {
             if (existing.getSessionFocusSeconds() != requestedFocusSeconds) {
-                throw new IllegalArgumentException(
-                        "idempotency conflict: sessionFocusSeconds mismatch for clientSessionId=" + clientSessionId
+                throw new IdempotencyConflictException(
+                        "sessionFocusSeconds mismatch for clientSessionId=" + clientSessionId
                 );
             }
             existing.increaseBreakSecondsIfGreater(request.getBreakSecondsOrDefault());
@@ -83,27 +81,6 @@ public class SessionService {
         TodoSession saved = sessionRepository.save(session);
 
         return new CreateSessionResult(SessionResponse.from(saved), true);
-    }
-
-    private Todo findTodoByIdAndUserId(String todoId, String userId) {
-        return todoRepository.findByIdAndUserId(todoId, userId)
-                .orElseThrow(() -> new TodoNotFoundException(todoId));
-    }
-
-    private void reconcileTodoAggregate(String todoId, Todo todo) {
-        TodoSessionRepository.SessionAggregate aggregate = sessionRepository.summarizeByTodoId(todoId);
-        if (aggregate == null) {
-            return;
-        }
-
-        int sessionCount = Math.toIntExact(aggregate.getSessionCount());
-        int sessionFocusSeconds = Math.toIntExact(aggregate.getSessionFocusSeconds());
-
-        if (todo.getSessionCount() == sessionCount && todo.getSessionFocusSeconds() == sessionFocusSeconds) {
-            return;
-        }
-
-        todo.syncSessionAggregate(sessionCount, sessionFocusSeconds);
     }
 
     public record CreateSessionResult(SessionResponse session, boolean created) {

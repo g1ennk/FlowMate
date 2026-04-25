@@ -11,7 +11,7 @@ export type TimerStatePushBody = {
 export type ServerTimerState = {
   todoId: string
   state: SingleTimerState | null
-  serverTime: number
+  version: number
 }
 
 const sessionRecordSchema = z.object({
@@ -45,7 +45,7 @@ const singleTimerStateSchema = z.object({
 const serverTimerStateSchema = z.object({
   todoId: z.string(),
   state: singleTimerStateSchema.nullable(),
-  serverTime: z.number(),
+  version: z.number(),
 })
 
 export const timerApi = {

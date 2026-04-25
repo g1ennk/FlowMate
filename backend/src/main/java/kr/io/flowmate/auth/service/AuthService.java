@@ -4,7 +4,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import kr.io.flowmate.auth.domain.RefreshToken;
 import kr.io.flowmate.auth.domain.SocialAccount;
 import kr.io.flowmate.auth.domain.User;
-import kr.io.flowmate.auth.dto.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import kr.io.flowmate.auth.dto.response.AuthorizeUrlResponse;
+import kr.io.flowmate.auth.dto.response.GuestTokenResponse;
+import kr.io.flowmate.auth.dto.response.LoginResponse;
+import kr.io.flowmate.auth.dto.response.UserResponse;
 import kr.io.flowmate.auth.jwt.JwtProperties;
 import kr.io.flowmate.auth.jwt.JwtProvider;
 import kr.io.flowmate.auth.oauth.OAuthProvider;
@@ -13,6 +18,7 @@ import kr.io.flowmate.auth.oauth.OAuthUserInfo;
 import kr.io.flowmate.auth.repository.RefreshTokenRepository;
 import kr.io.flowmate.auth.repository.SocialAccountRepository;
 import kr.io.flowmate.auth.repository.UserRepository;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -67,10 +73,15 @@ public class AuthService {
     @Transactional
     public LoginResponse login(String providerName, String code,
                                String stateToken, HttpServletResponse httpResponse) {
-        // 1. state JWT 검증 (서명 + role=state 확인)
-        if (!jwtProvider.validateToken(stateToken)
-                || !"state".equals(jwtProvider.extractRole(stateToken))) {
-            throw new IllegalArgumentException("유효하지 않은 state입니다.");
+        // 1. state JWT 검증 (단일 파싱: 서명 + role=state 확인)
+        Claims stateClaims;
+        try {
+            stateClaims = jwtProvider.parseToken(stateToken);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new AuthenticationFailedException("유효하지 않은 state입니다.");
+        }
+        if (!"state".equals(stateClaims.get("role", String.class))) {
+            throw new AuthenticationFailedException("유효하지 않은 state입니다.");
         }
 
         // 2. provider 선택
@@ -103,13 +114,14 @@ public class AuthService {
         }
 
         // 7. 새 Refresh Token 발급 -> SHA-256 해시 -> DB 저장
+        //    (기존 활성 RT는 유지 — 디바이스별 공존 허용. SSE 멀티디바이스 동기화 전제)
         String rawRefreshToken = UUID.randomUUID().toString();
         String tokenHash = sha256(rawRefreshToken);
         Instant expiresAt = Instant.now().plusSeconds(jwtProps.getRefreshTtl());
         refreshTokenRepository.save(RefreshToken.create(user.getId(), tokenHash, expiresAt));
 
         // 8. Refresh Token -> HttpOnly 쿠키
-        setRefreshCookie(httpResponse, rawRefreshToken, (int) jwtProps.getRefreshTtl());
+        setRefreshCookie(httpResponse, rawRefreshToken, jwtProps.getRefreshTtl());
 
         // 9. Access JWT 발급
         String accessToken = jwtProvider.generateAccessToken(user.getId());
@@ -124,10 +136,15 @@ public class AuthService {
         String tokenHash = sha256(rawRefreshToken);
 
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 Refresh Token"));
+                .orElseThrow(() -> new AuthenticationFailedException("유효하지 않은 Refresh Token"));
 
         if (!refreshToken.isValid()) {
-            throw new IllegalArgumentException("만료 또는 폐기된 Refresh Token");
+            // 폐기된 토큰 재사용 = 탈취 의심 → 해당 사용자의 모든 활성 토큰 revoke
+            if (refreshToken.isStolenReuse()) {
+                refreshTokenRepository.findAllActiveByUserId(refreshToken.getUserId(), Instant.now())
+                        .forEach(RefreshToken::revoke);
+            }
+            throw new AuthenticationFailedException("만료 또는 폐기된 Refresh Token");
         }
 
         User user = userRepository.findById(refreshToken.getUserId())
@@ -138,7 +155,7 @@ public class AuthService {
         String newRaw = UUID.randomUUID().toString();
         Instant expiresAt = Instant.now().plusSeconds(jwtProps.getRefreshTtl());
         refreshTokenRepository.save(RefreshToken.create(user.getId(), sha256(newRaw), expiresAt));
-        setRefreshCookie(httpResponse, newRaw, (int) jwtProps.getRefreshTtl());
+        setRefreshCookie(httpResponse, newRaw, jwtProps.getRefreshTtl());
 
         return new LoginResponse(jwtProvider.generateAccessToken(user.getId()), UserResponse.from(user));
     }
@@ -155,15 +172,6 @@ public class AuthService {
         clearRefreshCookie(httpResponse);
     }
 
-    /**
-     * 내 정보
-     */
-    public UserResponse me(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
-        return UserResponse.from(user);
-    }
-
     /* Helpers */
     private void clearRefreshCookie(HttpServletResponse response) {
         ResponseCookie cookie = ResponseCookie.from("refreshToken", "")
@@ -171,11 +179,12 @@ public class AuthService {
                 .sameSite("Lax")
                 .path("/api/auth")
                 .maxAge(0)
+                .secure(cookieSecure)
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
-    private void setRefreshCookie(HttpServletResponse response, String token, int maxAge) {
+    private void setRefreshCookie(HttpServletResponse response, String token, long maxAge) {
         ResponseCookie cookie = ResponseCookie.from("refreshToken", token)
                 .httpOnly(true)
                 .sameSite("Lax")

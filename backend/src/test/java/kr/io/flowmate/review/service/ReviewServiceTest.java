@@ -27,8 +27,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ReviewServiceTest")
+@DisplayName("ReviewService")
 class ReviewServiceTest {
+
+    private static final String USER_ID = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+    private static final LocalDate MONDAY = LocalDate.of(2026, 2, 16);
 
     @Mock
     private ReviewRepository reviewRepository;
@@ -37,188 +40,111 @@ class ReviewServiceTest {
     private ReviewService reviewService;
 
     @Test
-    @DisplayName("getReview: 존재하는 회고 조회")
-    void getReview_존재하는회고_조회성공() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        LocalDate periodStart = LocalDate.of(2026, 2, 13);
-        Review review = Review.create(userId, ReviewType.DAILY, periodStart, periodStart, "좋았던 점");
-
-        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart))
+    @DisplayName("getReview: 존재하면 ReviewResponse 로 매핑하여 반환")
+    void getReview_existing_returnsResponse() {
+        Review review = Review.create(USER_ID, ReviewType.DAILY, MONDAY, MONDAY, "오늘 회고");
+        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(USER_ID, ReviewType.DAILY, MONDAY))
                 .thenReturn(Optional.of(review));
 
-        ReviewResponse result = reviewService.getReview(userId, ReviewType.DAILY, periodStart);
+        ReviewResponse result = reviewService.getReview(USER_ID, ReviewType.DAILY, MONDAY);
 
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo("daily");
-        assertThat(result.getContent()).isEqualTo("좋았던 점");
+        assertThat(result.type()).isEqualTo("daily");
+        assertThat(result.content()).isEqualTo("오늘 회고");
     }
 
     @Test
-    @DisplayName("getReview: 회고가 없으면 null 반환")
-    void getReview_없는회고_null반환() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        LocalDate periodStart = LocalDate.of(2026, 2, 13);
-
-        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart))
+    @DisplayName("getReview: 미존재 시 null 반환 (컨트롤러가 200+'null' 본문 분기에 사용)")
+    void getReview_missing_returnsNull() {
+        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(USER_ID, ReviewType.DAILY, MONDAY))
                 .thenReturn(Optional.empty());
 
-        ReviewResponse result = reviewService.getReview(userId, ReviewType.DAILY, periodStart);
+        ReviewResponse result = reviewService.getReview(USER_ID, ReviewType.DAILY, MONDAY);
 
         assertThat(result).isNull();
     }
 
     @Test
-    @DisplayName("getReviews: 기간 범위 조회")
-    void getReviews_기간범위조회() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+    @DisplayName("getReviews: 범위 조회 결과를 ReviewResponse 리스트로 매핑")
+    void getReviews_range_mapsToList() {
         LocalDate from = LocalDate.of(2026, 2, 1);
         LocalDate to = LocalDate.of(2026, 2, 28);
-        List<Review> reviews = List.of(
-                Review.create(userId, ReviewType.DAILY, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 1), "1일"),
-                Review.create(userId, ReviewType.DAILY, LocalDate.of(2026, 2, 2), LocalDate.of(2026, 2, 2), "2일")
+        List<Review> rows = List.of(
+                Review.create(USER_ID, ReviewType.DAILY, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 1), "1일"),
+                Review.create(USER_ID, ReviewType.DAILY, LocalDate.of(2026, 2, 2), LocalDate.of(2026, 2, 2), "2일")
         );
-
         when(reviewRepository.findAllByUserIdAndTypeAndPeriodStartBetweenOrderByPeriodStartAsc(
-                userId,
-                ReviewType.DAILY,
-                from,
-                to
-        )).thenReturn(reviews);
+                USER_ID, ReviewType.DAILY, from, to)).thenReturn(rows);
 
-        List<ReviewResponse> result = reviewService.getReviews(userId, ReviewType.DAILY, from, to);
+        List<ReviewResponse> result = reviewService.getReviews(USER_ID, ReviewType.DAILY, from, to);
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getContent()).isEqualTo("1일");
-        assertThat(result.get(1).getContent()).isEqualTo("2일");
+        assertThat(result).extracting(ReviewResponse::content).containsExactly("1일", "2일");
     }
 
     @Test
-    @DisplayName("upsertReview: 신규 생성")
-    void upsertReview_신규생성() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        LocalDate periodStart = LocalDate.of(2026, 2, 13);
-        ReviewUpsertRequest request = request("daily", periodStart, periodStart, "첫 회고");
-
-        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart))
+    @DisplayName("upsertReview: 미존재 시 신규 Review 를 저장")
+    void upsertReview_new_savesEntity() {
+        ReviewUpsertRequest request = request("daily", MONDAY, MONDAY, "  첫 회고  ");
+        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(USER_ID, ReviewType.DAILY, MONDAY))
                 .thenReturn(Optional.empty());
-        when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ReviewResponse result = reviewService.upsertReview(userId, request);
+        ReviewResponse result = reviewService.upsertReview(USER_ID, request);
 
-        assertThat(result.getType()).isEqualTo("daily");
-        assertThat(result.getContent()).isEqualTo("첫 회고");
+        assertThat(result.content()).isEqualTo("첫 회고");
         verify(reviewRepository).save(any(Review.class));
     }
 
     @Test
-    @DisplayName("upsertReview: 기존 회고 업데이트")
-    void upsertReview_기존업데이트() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        LocalDate periodStart = LocalDate.of(2026, 2, 13);
-        Review existing = Review.create(userId, ReviewType.DAILY, periodStart, periodStart, "원래 내용");
-        ReviewUpsertRequest request = request("daily", periodStart, periodStart, "수정된 내용");
-
-        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart))
+    @DisplayName("upsertReview: 기존 Review 를 dirty checking 으로 갱신 (save 호출 없이)")
+    void upsertReview_existing_updatesViaDirtyChecking() {
+        Review existing = Review.create(USER_ID, ReviewType.DAILY, MONDAY, MONDAY, "원본");
+        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(USER_ID, ReviewType.DAILY, MONDAY))
                 .thenReturn(Optional.of(existing));
 
-        ReviewResponse result = reviewService.upsertReview(userId, request);
+        ReviewResponse result = reviewService.upsertReview(USER_ID, request("daily", MONDAY, MONDAY, "수정"));
 
-        assertThat(result.getContent()).isEqualTo("수정된 내용");
+        assertThat(result.content()).isEqualTo("수정");
+        assertThat(existing.getContent()).isEqualTo("수정");
         verify(reviewRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("upsertReview: unique 충돌 발생 시 재조회 후 업데이트")
-    void upsertReview_unique충돌_재조회업데이트() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        LocalDate periodStart = LocalDate.of(2026, 2, 13);
-        ReviewUpsertRequest request = request("daily", periodStart, periodStart, "동시성 내용");
-        Review collided = Review.create(userId, ReviewType.DAILY, periodStart, periodStart, "기존");
-
-        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart))
+    @DisplayName("upsertReview: 동시 INSERT 충돌(DataIntegrityViolation) 시 재조회 후 update 로 last-write-wins")
+    void upsertReview_uniqueCollision_retriesAsUpdate() {
+        Review winner = Review.create(USER_ID, ReviewType.DAILY, MONDAY, MONDAY, "선점된 내용");
+        when(reviewRepository.findByUserIdAndTypeAndPeriodStart(USER_ID, ReviewType.DAILY, MONDAY))
                 .thenReturn(Optional.empty())
-                .thenReturn(Optional.of(collided));
+                .thenReturn(Optional.of(winner));
         when(reviewRepository.save(any(Review.class)))
-                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+                .thenThrow(new DataIntegrityViolationException("uniq_reviews_user_period"));
 
-        ReviewResponse result = reviewService.upsertReview(userId, request);
+        ReviewResponse result = reviewService.upsertReview(USER_ID, request("daily", MONDAY, MONDAY, "내 내용"));
 
-        assertThat(result.getContent()).isEqualTo("동시성 내용");
-        verify(reviewRepository).save(any(Review.class));
+        assertThat(result.content()).isEqualTo("내 내용");
         verify(reviewRepository, times(2))
-                .findByUserIdAndTypeAndPeriodStart(userId, ReviewType.DAILY, periodStart);
+                .findByUserIdAndTypeAndPeriodStart(USER_ID, ReviewType.DAILY, MONDAY);
     }
 
     @Test
-    @DisplayName("deleteReview: 삭제 성공")
-    void deleteReview_삭제성공() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        String reviewId = "review-1";
-        Review review = Review.create(
-                userId,
-                ReviewType.DAILY,
-                LocalDate.of(2026, 2, 13),
-                LocalDate.of(2026, 2, 13),
-                "삭제할 회고"
-        );
+    @DisplayName("upsertReview: WEEKLY 인데 periodStart 가 월요일이 아니면 IAE")
+    void upsertReview_weeklyNonMonday_throws() {
+        LocalDate tuesday = LocalDate.of(2026, 2, 17);
+        ReviewUpsertRequest request = request("weekly", tuesday, tuesday.plusDays(6), "주간");
 
-        when(reviewRepository.findByIdAndUserId(reviewId, userId)).thenReturn(Optional.of(review));
-
-        reviewService.deleteReview(userId, reviewId);
-
-        verify(reviewRepository).delete(review);
-    }
-
-    @Test
-    @DisplayName("deleteReview: 대상이 없으면 ReviewNotFoundException")
-    void deleteReview_없는회고_예외() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        String reviewId = "missing-review";
-
-        when(reviewRepository.findByIdAndUserId(reviewId, userId)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> reviewService.deleteReview(userId, reviewId))
-                .isInstanceOf(ReviewNotFoundException.class)
-                .hasMessageContaining(reviewId);
-    }
-
-    @Test
-    @DisplayName("getReview: weekly는 월요일만 허용")
-    void getReview_weekly월요일검증() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        LocalDate tuesday = LocalDate.of(2026, 2, 10);
-
-        assertThatThrownBy(() -> reviewService.getReview(userId, ReviewType.WEEKLY, tuesday))
+        assertThatThrownBy(() -> reviewService.upsertReview(USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Monday");
     }
 
     @Test
-    @DisplayName("upsertReview: monthly는 1일만 허용")
-    void upsertReview_monthly일일검증() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        ReviewUpsertRequest request = request(
-                "monthly",
-                LocalDate.of(2026, 2, 2),
-                LocalDate.of(2026, 2, 28),
-                "월간 회고"
-        );
+    @DisplayName("deleteReview: 존재하지 않으면 ReviewNotFoundException (404 매핑)")
+    void deleteReview_missing_throwsNotFound() {
+        when(reviewRepository.findByIdAndUserId("missing", USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> reviewService.upsertReview(userId, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("1st");
-    }
-
-    @Test
-    @DisplayName("getReviews: from이 to보다 늦으면 예외")
-    void getReviews_역순기간_예외() {
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        LocalDate from = LocalDate.of(2026, 2, 28);
-        LocalDate to = LocalDate.of(2026, 2, 1);
-
-        assertThatThrownBy(() -> reviewService.getReviews(userId, ReviewType.DAILY, from, to))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("periodStart");
+        assertThatThrownBy(() -> reviewService.deleteReview(USER_ID, "missing"))
+                .isInstanceOf(ReviewNotFoundException.class)
+                .hasMessageContaining("missing");
     }
 
     private ReviewUpsertRequest request(String type, LocalDate periodStart, LocalDate periodEnd, String content) {

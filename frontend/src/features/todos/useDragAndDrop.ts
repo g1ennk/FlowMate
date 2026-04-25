@@ -72,6 +72,54 @@ const areContainerItemsEqual = (a: ContainerItems, b: ContainerItems) => {
   return true
 }
 
+const buildDragEndSnapshot = ({
+  containerItems,
+  activeContainer,
+  overContainer,
+  activeId,
+  overId,
+  isOverContainer,
+  isBelowOverItem,
+}: {
+  containerItems: ContainerItems
+  activeContainer: DropContainerId
+  overContainer: DropContainerId
+  activeId: string
+  overId: string
+  isOverContainer: boolean
+  isBelowOverItem: boolean
+}) => {
+  const next = { ...containerItems }
+  const fromItems = [...(next[activeContainer] ?? [])]
+  const toItems = activeContainer === overContainer ? fromItems : [...(next[overContainer] ?? [])]
+
+  const fromIndex = fromItems.indexOf(activeId)
+  if (fromIndex === -1) return containerItems
+
+  if (activeContainer === overContainer) {
+    const newIndex = isOverContainer
+      ? fromItems.length - 1
+      : fromItems.indexOf(overId) + (isBelowOverItem ? 1 : 0)
+    if (!isOverContainer && newIndex === -1) return containerItems
+    next[activeContainer] = arrayMove(
+      fromItems,
+      fromIndex,
+      Math.max(0, Math.min(newIndex, fromItems.length - 1)),
+    )
+    return next
+  }
+
+  fromItems.splice(fromIndex, 1)
+  const overIndex = isOverContainer ? toItems.length : toItems.indexOf(overId)
+  if (!isOverContainer && overIndex === -1) return containerItems
+  const insertIndex = isOverContainer ? toItems.length : overIndex + (isBelowOverItem ? 1 : 0)
+  toItems.splice(Math.max(0, Math.min(insertIndex, toItems.length)), 0, activeId)
+
+  next[activeContainer] = fromItems
+  next[overContainer] = toItems
+  return next
+}
+
 type UseDragAndDropParams = {
   daySections: DaySectionMeta[]
   groupedTodos: Record<number, Todo[]>
@@ -111,6 +159,12 @@ export function useDragAndDrop({
   const openSectionTimeoutRef = useRef<number | null>(null)
   const pendingOpenSectionIdRef = useRef<number | null>(null)
 
+  const serverContainerItems = useMemo(
+    () => buildContainerItems(groupedTodos),
+    [buildContainerItems, groupedTodos],
+  )
+  const effectiveContainerItems = activeDragId ? containerItems : serverContainerItems
+
   const todoById = useMemo(() => {
     const map = new Map<string, Todo>()
     for (const t of todosForSelectedDate) map.set(t.id, t)
@@ -119,11 +173,11 @@ export function useDragAndDrop({
 
   const containerByTodoId = useMemo(() => {
     const map = new Map<string, DropContainerId>()
-    for (const [cid, ids] of Object.entries(containerItems) as Array<[DropContainerId, string[]]>) {
+    for (const [cid, ids] of Object.entries(effectiveContainerItems) as Array<[DropContainerId, string[]]>) {
       for (const id of ids) map.set(id, cid)
     }
     return map
-  }, [containerItems])
+  }, [effectiveContainerItems])
 
   const findContainerFor = (id: string) => {
     if (id.startsWith('day-')) return id as DropContainerId
@@ -131,7 +185,7 @@ export function useDragAndDrop({
   }
 
   const getTodosForContainer = useCallback((containerId: DropContainerId): Todo[] => {
-    const ids = containerItems[containerId] ?? []
+    const ids = effectiveContainerItems[containerId] ?? []
     const miniDay = parseContainerId(containerId)
     const items: Todo[] = []
     ids.forEach((id, index) => {
@@ -145,7 +199,7 @@ export function useDragAndDrop({
       })
     })
     return items
-  }, [containerItems, todoById])
+  }, [effectiveContainerItems, todoById])
 
   const normalizeContainerItems = useCallback((items: ContainerItems) => {
     const next = { ...items }
@@ -168,9 +222,11 @@ export function useDragAndDrop({
   // Keep local DnD state in sync with server data when not dragging
   useEffect(() => {
     if (activeDragId) return
-    const next = buildContainerItems(groupedTodos)
-    setContainerItems((prev) => (areContainerItemsEqual(prev, next) ? prev : next))
-  }, [activeDragId, groupedTodos, buildContainerItems])
+    const frameId = window.requestAnimationFrame(() => {
+      setContainerItems((prev) => (areContainerItemsEqual(prev, serverContainerItems) ? prev : serverContainerItems))
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [activeDragId, serverContainerItems])
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -314,9 +370,10 @@ export function useDragAndDrop({
 
   const handleDragStart = (event: DragStartEvent) => {
     const id = String(event.active.id)
+    setContainerItems(effectiveContainerItems)
     setActiveDragId(id)
     setCrossSectionPreview(null)
-    clonedItemsRef.current = containerItems
+    clonedItemsRef.current = effectiveContainerItems
     dragOriginContainerRef.current = findContainerFor(id)
     lastDragOverKeyRef.current = null
   }
@@ -430,39 +487,15 @@ export function useDragAndDrop({
       return next
     })
 
-    // eslint-disable-next-line react-hooks/immutability -- read-only snapshot, not mutating state
-    const snapshot = (() => {
-      const current = containerItems
-      const next = { ...current }
-      const fromItems = [...(next[activeContainer] ?? [])]
-      const toItems = activeContainer === overContainer ? fromItems : [...(next[overContainer] ?? [])]
-
-      const fromIndex = fromItems.indexOf(activeId)
-      if (fromIndex === -1) return current
-
-      if (activeContainer === overContainer) {
-        const newIndex = isOverContainer
-          ? fromItems.length - 1
-          : fromItems.indexOf(overId) + (isBelowOverItem ? 1 : 0)
-        if (!isOverContainer && newIndex === -1) return current
-        next[activeContainer] = arrayMove(
-          fromItems,
-          fromIndex,
-          Math.max(0, Math.min(newIndex, fromItems.length - 1)),
-        )
-        return next
-      }
-
-      fromItems.splice(fromIndex, 1)
-      const overIndex = isOverContainer ? toItems.length : toItems.indexOf(overId)
-      if (!isOverContainer && overIndex === -1) return current
-      const insertIndex = isOverContainer ? toItems.length : overIndex + (isBelowOverItem ? 1 : 0)
-      toItems.splice(Math.max(0, Math.min(insertIndex, toItems.length)), 0, activeId)
-
-      next[activeContainer] = fromItems
-      next[overContainer] = toItems
-      return next
-    })()
+    const snapshot = buildDragEndSnapshot({
+      containerItems: effectiveContainerItems,
+      activeContainer,
+      overContainer,
+      activeId,
+      overId,
+      isOverContainer,
+      isBelowOverItem,
+    })
 
     const normalizedSnapshot = normalizeContainerItems(snapshot)
 
@@ -505,7 +538,7 @@ export function useDragAndDrop({
     sensors,
     collisionDetectionStrategy,
     activeDragId,
-    containerItems,
+    containerItems: effectiveContainerItems,
     crossSectionPreview,
     getTodosForContainer,
     handleDragStart,

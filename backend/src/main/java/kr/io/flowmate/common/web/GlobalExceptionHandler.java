@@ -2,13 +2,18 @@ package kr.io.flowmate.common.web;
 
 import jakarta.validation.ConstraintViolationException;
 import kr.io.flowmate.common.error.ApiError;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
+import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.common.exception.NotFoundException;
+import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -61,6 +66,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    // 잘못된 JSON 바디(파싱 실패, 타입 불일치)는 클라이언트 오류이므로 400
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException ex) {
+        ApiError body = ApiError.of("BAD_REQUEST", "요청 본문을 읽을 수 없습니다");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     // 도메인 NotFoundException을 404로 반환
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(NotFoundException ex) {
@@ -68,11 +80,42 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
+    // 인증/인가 실패 (JWT·RT·SSE 토큰)를 401로 매핑
+    @ExceptionHandler(AuthenticationFailedException.class)
+    public ResponseEntity<ApiError> handleAuthenticationFailed(AuthenticationFailedException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        ApiError body = ApiError.of("AUTHENTICATION_FAILED", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
+
+    // 멱등성 키 재사용 시 페이로드 불일치 등 409 Conflict 로 매핑
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<ApiError> handleIdempotencyConflict(IdempotencyConflictException ex) {
+        log.info("Idempotency conflict: {}", ex.getMessage());
+        ApiError body = ApiError.of("IDEMPOTENCY_CONFLICT", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // Todo 상태 위반 (미완료 복습 스케줄, MAX 초과 등)을 409 Conflict 로 매핑
+    @ExceptionHandler(TodoStateViolationException.class)
+    public ResponseEntity<ApiError> handleTodoStateViolation(TodoStateViolationException ex) {
+        log.info("Todo state violation: {}", ex.getMessage());
+        ApiError body = ApiError.of("TODO_STATE_VIOLATION", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
     // 서비스 레이어의 입력/상태 오류를 400으로 반환
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgumentException(IllegalArgumentException ex) {
         ApiError body = ApiError.of("BAD_REQUEST", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    // 경로는 존재하지만 HTTP 메서드가 매칭되지 않는 경우를 405로 반환 (4xx → 5xx 유출 방지)
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotAllowed(HttpRequestMethodNotSupportedException ex) {
+        ApiError body = ApiError.of("METHOD_NOT_ALLOWED", ex.getMethod() + " method is not supported");
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(body);
     }
 
     // 존재하지 않는 URL 접근을 404로 통일
@@ -102,6 +145,14 @@ public class GlobalExceptionHandler {
         log.warn("Deadlock retry exhausted", ex);
         ApiError body = ApiError.of("CONFLICT", "일시적 충돌이 발생했습니다. 잠시 후 다시 시도해 주세요.");
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // 방어 코드 ISE 는 500 INTERNAL_ERROR 로 고정 (catch-all Exception 에 떨어지기 전 전용 핸들러)
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex) {
+        log.error("Illegal state (likely defensive code path)", ex);
+        ApiError body = ApiError.of("INTERNAL_ERROR", "서버 내부 오류");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 
     // 처리되지 않는 예외의 최후 방어선

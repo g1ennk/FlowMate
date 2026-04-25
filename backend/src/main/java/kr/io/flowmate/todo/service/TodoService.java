@@ -2,11 +2,13 @@ package kr.io.flowmate.todo.service;
 
 import kr.io.flowmate.todo.domain.TimerMode;
 import kr.io.flowmate.todo.domain.Todo;
-import kr.io.flowmate.todo.dto.TodoCreateRequest;
-import kr.io.flowmate.todo.dto.TodoReorderRequest;
-import kr.io.flowmate.todo.dto.TodoResponse;
-import kr.io.flowmate.todo.dto.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
+import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
+import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
+import kr.io.flowmate.todo.dto.response.TodoResponse;
+import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
+import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,10 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
-@Transactional(readOnly = true) // 서비스 클래스에 readOnly를 붙이고, 쓰기 메서드에만 따로 @Tractional을 붙이는 패턴
-@RequiredArgsConstructor // 생성자 주입
+@Transactional(readOnly = true)
+@RequiredArgsConstructor
 public class TodoService {
 
     private static final int[] REVIEW_INTERVALS = {1, 2, 4, 8, 16, 32};
@@ -148,18 +154,32 @@ public class TodoService {
     /**
      * Todo 순서 변경
      * - 여러 Todo의 miniDay, dayOrder를 일괄 수정
+     * - 대상 Todo를 1쿼리로 모아 조회 후 Map 조인으로 순회 (N+1 회피)
      */
     @Transactional
     public List<TodoResponse> reorderTodos(String userId, TodoReorderRequest request) {
-        // 각 Todo의 순서 업데이트
-        for (TodoReorderRequest.Item item : request.getItems()) {
-            Todo todo = findTodoByIdAndUserId(item.getId(), userId);
+        List<TodoReorderRequest.Item> items = request.getItems();
+        List<String> ids = items.stream().map(TodoReorderRequest.Item::getId).toList();
 
+        // 중복 id 가 있으면 마지막 쓰기만 남는 silent overwrite 가 발생하므로 사전 거부 (계약상 400)
+        if (ids.size() != Set.copyOf(ids).size()) {
+            throw new IllegalArgumentException("duplicate todo ids in reorder request");
+        }
+
+        Map<String, Todo> todosById = todoRepository.findAllByIdInAndUserId(ids, userId).stream()
+                .collect(Collectors.toMap(Todo::getId, Function.identity()));
+
+        for (TodoReorderRequest.Item item : items) {
+            Todo todo = todosById.get(item.getId());
+            if (todo == null) {
+                // 요청 id 중 존재하지 않거나 다른 사용자 소유인 항목이 있으면 전체 거부
+                throw new TodoNotFoundException(item.getId());
+            }
             todo.updateDayOrder(item.getDayOrder());
             todo.updateMiniDay(item.getMiniDay());
         }
 
-        // 전체 목록 조회하여 다시 반환
+        // 변경 반영된 전체 목록을 UI 순서대로 다시 반환
         List<Todo> allTodos = todoRepository
                 .findAllByUserIdOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(userId);
         return allTodos.stream()
@@ -168,16 +188,16 @@ public class TodoService {
     }
 
     @Transactional
-    public ScheduleReviewResult scheduleReview(String userId, String todoId) {
+    public TodoScheduleReviewResponse scheduleReview(String userId, String todoId) {
         Todo todo = findTodoByIdAndUserId(todoId, userId);
 
         if (!todo.isDone()) {
-            throw new IllegalArgumentException("완료된 Todo만 복습 등록할 수 있습니다");
+            throw new TodoStateViolationException("완료된 Todo만 복습 등록할 수 있습니다");
         }
 
         int currentRound = todo.getReviewRound() != null ? todo.getReviewRound() : 0;
         if (currentRound >= MAX_REVIEW_ROUND) {
-            throw new IllegalArgumentException("복습이 모두 완료된 Todo입니다");
+            throw new TodoStateViolationException("복습이 모두 완료된 Todo입니다");
         }
 
         int nextRound = currentRound + 1;
@@ -187,7 +207,7 @@ public class TodoService {
                 .findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, nextRound)
                 .orElse(null);
         if (existing != null) {
-            return new ScheduleReviewResult(TodoResponse.from(existing), false);
+            return new TodoScheduleReviewResponse(TodoResponse.from(existing), false);
         }
 
         LocalDate nextDate = todo.getDate().plusDays(REVIEW_INTERVALS[currentRound]);
@@ -206,12 +226,12 @@ public class TodoService {
 
         try {
             Todo saved = todoRepository.save(reviewTodo);
-            return new ScheduleReviewResult(TodoResponse.from(saved), true);
+            return new TodoScheduleReviewResponse(TodoResponse.from(saved), true);
         } catch (DataIntegrityViolationException ex) {
             Todo collided = todoRepository
                     .findByUserIdAndOriginalTodoIdAndReviewRound(userId, rootTodoId, nextRound)
                     .orElseThrow(() -> ex);
-            return new ScheduleReviewResult(TodoResponse.from(collided), false);
+            return new TodoScheduleReviewResponse(TodoResponse.from(collided), false);
         }
     }
 
@@ -223,6 +243,11 @@ public class TodoService {
                 .orElseThrow(() -> new TodoNotFoundException(todoId));
     }
 
+    /**
+     * 복습 체인의 기준 제목을 계산한다.
+     * round 2+ 생성 시 root를 재조회해 원본 제목 변경을 미래 회차에 반영한다 (cascade).
+     * root가 없으면 source의 title로 폴백.
+     */
     private String resolveBaseTitle(String userId, Todo sourceTodo, String rootTodoId) {
         if (sourceTodo.getOriginalTodoId() == null) {
             return sourceTodo.getTitle();
@@ -231,9 +256,6 @@ public class TodoService {
         return todoRepository.findByIdAndUserId(rootTodoId, userId)
                 .map(Todo::getTitle)
                 .orElseGet(sourceTodo::getTitle);
-    }
-
-    public record ScheduleReviewResult(TodoResponse item, boolean created) {
     }
 
 }

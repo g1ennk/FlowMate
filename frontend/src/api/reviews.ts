@@ -1,4 +1,5 @@
 import { api } from './http'
+import type { ApiError } from './http'
 import {
   ReviewSchema,
   ReviewUpsertSchema,
@@ -9,14 +10,15 @@ import {
   type ReviewUpsertInput,
 } from './types'
 
-const ReviewNullableSchema = ReviewSchema.nullable()
-
 export const reviewApi = {
-  get: (type: ReviewType, periodStart: string): Promise<Review | null> =>
-    api.get(
-      `/reviews?type=${type}&periodStart=${periodStart}`,
-      ReviewNullableSchema,
-    ),
+  get: async (type: ReviewType, periodStart: string): Promise<Review | null> => {
+    try {
+      return await api.get(`/reviews/${periodStart}?type=${type}`, ReviewSchema)
+    } catch (err) {
+      if ((err as ApiError).status === 404) return null
+      throw err
+    }
+  },
   list: (type: ReviewType, from: string, to: string): Promise<ReviewList> =>
     api.get(
       `/reviews?type=${type}&from=${from}&to=${to}`,

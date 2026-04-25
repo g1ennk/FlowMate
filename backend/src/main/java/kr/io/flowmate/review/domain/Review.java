@@ -1,11 +1,11 @@
 package kr.io.flowmate.review.domain;
 
 import jakarta.persistence.*;
+import kr.io.flowmate.common.domain.BaseTimeEntity;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -13,7 +13,7 @@ import java.util.UUID;
 @Table(name = "reviews")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Review {
+public class Review extends BaseTimeEntity {
 
     @Id
     @Column(length = 36)
@@ -35,12 +35,6 @@ public class Review {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
-
     public static Review create(
             String userId,
             ReviewType type,
@@ -49,7 +43,6 @@ public class Review {
             String content
     ) {
         Review review = new Review();
-        Instant now = Instant.now();
 
         review.id = UUID.randomUUID().toString();
         review.userId = userId;
@@ -57,8 +50,6 @@ public class Review {
         review.periodStart = periodStart;
         review.periodEnd = periodEnd;
         review.content = content;
-        review.createdAt = now;
-        review.updatedAt = now;
 
         return review;
     }
@@ -66,20 +57,6 @@ public class Review {
     public void update(LocalDate periodEnd, String content) {
         this.periodEnd = periodEnd;
         this.content = content;
-    }
-
-    @PrePersist
-    public void onCreate() {
-        if (this.createdAt == null) {
-            Instant now = Instant.now();
-            this.createdAt = now;
-            this.updatedAt = now;
-        }
-    }
-
-    @PreUpdate
-    public void onUpdate() {
-        this.updatedAt = Instant.now();
     }
 
 }

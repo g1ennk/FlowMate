@@ -88,7 +88,7 @@ CREATE TABLE todos
     review_round          INT,
     original_todo_id      VARCHAR(36),
     created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_todos_user_order ON todos (user_id, date, mini_day, day_order, created_at);
@@ -105,7 +105,7 @@ CREATE TABLE todo_sessions
     break_seconds         INT         NOT NULL DEFAULT 0,
     session_order         INT         NOT NULL,
     created_at            TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at            TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_todo_sessions_todo
         FOREIGN KEY (todo_id) REFERENCES todos (id) ON DELETE CASCADE,
@@ -135,7 +135,8 @@ CREATE TABLE user_settings
     day3_label         VARCHAR(50) NOT NULL DEFAULT '저녁',
     day3_start_min     INT         NOT NULL DEFAULT 1080,
     day3_end_min       INT         NOT NULL DEFAULT 1440,
-    updated_at         TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at         TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE reviews
@@ -147,7 +148,7 @@ CREATE TABLE reviews
     period_end   DATE        NOT NULL,
     content      TEXT        NOT NULL,
     created_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT uniq_reviews_user_period
         UNIQUE (user_id, type, period_start)
@@ -165,7 +166,7 @@ CREATE TABLE users
     email      varchar(255),
     nickname   varchar(100),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE auth_social_accounts
@@ -206,7 +207,7 @@ CREATE TABLE timer_states
     user_id    VARCHAR(36)  NOT NULL,
     state_json TEXT         NULL,               -- idle 시 NULL (논리 삭제), 활성 상태면 JSON 저장
     version    BIGINT       NOT NULL DEFAULT 0, -- 단조 증가. max(now, lastVersion + 1)을 앱 서버가 계산
-    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     CONSTRAINT fk_timer_states_todo

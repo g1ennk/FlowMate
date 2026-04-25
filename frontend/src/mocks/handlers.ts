@@ -444,45 +444,65 @@ export const handlers = [
     return HttpResponse.json(next, { status: 201 })
   }),
 
-  http.get('/api/reviews', async ({ request }) => {
+  http.get('/api/reviews/:periodStart', async ({ params, request }) => {
     await delay(latency)
     const clientId = getClientId(request)
     const url = new URL(request.url)
     const type = url.searchParams.get('type')
-    const periodStart = url.searchParams.get('periodStart')
-    const from = url.searchParams.get('from')
-    const to = url.searchParams.get('to')
+    const { periodStart } = params as { periodStart: string }
 
     if (!type || !REVIEW_TYPES.includes(type as ReviewType)) {
       return HttpResponse.json(
-        { error: { code: 'VALIDATION_ERROR', message: 'type and periodStart are required' } },
+        { error: { code: 'VALIDATION_ERROR', message: 'type is required' } },
         { status: 400 },
       )
     }
 
     const reviews = loadReviews(clientId)
-    if (from && to) {
-      const items = reviews.filter(
-        (item) =>
-          item.type === type &&
-          item.periodStart >= from &&
-          item.periodStart <= to,
-      )
-      return HttpResponse.json({ items })
-    }
-
-    if (!periodStart) {
-      return HttpResponse.json(
-        { error: { code: 'VALIDATION_ERROR', message: 'periodStart is required' } },
-        { status: 400 },
-      )
-    }
-
     const review = reviews.find(
       (item) => item.type === type && item.periodStart === periodStart,
     )
 
-    return HttpResponse.json(review ?? null)
+    if (!review) {
+      return HttpResponse.json(
+        { error: { code: 'NOT_FOUND', message: 'Review not found' } },
+        { status: 404 },
+      )
+    }
+
+    return HttpResponse.json(review)
+  }),
+
+  http.get('/api/reviews', async ({ request }) => {
+    await delay(latency)
+    const clientId = getClientId(request)
+    const url = new URL(request.url)
+    const type = url.searchParams.get('type')
+    const from = url.searchParams.get('from')
+    const to = url.searchParams.get('to')
+
+    if (!type || !REVIEW_TYPES.includes(type as ReviewType)) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'type is required' } },
+        { status: 400 },
+      )
+    }
+
+    if (!from || !to) {
+      return HttpResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'from and to are required' } },
+        { status: 400 },
+      )
+    }
+
+    const reviews = loadReviews(clientId)
+    const items = reviews.filter(
+      (item) =>
+        item.type === type &&
+        item.periodStart >= from &&
+        item.periodStart <= to,
+    )
+    return HttpResponse.json({ items })
   }),
 
   http.put('/api/reviews', async ({ request }) => {

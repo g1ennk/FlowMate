@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -11,7 +12,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.filter.CorsFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -19,11 +19,13 @@ import org.springframework.web.filter.CorsFilter;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
-    private final CorsFilter corsFilter; // CorsConfig의 CorsFilter 빈 주입
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) {
         http
+                // CorsConfigurationSource @Bean 을 자동으로 집어 Security 필터 체인 내부에
+                // CORS 처리를 꽂아 넣는다. OPTIONS preflight 가 인증 체크 전에 통과됨.
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm ->
                         sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -43,17 +45,17 @@ public class SecurityConfig {
                                 "/api/timer/sse",
                                 "/actuator/**"
                         ).permitAll()
-                        .requestMatchers("/api/auth/me").hasRole("MEMBER")
                         .requestMatchers("/api/timer/state/**").hasRole("MEMBER")
                         .anyRequest().authenticated()
                 )
-                // CORS 필터를 Security 필터보다 먼저 적용
-                .addFilterBefore(corsFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
+    // JWT 기반 stateless 인증이라 실제로 호출되지 않지만, 이 빈이 없으면
+    // Spring Security 가 기본 user 와 자동 생성 비밀번호를 로그에 출력한다.
+    // 호출될 일이 없으므로 어떤 username 이 들어와도 즉시 실패시킨다.
     @Bean
     public UserDetailsService userDetailsService() {
         return username -> {

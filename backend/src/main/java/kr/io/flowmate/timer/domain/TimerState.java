@@ -1,17 +1,16 @@
 package kr.io.flowmate.timer.domain;
 
 import jakarta.persistence.*;
+import kr.io.flowmate.common.domain.BaseTimeEntity;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.Instant;
 
 @Entity
 @Table(name = "timer_states")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class TimerState {
+public class TimerState extends BaseTimeEntity {
 
     @Id
     @Column(name = "todo_id", nullable = false, length = 36)
@@ -26,14 +25,9 @@ public class TimerState {
     @Column(nullable = false)
     private long version;
 
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
-
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
-
     public static TimerState create(String todoId, String userId) {
         TimerState ts = new TimerState();
+
         ts.todoId = todoId;
         ts.userId = userId;
         ts.stateJson = null;
@@ -44,17 +38,5 @@ public class TimerState {
     public void update(String stateJson, long version) {
         this.stateJson = stateJson;
         this.version = version;
-    }
-
-    @PrePersist
-    public void onCreate() {
-        Instant now = Instant.now();
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
-
-    @PreUpdate
-    public void onUpdate() {
-        this.updatedAt = Instant.now();
     }
 }

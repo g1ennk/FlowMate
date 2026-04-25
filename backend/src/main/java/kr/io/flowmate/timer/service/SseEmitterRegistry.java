@@ -1,11 +1,10 @@
 package kr.io.flowmate.timer.service;
 
 import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -15,11 +14,12 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 public class SseEmitterRegistry {
 
-    private static final long SSE_TIMEOUT_MS = TimeUnit.HOURS.toMillis(1);
-    private static final long HEARTBEAT_INTERVAL_MS = TimeUnit.SECONDS.toMillis(25);
+    private static final long SSE_TIMEOUT_MS = TimeUnit.HOURS.toMillis(1); // 1시간
+    private static final long HEARTBEAT_INTERVAL_MS = TimeUnit.SECONDS.toMillis(25); // 25초
 
     private record ConnectionEntry(String internalId, SseEmitter emitter, ScheduledFuture<?> heartbeatTask) {
     }
@@ -42,54 +42,44 @@ public class SseEmitterRegistry {
         );
         ConnectionEntry entry = new ConnectionEntry(internalId, emitter, heartbeatTask);
 
-        // 해당 userId의 연결 목록이 없으면 새로 만들고, 있으면 거기에 추가한다.
         connections.computeIfAbsent(userId, k -> new CopyOnWriteArrayList<>()).add(entry);
 
-        // 정상 종료 시, timeout 종료 시, 전송 중 예외 발생 시 정리
         emitter.onCompletion(() -> removeEntry(userId, internalId));
         emitter.onTimeout(() -> removeEntry(userId, internalId));
         emitter.onError(e -> removeEntry(userId, internalId));
 
         try {
-            emitter.send(SseEmitter.event()
-                    .name("connected")
-                    .data("ok"));
+            emitter.send(SseEmitter.event().name("connected").data("ok"));
         } catch (Exception e) {
-            if (isDisconnectedClientError(e)) {
-                removeEntry(userId, internalId);
-                return emitter;
-            }
-            throw new IllegalStateException("SSE 초기 연결 이벤트 전송 실패", e);
+            // 초기 connected 이벤트 전송 실패 시 heartbeatTask/entry 를 즉시 정리해 누수를 막는다.
+            log.warn("SSE 초기 이벤트 전송 실패, 연결 정리. userId={}", userId, e);
+            removeEntry(userId, internalId);
         }
 
         return emitter;
     }
 
+    // broadcast 는 fire-and-forget.
+    // 전송 실패로 예외를 호출자에게 던지면 upsertState 의 DB 트랜잭션이 롤백되어 정본 저장이 사라진다.
+    // 어떤 예외든 삼키고 dead connection 만 정리한다.
     public void broadcast(String userId, SseEmitter.SseEventBuilder event) {
-        // 해당 유저의 모든 연결을 가져오고 연결이 없으면 보낼 대상이 없기 때문에 바로 종료
         CopyOnWriteArrayList<ConnectionEntry> entries = connections.get(userId);
         if (entries == null) return;
 
-        // 같은 유저의 연결의 동일 이벤트를 보낸다.
         for (ConnectionEntry entry : entries) {
             try {
                 entry.emitter().send(event);
             } catch (Exception e) {
-                if (isDisconnectedClientError(e)) {
-                    removeEntry(userId, entry.internalId());
-                    continue;
-                }
-                throw new IllegalStateException("SSE 브로드캐스트 전송 실패", e);
+                log.warn("SSE 브로드캐스트 전송 실패, 연결 정리. userId={}", userId, e);
+                removeEntry(userId, entry.internalId());
             }
         }
     }
 
     private void removeEntry(String userId, String internalId) {
-        // 해당 유저의 모든 연결을 가져오고 연결이 없으면 보낼 대상이 없기 때문에 바로 종료
         CopyOnWriteArrayList<ConnectionEntry> entries = connections.get(userId);
         if (entries == null) return;
 
-        // 해당 internalId를 가진 연결만 제거
         entries.removeIf(entry -> {
             if (!entry.internalId().equals(internalId)) {
                 return false;
@@ -98,26 +88,22 @@ public class SseEmitterRegistry {
             return true;
         });
 
-        // 연결이 아예 없으면 map도 제거
         if (entries.isEmpty()) {
             connections.remove(userId, entries);
         }
     }
 
+    // heartbeat 실패는 해당 연결만 정리하고 executor task 는 계속 살려둔다.
+    // 예외를 throw 하면 scheduleAtFixedRate 가 향후 실행을 중단해 전체 heartbeat 가 멈춘다.
     private void sendHeartbeat(String userId, String internalId) {
         ConnectionEntry entry = findEntry(userId, internalId);
         if (entry == null) return;
 
         try {
-            entry.emitter().send(SseEmitter.event()
-                    .name("heartbeat")
-                    .data("keepalive"));
+            entry.emitter().send(SseEmitter.event().name("heartbeat").data("keepalive"));
         } catch (Exception e) {
-            if (isDisconnectedClientError(e)) {
-                removeEntry(userId, internalId);
-                return;
-            }
-            throw new IllegalStateException("SSE heartbeat 전송 실패", e);
+            log.debug("SSE heartbeat 전송 실패, 연결 정리. userId={}", userId, e);
+            removeEntry(userId, internalId);
         }
     }
 
@@ -136,12 +122,6 @@ public class SseEmitterRegistry {
     @PreDestroy
     void shutdown() {
         heartbeatExecutor.shutdownNow();
-    }
-
-    private boolean isDisconnectedClientError(Throwable error) {
-        return error instanceof IOException
-                || error instanceof IllegalStateException
-                || error instanceof AsyncRequestNotUsableException;
     }
 
     private static final class HeartbeatThreadFactory implements ThreadFactory {

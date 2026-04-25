@@ -47,6 +47,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [showBreakSelection, setShowBreakSelection] = useState(false)
   const [showTotalTime, setShowTotalTime] = useState(false) // 디폴트: 현재 세션(false) vs 전체 누적(true)
   const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
+  const [nowMs, setNowMs] = useState(Date.now)
   const baseSessionFocusSeconds = sessionFocusSeconds
 
   const { data: settings } = usePomodoroSettings()
@@ -128,6 +129,12 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     prevFlexiblePhaseRef.current = currentPhase ?? null
   }, [timer?.flexiblePhase, timer?.mode, timer?.breakCompleted])
 
+  useEffect(() => {
+    if (!isOpen || !timer?.endAt) return
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(intervalId)
+  }, [isOpen, timer?.endAt])
+
   const handleClose = () => {
     endMusicSession()
     onClose()
@@ -158,10 +165,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   if (!mounted) return null
 
-  // 타이머 값 계산 — 렌더마다 현재 시각 기준으로 남은 시간을 계산해야 하므로 Date.now() 사용이 의도적
-  // eslint-disable-next-line react-hooks/purity
   const remainingMs = timer?.endAt
-    ? Math.max(0, timer.endAt - Date.now())
+    ? Math.max(0, timer.endAt - nowMs)
     : (timer?.remainingMs ?? (settings?.flowMin ?? 25) * MINUTE_MS)
   const isFlow = timer?.phase === 'flow'
 

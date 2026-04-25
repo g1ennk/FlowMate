@@ -48,4 +48,4 @@ logging:
     org.hibernate.SQL: warn
 
 cors:
-  allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  allowed-origins: ${CORS_ORIGINS}

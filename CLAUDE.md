@@ -39,7 +39,7 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 ### 전체 구조
 
 - **Frontend**: React 19 + Vite 7 + TypeScript 5.9 (strict) + Tailwind CSS 4 + PWA (프로덕션만)
-- **Backend**: Spring Boot 4.0.2 + Java 21 + MySQL 8 + Flyway
+- **Backend**: Spring Boot 4.0.5 + Java 21 + MySQL 8 + Flyway
 - **인증**: 게스트 JWT(localStorage, 90일) → 카카오 OAuth → 멤버 JWT(메모리만, 15분) + HttpOnly refresh cookie(14일, RTR)
 - **실시간 동기화**: SSE로 타이머 상태 멀티디바이스 동기화 (쿼리파라미터 토큰, EventSource 제약)
 - **배포**: EC2 + Docker Compose (백엔드+MySQL+Alloy), S3 + CloudFront (프론트엔드)
@@ -56,7 +56,7 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 | `review`   | 주간/월간 회고 (ReviewType enum, user_id+type+period_start unique)                                          |
 | `settings` | 포모도로 설정(flow/break/longBreak/cycle), 미니데이 구간 3개, 자동화 플래그                                              |
 | `common`   | `GlobalExceptionHandler`, `@CurrentUser` + `CurrentUserArgumentResolver`, `ListResponse`, `ApiError` (Record) |
-| `config`   | `SecurityConfig` (actuator health만 허용, JSON 401/403), `JwtAuthFilter` (단일 파싱), `CorsConfig`, `WebMvcConfig` |
+| `config`   | `SecurityConfig` (`/actuator/**` 앱 레벨 허용, Nginx에서 health만 외부 노출, JSON 401/403), `JwtAuthFilter` (단일 파싱), `CorsConfig`, `WebMvcConfig` |
 
 패턴: Lombok `@RequiredArgsConstructor`, Entity에 `create()` static factory, `@PostConstruct`로 SecretKey 캐싱, `@CurrentUser` 어노테이션으로 userId 주입, `AuthenticationFailedException` → 401 매핑
 DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Setter` (Jackson setter 바인딩 + `@Valid` 호환). 예외: `ExchangeRequest`는 Record (필드 2개, setter 불필요)

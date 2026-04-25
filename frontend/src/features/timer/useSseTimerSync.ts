@@ -79,11 +79,11 @@ function connectSse(token: string): EventSource {
       if (!data.todoId) return
 
       if (data.state) {
-        useTimerStore.getState().applyRemoteState(data.todoId, data.state, data.serverTime)
+        useTimerStore.getState().applyRemoteState(data.todoId, data.state, data.version)
         return
       }
 
-      useTimerStore.getState().applyRemoteReset(data.todoId, data.serverTime)
+      useTimerStore.getState().applyRemoteReset(data.todoId, data.version)
     } catch {
       // ignore invalid payloads
     }

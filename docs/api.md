@@ -1,6 +1,6 @@
 # API Reference – FlowMate
 
-> Last updated: 2026-03-28
+> Last updated: 2026-04-25
 
 Base URL: `/api`
 
@@ -17,7 +17,7 @@ Base URL: `/api`
 | Member Access JWT | 메모리(JS)에만 보관한다. 인증이 필요한 요청은 `Authorization: Bearer {token}` 헤더를 사용한다.                                                                 |
 | Refresh Token     | HttpOnly 쿠키로만 전송한다. refresh 시 기존 RT 1개를 revoke하고 새 RT를 발급한다.                                                                          |
 | SSE               | `GET /api/timer/sse`만 EventSource 제약 때문에 쿼리 파라미터 `token`을 사용한다. 상세 배경은 [architecture.md — SSE 아키텍처](./architecture.md#3-sse-아키텍처) 참고. |
-| 리스트 응답            | 대부분 `{ "items": [...] }` 형태의 `ListResponse<T>`를 사용한다. 예외는 `GET /api/timer/state`의 직접 배열 반환과 단건 Review 조회의 `Review` 또는 `null` 반환이다.    |
+| 리스트 응답            | 대부분 `{ "items": [...] }` 형태의 `ListResponse<T>`를 사용한다. 예외는 `GET /api/timer/state`의 직접 배열 반환이다.                                         |
 | 도메인 용어            | `MiniDay`, `dayOrder`, `TodoSession`, `TimerState` 등 용어 정의는 [data-model.md — 개념적 모델링](./data-model.md#1-개념적-모델링) 참고.                  |
 
 ## 1. 인증
@@ -128,7 +128,8 @@ Set-Cookie:
 
 **Errors**
 
-- `400 BAD_REQUEST` state 불일치, state 만료(TTL 5분), 인가 코드 오류
+- `401 AUTHENTICATION_FAILED` state JWT 서명/만료 실패, state role 불일치
+- `400 BAD_REQUEST` 인가 코드 오류 (Kakao 외부 응답 실패)
 
 ---
 
@@ -156,11 +157,11 @@ Set-Cookie: 새 `refreshToken`으로 교체
 
 **Errors**
 
-- `401 Unauthorized` `refreshToken` 쿠키 없음
-- `400 BAD_REQUEST` refreshToken 무효, 만료, 폐기
+- `401 Unauthorized` `refreshToken` 쿠키 없음 (Spring Security 기본 401, body 비어 있을 수 있음)
+- `401 AUTHENTICATION_FAILED` `refreshToken` 무효 · 만료 · 폐기 (서비스 예외 → `AuthenticationFailedException`)
 
-- 쿠키가 없으면 controller가 즉시 `401`을 반환한다.
-- 쿠키는 있지만 토큰 검증에 실패하면 service 예외가 `GlobalExceptionHandler`를 통해 `400`으로 매핑된다.
+- 쿠키가 없으면 controller 가 즉시 `401` 을 반환한다.
+- 쿠키는 있지만 토큰 검증에 실패하면 service 가 `AuthenticationFailedException` 을 던져 `GlobalExceptionHandler` 가 `401` JSON 응답으로 매핑한다.
 
 ---
 
@@ -174,29 +175,6 @@ Cookie: `refreshToken` 자동 전송
 **Response** `204`
 
 - 현재 쿠키가 있으면 해당 RT를 revoke하고, 없어도 idempotent하게 종료한다.
-
----
-
-### 1.8 내 정보
-
-`GET /api/auth/me`
-
-**Auth** Member Access JWT
-
-**Response** `200`
-
-```json
-{
-  "id": "uuid",
-  "email": "user@example.com",
-  "nickname": "flowmate"
-}
-```
-
-**Errors**
-
-- `401` 토큰 없음 또는 만료
-- `403` Guest JWT 사용
 
 ---
 
@@ -231,10 +209,13 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 `GET /api/todos`
 
-쿼리 파라미터:
+쿼리 파라미터 (상호 배타):
 
-- `date` optional, `YYYY-MM-DD`
-- `date`가 없으면 사용자 전체 Todo를 `date ASC`, `miniDay ASC`, `dayOrder ASC`, `createdAt ASC` 순으로 반환한다.
+- `date` optional, `YYYY-MM-DD` — 단일 날짜 조회
+- `from` + `to` optional, `YYYY-MM-DD` — 기간 범위 조회 (둘 다 주어야 하며 `from <= to`)
+- `date`와 `from`/`to`를 동시에 주면 `400 BAD_REQUEST`
+- `from`/`to` 중 하나만 주거나 `from > to`이면 `400 BAD_REQUEST`
+- 모두 생략하면 사용자 전체 Todo를 `date ASC`, `miniDay ASC`, `dayOrder ASC`, `createdAt ASC` 순으로 반환한다.
 
 **Response** `200`
 
@@ -378,7 +359,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 **Errors**
 
-- `400 BAD_REQUEST` 미완료 Todo, 6회차 초과
+- `409 TODO_STATE_VIOLATION` 미완료 Todo, 6회차 초과 (`TodoStateViolationException`)
 - `404 NOT_FOUND` Todo 없음 또는 타 사용자 소유
 
 ---
@@ -427,6 +408,16 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
   ]
 }
 ```
+
+**동작 규칙**
+
+- 요청 `items[].id` 중 하나라도 존재하지 않거나 타 사용자 소유이면 **전체 거부**하고 `404 NOT_FOUND`를 반환한다 (all-or-nothing, 트랜잭션 rollback).
+- 응답 `items`는 갱신 반영된 사용자 전체 Todo를 `date ASC`, `miniDay ASC`, `dayOrder ASC`, `createdAt ASC` 순으로 반환한다.
+
+**Errors**
+
+- `400 BAD_REQUEST` `items[].id` 에 중복이 있으면 silent last-write 대신 전체 거부
+- `404 NOT_FOUND` `items[].id` 중 일부가 없거나 타 사용자 소유
 
 ---
 
@@ -530,7 +521,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 **Errors**
 
-- `400 BAD_REQUEST` `sessionFocusSeconds` 불일치 멱등 충돌
+- `409 IDEMPOTENCY_CONFLICT` 동일 `clientSessionId` 재사용 시 `sessionFocusSeconds` 불일치 (`IdempotencyConflictException`)
 - `404 NOT_FOUND` Todo 없음 또는 타 사용자 소유
 
 ---
@@ -540,7 +531,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 Member Access JWT 전용.
 
 > 멀티탭·기기 간 타이머 상태 일관성을 위해 SSE 브로드캐스트를 사용한다.
-> 클라이언트는 `serverTime` 단조 증가 값을 기준으로 이벤트 중복 적용을 방지한다.
+> 클라이언트는 `version` 단조 증가 값을 기준으로 이벤트 중복 적용을 방지한다.
 
 ### 4.1 SSE 구독
 
@@ -561,12 +552,12 @@ Member Access JWT 전용.
 **재연결**
 
 - 브라우저 `EventSource`는 끊기면 자동 재연결한다.
-- 재연결 후 `GET /api/timer/state`로 최신 스냅샷을 동기화하고, 이미 처리한 `serverTime`과 비교해 중복 적용을 막는다.
+- 재연결 후 `GET /api/timer/state`로 최신 스냅샷을 동기화하고, 이미 처리한 `version`과 비교해 중복 적용을 막는다.
 
 **Errors**
 
-- `400 BAD_REQUEST` 유효하지 않은 token
-- `400 BAD_REQUEST` Member 아님
+- `401 AUTHENTICATION_FAILED` 유효하지 않은 토큰 (서명 오류, 만료, 파싱 실패)
+- `401 AUTHENTICATION_FAILED` member 아님 (게스트 토큰 차단)
 
 ---
 
@@ -597,7 +588,7 @@ Member Access JWT 전용.
 - `status=idle`이면 `state`는 `null`
 - `status!=idle`이면 `state`는 non-null
 - 저장 후 같은 `userId`의 SSE 연결에 `timer-state` 이벤트를 브로드캐스트한다.
-- `status=idle` 요청도 `200`으로 정상 처리되며, 이 경우 서버는 `state=null`로 저장하고 `serverTime`만 갱신한다.
+- `status=idle` 요청도 `200`으로 정상 처리되며, 이 경우 서버는 `state=null`로 저장하고 `version`만 갱신한다.
 
 **SingleTimerState 구조**
 
@@ -620,17 +611,16 @@ Member Access JWT 전용.
     "cycleCount": 1,
     "sessions": []
   },
-  "serverTime": 1772454032001
+  "version": 1772454032001
 }
 ```
 
-- `serverTime`: `max(System.currentTimeMillis(), lastVersion + 1)`
+- `version`: `max(System.currentTimeMillis(), lastVersion + 1)`
 
 **Errors**
 
 - `400 BAD_REQUEST` idle/state 조합 불일치
-- `401` 미인증
-- `403` Guest JWT 사용
+- `401` 미인증 또는 게스트 토큰으로 요청한 경우 (멤버 전용 엔드포인트)
 - `404 NOT_FOUND` 해당 Todo 없음 또는 타 사용자 소유
 
 ---
@@ -656,7 +646,7 @@ Member Access JWT 전용.
       "cycleCount": 1,
       "sessions": []
     },
-    "serverTime": 1772454032001
+    "version": 1772454032001
   }
 ]
 ```
@@ -843,12 +833,7 @@ row가 없으면 기본값으로 응답하고, 수정 시점에만 row를 생성
 
 Guest JWT와 Member Access JWT 모두 사용 가능.
 
-`GET /api/reviews`는 쿼리 파라미터 조합으로 단건/목록을 구분한다.
-
-| 파라미터 조합                | 결과       |
-|------------------------|----------|
-| `type` + `periodStart` | 단건 조회    |
-| `type` + `from` + `to` | 기간 목록 조회 |
+단건은 `GET /api/reviews/{periodStart}?type=...`로, 목록은 `GET /api/reviews?type&from&to`로 분리되어 있다.
 
 **대표 Review 응답**
 
@@ -866,15 +851,15 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 ### 6.1 단건 조회
 
-`GET /api/reviews?type={type}&periodStart=YYYY-MM-DD`
+`GET /api/reviews/{periodStart}?type={type}`
 
-- `type`: `daily | weekly | monthly`
-- `periodStart`: daily는 임의 날짜, weekly는 월요일, monthly는 매월 1일
+- `periodStart` (path): daily는 임의 날짜, weekly는 월요일, monthly는 매월 1일
+- `type` (query): `daily | weekly | monthly`
 
-**Response** `200`
+**Response**
 
-- 존재하면 `Review`
-- 없으면 본문으로 JSON `null`을 반환한다.
+- `200 OK` — 회고가 존재하면 `Review` 본문 반환
+- `404 Not Found` — 해당 기간의 회고가 없는 경우 (본문 없음)
 
 ---
 
@@ -957,18 +942,22 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 }
 ```
 
-| 코드 / 상태            | HTTP | 설명                                                     |
-|--------------------|------|--------------------------------------------------------|
-| `VALIDATION_ERROR` | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                            |
-| `BAD_REQUEST`      | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, 무효 RT, SSE query token 검증 실패 등 |
-| `NOT_FOUND`        | 404  | 리소스 없음 또는 타 사용자 소유                                     |
-| `INTERNAL_ERROR`   | 500  | 처리되지 않은 예외                                             |
-| `UNAUTHORIZED`     | 401  | Spring Security 인증 실패. body가 비어 있을 수 있음                |
-| `FORBIDDEN`        | 403  | Spring Security 인가 실패. body가 비어 있을 수 있음                |
+| 코드 / 상태                    | HTTP | 설명                                                                 |
+|----------------------------|------|--------------------------------------------------------------------|
+| `VALIDATION_ERROR`         | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                                        |
+| `BAD_REQUEST`              | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, VO 불변식 위반 등                               |
+| `AUTHENTICATION_FAILED`    | 401  | JWT · Refresh Token · SSE subscribe 토큰 검증 실패 (`AuthenticationFailedException`) |
+| `NOT_FOUND`                | 404  | 리소스 없음 또는 타 사용자 소유                                                 |
+| `METHOD_NOT_ALLOWED`       | 405  | 경로는 존재하지만 HTTP 메서드가 미지원                                           |
+| `CONFLICT`                 | 409  | 데드락 retry 소진 등 일시적 충돌                                              |
+| `IDEMPOTENCY_CONFLICT`     | 409  | 동일 idempotency key 재사용 + payload 불일치 (세션 `sessionFocusSeconds` mismatch 등) |
+| `TODO_STATE_VIOLATION`     | 409  | Todo 상태 위반 (미완료 복습 스케줄, MAX_REVIEW_ROUND 초과 등)                    |
+| `INTERNAL_ERROR`           | 500  | 처리되지 않은 예외, 방어 코드 ISE                                              |
+| `UNAUTHORIZED`             | 401  | Spring Security 인증 실패. body 가 비어 있을 수 있음                           |
+| `FORBIDDEN`                | 403  | Spring Security 인가 실패. body 가 비어 있을 수 있음                           |
 
 참고:
 
-- 현재 구현에는 `409 CONFLICT`를 반환하는 경로가 없다.
-- `GET /api/timer/sse`는 SecurityFilter가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member가 `400 BAD_REQUEST`로
-  내려온다.
-- `UNAUTHORIZED`, `FORBIDDEN`은 Spring Security가 만드는 HTTP 상태이며, `ApiError.error.code`를 항상 의미하지는 않는다.
+- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 retry 소진) 에만 사용된다. `IDEMPOTENCY_CONFLICT` / `TODO_STATE_VIOLATION` 은 별도 code 로 구분.
+- `GET /api/timer/sse` 는 SecurityFilter 가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member 가 `401 AUTHENTICATION_FAILED` 로 내려온다 (이전 버전에서는 400 이었음 — Phase 2 에서 semantic 정합 교체).
+- `UNAUTHORIZED`, `FORBIDDEN` 은 Spring Security 가 만드는 HTTP 상태이며, `ApiError.error.code` 를 항상 의미하지는 않는다. 서비스 레이어에서 던지는 도메인 401 은 `AUTHENTICATION_FAILED` code 를 사용한다.

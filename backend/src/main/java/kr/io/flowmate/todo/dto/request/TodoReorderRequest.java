@@ -1,4 +1,4 @@
-package kr.io.flowmate.todo.dto;
+package kr.io.flowmate.todo.dto.request;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;

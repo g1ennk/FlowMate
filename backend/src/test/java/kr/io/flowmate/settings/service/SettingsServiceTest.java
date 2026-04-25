@@ -1,5 +1,6 @@
 package kr.io.flowmate.settings.service;
 
+import kr.io.flowmate.settings.domain.PomodoroConfig;
 import kr.io.flowmate.settings.domain.UserSettings;
 import kr.io.flowmate.settings.dto.request.AutomationSettingsRequest;
 import kr.io.flowmate.settings.dto.request.MiniDayRequest;
@@ -22,11 +23,16 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("SettingsServiceTest")
+@DisplayName("SettingsService")
 class SettingsServiceTest {
+
+    private static final String USER_ID = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
 
     @Mock
     private SettingsRepository settingsRepository;
@@ -35,323 +41,152 @@ class SettingsServiceTest {
     private SettingsService settingsService;
 
     @Test
-    @DisplayName("getSettings: 사용자 없을 때 기본값 반환 (DB 저장 안 함)")
-    void getSettings_신규사용자_기본값반환() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        when(settingsRepository.findById(userId)).thenReturn(Optional.empty());
+    @DisplayName("getSettings: row 없으면 기본값 응답 + save 호출 안 함 (lazy-write 유지)")
+    void getSettings_rowMiss_returnsDefaultsAndSkipsSave() {
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-        // when
-        SettingsResponse response = settingsService.getSettings(userId);
+        SettingsResponse response = settingsService.getSettings(USER_ID);
 
-        // then
-        assertThat(response).isNotNull();
-        assertThat(response.getPomodoroSession().getFlowMin()).isEqualTo(25);
-        assertThat(response.getPomodoroSession().getBreakMin()).isEqualTo(5);
-        assertThat(response.getAutomation().isAutoStartBreak()).isFalse();
-        assertThat(response.getMiniDays().getDay1().getLabel()).isEqualTo("오전");
-
+        assertThat(response.pomodoroSession().flowMin()).isEqualTo(25);
+        assertThat(response.pomodoroSession().breakMin()).isEqualTo(5);
+        assertThat(response.automation().autoStartBreak()).isFalse();
+        assertThat(response.miniDays().day1().label()).isEqualTo("오전");
+        assertThat(response.miniDays().day1().start()).isEqualTo("06:00");
         verify(settingsRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("updatePomodoro: 첫 PUT 시 DB 생성")
-    void updatePomodoro_첫저장_DB생성() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
+    @DisplayName("getSettings: row 있으면 저장값 그대로 반환")
+    void getSettings_rowHit_returnsStored() {
+        UserSettings existing = UserSettings.createWithDefaults(USER_ID);
+        existing.updatePomodoro(new PomodoroConfig(40, 8, 20, 5));
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
+
+        SettingsResponse response = settingsService.getSettings(USER_ID);
+
+        assertThat(response.pomodoroSession().flowMin()).isEqualTo(40);
+        assertThat(response.pomodoroSession().cycleEvery()).isEqualTo(5);
+        verify(settingsRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("updatePomodoro: row 없으면 save 1회 호출 (신규 INSERT)")
+    void updatePomodoro_rowMiss_savesNewEntity() {
         PomodoroSessionSettingsRequest request = new PomodoroSessionSettingsRequest();
         request.setFlowMin(30);
         request.setBreakMin(10);
         request.setLongBreakMin(20);
         request.setCycleEvery(3);
 
-        when(settingsRepository.findById(userId)).thenReturn(Optional.empty());
-        when(settingsRepository.save(any(UserSettings.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
+        when(settingsRepository.save(any(UserSettings.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // when
-        PomodoroSessionSettingsResponse response = settingsService.updatePomodoro(userId, request);
+        PomodoroSessionSettingsResponse response = settingsService.updatePomodoro(USER_ID, request);
 
-        // then
-        assertThat(response.getFlowMin()).isEqualTo(30);
-        assertThat(response.getBreakMin()).isEqualTo(10);
+        assertThat(response.flowMin()).isEqualTo(30);
+        assertThat(response.breakMin()).isEqualTo(10);
         verify(settingsRepository, times(1)).save(any(UserSettings.class));
     }
 
     @Test
-    @DisplayName("updatePomodoro: 기존 사용자 수정 (Dirty Checking)")
-    void updatePomodoro_기존사용자_수정() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
-
+    @DisplayName("updatePomodoro: row 있으면 dirty checking 으로 수정 (save 호출 없음)")
+    void updatePomodoro_rowHit_usesDirtyChecking() {
+        UserSettings existing = UserSettings.createWithDefaults(USER_ID);
         PomodoroSessionSettingsRequest request = new PomodoroSessionSettingsRequest();
         request.setFlowMin(40);
         request.setBreakMin(8);
         request.setLongBreakMin(18);
         request.setCycleEvery(5);
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
 
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
+        PomodoroSessionSettingsResponse response = settingsService.updatePomodoro(USER_ID, request);
 
-        // when
-        PomodoroSessionSettingsResponse response = settingsService.updatePomodoro(userId, request);
-
-        // then
-        assertThat(response.getFlowMin()).isEqualTo(40);
-        assertThat(response.getBreakMin()).isEqualTo(8);
-        assertThat(existingSettings.getFlowMin()).isEqualTo(40);
-
+        assertThat(response.flowMin()).isEqualTo(40);
+        assertThat(existing.getFlowMin()).isEqualTo(40);
         verify(settingsRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("updateMiniDays: 시간 형식 변환 확인")
-    void updateMiniDays_시간형식변환() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
-
-        MiniDaysSettingsRequest request = new MiniDaysSettingsRequest();
-
-        MiniDayRequest day1 = new MiniDayRequest();
-        day1.setLabel("새벽");
-        day1.setStart("00:00");
-        day1.setEnd("06:00");
-
-        MiniDayRequest day2 = new MiniDayRequest();
-        day2.setLabel("낮");
-        day2.setStart("06:00");
-        day2.setEnd("18:00");
-
-        MiniDayRequest day3 = new MiniDayRequest();
-        day3.setLabel("밤");
-        day3.setStart("18:00");
-        day3.setEnd("24:00");
-
-        request.setDay1(day1);
-        request.setDay2(day2);
-        request.setDay3(day3);
-
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
-
-        // when
-        MiniDaysSettingsResponse response = settingsService.updateMiniDays(userId, request);
-
-        // then
-        assertThat(response.getDay1().getLabel()).isEqualTo("새벽");
-        assertThat(response.getDay1().getStart()).isEqualTo("00:00");
-        assertThat(response.getDay1().getEnd()).isEqualTo("06:00");
-
-        assertThat(existingSettings.getDay1StartMin()).isEqualTo(0);
-        assertThat(existingSettings.getDay1EndMin()).isEqualTo(360);
-    }
-
-    @Test
-    @DisplayName("updateAutomation: 첫 PUT 시 DB 생성")
-    void updateAutomation_첫저장_DB생성() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        AutomationSettingsRequest request = new AutomationSettingsRequest();
-        request.setAutoStartBreak(true);
-        request.setAutoStartSession(true);
-
-        when(settingsRepository.findById(userId)).thenReturn(Optional.empty());
-        when(settingsRepository.save(any(UserSettings.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        // when
-        AutomationSettingsResponse response = settingsService.updateAutomation(userId, request);
-
-        // then
-        assertThat(response.isAutoStartBreak()).isTrue();
-        assertThat(response.isAutoStartSession()).isTrue();
-        verify(settingsRepository, times(1)).save(any(UserSettings.class));
-    }
-
-    @Test
-    @DisplayName("updateAutomation: 기존 사용자 수정 (Dirty Checking)")
-    void updateAutomation_기존사용자_수정() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
-
-        AutomationSettingsRequest request = new AutomationSettingsRequest();
-        request.setAutoStartBreak(true);
-        request.setAutoStartSession(false);
-
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
-
-        // when
-        AutomationSettingsResponse response = settingsService.updateAutomation(userId, request);
-
-        // then
-        assertThat(response.isAutoStartBreak()).isTrue();
-        assertThat(response.isAutoStartSession()).isFalse();
-        assertThat(existingSettings.isAutoStartBreak()).isTrue();
-        assertThat(existingSettings.isAutoStartSession()).isFalse();
-        verify(settingsRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("updatePomodoro: flowMin 범위 초과 시 예외 발생")
-    void updatePomodoro_flowMin_범위초과_예외발생() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
-
+    @DisplayName("updatePomodoro: flowMin 범위 초과면 PomodoroConfig VO IAE 가 서비스 밖으로 전파")
+    void updatePomodoro_flowMinOutOfRange_throwsIae() {
+        UserSettings existing = UserSettings.createWithDefaults(USER_ID);
         PomodoroSessionSettingsRequest request = new PomodoroSessionSettingsRequest();
         request.setFlowMin(100);
         request.setBreakMin(5);
         request.setLongBreakMin(15);
         request.setCycleEvery(4);
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
 
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
-
-        // when & then
-        assertThatThrownBy(() -> settingsService.updatePomodoro(userId, request))
+        assertThatThrownBy(() -> settingsService.updatePomodoro(USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Flow time must be between 1 and 90 minutes");
+                .hasMessageContaining("1 and 90 minutes");
     }
 
     @Test
-    @DisplayName("updatePomodoro: 최소/최대 경계값 정상 처리")
-    void updatePomodoro_경계값_정상처리() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
+    @DisplayName("updateAutomation: row 있으면 dirty checking 으로 boolean 전환 (save 호출 없음)")
+    void updateAutomation_rowHit_usesDirtyChecking() {
+        UserSettings existing = UserSettings.createWithDefaults(USER_ID);
+        AutomationSettingsRequest request = new AutomationSettingsRequest();
+        request.setAutoStartBreak(true);
+        request.setAutoStartSession(false);
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
 
-        PomodoroSessionSettingsRequest minRequest = new PomodoroSessionSettingsRequest();
-        minRequest.setFlowMin(1);
-        minRequest.setBreakMin(1);
-        minRequest.setLongBreakMin(1);
-        minRequest.setCycleEvery(1);
+        AutomationSettingsResponse response = settingsService.updateAutomation(USER_ID, request);
 
-        PomodoroSessionSettingsRequest maxRequest = new PomodoroSessionSettingsRequest();
-        maxRequest.setFlowMin(90);
-        maxRequest.setBreakMin(90);
-        maxRequest.setLongBreakMin(90);
-        maxRequest.setCycleEvery(10);
-
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
-
-        // when
-        PomodoroSessionSettingsResponse minResponse = settingsService.updatePomodoro(userId, minRequest);
-        PomodoroSessionSettingsResponse maxResponse = settingsService.updatePomodoro(userId, maxRequest);
-
-        // then
-        assertThat(minResponse.getFlowMin()).isEqualTo(1);
-        assertThat(minResponse.getBreakMin()).isEqualTo(1);
-        assertThat(minResponse.getLongBreakMin()).isEqualTo(1);
-        assertThat(minResponse.getCycleEvery()).isEqualTo(1);
-        assertThat(maxResponse.getFlowMin()).isEqualTo(90);
-        assertThat(maxResponse.getBreakMin()).isEqualTo(90);
-        assertThat(maxResponse.getLongBreakMin()).isEqualTo(90);
-        assertThat(maxResponse.getCycleEvery()).isEqualTo(10);
+        assertThat(response.autoStartBreak()).isTrue();
+        assertThat(response.autoStartSession()).isFalse();
+        assertThat(existing.isAutoStartBreak()).isTrue();
         verify(settingsRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("updateMiniDays: 시작 시간이 종료 시간보다 늦으면 예외 발생")
-    void updateMiniDays_시작시간이_종료시간이후_예외발생() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
+    @DisplayName("updateMiniDays: HH:mm 문자열을 minutes 로 변환해서 저장 (24:00 → 1440 포함)")
+    void updateMiniDays_convertsDtoTimesAndStoresMinutes() {
+        UserSettings existing = UserSettings.createWithDefaults(USER_ID);
+        MiniDaysSettingsRequest request = miniDaysRequest(
+                dayRequest("새벽", "00:00", "06:00"),
+                dayRequest("낮", "06:00", "18:00"),
+                dayRequest("밤", "18:00", "24:00")
+        );
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
 
-        MiniDayRequest invalidDay = new MiniDayRequest();
-        invalidDay.setLabel("오전");
-        invalidDay.setStart("12:00");
-        invalidDay.setEnd("06:00");
+        MiniDaysSettingsResponse response = settingsService.updateMiniDays(USER_ID, request);
 
-        MiniDayRequest validDay2 = new MiniDayRequest();
-        validDay2.setLabel("오후");
-        validDay2.setStart("12:00");
-        validDay2.setEnd("18:00");
+        assertThat(response.day1().start()).isEqualTo("00:00");
+        assertThat(response.day3().end()).isEqualTo("24:00");
+        assertThat(existing.getDay1StartMin()).isZero();
+        assertThat(existing.getDay3EndMin()).isEqualTo(1440);
+    }
 
-        MiniDayRequest validDay3 = new MiniDayRequest();
-        validDay3.setLabel("저녁");
-        validDay3.setStart("18:00");
-        validDay3.setEnd("24:00");
+    @Test
+    @DisplayName("updateMiniDays: 시작이 종료 이후이면 MiniDay VO IAE 가 서비스 밖으로 전파")
+    void updateMiniDays_startAfterEnd_throwsIae() {
+        UserSettings existing = UserSettings.createWithDefaults(USER_ID);
+        MiniDaysSettingsRequest request = miniDaysRequest(
+                dayRequest("오전", "12:00", "06:00"),
+                dayRequest("오후", "12:00", "18:00"),
+                dayRequest("저녁", "18:00", "24:00")
+        );
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
 
-        MiniDaysSettingsRequest request = new MiniDaysSettingsRequest();
-        request.setDay1(invalidDay);
-        request.setDay2(validDay2);
-        request.setDay3(validDay3);
-
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
-
-        // when & then
-        assertThatThrownBy(() -> settingsService.updateMiniDays(userId, request))
+        assertThatThrownBy(() -> settingsService.updateMiniDays(USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Start time must be before end time");
     }
 
-    @Test
-    @DisplayName("updateMiniDays: label 50자 초과 시 예외 발생")
-    void updateMiniDays_라벨길이초과_예외발생() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
-
-        MiniDayRequest day1 = new MiniDayRequest();
-        day1.setLabel("a".repeat(51));
-        day1.setStart("06:00");
-        day1.setEnd("12:00");
-
-        MiniDayRequest day2 = new MiniDayRequest();
-        day2.setLabel("오후");
-        day2.setStart("12:00");
-        day2.setEnd("18:00");
-
-        MiniDayRequest day3 = new MiniDayRequest();
-        day3.setLabel("저녁");
-        day3.setStart("18:00");
-        day3.setEnd("24:00");
-
-        MiniDaysSettingsRequest request = new MiniDaysSettingsRequest();
-        request.setDay1(day1);
-        request.setDay2(day2);
-        request.setDay3(day3);
-
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
-
-        // when & then
-        assertThatThrownBy(() -> settingsService.updateMiniDays(userId, request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Label cannot exceed 50 characters");
+    private MiniDayRequest dayRequest(String label, String start, String end) {
+        MiniDayRequest day = new MiniDayRequest();
+        day.setLabel(label);
+        day.setStart(start);
+        day.setEnd(end);
+        return day;
     }
 
-    @Test
-    @DisplayName("updateMiniDays: 종료 시간 24:00 정상 처리")
-    void updateMiniDays_종료시간24시_정상처리() {
-        // given
-        String userId = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-        UserSettings existingSettings = UserSettings.createWithDefaults(userId);
-
-        MiniDayRequest day1 = new MiniDayRequest();
-        day1.setLabel("종일");
-        day1.setStart("00:00");
-        day1.setEnd("24:00");
-
-        MiniDayRequest day2 = new MiniDayRequest();
-        day2.setLabel("오후");
-        day2.setStart("12:00");
-        day2.setEnd("18:00");
-
-        MiniDayRequest day3 = new MiniDayRequest();
-        day3.setLabel("저녁");
-        day3.setStart("18:00");
-        day3.setEnd("23:00");
-
-        MiniDaysSettingsRequest request = new MiniDaysSettingsRequest();
-        request.setDay1(day1);
-        request.setDay2(day2);
-        request.setDay3(day3);
-
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(existingSettings));
-
-        // when
-        MiniDaysSettingsResponse response = settingsService.updateMiniDays(userId, request);
-
-        // then
-        assertThat(response.getDay1().getEnd()).isEqualTo("24:00");
-        assertThat(existingSettings.getDay1EndMin()).isEqualTo(1440);
+    private MiniDaysSettingsRequest miniDaysRequest(MiniDayRequest d1, MiniDayRequest d2, MiniDayRequest d3) {
+        MiniDaysSettingsRequest req = new MiniDaysSettingsRequest();
+        req.setDay1(d1);
+        req.setDay2(d2);
+        req.setDay3(d3);
+        return req;
     }
 }

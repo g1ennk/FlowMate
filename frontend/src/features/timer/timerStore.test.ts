@@ -236,14 +236,14 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     sessions: [],
   }
 
-  it('applyRemoteState with serverTime > last applies the state', () => {
+  it('applyRemoteState with version > last applies the state', () => {
     useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
 
     expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
     expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
   })
 
-  it('applyRemoteState with same serverTime applies the state', () => {
+  it('applyRemoteState with same version applies the state', () => {
     useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
 
     const updated: SingleTimerState = { ...remoteTimer, status: 'paused', endAt: null }
@@ -252,7 +252,7 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     expect(useTimerStore.getState().timers[TODO_ID].status).toBe('paused')
   })
 
-  it('applyRemoteState with serverTime < last is dropped', () => {
+  it('applyRemoteState with version < last is dropped', () => {
     useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 200)
 
     const stale: SingleTimerState = { ...remoteTimer, status: 'paused', endAt: null }
@@ -261,7 +261,7 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
   })
 
-  it('applyRemoteReset with serverTime > last removes the timer', () => {
+  it('applyRemoteReset with version > last removes the timer', () => {
     useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
     expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
 
@@ -269,7 +269,7 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
   })
 
-  it('applyRemoteReset with same serverTime removes the timer', () => {
+  it('applyRemoteReset with same version removes the timer', () => {
     useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
     expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
 
