@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { Fragment, useMemo, useState, useCallback, type Dispatch, type SetStateAction } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DndContext } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -49,10 +49,10 @@ function TodosPage() {
   const getTimer = useTimerStore((s) => s.getTimer)
   const reorderTodos = useReorderTodos()
   const authState = useAuthStore((s) => s.state)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const dateParam = searchParams.get('date')
 
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState(() => parseDateParam(dateParam) ?? new Date())
   const [calendarViewMode, setCalendarViewMode] = useState<TodosCalendarViewMode>(() =>
     readStoredTodosCalendarViewMode(),
   )
@@ -73,12 +73,14 @@ function TodosPage() {
     }
   }, [])
 
-  // URL의 date 파라미터가 변경되면 선택 날짜를 동기화
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => {
-    const nextDate = parseDateParam(dateParam)
-    if (nextDate) setSelectedDate(nextDate)
-  }, [dateParam])
+  const handleSelectedDateChange = useCallback((nextDate: Date) => {
+    setSelectedDate(nextDate)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('date', formatDateKey(nextDate))
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
 
   const daySections = useMemo(() => {
     const formatRange = (start: string, end: string) => {
@@ -147,17 +149,16 @@ function TodosPage() {
       }),
     [daySections, defaultOpenId, groupedTodos, selectedDateKey, todayDateKey],
   )
-  const [openSections, setOpenSections] = useState<Record<number, boolean>>(() => initialOpenSections)
-  const lastInitializedDateKeyRef = useRef<string | null>(null)
-
-  // 날짜 변경 시 섹션 열림 상태를 초기화 — 외부 상태(URL) → 내부 상태 동기화
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => {
-    if (isLoading) return
-    if (lastInitializedDateKeyRef.current === selectedDateKey) return
-    lastInitializedDateKeyRef.current = selectedDateKey
-    setOpenSections(initialOpenSections)
-  }, [initialOpenSections, isLoading, selectedDateKey])
+  const [openSectionsByDate, setOpenSectionsByDate] = useState<Record<string, Record<number, boolean>>>({})
+  const openSections = openSectionsByDate[selectedDateKey] ?? initialOpenSections
+  const setOpenSections = useCallback<Dispatch<SetStateAction<Record<number, boolean>>>>((value) => {
+    setOpenSectionsByDate((prev) => {
+      const current = prev[selectedDateKey] ?? initialOpenSections
+      const next = typeof value === 'function' ? value(current) : value
+      if (next === current) return prev
+      return { ...prev, [selectedDateKey]: next }
+    })
+  }, [initialOpenSections, selectedDateKey])
 
   const dnd = useDragAndDrop({
     daySections,
@@ -271,8 +272,8 @@ function TodosPage() {
     <div className="animate-fade-in-up space-y-section">
       <Calendar
         selectedDate={selectedDate}
-        onSelectDate={setSelectedDate}
-        onMonthChange={setSelectedDate}
+        onSelectDate={handleSelectedDateChange}
+        onMonthChange={handleSelectedDateChange}
         markedDates={markedDates}
         viewMode={calendarViewMode}
         onViewModeChange={handleCalendarViewModeChange}
