@@ -124,7 +124,7 @@ sequenceDiagram
     S ->> R: register(userId)
     R -->> M: connected
     D ->> S: PUT /api/timer/state/{todoId}
-    S ->> S: 상태 저장 + serverTime 갱신
+    S ->> S: 상태 저장 + version 갱신
     S ->> R: broadcast(userId, timer-state)
     R -->> D: timer-state
     R -->> M: timer-state

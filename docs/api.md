@@ -1,6 +1,6 @@
 # API Reference – FlowMate
 
-> Last updated: 2026-03-28
+> Last updated: 2026-04-25
 
 Base URL: `/api`
 
@@ -17,7 +17,7 @@ Base URL: `/api`
 | Member Access JWT | 메모리(JS)에만 보관한다. 인증이 필요한 요청은 `Authorization: Bearer {token}` 헤더를 사용한다.                                                                 |
 | Refresh Token     | HttpOnly 쿠키로만 전송한다. refresh 시 기존 RT 1개를 revoke하고 새 RT를 발급한다.                                                                          |
 | SSE               | `GET /api/timer/sse`만 EventSource 제약 때문에 쿼리 파라미터 `token`을 사용한다. 상세 배경은 [architecture.md — SSE 아키텍처](./architecture.md#3-sse-아키텍처) 참고. |
-| 리스트 응답            | 대부분 `{ "items": [...] }` 형태의 `ListResponse<T>`를 사용한다. 예외는 `GET /api/timer/state`의 직접 배열 반환과 단건 Review 조회의 `Review` 또는 `null` 반환이다.    |
+| 리스트 응답            | 대부분 `{ "items": [...] }` 형태의 `ListResponse<T>`를 사용한다. 예외는 `GET /api/timer/state`의 직접 배열 반환이다.                                         |
 | 도메인 용어            | `MiniDay`, `dayOrder`, `TodoSession`, `TimerState` 등 용어 정의는 [data-model.md — 개념적 모델링](./data-model.md#1-개념적-모델링) 참고.                  |
 
 ## 1. 인증
@@ -531,7 +531,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 Member Access JWT 전용.
 
 > 멀티탭·기기 간 타이머 상태 일관성을 위해 SSE 브로드캐스트를 사용한다.
-> 클라이언트는 `serverTime` 단조 증가 값을 기준으로 이벤트 중복 적용을 방지한다.
+> 클라이언트는 `version` 단조 증가 값을 기준으로 이벤트 중복 적용을 방지한다.
 
 ### 4.1 SSE 구독
 
@@ -552,7 +552,7 @@ Member Access JWT 전용.
 **재연결**
 
 - 브라우저 `EventSource`는 끊기면 자동 재연결한다.
-- 재연결 후 `GET /api/timer/state`로 최신 스냅샷을 동기화하고, 이미 처리한 `serverTime`과 비교해 중복 적용을 막는다.
+- 재연결 후 `GET /api/timer/state`로 최신 스냅샷을 동기화하고, 이미 처리한 `version`과 비교해 중복 적용을 막는다.
 
 **Errors**
 
@@ -588,7 +588,7 @@ Member Access JWT 전용.
 - `status=idle`이면 `state`는 `null`
 - `status!=idle`이면 `state`는 non-null
 - 저장 후 같은 `userId`의 SSE 연결에 `timer-state` 이벤트를 브로드캐스트한다.
-- `status=idle` 요청도 `200`으로 정상 처리되며, 이 경우 서버는 `state=null`로 저장하고 `serverTime`만 갱신한다.
+- `status=idle` 요청도 `200`으로 정상 처리되며, 이 경우 서버는 `state=null`로 저장하고 `version`만 갱신한다.
 
 **SingleTimerState 구조**
 
@@ -611,17 +611,16 @@ Member Access JWT 전용.
     "cycleCount": 1,
     "sessions": []
   },
-  "serverTime": 1772454032001
+  "version": 1772454032001
 }
 ```
 
-- `serverTime`: `max(System.currentTimeMillis(), lastVersion + 1)`
+- `version`: `max(System.currentTimeMillis(), lastVersion + 1)`
 
 **Errors**
 
 - `400 BAD_REQUEST` idle/state 조합 불일치
-- `401` 미인증
-- `403` Guest JWT 사용
+- `401` 미인증 또는 게스트 토큰으로 요청한 경우 (멤버 전용 엔드포인트)
 - `404 NOT_FOUND` 해당 Todo 없음 또는 타 사용자 소유
 
 ---
@@ -647,7 +646,7 @@ Member Access JWT 전용.
       "cycleCount": 1,
       "sessions": []
     },
-    "serverTime": 1772454032001
+    "version": 1772454032001
   }
 ]
 ```
@@ -834,12 +833,7 @@ row가 없으면 기본값으로 응답하고, 수정 시점에만 row를 생성
 
 Guest JWT와 Member Access JWT 모두 사용 가능.
 
-`GET /api/reviews`는 쿼리 파라미터 조합으로 단건/목록을 구분한다.
-
-| 파라미터 조합                | 결과       |
-|------------------------|----------|
-| `type` + `periodStart` | 단건 조회    |
-| `type` + `from` + `to` | 기간 목록 조회 |
+단건은 `GET /api/reviews/{periodStart}?type=...`로, 목록은 `GET /api/reviews?type&from&to`로 분리되어 있다.
 
 **대표 Review 응답**
 
@@ -857,15 +851,15 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 ### 6.1 단건 조회
 
-`GET /api/reviews?type={type}&periodStart=YYYY-MM-DD`
+`GET /api/reviews/{periodStart}?type={type}`
 
-- `type`: `daily | weekly | monthly`
-- `periodStart`: daily는 임의 날짜, weekly는 월요일, monthly는 매월 1일
+- `periodStart` (path): daily는 임의 날짜, weekly는 월요일, monthly는 매월 1일
+- `type` (query): `daily | weekly | monthly`
 
-**Response** `200`
+**Response**
 
-- 존재하면 `Review`
-- 없으면 본문으로 JSON `null`을 반환한다.
+- `200 OK` — 회고가 존재하면 `Review` 본문 반환
+- `404 Not Found` — 해당 기간의 회고가 없는 경우 (본문 없음)
 
 ---
 

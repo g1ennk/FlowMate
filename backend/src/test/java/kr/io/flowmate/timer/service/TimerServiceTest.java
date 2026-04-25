@@ -63,7 +63,7 @@ class TimerServiceTest {
         long after = System.currentTimeMillis();
         assertThat(response.todoId()).isEqualTo(TODO_ID);
         assertThat(response.state()).isEqualTo(request.getState());
-        assertThat(response.serverTime()).isBetween(before, after);
+        assertThat(response.version()).isBetween(before, after);
         verify(timerStateRepository, times(1)).saveAndFlush(any(TimerState.class));
         verify(sseEmitterRegistry).broadcast(eq(USER_ID), any(SseEmitter.SseEventBuilder.class));
     }
@@ -102,7 +102,7 @@ class TimerServiceTest {
         TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, runningRequest());
 
         // lastVersion 이 current millis 보다 클 때도 최소 lastVersion+1 이 보장된다
-        assertThat(response.serverTime()).isGreaterThan(10_000_000_000_000L);
+        assertThat(response.version()).isGreaterThan(10_000_000_000_000L);
     }
 
     @Test
@@ -137,7 +137,7 @@ class TimerServiceTest {
         TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, runningRequest());
 
         // 재계산된 newVersion 이 winner version 보다 반드시 커야 단조 증가 invariant 가 유지된다
-        assertThat(response.serverTime()).isGreaterThan(winnerVersion);
+        assertThat(response.version()).isGreaterThan(winnerVersion);
         verify(timerStateRepository, times(2)).saveAndFlush(any(TimerState.class));
         verify(timerStateRepository, times(2)).findByUserIdAndTodoId(USER_ID, TODO_ID);
     }
@@ -164,7 +164,7 @@ class TimerServiceTest {
         // soft delete(state_json=null) 는 active 응답에서 제외
         assertThat(result).hasSize(1);
         assertThat(result.get(0).todoId()).isEqualTo("todo-active");
-        assertThat(result.get(0).serverTime()).isEqualTo(123L);
+        assertThat(result.get(0).version()).isEqualTo(123L);
     }
 
     @Test

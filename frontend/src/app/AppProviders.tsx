@@ -104,9 +104,9 @@ function useInitialTimerFetch() {
 
         if (currentUserId !== requestedUserId) return
 
-        states.forEach(({ todoId, state, serverTime }) => {
+        states.forEach(({ todoId, state, version }) => {
           if (!todoId || !state) return
-          useTimerStore.getState().applyRemoteState(todoId, state, serverTime)
+          useTimerStore.getState().applyRemoteState(todoId, state, version)
         })
       })
       .catch(() => {})

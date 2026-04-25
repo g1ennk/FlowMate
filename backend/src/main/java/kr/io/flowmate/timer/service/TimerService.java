@@ -106,10 +106,10 @@ public class TimerService {
     // SSE broadcast 는 fire-and-forget.
     // 전송 실패가 호출자 트랜잭션에 영향을 주지 않도록 SseEmitterRegistry 가 모든 예외를 흡수한다.
     // 직렬화 실패만 여기서 로깅하고 전파하지 않으며, 클라이언트는 GET /api/timer/state 로 보정 가능하다.
-    private void broadcast(String userId, String todoId, Object state, long serverTime) {
+    private void broadcast(String userId, String todoId, Object state, long version) {
         try {
             String json = objectMapper.writeValueAsString(
-                    new TimerStateResponse(todoId, state, serverTime)
+                    new TimerStateResponse(todoId, state, version)
             );
             sseEmitterRegistry.broadcast(userId, SseEmitter.event().name("timer-state").data(json));
         } catch (JacksonException e) {

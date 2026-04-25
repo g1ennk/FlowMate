@@ -123,7 +123,7 @@ class TimerControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.todoId").value(todoId))
-                .andExpect(jsonPath("$.serverTime").value(999));
+                .andExpect(jsonPath("$.version").value(999));
     }
 
     @Test
@@ -136,6 +136,6 @@ class TimerControllerTest {
         mockMvc.perform(get("/api/timer/state"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].todoId").value("todo-1"))
-                .andExpect(jsonPath("$[0].serverTime").value(111));
+                .andExpect(jsonPath("$[0].version").value(111));
     }
 }

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -20,12 +21,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -34,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ReviewControllerTest {
 
     private static final String USER_ID = "c6d4ed5b-9d1e-4ecd-ac4f-9c1490f6fd01";
-    private static final LocalDate MONDAY = LocalDate.of(2026, 2, 16);
+    private static final LocalDate MONDAY = LocalDate.of(2026, 4, 20);
 
     @Mock private ReviewService reviewService;
     @Mock private CurrentUserResolver currentUserResolver;
@@ -51,78 +53,75 @@ class ReviewControllerTest {
                 .build();
     }
 
-    @Test
-    @DisplayName("GET ?type&periodStart: 단건 존재 시 200 + Review JSON")
-    void getReviews_singleHit_returnsJson() throws Exception {
-        when(currentUserResolver.resolve()).thenReturn(USER_ID);
-        when(reviewService.getReview(USER_ID, ReviewType.DAILY, MONDAY))
-                .thenReturn(new ReviewResponse(
-                        "review-1", "daily", MONDAY, MONDAY, "내용",
-                        Instant.parse("2026-02-16T10:00:00Z"),
-                        Instant.parse("2026-02-16T10:00:00Z")));
+    private ReviewResponse sampleResponse() {
+        return new ReviewResponse(
+                "review-1", "WEEKLY", MONDAY, MONDAY.plusDays(6), "주간 회고 내용",
+                Instant.parse("2026-04-20T10:00:00Z"),
+                Instant.parse("2026-04-20T10:00:00Z"));
+    }
 
-        mockMvc.perform(get("/api/reviews")
-                        .param("type", "daily")
-                        .param("periodStart", "2026-02-16"))
+    @Test
+    @DisplayName("GET /{periodStart}?type: 단건 존재 시 200 + ReviewResponse JSON")
+    void getReview_returns200_whenExists() throws Exception {
+        when(currentUserResolver.resolve()).thenReturn(USER_ID);
+        when(reviewService.getReview(eq(USER_ID), eq(ReviewType.WEEKLY), eq(MONDAY)))
+                .thenReturn(sampleResponse());
+
+        mockMvc.perform(get("/api/reviews/2026-04-20").param("type", "WEEKLY"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value("review-1"))
-                .andExpect(jsonPath("$.content").value("내용"));
+                .andExpect(jsonPath("$.content").value("주간 회고 내용"));
     }
 
     @Test
-    @DisplayName("GET ?type&periodStart: 미존재 시 200 + JSON literal 'null' (docs §6.1 공개 계약)")
-    void getReviews_singleMiss_returnsJsonNull() throws Exception {
+    @DisplayName("GET /{periodStart}?type: 미존재 시 404 Not Found")
+    void getReview_returns404_whenNotExists() throws Exception {
         when(currentUserResolver.resolve()).thenReturn(USER_ID);
-        when(reviewService.getReview(USER_ID, ReviewType.DAILY, MONDAY)).thenReturn(null);
+        when(reviewService.getReview(eq(USER_ID), eq(ReviewType.WEEKLY), eq(MONDAY)))
+                .thenReturn(null);
+
+        mockMvc.perform(get("/api/reviews/2026-04-20").param("type", "WEEKLY"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("GET ?type&from&to: 범위 조회 시 200 + ListResponse(items) JSON")
+    void getReviews_rangeMode_returnsListResponse() throws Exception {
+        LocalDate from = LocalDate.of(2026, 1, 1);
+        LocalDate to = LocalDate.of(2026, 12, 31);
+        when(currentUserResolver.resolve()).thenReturn(USER_ID);
+        when(reviewService.getReviews(eq(USER_ID), eq(ReviewType.WEEKLY), eq(from), eq(to)))
+                .thenReturn(List.of(sampleResponse()));
 
         mockMvc.perform(get("/api/reviews")
-                        .param("type", "daily")
-                        .param("periodStart", "2026-02-16"))
+                        .param("type", "WEEKLY")
+                        .param("from", "2026-01-01")
+                        .param("to", "2026-12-31"))
                 .andExpect(status().isOk())
-                .andExpect(content().string("null"));
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items[0].id").value("review-1"));
     }
 
     @Test
-    @DisplayName("GET ?type&from&to: 범위 결과를 ListResponse(items) 로 200")
-    void getReviews_range_returnsListResponse() throws Exception {
-        LocalDate from = LocalDate.of(2026, 2, 1);
-        LocalDate to = LocalDate.of(2026, 2, 28);
+    @DisplayName("PUT /api/reviews: upsert 성공 시 200 + ReviewResponse JSON")
+    void upsertReview_returns200() throws Exception {
         when(currentUserResolver.resolve()).thenReturn(USER_ID);
-        when(reviewService.getReviews(USER_ID, ReviewType.DAILY, from, to))
-                .thenReturn(List.of(new ReviewResponse(
-                        "r1", "daily", from, from, "1일",
-                        Instant.parse("2026-02-01T00:00:00Z"),
-                        Instant.parse("2026-02-01T00:00:00Z"))));
+        when(reviewService.upsertReview(eq(USER_ID), any())).thenReturn(sampleResponse());
 
-        mockMvc.perform(get("/api/reviews")
-                        .param("type", "daily")
-                        .param("from", "2026-02-01")
-                        .param("to", "2026-02-28"))
+        String body = """
+                {
+                  "type": "WEEKLY",
+                  "periodStart": "2026-04-20",
+                  "periodEnd": "2026-04-27",
+                  "content": "주간 회고 내용"
+                }
+                """;
+
+        mockMvc.perform(put("/api/reviews")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].id").value("r1"));
-    }
-
-    @Test
-    @DisplayName("GET: periodStart 와 from/to 를 함께 보내면 400 BAD_REQUEST (배타 검증)")
-    void getReviews_bothModes_returns400() throws Exception {
-        when(currentUserResolver.resolve()).thenReturn(USER_ID);
-
-        mockMvc.perform(get("/api/reviews")
-                        .param("type", "daily")
-                        .param("periodStart", "2026-02-16")
-                        .param("from", "2026-02-01"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
-    }
-
-    @Test
-    @DisplayName("GET: periodStart 와 from/to 가 모두 없으면 400 BAD_REQUEST (필수 검증)")
-    void getReviews_neitherMode_returns400() throws Exception {
-        when(currentUserResolver.resolve()).thenReturn(USER_ID);
-
-        mockMvc.perform(get("/api/reviews").param("type", "daily"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
+                .andExpect(jsonPath("$.id").value("review-1"));
     }
 
     @Test
@@ -134,5 +133,26 @@ class ReviewControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(reviewService).deleteReview(eq(USER_ID), eq("review-1"));
+    }
+
+    @Test
+    @DisplayName("GET ?type=INVALID: 잘못된 타입은 400 BAD_REQUEST")
+    void getReviews_invalidType_returns400() throws Exception {
+        when(currentUserResolver.resolve()).thenReturn(USER_ID);
+
+        mockMvc.perform(get("/api/reviews")
+                        .param("type", "INVALID_TYPE")
+                        .param("from", "2026-01-01")
+                        .param("to", "2026-12-31"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("GET /{periodStart}?type=INVALID: 단건도 잘못된 타입은 400 BAD_REQUEST")
+    void getReview_invalidType_returns400() throws Exception {
+        when(currentUserResolver.resolve()).thenReturn(USER_ID);
+
+        mockMvc.perform(get("/api/reviews/2026-04-20").param("type", "INVALID_TYPE"))
+                .andExpect(status().isBadRequest());
     }
 }
