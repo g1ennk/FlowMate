@@ -109,10 +109,17 @@ referenceQuestion 규칙:
 
       this.logger.error(`Gemini API error: ${error}`, (error as Error).stack);
 
-      if ((error as { status?: number }).status === 429) {
+      const statusCode = (error as { status?: number }).status;
+      if (statusCode === 429) {
         throw new HttpException(
           'AI 서비스가 일시적으로 사용량이 초과되었습니다',
           429,
+        );
+      }
+      if (statusCode === 503) {
+        throw new HttpException(
+          'AI 서비스가 일시적으로 사용 불가 상태입니다. 잠시 후 다시 시도해 주세요',
+          503,
         );
       }
 

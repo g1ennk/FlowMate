@@ -121,11 +121,12 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 
 ### 브랜치 전략
 
-- `develop`: 활성 개발 브랜치, 직접 커밋 또는 feature 브랜치 → develop 머지. amend + force push 허용
-- `main`: 프로덕션, develop → main **squash merge**로 릴리즈 단위 깔끔한 히스토리 유지
-- hotfix: main에서 수정 후 `merge main into develop`로 역동기화
+- `develop`: 활성 개발 브랜치 + 자세한 작업 히스토리 영구 보존. 직접 커밋 또는 feature 브랜치 → develop 머지. amend + force push 허용. dev 환경 자동 배포 트리거.
+- `main`: 프로덕션. develop → main **squash merge**로 1릴리즈 = 1커밋 = 1태그 깔끔하게 유지.
+- 두 브랜치는 **다른 흐름**: develop은 자세히, main은 마일스톤만. main 배포 전 develop(dev 환경)에서 부하/통합 테스트 검증 → 통과 시 main에 squash로 한 줄 기록.
+- hotfix: main에서 수정 후 `merge main into develop`로 역동기화.
 
-### main 반영 절차 (squash merge)
+### main 반영 절차 (squash merge + backmerge)
 
 ```bash
 # 1. main에 squash merge
@@ -135,16 +136,21 @@ git commit -m "feat: v1.x.0 — 릴리즈 요약"
 git tag v1.x.0
 git push origin main --tags
 
-# 2. [필수] develop을 main으로 정렬 — 다음 릴리즈 conflict 방지
+# 2. [필수] main을 develop으로 backmerge — 다음 릴리즈 머지 베이스 갱신
 git checkout develop
-git reset --hard main
-git push --force-with-lease origin develop
+git merge main --no-ff -m "chore: sync v1.x.0 release into develop"
+git push origin develop
 ```
 
-- develop의 세부 커밋 히스토리는 squash 전까지만 develop에 존재, 릴리즈 후엔 main의 squash 커밋으로 대체됨
-- main은 릴리즈 단위로 1커밋 = 1버전
-- **릴리즈 후 develop reset을 빼먹으면** develop에 "이미 main에 squash된 원본 커밋들"이 남아, 다음 `develop → main` 머지 시 3-way merge base가 과거로 잡히며 구조적 conflict가 발생함 (2026-04-08 사고 사례). 1인 개발이라 force push 안전
-- `git reset --hard develop` 방식(main을 develop으로 맞추기)은 사용하지 않음 (develop 세부 히스토리가 main에 그대로 복사되므로)
+- develop은 reset/force push 하지 않음. 원본 커밋들이 develop에 그대로 남아 자세한 작업 히스토리가 영구 보존됨.
+- backmerge가 머지 베이스를 squash 시점으로 갱신해서 다음 `develop → main --squash` 머지 시 "이미 적용된 변경"의 구조적 conflict를 방지함.
+- main은 릴리즈 단위로 1커밋 = 1버전 유지.
+- **backmerge를 빼먹으면** 다음 릴리즈 squash merge 시 3-way merge base가 과거로 잡히며 구조적 conflict 발생 (2026-04-08 사고 사례).
+- 그래프 결과: develop에는 원본 커밋들 + 릴리즈마다 backmerge 커밋 1개씩 누적. main은 릴리즈 1커밋씩 직선.
+
+### 과거 절차 (deprecated, 2026-04-25 폐기)
+
+`develop reset --hard main + force push` 방식은 develop 작업 히스토리가 사라져 "develop은 자세하게 사용한다" 의도와 어긋남. v1.8.0까지 사용했고 v1.8.0 직후 backmerge 패턴으로 전환. v1.8.0의 develop 원본 15커밋은 `pre-release/v1.8.0` 백업 태그로 보존되어 있고, develop 브랜치 자체도 backmerge로 복원해 그래프상에 남아 있음.
 
 ### 릴리즈 이력 (최신순)
 
