@@ -464,10 +464,7 @@ export const handlers = [
     )
 
     if (!review) {
-      return HttpResponse.json(
-        { error: { code: 'NOT_FOUND', message: 'Review not found' } },
-        { status: 404 },
-      )
+      return new HttpResponse(null, { status: 204 })
     }
 
     return HttpResponse.json(review)
