@@ -31,7 +31,7 @@ public class ReviewController {
         ReviewType reviewType = ReviewType.fromValue(type);
         ReviewResponse review = reviewService.getReview(userId, reviewType, periodStart);
         if (review == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.noContent().build();
         }
         return ResponseEntity.ok(review);
     }
