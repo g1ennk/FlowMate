@@ -1,6 +1,6 @@
 # FlowMate 아키텍처
 
-> Last updated: 2026-03-28
+> Last updated: 2026-04-28
 >
 > 관련 문서: [API Reference](api.md) · [Data Model](data-model.md)
 
@@ -8,7 +8,7 @@
 
 - 프론트엔드는 S3 + CloudFront를 통해 정적 React SPA로 제공한다.
 - API 요청은 별도 도메인으로 EC2의 호스트 Nginx에 진입하며, Nginx가 TLS 종료와 reverse proxy를 담당한다.
-- 백엔드는 Docker Compose 기반으로 backend, mysql, alloy 컨테이너로 구성되며, Spring Boot는 127.0.0.1:8080으로만 노출된다.
+- 백엔드는 Docker Compose 기반으로 backend, mysql, ai-service(NestJS), postgres, alloy 컨테이너로 구성되며, Spring Boot는 127.0.0.1:8080, AI Service는 127.0.0.1:3000으로만 노출된다.
 - Alloy는 메트릭과 로그를 Grafana Cloud로 전송하고, trace 수집을 위한 OTLP 경로도 준비돼 있다.
 
 ```mermaid
@@ -20,8 +20,10 @@ flowchart LR
     subgraph EC2["EC2 (Ubuntu)"]
         direction TB
         subgraph Compose["Docker Compose"]
-            Backend["Spring Boot API<br/>published to 127.0.0.1:8080"]
+            Backend["Spring Boot API<br/>127.0.0.1:8080"]
             MySQL[("MySQL 8.0")]
+            AIService["NestJS AI Service<br/>127.0.0.1:3000"]
+            Postgres[("PostgreSQL 16")]
             Alloy["Grafana Alloy"]
         end
     end
@@ -29,8 +31,11 @@ flowchart LR
     Grafana["Grafana Cloud<br/>Mimir · Loki · Tempo"]
     Browser <-->|정적 자산| CDN
     Browser -->|HTTPS /api/*| Nginx
-    Nginx -->|proxy_pass| Backend
+    Nginx -->|proxy_pass /api/ai| AIService
+    Nginx -->|proxy_pass /api/*| Backend
     Backend --> MySQL
+    AIService --> Postgres
+    AIService -->|내부 API 호출| Backend
     Backend -->|/actuator/prometheus| Alloy
     Backend -.->|OTLP traces| Alloy
     Alloy -->|metrics · logs| Grafana

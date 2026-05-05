@@ -40,9 +40,10 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 
 - **Frontend**: React 19 + Vite 7 + TypeScript 5.9 (strict) + Tailwind CSS 4 + PWA (프로덕션만)
 - **Backend**: Spring Boot 4.0.5 + Java 21 + MySQL 8 + Flyway
+- **AI Service**: NestJS + Gemini API + PostgreSQL 16 — KPT 회고 레포트 생성 (`/api/ai`)
 - **인증**: 게스트 JWT(localStorage, 90일) → 카카오 OAuth → 멤버 JWT(메모리만, 15분) + HttpOnly refresh cookie(14일, RTR)
 - **실시간 동기화**: SSE로 타이머 상태 멀티디바이스 동기화 (쿼리파라미터 토큰, EventSource 제약)
-- **배포**: EC2 + Docker Compose (백엔드+MySQL+Alloy), S3 + CloudFront (프론트엔드)
+- **배포**: EC2 + Docker Compose (백엔드+MySQL+AI서비스+PostgreSQL+Alloy), S3 + CloudFront (프론트엔드)
 - **모니터링**: Grafana Cloud (Prometheus→Mimir, Docker logs→Loki, OTLP→Tempo) + Alloy 수집기
 
 ### Backend 도메인 패키지 (`kr.io.flowmate`)
@@ -63,7 +64,7 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 
 ### Frontend 구조 (`frontend/src/`)
 
-- **`features/`**: 도메인별 슬라이스 (auth, todos, timer, review, settings, boarding, pwa) — 페이지·컴포넌트·훅·헬퍼 자체 포함
+- **`features/`**: 도메인별 슬라이스 (auth, todos, timer, review, settings, system, pwa) — 페이지·컴포넌트·훅·헬퍼 자체 포함
 - **`store/`**: Zustand 전역 스토어 — `authStore` (게스트/멤버 인증 + 자동 refresh), `themeStore` (light/dark/system)
 - **`api/`**: `http.ts` (fetch 래퍼 + Bearer 자동 주입 + 401 singleton refresh + Zod 검증), 도메인별 API 모듈 (todos, timerApi,
   reviews, settings)
@@ -105,7 +106,8 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 
 ### Docker Compose (`infra/{dev,prod}/`)
 
-3개 서비스: `mysql` (8.0) + `backend` (ECR 이미지) + `alloy` (Grafana Alloy v1.8.3)
+prod 5개 서비스: `mysql` (8.0) + `backend` (ECR 이미지) + `postgres` (16, AI service용) + `ai-service` (NestJS + Gemini) + `alloy` (Grafana Alloy v1.8.3)
+dev 3개 서비스: `mysql` + `backend` + `alloy`
 
 - Nginx: 호스트에서 직접 실행 (컨테이너 아닌), Let's Encrypt TLS, `/actuator` 차단 (health만 허용)
 - Alloy: Prometheus scrape (백엔드+호스트) → Mimir, Docker logs → Loki, OTLP → Tempo
@@ -116,6 +118,7 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 - V2: users, auth_social_accounts, auth_refresh_tokens (token_hash UNIQUE 포함)
 - V3: timer_states (JSON blob + version + soft delete)
 - V4: todos에 review_round, original_todo_id 추가
+- V5: user_settings에 created_at 추가, ON UPDATE CURRENT_TIMESTAMP 제거 (JPA Auditing 정합)
 
 ## Git 워크플로우 & 릴리즈
 
@@ -154,9 +157,16 @@ git push origin develop
 
 ### 릴리즈 이력 (최신순)
 
-| 버전     | 날짜         | 주요 내용                        |
-|--------|------------|------------------------------|
-| v1.6.0 | 2026-03-23 | 복습 일정 기능 (review_round 체인)   |
+| 버전     | 날짜         | 주요 내용                             |
+|--------|------------|-----------------------------------|
+| v1.8.2 | 2026-04-28 | 회고 단건 조회 미존재 시 404→204 (콘솔 노이즈 제거) |
+| v1.8.1 | 2026-04-28 | Gemini 503 에러 처리 + 릴리즈 절차 정비      |
+| v1.8.0 | 2026-04-25 | 백엔드 도메인 11종 정합 + API 계약 정리        |
+| v1.7.4 | 2026-04-09 | cold load 빈 화면 제거                 |
+| v1.7.3 | 2026-04-08 | 회고 텍스트에어리어 데스크탑 스크롤 개선            |
+| v1.7.2 | 2026-04-08 | 배포 직후 청크 로드 실패 복구                 |
+| v1.7.0 | 2026-04-06 | AI KPT 회고 레포트 (NestJS + Gemini)   |
+| v1.6.0 | 2026-03-23 | 복습 일정 기능 (review_round 체인)        |
 | v1.5.1 | 2026-03-06 | 뽀모도로 경계 기록 보정 + 완료 후 타이머 초기화 |
 | v1.5.0 | 2026-03-04 | 날짜 이동 + 또 하기 기능              |
 | v1.4.x | 2026-03-03 | 타이머 배경음악 (Lo-fi 자동 순환)       |

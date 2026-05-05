@@ -57,6 +57,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 |------------|--------------------------------------------------------------------------|
 | Frontend   | React 19, TypeScript, Zustand, TanStack Query, Tailwind CSS 4, Vite, PWA |
 | Backend    | Spring Boot 4, Java 21, Spring Security, JPA, Flyway, MySQL 8            |
+| AI Service | NestJS, Gemini API, PostgreSQL 16                                        |
 | Infra      | EC2, Docker Compose, Host Nginx, S3, CloudFront, ECR, GitHub Actions     |
 | Monitoring | Grafana Cloud, Alloy, Mimir, Loki, Tempo                                 |
 
@@ -66,6 +67,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 FlowMate/
 ├── frontend/           # React 앱 (Vite + TypeScript)
 ├── backend/            # Spring Boot API
+├── ai-service/         # NestJS AI Service (Gemini KPT 회고 레포트)
 ├── infra/              # dev/prod 인프라 구성 (Docker Compose, Host Nginx, Alloy)
 ├── docs/               # 기준 문서 세트 (architecture, data-model, api)
 ├── images/             # 로고 및 README 이미지 자산
