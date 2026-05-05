@@ -552,7 +552,7 @@ Member Access JWT 전용.
 **재연결**
 
 - 브라우저 `EventSource`는 끊기면 자동 재연결한다.
-- 재연결 후 `GET /api/timer/state`로 최신 스냅샷을 동기화하고, 이미 처리한 `version`과 비교해 중복 적용을 막는다.
+- 앱 초기화·회원 복원 시 `GET /api/timer/state`로 스냅샷을 fetch하고, SSE `timer-state` 이벤트는 `version`으로 비교해 중복 적용을 막는다.
 
 **Errors**
 
@@ -859,7 +859,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 **Response**
 
 - `200 OK` — 회고가 존재하면 `Review` 본문 반환
-- `404 Not Found` — 해당 기간의 회고가 없는 경우 (본문 없음)
+- `204 No Content` — 해당 기간의 회고가 없는 경우 (본문 없음)
 
 ---
 
