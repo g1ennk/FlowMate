@@ -26,6 +26,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 
 - 할 일을 작성한 뒤 바로 타이머를 시작할 수 있습니다.
 - 완료한 세션 기록은 Todo와 연결되어 이후 회고와 통계로 이어집니다.
+- 완료한 Todo는 1·2·4·8·16·32일 간격의 복습 Todo로 이어갈 수 있습니다.
 
 ### 2) 뽀모도로와 스톱워치 지원
 
@@ -37,19 +38,21 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 - 회원은 서버에 저장된 타이머 상태를 기준으로 여러 탭과 기기에서 이어서 사용할 수 있습니다.
 - SSE 기반 동기화로 같은 계정의 연결에 최신 타이머 상태를 전파합니다.
 
-### 4) 주간·월간 회고와 통계
+### 4) 회고와 AI KPT 레포트
 
 - 집중 시간 타임라인과 누적 통계를 확인할 수 있습니다.
-- 주간·월간 단위 회고를 작성하며 작업 흐름을 돌아볼 수 있습니다.
+- 일간·주간·월간 단위 회고를 작성하며 작업 흐름을 돌아볼 수 있습니다.
+- Gemini 기반 AI Service가 완료 Todo와 집중 기록을 바탕으로 KPT 회고 레포트를 생성합니다.
 
-## 3. 주요 기술 결정 (추가 예정)
+## 3. 주요 기술 결정
 
-### 1) 제목
+### 1) Timer State 저장 경로의 InnoDB Deadlock 분석과 해결
 
-- 문제:
-- 해결:
-- 결과:
-- 관련 문서:
+- 문제: k6 baseline에서 `PUT /api/timer/state/{todoId}` 실패 69건이 timer state 저장 경로에 집중
+- 원인: row가 없는 first insert 경로에서 `SELECT FOR UPDATE`가 gap lock을 만들고, 동시 INSERT의 insert intention lock과 충돌
+- 해결: `PESSIMISTIC_WRITE`를 제거하고, first insert 유일성 제약 조건 충돌은 winner row 재조회 후 update하는 catch-retry로 복구
+- 결과: 수정 후 전체 요청 163,205건 기준 timer PUT 실패 0건, `http_req_failed` 0.00%를 확인
+- 관련 문서: [Timer State 저장 경로의 InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
 
 ## 4. 기술 스택
 
@@ -69,7 +72,7 @@ FlowMate/
 ├── backend/            # Spring Boot API
 ├── ai-service/         # NestJS AI Service (Gemini KPT 회고 레포트)
 ├── infra/              # dev/prod 인프라 구성 (Docker Compose, Host Nginx, Alloy)
-├── docs/               # 기준 문서 세트 (architecture, data-model, api)
+├── docs/               # 기준 문서 세트 (architecture, data-model, api, wiki)
 ├── images/             # 로고 및 README 이미지 자산
 └── .github/workflows/  # 프론트/백엔드 배포 파이프라인
 ```
