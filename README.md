@@ -54,6 +54,13 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 - 결과: 수정 후 전체 요청 163,205건 기준 timer PUT 실패 0건, `http_req_failed` 0.00%를 확인
 - 관련 문서: [Timer State 저장 경로의 InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
 
+### 2) X-Client-Id에서 OAuth + RTR까지: 인증 시스템 진화
+
+- 배경: 서명·TTL 없는 `X-Client-Id`는 장기 인증 모델로 부적합, 게스트 연속성과 다중 기기 세션 요구가 겹치며 4단계 진화
+- 선택 기준: 게스트 연속성 유지 + XSS·CSRF 위험 최소화 + 다중 기기 세션 허용
+- 결과: Memory Access Token + HttpOnly Refresh Token + RTR + Reuse Detection 조합으로 토큰 탈취 대응
+- 관련 문서: [FlowMate 인증 시스템 진화: X-Client-Id에서 OAuth + RTR까지](docs/wiki/auth-evolution.md)
+
 ## 4. 기술 스택
 
 | 영역         | 기술                                                                       |
