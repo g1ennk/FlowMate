@@ -1,6 +1,6 @@
 import { storageKeys } from './storageKeys'
 
-export type AuthMode = 'guest' | 'kakao'
+export type AuthMode = 'guest' | 'member'
 
 let volatileAuthMode: AuthMode | null = null
 
@@ -8,7 +8,9 @@ export function getAuthMode(): AuthMode | null {
   if (typeof window === 'undefined') return volatileAuthMode
   try {
     const value = localStorage.getItem(storageKeys.authMode)
-    if (value === 'guest' || value === 'kakao') return value
+    if (value === 'guest') return value
+    // 'kakao' → 'member' 마이그레이션 (provider명을 직접 저장하던 이전 방식)
+    if (value === 'member' || value === 'kakao') return 'member'
     return volatileAuthMode
   } catch {
     return volatileAuthMode

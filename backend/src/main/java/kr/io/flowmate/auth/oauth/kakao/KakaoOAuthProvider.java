@@ -2,6 +2,7 @@ package kr.io.flowmate.auth.oauth.kakao;
 
 import kr.io.flowmate.auth.oauth.OAuthProvider;
 import kr.io.flowmate.auth.oauth.OAuthUserInfo;
+import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -57,7 +58,7 @@ public class KakaoOAuthProvider implements OAuthProvider {
             }
             return (String) response.getBody().get("access_token");
         } catch (HttpClientErrorException e) {
-            throw new IllegalArgumentException("카카오 인가코드가 유효하지 않습니다: " + e.getStatusCode());
+            throw new AuthenticationFailedException("카카오 인가코드가 유효하지 않습니다: " + e.getStatusCode());
         }
     }
 

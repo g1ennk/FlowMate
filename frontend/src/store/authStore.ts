@@ -20,7 +20,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   /**
    * 앱 초기화: authMode 힌트로 경로 분기.
-   * - 과거에 회원으로 로그인한 적 없는 사용자(=authMode !== 'kakao')는
+   * - 과거에 회원으로 로그인한 적 없는 사용자(=authMode !== 'member')는
    *   /auth/refresh 호출을 건너뛰어 cold load 빈 화면을 단축한다.
    * - 회원 힌트가 있으면 refresh 시도, 실패 시 게스트로 폴백.
    */
@@ -28,7 +28,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const mode = getAuthMode()
 
     // 1. 회원 힌트가 있을 때만 refresh 시도
-    if (mode === 'kakao') {
+    if (mode === 'member') {
       try {
         const res = await fetch(buildApiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' })
         if (res.ok) {
@@ -76,7 +76,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const data = await res.json()
     // accessToken, user 모두 메모리(state)에만 저장
     localStorage.removeItem(storageKeys.guestToken)
-    setAuthMode('kakao')
+    setAuthMode('member')
     set({ state: { type: 'member', accessToken: data.accessToken, user: data.user } })
   },
 
