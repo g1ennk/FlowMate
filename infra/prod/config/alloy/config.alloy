@@ -64,10 +64,54 @@ discovery.docker "containers" {
   host = "unix:///var/run/docker.sock"
 }
 
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // 컨테이너 이름에서 service 추출: "/flowmate-backend-prod" → "backend"
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/flowmate-([a-z-]+)-(dev|prod)"
+    target_label  = "service"
+    replacement   = "$1"
+  }
+
+  // 환경 라벨
+  rule {
+    target_label = "environment"
+    replacement  = "prod"
+  }
+
+  // 컨테이너 풀네임도 보존 (디버그용)
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+    replacement   = "$1"
+  }
+}
+
 loki.source.docker "containers" {
   host       = "unix:///var/run/docker.sock"
-  targets    = discovery.docker.containers.targets
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.parse_json.receiver]
+}
+
+// JSON 로그 파싱: level은 라벨로, trace_id는 필드로 (cardinality 보호)
+loki.process "parse_json" {
   forward_to = [loki.write.grafana_cloud.receiver]
+
+  stage.json {
+    expressions = {
+      level     = "level",
+      trace_id  = "trace_id",
+      logger    = "logger",
+    }
+  }
+
+  // level만 라벨로 (trace_id는 high cardinality라 라벨 X, 필드 검색)
+  stage.labels {
+    values = { level = "" }
+  }
 }
 
 loki.write "grafana_cloud" {
@@ -80,7 +124,7 @@ loki.write "grafana_cloud" {
   }
 }
 
-// ── Traces: OTLP → Grafana Cloud Tempo (Phase 4 대비) ─────────
+// ── Traces: OTLP → Grafana Cloud Tempo ────────────────────────
 otelcol.receiver.otlp "default" {
   grpc { endpoint = "0.0.0.0:4317" }
   http { endpoint = "0.0.0.0:4318" }

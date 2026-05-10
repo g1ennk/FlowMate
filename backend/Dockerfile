@@ -13,6 +13,11 @@ COPY build.gradle settings.gradle ./
 COPY gradle ./gradle
 RUN gradle dependencies --no-daemon
 
+# 2-1. OpenTelemetry Java Agent 다운로드 (auto-instrumentation: HTTP/JDBC/JPA/Hibernate)
+ARG OTEL_AGENT_VERSION=2.27.0
+RUN wget -q -O /opt/opentelemetry-javaagent.jar \
+    https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar
+
 # 3. 소스 코드 복사 (src 디렉토리만 명시적 복사)
 COPY src ./src
 
@@ -35,6 +40,7 @@ USER spring:spring
 
 # 4. 산출물 복사: 고정된 파일명만 복사
 COPY --from=builder /app/build/libs/app.jar app.jar
+COPY --from=builder /opt/opentelemetry-javaagent.jar /opt/opentelemetry-javaagent.jar
 
 # 5. 헬스 체크
 # 40초는 워밍업, 그 뒤로 30초마다 체크, 3초 안에 응답 못 하면 실패, 3번 연속 실패면 unhealthy”로
@@ -43,5 +49,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 
 EXPOSE 8080
 
-# 6. 시작 명령어
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# 6. 시작 명령어 (sh -c + exec으로 JAVA_OPTS 확장 + PID 1 = java)
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
