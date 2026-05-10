@@ -198,8 +198,6 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
   "sessionCount": 1,
   "sessionFocusSeconds": 1500,
   "timerMode": "pomodoro",
-  "reviewRound": null,
-  "originalTodoId": null,
   "createdAt": "2026-03-19T10:00:00Z",
   "updatedAt": "2026-03-19T10:30:00Z"
 }
@@ -233,8 +231,6 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
       "sessionCount": 1,
       "sessionFocusSeconds": 1500,
       "timerMode": "pomodoro",
-      "reviewRound": null,
-      "originalTodoId": null,
       "createdAt": "2026-03-19T10:00:00Z",
       "updatedAt": "2026-03-19T10:30:00Z"
     }
@@ -301,65 +297,11 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 - `timerMode`: `stopwatch | pomodoro | null`
 - `timerMode: ""`도 null과 동일하게 해제 처리
 - `sessionCount`, `sessionFocusSeconds`는 Session API로만 변경된다
-- `reviewRound`, `originalTodoId`는 PATCH로 수정하지 않는다
 
 **Response** `200` `Todo` (2.1 목록 조회의 Todo 객체와 동일한 구조)
 
----
-
-### 2.4 복습 생성
-
-`POST /api/todos/{id}/review-schedule`
-
-**Auth** Guest JWT or Member Access JWT
-
-**Body**
-
-- 없음
-
-**Response**
-
-- `201 Created` 신규 복습 Todo 생성
-- `200 OK` 이미 같은 회차가 있어 기존 복습 Todo 반환
-
-```json
-{
-  "item": {
-    "id": "uuid",
-    "title": "집중 작업",
-    "note": "중요 메모",
-    "date": "2026-03-22",
-    "miniDay": 0,
-    "dayOrder": 0,
-    "isDone": false,
-    "sessionCount": 0,
-    "sessionFocusSeconds": 0,
-    "timerMode": null,
-    "reviewRound": 1,
-    "originalTodoId": "root-todo-id",
-    "createdAt": "2026-03-21T10:00:00Z",
-    "updatedAt": "2026-03-21T10:00:00Z"
-  },
-  "created": true
-}
-```
-
-**동작 규칙**
-
-- 완료된 Todo만 복습 생성이 가능하다.
-- 일반 Todo는 1회차, 완료된 복습 Todo는 다음 회차를 생성한다.
-- 간격은 `1 → 2 → 4 → 8 → 16 → 32일` 고정이다.
-- 다음 복습 날짜는 `복습하기`를 누른 오늘이 아니라, 현재 완료된 Todo의 `date`에 간격을 더해 계산한다.
-- system은 review Todo 제목에 회차 prefix를 추가 저장하지 않고, 회차 표시는 `reviewRound`로 판단한다.
-- 제목은 어떤 경우에도 system이 임의 정규화하지 않는다. 일반 Todo와 review Todo 모두 현재 source title을 그대로 사용한다.
-- 새 복습 Todo는 `miniDay=0`, `isDone=false`, `sessionCount=0`, `sessionFocusSeconds=0`, `timerMode=null` 로 생성된다.
-- 같은 사용자 기준 `(originalTodoId, reviewRound)` 조합은 하나만 존재하며, 중복 요청 시 기존 Todo를 반환한다.
-- `reviewRound=6` 완료 Todo는 더 이상 다음 복습을 만들 수 없다.
-- 원본 Todo가 삭제돼도 기존 복습 Todo는 유지된다.
-
 **Errors**
 
-- `409 TODO_STATE_VIOLATION` 미완료 Todo, 6회차 초과 (`TodoStateViolationException`)
 - `404 NOT_FOUND` Todo 없음 또는 타 사용자 소유
 
 ---
@@ -400,8 +342,6 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
       "sessionCount": 1,
       "sessionFocusSeconds": 1500,
       "timerMode": "pomodoro",
-      "reviewRound": null,
-      "originalTodoId": null,
       "createdAt": "2026-03-19T10:00:00Z",
       "updatedAt": "2026-03-19T10:30:00Z"
     }
@@ -439,12 +379,11 @@ API 자체는 `PATCH /api/todos/{id}`와 `POST /api/todos` 조합으로 날짜 �
 |-----------------------------|------------|------------------------------------------------------------------------------------------|
 | 날짜 바꾸기, 오늘하기, 내일 하기         | 기존 Todo 수정 | `date`, `dayOrder`, 필요 시 `miniDay`                                                       |
 | 오늘 또 하기, 내일 또 하기, 다른 날 또 하기 | 새 Todo 생성  | `miniDay=0`, `isDone=false`, `sessionCount=0`, `sessionFocusSeconds=0`, `timerMode=null` |
-| 복습하기                        | 새 Todo 생성  | `title={기준 제목 그대로}`, `date=currentTodo.date+interval`, `miniDay=0`, `reviewRound=1..6`, `originalTodoId={rootTodoId}` |
 
 | 상태  | 과거 날짜                      | 오늘 날짜                      | 미래 날짜                      |
 |-----|----------------------------|----------------------------|----------------------------|
 | 미완료 | 오늘하기, 날짜 바꾸기               | 내일 하기, 날짜 바꾸기              | 오늘하기, 날짜 바꾸기               |
-| 완료  | 복습하기, 오늘 또 하기, 다른 날 또 하기, 날짜 바꾸기 | 복습하기, 내일 또 하기, 다른 날 또 하기, 날짜 바꾸기 | 복습하기, 오늘 또 하기, 다른 날 또 하기, 날짜 바꾸기 |
+| 완료  | 오늘 또 하기, 다른 날 또 하기, 날짜 바꾸기 | 내일 또 하기, 다른 날 또 하기, 날짜 바꾸기 | 오늘 또 하기, 다른 날 또 하기, 날짜 바꾸기 |
 
 ---
 
@@ -951,13 +890,12 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 | `METHOD_NOT_ALLOWED`       | 405  | 경로는 존재하지만 HTTP 메서드가 미지원                                           |
 | `CONFLICT`                 | 409  | 데드락 retry 소진 등 일시적 충돌                                              |
 | `IDEMPOTENCY_CONFLICT`     | 409  | 동일 idempotency key 재사용 + payload 불일치 (세션 `sessionFocusSeconds` mismatch 등) |
-| `TODO_STATE_VIOLATION`     | 409  | Todo 상태 위반 (미완료 복습 스케줄, MAX_REVIEW_ROUND 초과 등)                    |
 | `INTERNAL_ERROR`           | 500  | 처리되지 않은 예외, 방어 코드 ISE                                              |
 | `UNAUTHORIZED`             | 401  | Spring Security 인증 실패. body 가 비어 있을 수 있음                           |
 | `FORBIDDEN`                | 403  | Spring Security 인가 실패. body 가 비어 있을 수 있음                           |
 
 참고:
 
-- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 retry 소진) 에만 사용된다. `IDEMPOTENCY_CONFLICT` / `TODO_STATE_VIOLATION` 은 별도 code 로 구분.
+- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 retry 소진) 에만 사용된다. `IDEMPOTENCY_CONFLICT` 는 별도 code 로 구분.
 - `GET /api/timer/sse` 는 SecurityFilter 가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member 가 `401 AUTHENTICATION_FAILED` 로 내려온다 (이전 버전에서는 400 이었음 — Phase 2 에서 semantic 정합 교체).
 - `UNAUTHORIZED`, `FORBIDDEN` 은 Spring Security 가 만드는 HTTP 상태이며, `ApiError.error.code` 를 항상 의미하지는 않는다. 서비스 레이어에서 던지는 도메인 401 은 `AUTHENTICATION_FAILED` code 를 사용한다.

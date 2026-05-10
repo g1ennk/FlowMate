@@ -1,6 +1,5 @@
 import { CheckIcon } from '../../../ui/Icons'
 import type { TaskItem } from '../reviewTypes'
-import { ReviewTaskLabel } from './ReviewTaskLabel'
 
 type TimelineTaskItemProps = {
   item: TaskItem
@@ -34,11 +33,7 @@ export function TimelineTaskItem({ item, dateLabel, onSelect }: TimelineTaskItem
                 {dateLabel}
               </span>
             )}
-            <ReviewTaskLabel
-              task={item}
-              wrapperClassName="min-w-0 inline-flex max-w-full flex-wrap items-center gap-2"
-              titleClassName="truncate text-sm text-text-primary"
-            />
+            <span className="truncate text-sm text-text-primary">{item.title}</span>
           </div>
         </div>
       <span className="text-[11px] text-text-tertiary">{timeLabel}</span>

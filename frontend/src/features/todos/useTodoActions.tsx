@@ -4,12 +4,10 @@ import { toast } from 'react-hot-toast'
 import { UndoToast } from '../../ui/UndoToast'
 import { queryKeys } from '../../lib/queryKeys'
 import type { Todo, TodoList } from '../../api/types'
-import type { ApiError } from '../../api/http'
 import {
   useCreateSession,
   useCreateTodo,
   useDeleteTodo,
-  useScheduleReviewTodo,
   useUpdateTodo,
 } from './hooks'
 import { useTimerStore } from '../timer/timerStore'
@@ -21,23 +19,12 @@ import { useNoteModal } from './useNoteModal'
 import { useDatePickerActions } from './useDatePickerActions'
 import { useTimerOpenState } from './useTimerOpenState'
 
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    const message = (error as ApiError).message
-    if (typeof message === 'string' && message.trim().length > 0) {
-      return message
-    }
-  }
-  return fallback
-}
-
 export function useTodoActions(selectedDateKey: string) {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
   const createTodo = useCreateTodo()
   const updateTodo = useUpdateTodo()
   const deleteTodo = useDeleteTodo()
-  const scheduleReviewTodo = useScheduleReviewTodo()
 
   const { data: settings } = usePomodoroSettings()
 
@@ -230,24 +217,6 @@ export function useTodoActions(selectedDateKey: string) {
     datePicker.openDuplicateDatePicker(todo)
   }
 
-  const handleScheduleReview = async (todo: Todo) => {
-    setSelectedTodo(null)
-
-    try {
-      const result = await scheduleReviewTodo.mutateAsync({
-        id: todo.id,
-      })
-      toast.success(
-        result.created ? '다음 복습을 추가했어요' : '이미 다음 복습이 있어요',
-        { id: 'todo-review-scheduled' },
-      )
-    } catch (error) {
-      toast.error(getErrorMessage(error, '복습 추가에 실패했어요'), {
-        id: 'todo-review-schedule-failed',
-      })
-    }
-  }
-
   return {
     // 뮤테이션 상태
     isCreating: createTodo.isPending,
@@ -311,6 +280,5 @@ export function useTodoActions(selectedDateKey: string) {
       setSelectedTodo(null)
       await datePicker.handleDuplicateTodoToTomorrow(todo)
     },
-    handleScheduleReview,
   }
 }

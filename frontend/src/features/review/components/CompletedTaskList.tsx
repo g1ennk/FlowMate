@@ -1,5 +1,4 @@
 import type { TaskItem } from '../reviewTypes'
-import { ReviewTaskLabel } from './ReviewTaskLabel'
 
 type CompletedTaskListProps = {
   items: TaskItem[]
@@ -37,11 +36,9 @@ export function CompletedTaskList({
                 className="group relative flex w-full items-center justify-between rounded-xl border border-border-subtle px-3 py-2 text-left transition hover:bg-hover"
               >
                 <div className="min-w-0">
-                  <ReviewTaskLabel
-                    task={item}
-                    wrapperClassName="min-w-0 inline-flex max-w-full flex-wrap items-center gap-2"
-                    titleClassName="truncate text-sm font-medium text-text-tertiary line-through"
-                  />
+                  <span className="truncate text-sm font-medium text-text-tertiary line-through">
+                    {item.title}
+                  </span>
                   {showDate && (
                     <p className="mt-0.5 text-[11px] text-text-tertiary">{formatDateLabel(item.date)}</p>
                   )}

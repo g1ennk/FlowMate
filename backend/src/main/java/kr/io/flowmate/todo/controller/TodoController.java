@@ -7,7 +7,6 @@ import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
 import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
 import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
 import kr.io.flowmate.todo.dto.response.TodoResponse;
-import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.service.TodoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -98,21 +97,6 @@ public class TodoController {
     ) {
         List<TodoResponse> todos = todoService.reorderTodos(userId, reorderRequest);
         return ResponseEntity.ok(new ListResponse<>(todos));
-    }
-
-    /**
-     * Todo 복습 생성
-     * - POST /api/todos/{id}/review-schedule
-     * - 201 Created 신규 복습 Todo, 200 OK 기존 회차 재사용
-     */
-    @PostMapping("/{id}/review-schedule")
-    public ResponseEntity<TodoScheduleReviewResponse> scheduleReview(
-            @CurrentUser String userId,
-            @PathVariable String id
-    ) {
-        TodoScheduleReviewResponse response = todoService.scheduleReview(userId, id);
-        HttpStatus status = response.created() ? HttpStatus.CREATED : HttpStatus.OK;
-        return ResponseEntity.status(status).body(response);
     }
 
 }

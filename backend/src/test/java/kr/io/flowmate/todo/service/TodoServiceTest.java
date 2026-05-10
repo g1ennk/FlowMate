@@ -6,18 +6,14 @@ import kr.io.flowmate.todo.dto.request.TodoCreateRequest;
 import kr.io.flowmate.todo.dto.request.TodoReorderRequest;
 import kr.io.flowmate.todo.dto.request.TodoUpdateRequest;
 import kr.io.flowmate.todo.dto.response.TodoResponse;
-import kr.io.flowmate.todo.dto.response.TodoScheduleReviewResponse;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
-import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -220,152 +216,6 @@ class TodoServiceTest {
 
         assertThatThrownBy(() -> todoService.reorderTodos(USER_ID, request))
                 .isInstanceOf(TodoNotFoundException.class);
-    }
-
-    // ── scheduleReview: 상태 검증 + 멱등 + 간격 + catch-retry + resolveBaseTitle ──
-
-    @Test
-    @DisplayName("scheduleReview: 완료되지 않은 Todo면 TodoStateViolationException (409)")
-    void scheduleReview_notDone_throwsStateViolation() {
-        Todo todo = newTodo("제목", LocalDate.of(2026, 4, 1));
-        when(todoRepository.findByIdAndUserId(todo.getId(), USER_ID)).thenReturn(Optional.of(todo));
-
-        assertThatThrownBy(() -> todoService.scheduleReview(USER_ID, todo.getId()))
-                .isInstanceOf(TodoStateViolationException.class)
-                .hasMessageContaining("완료된 Todo");
-    }
-
-    @Test
-    @DisplayName("scheduleReview: 6회차 복습을 모두 소진한 Todo 는 TodoStateViolationException (409)")
-    void scheduleReview_maxRoundExceeded_throwsStateViolation() {
-        Todo round6 = Todo.createReview(
-                USER_ID, "root-id", "제목", null,
-                LocalDate.of(2026, 4, 1), 0, 0, 6
-        );
-        round6.updateDone(true);
-        when(todoRepository.findByIdAndUserId(round6.getId(), USER_ID)).thenReturn(Optional.of(round6));
-
-        assertThatThrownBy(() -> todoService.scheduleReview(USER_ID, round6.getId()))
-                .isInstanceOf(TodoStateViolationException.class)
-                .hasMessageContaining("복습이 모두 완료");
-    }
-
-    @Test
-    @DisplayName("scheduleReview: 다음 회차가 이미 존재하면 created=false로 기존 Todo 반환 (멱등)")
-    void scheduleReview_alreadyScheduled_returnsExistingNotCreated() {
-        Todo done = newTodo("제목", LocalDate.of(2026, 4, 1));
-        done.updateDone(true);
-        Todo existingNext = Todo.createReview(
-                USER_ID, done.getId(), "제목", null,
-                LocalDate.of(2026, 4, 2), 0, 0, 1
-        );
-
-        when(todoRepository.findByIdAndUserId(done.getId(), USER_ID)).thenReturn(Optional.of(done));
-        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(USER_ID, done.getId(), 1))
-                .thenReturn(Optional.of(existingNext));
-
-        TodoScheduleReviewResponse result = todoService.scheduleReview(USER_ID, done.getId());
-
-        assertThat(result.created()).isFalse();
-        assertThat(result.item().id()).isEqualTo(existingNext.getId());
-        verify(todoRepository, never()).save(any(Todo.class));
-    }
-
-    @Test
-    @DisplayName("scheduleReview: 1회차 복습은 완료 날짜 + 1일에 생성")
-    void scheduleReview_firstRound_intervalOneDay() {
-        Todo done = newTodo("제목", LocalDate.of(2026, 4, 1));
-        done.updateDone(true);
-        when(todoRepository.findByIdAndUserId(done.getId(), USER_ID)).thenReturn(Optional.of(done));
-        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(USER_ID, done.getId(), 1))
-                .thenReturn(Optional.empty());
-        when(todoRepository.findMaxDayOrderForUndone(USER_ID, LocalDate.of(2026, 4, 2), 0)).thenReturn(-1);
-        when(todoRepository.save(any(Todo.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        TodoScheduleReviewResponse result = todoService.scheduleReview(USER_ID, done.getId());
-
-        assertThat(result.created()).isTrue();
-        ArgumentCaptor<Todo> captor = ArgumentCaptor.forClass(Todo.class);
-        verify(todoRepository).save(captor.capture());
-        Todo saved = captor.getValue();
-        assertThat(saved.getDate()).isEqualTo(LocalDate.of(2026, 4, 2));
-        assertThat(saved.getReviewRound()).isEqualTo(1);
-        assertThat(saved.getOriginalTodoId()).isEqualTo(done.getId());
-        assertThat(saved.getDayOrder()).isZero();
-    }
-
-    @Test
-    @DisplayName("scheduleReview: 3회차 → 4회차는 +8일 (REVIEW_INTERVALS[3]=8)")
-    void scheduleReview_round3_intervalEightDays() {
-        Todo round3 = Todo.createReview(
-                USER_ID, "root-id", "[복습 3회] 제목", null,
-                LocalDate.of(2026, 4, 10), 0, 0, 3
-        );
-        round3.updateDone(true);
-        when(todoRepository.findByIdAndUserId(round3.getId(), USER_ID)).thenReturn(Optional.of(round3));
-        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(USER_ID, "root-id", 4))
-                .thenReturn(Optional.empty());
-        when(todoRepository.findMaxDayOrderForUndone(USER_ID, LocalDate.of(2026, 4, 18), 0)).thenReturn(-1);
-        when(todoRepository.save(any(Todo.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(todoRepository.findByIdAndUserId("root-id", USER_ID))
-                .thenReturn(Optional.of(newTodo("루트 제목", LocalDate.of(2026, 4, 1))));
-
-        todoService.scheduleReview(USER_ID, round3.getId());
-
-        ArgumentCaptor<Todo> captor = ArgumentCaptor.forClass(Todo.class);
-        verify(todoRepository).save(captor.capture());
-        Todo saved = captor.getValue();
-        assertThat(saved.getDate()).isEqualTo(LocalDate.of(2026, 4, 18));
-        assertThat(saved.getReviewRound()).isEqualTo(4);
-    }
-
-    @Test
-    @DisplayName("scheduleReview: 동시 삽입 race에서 unique 충돌 시 catch-retry로 기존 Todo 반환")
-    void scheduleReview_raceSaveFails_retryReturnsExisting() {
-        Todo done = newTodo("제목", LocalDate.of(2026, 4, 1));
-        done.updateDone(true);
-        Todo raceWinner = Todo.createReview(
-                USER_ID, done.getId(), "제목", null,
-                LocalDate.of(2026, 4, 2), 0, 0, 1
-        );
-
-        when(todoRepository.findByIdAndUserId(done.getId(), USER_ID)).thenReturn(Optional.of(done));
-        // 첫 체크에는 없지만 save 실패 후 재조회에서는 있음
-        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(USER_ID, done.getId(), 1))
-                .thenReturn(Optional.empty())
-                .thenReturn(Optional.of(raceWinner));
-        when(todoRepository.findMaxDayOrderForUndone(USER_ID, LocalDate.of(2026, 4, 2), 0)).thenReturn(-1);
-        when(todoRepository.save(any(Todo.class)))
-                .thenThrow(new DataIntegrityViolationException("unique"));
-
-        TodoScheduleReviewResponse result = todoService.scheduleReview(USER_ID, done.getId());
-
-        assertThat(result.created()).isFalse();
-        assertThat(result.item().id()).isEqualTo(raceWinner.getId());
-    }
-
-    @Test
-    @DisplayName("scheduleReview: 복습 Todo에서 다음 회차 등록 시 루트 Todo의 title을 사용")
-    void scheduleReview_fromReviewTodo_usesRootTitle() {
-        Todo root = newTodo("루트 제목", LocalDate.of(2026, 4, 1));
-        Todo round2 = Todo.createReview(
-                USER_ID, root.getId(), "[복습 2회] 루트 제목", null,
-                LocalDate.of(2026, 4, 5), 0, 0, 2
-        );
-        round2.updateDone(true);
-
-        when(todoRepository.findByIdAndUserId(round2.getId(), USER_ID)).thenReturn(Optional.of(round2));
-        when(todoRepository.findByUserIdAndOriginalTodoIdAndReviewRound(USER_ID, root.getId(), 3))
-                .thenReturn(Optional.empty());
-        when(todoRepository.findMaxDayOrderForUndone(USER_ID, LocalDate.of(2026, 4, 9), 0)).thenReturn(-1);
-        when(todoRepository.findByIdAndUserId(root.getId(), USER_ID)).thenReturn(Optional.of(root));
-        when(todoRepository.save(any(Todo.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        todoService.scheduleReview(USER_ID, round2.getId());
-
-        ArgumentCaptor<Todo> captor = ArgumentCaptor.forClass(Todo.class);
-        verify(todoRepository).save(captor.capture());
-        assertThat(captor.getValue().getTitle()).isEqualTo("루트 제목");
     }
 
     // ── createTodo / deleteTodo: thin wrapper 이지만 기본 동작 보호 ──

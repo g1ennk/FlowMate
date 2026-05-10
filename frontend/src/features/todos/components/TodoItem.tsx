@@ -13,7 +13,6 @@ import { getTimerInfo } from '../../timer/useTimerInfo'
 export type TodoItemProps = {
   todoId: string
   title: string
-  reviewBadgeLabel?: string | null
   note?: string | null
   sessionCount: number
   sessionFocusSeconds: number
@@ -37,7 +36,6 @@ export type TodoItemProps = {
 export function TodoItem({
   todoId,
   title,
-  reviewBadgeLabel,
   note,
   sessionCount,
   sessionFocusSeconds,
@@ -183,7 +181,7 @@ export function TodoItem({
         ) : (
           <button
             onClick={onToggle}
-            aria-label={`${title}${reviewBadgeLabel ? ` ${reviewBadgeLabel}` : ''} ${isDone ? '완료 취소' : '완료'}`}
+            aria-label={`${title} ${isDone ? '완료 취소' : '완료'}`}
             className="-m-2.5 flex shrink-0 items-center justify-center p-2.5"
           >
             <span className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
@@ -210,11 +208,6 @@ export function TodoItem({
             >
               {title}
             </span>
-            {reviewBadgeLabel && (
-              <span className="inline-flex shrink-0 items-center rounded-full border border-accent bg-accent-subtle px-2 py-0.5 text-[11px] font-semibold leading-none text-accent-text">
-                {reviewBadgeLabel}
-              </span>
-            )}
           </button>
           {/* 누적 통계 표시 - 타이머 버튼 */}
           {shouldShowTimerButton && (

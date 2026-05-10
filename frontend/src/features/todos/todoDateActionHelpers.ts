@@ -4,7 +4,6 @@ import { formatDateKey } from '../../lib/time'
 export type TodoRelativeDateKind = 'past' | 'today' | 'future'
 
 export type TodoDateActionKind =
-  | 'schedule_review'
   | 'move_to_today'
   | 'move_to_tomorrow'
   | 'move_to_date'
@@ -40,22 +39,13 @@ export function getTodoRelativeDateKind(dateKey: string, todayKey: string): Todo
 }
 
 export function getTodoDateActionItems(
-  todo: Pick<Todo, 'date' | 'isDone' | 'reviewRound'>,
+  todo: Pick<Todo, 'date' | 'isDone'>,
   todayKey: string,
 ): TodoDateActionItem[] {
   const relativeDateKind = getTodoRelativeDateKind(todo.date, todayKey)
 
   if (todo.isDone) {
-    const items: TodoDateActionItem[] = []
-
-    if ((todo.reviewRound ?? 0) < 6) {
-      items.push({
-        kind: 'schedule_review',
-        label: '복습하기',
-      })
-    }
-
-    items.push(
+    return [
       {
         kind: relativeDateKind === 'today' ? 'duplicate_to_tomorrow' : 'duplicate_to_today',
         label: relativeDateKind === 'today' ? '내일 또 하기' : '오늘 또 하기',
@@ -68,9 +58,7 @@ export function getTodoDateActionItems(
         kind: 'move_to_date',
         label: '날짜 바꾸기',
       },
-    )
-
-    return items
+    ]
   }
 
   return [

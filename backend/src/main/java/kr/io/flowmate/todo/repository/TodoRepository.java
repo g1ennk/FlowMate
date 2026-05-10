@@ -36,21 +36,9 @@ public interface TodoRepository extends JpaRepository<Todo, String> {
     // reorder 등에서 여러 Todo를 1쿼리로 모아 조회 (N+1 회피)
     List<Todo> findAllByIdInAndUserId(List<String> ids, String userId);
 
-    Optional<Todo> findByUserIdAndOriginalTodoIdAndReviewRound(String userId, String originalTodoId, Integer reviewRound);
-
     // 세션 생성 시 순번 계산 레이스를 줄이기 위해 Todo 행을 잠근다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from Todo t where t.id = :id and t.userId = :userId")
     Optional<Todo> findByIdAndUserIdForUpdate(String id, String userId);
-
-    @Query("""
-            select coalesce(max(t.dayOrder), -1)
-            from Todo t
-            where t.userId = :userId
-              and t.date = :date
-              and t.miniDay = :miniDay
-              and t.done = false
-            """)
-    int findMaxDayOrderForUndone(String userId, LocalDate date, int miniDay);
 
 }
