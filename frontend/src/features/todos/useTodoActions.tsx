@@ -32,6 +32,7 @@ export function useTodoActions(selectedDateKey: string) {
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
   const updateSessions = useTimerStore((s) => s.updateSessions)
+  const clearPendingAutoSessions = useTimerStore((s) => s.clearPendingAutoSessions)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
@@ -136,6 +137,8 @@ export function useTodoActions(selectedDateKey: string) {
     }
 
     reset(id)
+    // 삭제되는 todo 의 미동기화 큐는 비운다 (POST /sessions 가 404 만 일으키므로).
+    clearPendingAutoSessions(id)
     setSelectedTodo(null)
 
     // 삭제 대상 항목만 저장 (전체 스냅샷 대신)
@@ -177,7 +180,7 @@ export function useTodoActions(selectedDateKey: string) {
       ),
       { id: `delete-${id}`, duration: 5000 },
     )
-  }, [queryClient, reset])
+  }, [queryClient, reset, clearPendingAutoSessions])
 
   const handleEdit = (id: string, currentTitle: string) => {
     setEditingId(id)

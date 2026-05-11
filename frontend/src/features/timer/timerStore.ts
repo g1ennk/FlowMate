@@ -46,6 +46,12 @@ type TimerActions = {
   applyRemoteState: (todoId: string, state: SingleTimerState, version: number) => void
   applyRemoteReset: (todoId: string, version: number) => void
   clearAll: () => void
+  // reset 직전 호출되어, 휴식 진입/완료 처리를 거치지 않은 진행 중 focus 누적분을
+  // pendingAutoSessions 큐로 보존한다 (background sync가 이어서 처리).
+  commitPendingFocus: (todoId: string) => void
+  // todo 자체를 삭제하는 경로에서 사용. reset 은 큐를 보존하지만, 삭제 시에는
+  // 미동기화 record 가 남아 있어도 backend POST 가 404 만 발생시키므로 큐를 비운다.
+  clearPendingAutoSessions: (todoId: string) => void
   // Flexible timer 액션
   startBreak: (todoId: string, targetMs: number | null) => void
   resumeFocus: (todoId: string) => void
@@ -215,11 +221,20 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       applyingRemote = true
 
       const existing = get().timers[todoId]
-      if (existing?.status !== 'idle') {
+      if (existing && existing.status !== 'idle') {
+        // 다른 디바이스가 idle PUT 한 경우, 본 디바이스의 진행 중 focus 누적분도
+        // sync 큐로 보존한 뒤 timer 를 제거한다.
+        get().commitPendingFocus(todoId)
+        const timers = { ...get().timers }
+        delete timers[todoId]
+        set({ timers })
+      } else if (existing) {
+        // idle 상태 timer 는 commit 없이 제거.
         const timers = { ...get().timers }
         delete timers[todoId]
         set({ timers })
       }
+      // existing 이 undefined 이면 본 디바이스의 reset echo — no-op.
 
       applyingRemote = false
     },
@@ -227,6 +242,44 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     clearAll: () => {
       seenVersions.clear()
       set({ timers: {}, pendingAutoSessions: {} })
+    },
+
+    commitPendingFocus: (todoId) => {
+      const timer = get().timers[todoId]
+      if (!timer) return
+      if (timer.mode !== 'stopwatch') return
+      if (timer.flexiblePhase !== 'focus') return
+
+      let focusElapsedMs = timer.focusElapsedMs ?? 0
+      if (timer.status === 'running' && timer.focusStartedAt) {
+        focusElapsedMs += Date.now() - timer.focusStartedAt
+      }
+
+      const initialMs = timer.initialFocusMs ?? 0
+      const recordedMs = timer.sessions.reduce(
+        (sum, session) => sum + session.sessionFocusSeconds * 1000,
+        0,
+      )
+      const baselineMs = Math.max(initialMs, recordedMs)
+      const currentSessionMs = Math.max(0, focusElapsedMs - baselineMs)
+      const currentSessionSec = Math.round(currentSessionMs / 1000)
+
+      if (currentSessionMs < MIN_FLOW_MS || currentSessionSec <= 0) return
+
+      enqueuePendingAutoSession(todoId, {
+        sessionFocusSeconds: currentSessionSec,
+        breakSeconds: 0,
+        clientSessionId: generateSessionId(),
+      })
+    },
+
+    clearPendingAutoSessions: (todoId) => {
+      setPendingAutoSessions((current) => {
+        if (!(todoId in current)) return current
+        const next = { ...current }
+        delete next[todoId]
+        return next
+      })
     },
 
     startPomodoro: (todoId, settings) => {
@@ -509,15 +562,14 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     reset: (todoId) => {
       const timer = get().timers[todoId]
       if (!timer) return
-      
-      // 리셋 시 타이머를 완전히 제거 (초기화)
+
+      // 타이머만 제거하고 pendingAutoSessions 는 유지한다.
+      // commitPendingFocus 로 enqueue 된 누적 focus 가 background sync 로 처리되도록 보존.
+      // todo 자체를 삭제하는 경로(handleDelete/batchDelete)는 별도로 큐를 정리한다.
       const timers = { ...get().timers }
       delete timers[todoId]
 
-      const nextPending = { ...get().pendingAutoSessions }
-      delete nextPending[todoId]
-
-      set({ timers, pendingAutoSessions: nextPending })
+      set({ timers })
     },
 
     updateInitialFocusMs: (todoId, newInitialFocusMs) => {

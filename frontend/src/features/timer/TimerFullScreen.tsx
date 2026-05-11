@@ -61,6 +61,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const reset = useTimerStore((s) => s.reset)
   const skipToNext = useTimerStore((s) => s.skipToNext)
   const getTimer = useTimerStore((s) => s.getTimer)
+  const commitPendingFocus = useTimerStore((s) => s.commitPendingFocus)
   const resumeFocus = useTimerStore((s) => s.resumeFocus)
   const calculateBreakSuggestion = useTimerStore((s) => s.calculateBreakSuggestion)
 
@@ -747,7 +748,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   setShowResetModal(false)
                   endMusicSession()
 
-                  // store에서 타이머 자체를 삭제
+                  // 진행 중 focus 누적분을 sync 큐로 보존한 뒤 타이머 제거
+                  commitPendingFocus(todoId)
                   reset(todoId)
                   pomodoroInitKeyRef.current = null
 

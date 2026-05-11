@@ -45,7 +45,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
   }
 
   const newSessions = [...timer.sessions]
-  const immediateSyncTargets: SessionRecord[] = []
   const isInBreak =
     timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
 
@@ -65,7 +64,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
         ...newSessions[newSessions.length - 1],
         breakSeconds: currentBreakSec,
       }
-      immediateSyncTargets.push(newSessions[newSessions.length - 1])
     } else if (shouldRecordCurrentSession) {
       // 호환성: 과거 상태(휴식 진입 시 미기록)라면 완료 시점에 보정 기록
       newSessions.push({
@@ -73,7 +71,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
         breakSeconds: currentBreakSec,
         clientSessionId: generateSessionId(),
       })
-      immediateSyncTargets.push(newSessions[newSessions.length - 1])
     }
   } else if (shouldRecordCurrentSession) {
     newSessions.push({
@@ -81,7 +78,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
       breakSeconds: 0,
       clientSessionId: generateSessionId(),
     })
-    immediateSyncTargets.push(newSessions[newSessions.length - 1])
   }
 
   const totalFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
@@ -121,9 +117,11 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
     deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
   }
 
-  if (immediateSyncTargets.length > 0) {
+  // 마지막 1건이 아니라 전체 sessions 를 sync 한다. background sync 가 미완료된
+  // 잔여 sessions 도 완료 시점에 책임지고 보내기 위함 (멱등 처리되어 안전).
+  if (newSessions.length > 0) {
     try {
-      await deps.syncSessionsImmediately?.(immediateSyncTargets)
+      await deps.syncSessionsImmediately?.(newSessions)
     } catch (error) {
       // 즉시 동기화 실패 시에도 로컬 큐/주기 동기화로 eventually 반영되도록 완료 플로우는 유지한다.
       console.error('[completeTaskFromTimer] Immediate stopwatch sync failed', {
@@ -169,7 +167,8 @@ async function completePomodoro(
     }
 
     try {
-      await deps.syncSessionsImmediately?.([newSessions[newSessions.length - 1]])
+      // 마지막 1건이 아니라 전체 sessions 를 sync 한다 (멱등 처리, background sync 잔여분 보존).
+      await deps.syncSessionsImmediately?.(newSessions)
     } catch (error) {
       // 즉시 동기화 실패 시에도 로컬 큐/주기 동기화로 eventually 반영되도록 완료 플로우는 유지한다.
       console.error('[completeTaskFromTimer] Immediate pomodoro sync failed', {

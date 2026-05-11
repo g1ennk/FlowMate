@@ -277,3 +277,167 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
   })
 })
+
+// 2026-05-11 prod 사고 (todo 51e6bf2e): 120분 진행했는데 45분만 기록됨.
+// 휴식 후 focus 75분을 휴식 없이 진행하다가 timer가 reset된 경로(modal 닫기/mode 전환 등)에서
+// 누적 focus가 sessions/sync 큐 어디에도 commit되지 않고 손실되는 회귀.
+describe('useTimerStore reset — stopwatch in-progress focus accumulation 보존', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-11T00:00:00.000Z'))
+    useTimerStore.getState().clearAll()
+  })
+
+  afterEach(() => {
+    useTimerStore.getState().clearAll()
+    vi.useRealTimers()
+  })
+
+  it('휴식 없이 진행 중인 stopwatch focus가 reset 시 누적 시간을 pendingAutoSessions에 보존한다', () => {
+    const FIRST_FOCUS_SID = '11111111-1111-4111-8111-111111111111'
+
+    useTimerStore.setState({
+      timers: {
+        [TODO_ID]: {
+          mode: 'stopwatch',
+          settingsSnapshot: null,
+          phase: 'flow',
+          status: 'paused',
+          endAt: null,
+          remainingMs: null,
+          elapsedMs: 120 * 60 * 1000,
+          initialFocusMs: 45 * 60 * 1000,
+          startedAt: null,
+          cycleCount: 0,
+          flexiblePhase: 'focus',
+          focusElapsedMs: 120 * 60 * 1000,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: null,
+          breakStartedAt: null,
+          breakSessionPendingUpdate: false,
+          sessions: [
+            { sessionFocusSeconds: 45 * 60, breakSeconds: 20 * 60, clientSessionId: FIRST_FOCUS_SID },
+          ],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().commitPendingFocus(TODO_ID)
+    useTimerStore.getState().reset(TODO_ID)
+
+    const state = useTimerStore.getState()
+    expect(state.timers[TODO_ID]).toBeUndefined()
+
+    const pending = state.pendingAutoSessions[TODO_ID]
+    expect(pending).toBeDefined()
+    expect(pending).toHaveLength(1)
+    expect(pending![0]).toMatchObject({
+      sessionFocusSeconds: 75 * 60,
+      breakSeconds: 0,
+    })
+    expect(pending![0].clientSessionId).toEqual(expect.any(String))
+  })
+
+  it('commitPendingFocus는 MIN_FLOW_MS 미만의 짧은 focus는 무시한다', () => {
+    useTimerStore.setState({
+      timers: {
+        [TODO_ID]: {
+          mode: 'stopwatch',
+          settingsSnapshot: null,
+          phase: 'flow',
+          status: 'paused',
+          endAt: null,
+          remainingMs: null,
+          elapsedMs: 30 * 1000,
+          initialFocusMs: 0,
+          startedAt: null,
+          cycleCount: 0,
+          flexiblePhase: 'focus',
+          focusElapsedMs: 30 * 1000,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: null,
+          breakStartedAt: null,
+          breakSessionPendingUpdate: false,
+          sessions: [],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().commitPendingFocus(TODO_ID)
+
+    expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]).toBeUndefined()
+  })
+
+  it('clearPendingAutoSessions는 해당 todoId의 sync 큐만 제거한다', () => {
+    useTimerStore.setState({
+      timers: {},
+      pendingAutoSessions: {
+        [TODO_ID]: [
+          {
+            sessionFocusSeconds: 75 * 60,
+            breakSeconds: 0,
+            clientSessionId: '22222222-2222-4222-8222-222222222222',
+          },
+        ],
+        'other-todo': [
+          {
+            sessionFocusSeconds: 10 * 60,
+            breakSeconds: 0,
+            clientSessionId: '33333333-3333-4333-8333-333333333333',
+          },
+        ],
+      },
+    })
+
+    useTimerStore.getState().clearPendingAutoSessions(TODO_ID)
+
+    const state = useTimerStore.getState()
+    expect(state.pendingAutoSessions[TODO_ID]).toBeUndefined()
+    expect(state.pendingAutoSessions['other-todo']).toHaveLength(1)
+  })
+
+  it('commitPendingFocus는 휴식 중인 stopwatch에서는 아무 것도 추가하지 않는다', () => {
+    useTimerStore.setState({
+      timers: {
+        [TODO_ID]: {
+          mode: 'stopwatch',
+          settingsSnapshot: null,
+          phase: 'flow',
+          status: 'paused',
+          endAt: null,
+          remainingMs: null,
+          elapsedMs: 5 * 60 * 1000,
+          initialFocusMs: 45 * 60 * 1000,
+          startedAt: null,
+          cycleCount: 0,
+          flexiblePhase: 'break_free',
+          focusElapsedMs: 45 * 60 * 1000,
+          breakElapsedMs: 5 * 60 * 1000,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: null,
+          breakStartedAt: null,
+          breakSessionPendingUpdate: false,
+          sessions: [
+            {
+              sessionFocusSeconds: 45 * 60,
+              breakSeconds: 0,
+              clientSessionId: '11111111-1111-4111-8111-111111111111',
+            },
+          ],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().commitPendingFocus(TODO_ID)
+
+    expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]).toBeUndefined()
+  })
+})
