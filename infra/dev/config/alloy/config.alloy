@@ -17,14 +17,46 @@ prometheus.relabel "backend" {
     target_label = "environment"
     replacement  = "dev"
   }
+
+  // ── Drop unused backend metrics (cardinality 절감) ──
+  // active request 추적은 안 쓰고, p99 latency만 봄 → bucket만으로 부족 X
+  rule {
+    source_labels = ["__name__"]
+    regex         = "http_server_requests_active_seconds_.*"
+    action        = "drop"
+  }
+  // JVM 디테일 메트릭 — 거의 안 봄
+  rule {
+    source_labels = ["__name__"]
+    regex         = "jvm_buffer_.*|jvm_classes_.*|jvm_compilation_.*"
+    action        = "drop"
+  }
+  // Spring ThreadPoolTaskExecutor — 우리 안 씀 (기본값 Integer.MAX)
+  rule {
+    source_labels = ["__name__"]
+    regex         = "executor_.*"
+    action        = "drop"
+  }
+  // logback 로그 카운터 — 로그는 Loki로 다 가니까 메트릭 중복
+  rule {
+    source_labels = ["__name__"]
+    regex         = "logback_events_total"
+    action        = "drop"
+  }
+
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
 // ── Metrics: System (node-exporter 대체) ──────────────────────
+// 핵심 collector 10개만 활성 (기본 40+개에서 축소)
 prometheus.exporter.unix "host" {
   procfs_path = "/host/proc"
   sysfs_path  = "/host/sys"
   rootfs_path = "/rootfs"
+
+  set_collectors = ["cpu", "diskstats", "filesystem", "loadavg", "meminfo",
+                    "netdev", "stat", "vmstat", "uname", "time"]
+
   filesystem {
     mount_points_exclude = "^/(sys|proc|dev|host|etc)($|/)"
   }
@@ -45,6 +77,21 @@ prometheus.relabel "host" {
     target_label = "environment"
     replacement  = "dev"
   }
+
+  // ── Drop unused host metrics (cardinality 절감) ──
+  // scrape 자체의 메타 메트릭 — 안 봄
+  rule {
+    source_labels = ["__name__"]
+    regex         = "node_scrape_collector_.*"
+    action        = "drop"
+  }
+  // 가상 네트워크 인터페이스 (Docker veth, bridge) — 메인 eth0/lo만 유지
+  rule {
+    source_labels = ["device"]
+    regex         = "(veth.*|docker.*|br-.*)"
+    action        = "drop"
+  }
+
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
 
