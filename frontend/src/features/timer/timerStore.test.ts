@@ -402,6 +402,132 @@ describe('useTimerStore reset — stopwatch in-progress focus accumulation 보�
     expect(state.pendingAutoSessions['other-todo']).toHaveLength(1)
   })
 
+  it('commitPendingFocus는 pomodoro flow 진행 중에도 누적 시간을 pendingAutoSessions에 보존한다', () => {
+    useTimerStore.setState({
+      timers: {
+        [TODO_ID]: {
+          mode: 'pomodoro',
+          settingsSnapshot: {
+            flowMin: 25,
+            breakMin: 5,
+            longBreakMin: 15,
+            cycleEvery: 4,
+            autoStartBreak: false,
+            autoStartSession: false,
+          },
+          phase: 'flow',
+          status: 'paused',
+          endAt: null,
+          remainingMs: 7 * 60 * 1000,
+          elapsedMs: 0,
+          initialFocusMs: 0,
+          startedAt: null,
+          cycleCount: 0,
+          flexiblePhase: null,
+          focusElapsedMs: 0,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: null,
+          breakStartedAt: null,
+          breakSessionPendingUpdate: false,
+          sessions: [],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().commitPendingFocus(TODO_ID)
+
+    const pending = useTimerStore.getState().pendingAutoSessions[TODO_ID]
+    expect(pending).toBeDefined()
+    expect(pending).toHaveLength(1)
+    expect(pending![0]).toMatchObject({
+      sessionFocusSeconds: 18 * 60,
+      breakSeconds: 0,
+    })
+  })
+
+  it('commitPendingFocus는 pomodoro break phase 에서는 아무 것도 추가하지 않는다', () => {
+    useTimerStore.setState({
+      timers: {
+        [TODO_ID]: {
+          mode: 'pomodoro',
+          settingsSnapshot: {
+            flowMin: 25,
+            breakMin: 5,
+            longBreakMin: 15,
+            cycleEvery: 4,
+            autoStartBreak: false,
+            autoStartSession: false,
+          },
+          phase: 'short',
+          status: 'paused',
+          endAt: null,
+          remainingMs: 3 * 60 * 1000,
+          elapsedMs: 0,
+          initialFocusMs: 0,
+          startedAt: null,
+          cycleCount: 1,
+          flexiblePhase: null,
+          focusElapsedMs: 0,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: null,
+          breakStartedAt: null,
+          breakSessionPendingUpdate: false,
+          sessions: [],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().commitPendingFocus(TODO_ID)
+
+    expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]).toBeUndefined()
+  })
+
+  it('commitPendingFocus는 pomodoro flow 가 거의 다 끝났으면 skip — completePhase 가 처리할 영역', () => {
+    useTimerStore.setState({
+      timers: {
+        [TODO_ID]: {
+          mode: 'pomodoro',
+          settingsSnapshot: {
+            flowMin: 25,
+            breakMin: 5,
+            longBreakMin: 15,
+            cycleEvery: 4,
+            autoStartBreak: false,
+            autoStartSession: false,
+          },
+          phase: 'flow',
+          status: 'running',
+          endAt: Date.now() - 1_000,
+          remainingMs: 0,
+          elapsedMs: 0,
+          initialFocusMs: 0,
+          startedAt: null,
+          cycleCount: 0,
+          flexiblePhase: null,
+          focusElapsedMs: 0,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: null,
+          breakStartedAt: null,
+          breakSessionPendingUpdate: false,
+          sessions: [],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+
+    useTimerStore.getState().commitPendingFocus(TODO_ID)
+
+    expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]).toBeUndefined()
+  })
+
   it('commitPendingFocus는 휴식 중인 stopwatch에서는 아무 것도 추가하지 않는다', () => {
     useTimerStore.setState({
       timers: {

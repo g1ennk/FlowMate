@@ -247,30 +247,53 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     commitPendingFocus: (todoId) => {
       const timer = get().timers[todoId]
       if (!timer) return
-      if (timer.mode !== 'stopwatch') return
-      if (timer.flexiblePhase !== 'focus') return
 
-      let focusElapsedMs = timer.focusElapsedMs ?? 0
-      if (timer.status === 'running' && timer.focusStartedAt) {
-        focusElapsedMs += Date.now() - timer.focusStartedAt
+      if (timer.mode === 'stopwatch') {
+        if (timer.flexiblePhase !== 'focus') return
+
+        let focusElapsedMs = timer.focusElapsedMs ?? 0
+        if (timer.status === 'running' && timer.focusStartedAt) {
+          focusElapsedMs += Date.now() - timer.focusStartedAt
+        }
+
+        const initialMs = timer.initialFocusMs ?? 0
+        const recordedMs = timer.sessions.reduce(
+          (sum, session) => sum + session.sessionFocusSeconds * 1000,
+          0,
+        )
+        const baselineMs = Math.max(initialMs, recordedMs)
+        const currentSessionMs = Math.max(0, focusElapsedMs - baselineMs)
+        const currentSessionSec = Math.round(currentSessionMs / 1000)
+
+        if (currentSessionMs < MIN_FLOW_MS || currentSessionSec <= 0) return
+
+        enqueuePendingAutoSession(todoId, {
+          sessionFocusSeconds: currentSessionSec,
+          breakSeconds: 0,
+          clientSessionId: generateSessionId(),
+        })
+        return
       }
 
-      const initialMs = timer.initialFocusMs ?? 0
-      const recordedMs = timer.sessions.reduce(
-        (sum, session) => sum + session.sessionFocusSeconds * 1000,
-        0,
-      )
-      const baselineMs = Math.max(initialMs, recordedMs)
-      const currentSessionMs = Math.max(0, focusElapsedMs - baselineMs)
-      const currentSessionSec = Math.round(currentSessionMs / 1000)
+      if (timer.mode === 'pomodoro') {
+        // pomodoro 는 flow phase 에서만 보존. break 중 reset 의 break 시간은 무시한다.
+        if (timer.phase !== 'flow') return
+        if (!timer.settingsSnapshot) return
 
-      if (currentSessionMs < MIN_FLOW_MS || currentSessionSec <= 0) return
+        const plannedMs = timer.settingsSnapshot.flowMin * MINUTE
+        const elapsedMs = getPomodoroElapsedMs(timer, plannedMs)
+        const elapsedSec = Math.round(elapsedMs / 1000)
 
-      enqueuePendingAutoSession(todoId, {
-        sessionFocusSeconds: currentSessionSec,
-        breakSeconds: 0,
-        clientSessionId: generateSessionId(),
-      })
+        if (elapsedMs < MIN_FLOW_MS || elapsedSec <= 0) return
+        // 25분 다 채웠다면 completePhase 가 이미 처리했을 영역이라 중복 push 방지
+        if (elapsedMs >= plannedMs) return
+
+        enqueuePendingAutoSession(todoId, {
+          sessionFocusSeconds: elapsedSec,
+          breakSeconds: 0,
+          clientSessionId: generateSessionId(),
+        })
+      }
     },
 
     clearPendingAutoSessions: (todoId) => {
