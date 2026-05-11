@@ -5,7 +5,6 @@ import { useTodoSessions } from '../../todos/hooks'
 import { formatFocusTime } from '../reviewUtils'
 import { queryKeys } from '../../../lib/queryKeys'
 import { queryClient } from '../../../app/queryClient'
-import { ReviewTaskLabel } from './ReviewTaskLabel'
 
 type SessionDetailSheetProps = {
   task: TaskItem | null
@@ -62,10 +61,7 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
       contentClassName="space-y-card"
     >
       <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-3">
-        <ReviewTaskLabel
-          task={task}
-          titleClassName="text-sm font-semibold text-text-primary"
-        />
+        <span className="text-sm font-semibold text-text-primary">{task.title}</span>
         <p className="mt-1 text-xs text-text-tertiary">{task.date}</p>
         <div className="mt-3 grid grid-cols-3 gap-card-item">
           <div>

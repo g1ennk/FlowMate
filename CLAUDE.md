@@ -51,7 +51,7 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 | 패키지        | 역할                                                                                                    |
 |------------|-------------------------------------------------------------------------------------------------------|
 | `auth`     | JWT 발급/검증, 카카오 OAuth (Strategy 패턴: `OAuthProvider` → `OAuthProviderRegistry`), Refresh Token Rotation |
-| `todo`     | Todo CRUD, 리뷰 스케줄링 (review_round + original_todo_id 체인, 간격: 1→2→4→8→16→32일)                           |
+| `todo`     | Todo CRUD                                                                                             |
 | `timer`    | 타이머 상태 push/pull + SSE broadcast (`SseEmitterRegistry`), state_json=null 소프트삭제, version 단조증가          |
 | `session`  | 포모도로/스톱워치 세션 기록 (client_session_id로 멱등성, break_seconds는 증가만 허용)                                       |
 | `review`   | 주간/월간 회고 (ReviewType enum, user_id+type+period_start unique)                                          |
@@ -117,8 +117,9 @@ dev 3개 서비스: `mysql` + `backend` + `alloy`
 - V1: todos, todo_sessions, user_settings, reviews
 - V2: users, auth_social_accounts, auth_refresh_tokens (token_hash UNIQUE 포함)
 - V3: timer_states (JSON blob + version + soft delete)
-- V4: todos에 review_round, original_todo_id 추가
+- V4: todos에 review_round, original_todo_id 추가 (V6에서 제거)
 - V5: user_settings에 created_at 추가, ON UPDATE CURRENT_TIMESTAMP 제거 (JPA Auditing 정합)
+- V6: 복습 스케줄 컬럼 제거 (review_round, original_todo_id, 관련 인덱스)
 
 ## Git 워크플로우 & 릴리즈
 

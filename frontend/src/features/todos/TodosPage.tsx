@@ -24,7 +24,6 @@ import { storageKeys } from '../../lib/storageKeys'
 import { useMiniDaysSettings } from '../settings/hooks'
 import { getDefaultMiniDayForDate } from './miniDayUtils'
 import type { TodoDateActionKind } from './todoDateActionHelpers'
-import { getTodoReviewBadgeLabel } from './reviewTodoDisplay'
 import { useAuthStore } from '../../store/authStore'
 import { useCoachMark } from '../../lib/useCoachMark'
 import { CoachMark } from '../../ui/CoachMark'
@@ -202,9 +201,6 @@ function TodosPage() {
 
   const handleTodoDateAction = (todo: Todo, kind: TodoDateActionKind) => {
     switch (kind) {
-      case 'schedule_review':
-        void actions.handleScheduleReview(todo)
-        return
       case 'move_to_today':
         void actions.handleMoveTodoToToday(todo)
         return
@@ -227,15 +223,12 @@ function TodosPage() {
   }
 
   const renderTodoItem = (todo: Todo, nextDoneOrder: number, nextActiveOrder: number) => {
-    const reviewBadgeLabel = getTodoReviewBadgeLabel(todo.reviewRound, todo.isDone)
-
     return (
       <SortableTodoItem
         key={todo.id}
         id={todo.id}
         todoId={todo.id}
         title={todo.title}
-        reviewBadgeLabel={reviewBadgeLabel}
         note={todo.note}
         sessionCount={todo.sessionCount}
         sessionFocusSeconds={todo.sessionFocusSeconds}

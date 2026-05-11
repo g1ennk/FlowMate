@@ -24,8 +24,6 @@ public record TodoResponse(
         int sessionCount,
         int sessionFocusSeconds,
         String timerMode,
-        Integer reviewRound,
-        String originalTodoId,
 
         @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
         Instant createdAt,
@@ -46,8 +44,6 @@ public record TodoResponse(
                 todo.getSessionCount(),
                 todo.getSessionFocusSeconds(),
                 todo.getTimerMode() != null ? todo.getTimerMode().getValue() : null,
-                todo.getReviewRound(),
-                todo.getOriginalTodoId(),
                 todo.getCreatedAt(),
                 todo.getUpdatedAt()
         );

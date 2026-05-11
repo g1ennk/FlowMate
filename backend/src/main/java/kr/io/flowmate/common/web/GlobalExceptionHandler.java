@@ -5,7 +5,6 @@ import kr.io.flowmate.common.error.ApiError;
 import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.common.exception.NotFoundException;
-import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
@@ -93,14 +92,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleIdempotencyConflict(IdempotencyConflictException ex) {
         log.info("Idempotency conflict: {}", ex.getMessage());
         ApiError body = ApiError.of("IDEMPOTENCY_CONFLICT", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
-    }
-
-    // Todo 상태 위반 (미완료 복습 스케줄, MAX 초과 등)을 409 Conflict 로 매핑
-    @ExceptionHandler(TodoStateViolationException.class)
-    public ResponseEntity<ApiError> handleTodoStateViolation(TodoStateViolationException ex) {
-        log.info("Todo state violation: {}", ex.getMessage());
-        ApiError body = ApiError.of("TODO_STATE_VIOLATION", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
