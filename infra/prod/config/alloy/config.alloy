@@ -147,6 +147,16 @@ loki.source.docker "containers" {
 loki.process "parse_json" {
   forward_to = [loki.write.grafana_cloud.receiver]
 
+  // ① 24시간 넘은 timestamp drop (Loki 400 timestamp_too_old 방지)
+  //    배경: EC2 stop/start 후 alloy 재시작 시 docker journal의 옛 로그를
+  //          처음부터 read → 옛 timestamp가 batch에 섞여 Loki가 batch 전체
+  //          reject → 신규 로그까지 drop되는 사고 발생
+  //    EC2 stop/start: prod는 매일 자정~7AM 정지, dev도 유사
+  stage.drop {
+    older_than          = "24h"
+    drop_counter_reason = "older_than"
+  }
+
   stage.json {
     expressions = {
       level     = "level",
