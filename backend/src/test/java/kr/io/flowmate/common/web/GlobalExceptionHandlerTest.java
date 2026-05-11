@@ -4,7 +4,6 @@ import kr.io.flowmate.common.error.ApiError;
 import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.common.exception.NotFoundException;
-import kr.io.flowmate.todo.exception.TodoStateViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -74,17 +73,6 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody().error().code()).isEqualTo("IDEMPOTENCY_CONFLICT");
         assertThat(response.getBody().error().message()).isEqualTo("focusSeconds mismatch");
-    }
-
-    @Test
-    @DisplayName("handleTodoStateViolation: 완료되지 않은 Todo 복습 스케줄 등을 409 TODO_STATE_VIOLATION 로 매핑")
-    void handleTodoStateViolation_returns409() {
-        ResponseEntity<ApiError> response = handler.handleTodoStateViolation(
-                new TodoStateViolationException("완료된 Todo만 복습 등록할 수 있습니다"));
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(response.getBody().error().code()).isEqualTo("TODO_STATE_VIOLATION");
-        assertThat(response.getBody().error().message()).isEqualTo("완료된 Todo만 복습 등록할 수 있습니다");
     }
 
     @Test

@@ -50,12 +50,6 @@ public class Todo extends BaseTimeEntity {
     @Column(name = "timer_mode", length = 20)
     private TimerMode timerMode;
 
-    @Column(name = "review_round")
-    private Integer reviewRound;
-
-    @Column(name = "original_todo_id", length = 36)
-    private String originalTodoId;
-
     public static Todo create(String userId, String title, String note, LocalDate date, int miniDay, int dayOrder) {
         Todo todo = new Todo();
 
@@ -70,24 +64,6 @@ public class Todo extends BaseTimeEntity {
         todo.sessionCount = 0;
         todo.sessionFocusSeconds = 0;
         todo.timerMode = null;
-        todo.reviewRound = null;
-        todo.originalTodoId = null;
-        return todo;
-    }
-
-    public static Todo createReview(
-            String userId,
-            String originalTodoId,
-            String title,
-            String note,
-            LocalDate date,
-            int miniDay,
-            int dayOrder,
-            int reviewRound
-    ) {
-        Todo todo = create(userId, title, note, date, miniDay, dayOrder);
-        todo.reviewRound = reviewRound;
-        todo.originalTodoId = originalTodoId;
         return todo;
     }
 

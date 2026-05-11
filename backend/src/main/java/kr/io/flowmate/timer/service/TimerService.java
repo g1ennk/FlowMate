@@ -52,7 +52,6 @@ public class TimerService {
         } catch (DataIntegrityViolationException e) {
             // 동시 first insert 로 PK 충돌 발생. winner 가 이미 더 큰 version 을 저장했을 수 있으므로
             // 재조회한 row 의 version 위에서 newVersion 을 다시 계산해야 단조 증가가 보장된다.
-            // TodoService.scheduleReview 와 동일한 DataIntegrityViolationException catch-retry 패턴.
             log.warn("timer state PK 충돌, 재조회 후 업데이트. todoId={}", todoId);
             timerState = timerStateRepository.findByUserIdAndTodoId(userId, todoId)
                     .orElseThrow(() -> e);

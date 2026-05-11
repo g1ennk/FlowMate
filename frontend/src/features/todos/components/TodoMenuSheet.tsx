@@ -11,7 +11,6 @@ import {
   DocumentIcon,
   ArrowDownIcon,
   ArrowRightIcon,
-  ArrowPathIcon,
   CalendarIcon,
 } from '../../../ui/Icons'
 import { useTimerStore } from '../../timer/timerStore'
@@ -35,8 +34,7 @@ type TodoMenuSheetProps = {
   setTimerErrorMessage: (msg: string | null) => void
 }
 
-const DATE_ACTION_ICONS: Record<TodoDateActionKind, { Icon: typeof ArrowPathIcon; color: string }> = {
-  schedule_review: { Icon: ArrowPathIcon, color: 'text-cyan-500' },
+const DATE_ACTION_ICONS: Record<TodoDateActionKind, { Icon: typeof ArrowDownIcon; color: string }> = {
   move_to_today: { Icon: ArrowDownIcon, color: 'text-blue-500' },
   move_to_tomorrow: { Icon: ArrowRightIcon, color: 'text-blue-500' },
   move_to_date: { Icon: CalendarIcon, color: 'text-indigo-500' },

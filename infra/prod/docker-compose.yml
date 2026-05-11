@@ -19,6 +19,10 @@ services:
       - --default-authentication-plugin=mysql_native_password
       - --max-connections=200
       - --innodb-buffer-pool-size=512M
+      - --slow-query-log=ON
+      - --long-query-time=1
+      - --log-output=FILE
+      - --slow-query-log-file=/var/lib/mysql/slow.log
     volumes:
       - mysql-data-prod:/var/lib/mysql
     networks:
@@ -28,6 +32,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Spring Boot Backend
   backend:
@@ -48,15 +57,26 @@ services:
       KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
       CORS_ORIGINS: ${CORS_ORIGINS}
       JAVA_OPTS: >-
+        -javaagent:/opt/opentelemetry-javaagent.jar
         -Xms512m
         -Xmx1024m
         -XX:+UseG1GC
         -XX:MaxGCPauseMillis=200
         -XX:+HeapDumpOnOutOfMemoryError
         -XX:HeapDumpPath=/tmp/heapdump.hprof
+      OTEL_SERVICE_NAME: flowmate-backend-prod
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment=prod,service.namespace=flowmate
+      OTEL_LOGS_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
     depends_on:
       mysql:
         condition: service_healthy
+      alloy:
+        condition: service_started
     ports:
       - "127.0.0.1:${BACKEND_BIND_PORT:-8080}:8080"
     networks:
@@ -92,6 +112,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # NestJS AI Service
   ai-service:
@@ -148,8 +173,6 @@ services:
     pid: "host"
     ports:
       - "127.0.0.1:12345:12345"
-    depends_on:
-      - backend
     networks:
       - flowmate-network
     logging:

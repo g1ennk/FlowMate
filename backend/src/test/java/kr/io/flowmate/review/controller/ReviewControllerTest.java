@@ -74,14 +74,14 @@ class ReviewControllerTest {
     }
 
     @Test
-    @DisplayName("GET /{periodStart}?type: 미존재 시 404 Not Found")
-    void getReview_returns404_whenNotExists() throws Exception {
+    @DisplayName("GET /{periodStart}?type: 미존재 시 204 No Content (콘솔 노이즈 제거 위해 v1.8.2 에서 404 → 204 로 완화)")
+    void getReview_returns204_whenNotExists() throws Exception {
         when(currentUserResolver.resolve()).thenReturn(USER_ID);
         when(reviewService.getReview(eq(USER_ID), eq(ReviewType.WEEKLY), eq(MONDAY)))
                 .thenReturn(null);
 
         mockMvc.perform(get("/api/reviews/2026-04-20").param("type", "WEEKLY"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNoContent());
     }
 
     @Test
