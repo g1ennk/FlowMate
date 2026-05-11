@@ -117,9 +117,8 @@ dev 3개 서비스: `mysql` + `backend` + `alloy`
 - V1: todos, todo_sessions, user_settings, reviews
 - V2: users, auth_social_accounts, auth_refresh_tokens (token_hash UNIQUE 포함)
 - V3: timer_states (JSON blob + version + soft delete)
-- V4: todos에 review_round, original_todo_id 추가 (V6에서 제거)
+- V4: todos에 review_round, original_todo_id 추가 (복습 스케줄 기능 제거 후 컬럼은 미사용 상태로 보존, 차기 contract 릴리즈에서 DROP 예정)
 - V5: user_settings에 created_at 추가, ON UPDATE CURRENT_TIMESTAMP 제거 (JPA Auditing 정합)
-- V6: 복습 스케줄 컬럼 제거 (review_round, original_todo_id, 관련 인덱스)
 
 ## Git 워크플로우 & 릴리즈
 
