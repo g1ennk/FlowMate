@@ -54,6 +54,7 @@ const mocked = vi.hoisted(() => {
       message: 'Flow 25분 → 5분 휴식 추천',
     })),
     updateSessions: vi.fn(),
+    commitPendingFocus: vi.fn(),
   }
 
   return {

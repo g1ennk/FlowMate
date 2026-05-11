@@ -36,6 +36,7 @@ export function useTimerInit({
   const initStopwatch = useTimerStore((s) => s.initStopwatch)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
+  const commitPendingFocus = useTimerStore((s) => s.commitPendingFocus)
 
   const hasInitializedRef = useRef(false)
   const pomodoroInitKeyRef = useRef<string | null>(null)
@@ -49,6 +50,7 @@ export function useTimerInit({
 
       if (currentTimer && currentTimer.status !== 'idle' && initialMode && initialMode !== currentTimer.mode) {
         endMusicSession()
+        commitPendingFocus(todoId)
         reset(todoId)
         onSelectedModeChange(initialMode)
         if (initialMode === 'stopwatch') {
