@@ -191,7 +191,7 @@ gap lock을 유발한 `SELECT FOR UPDATE` 경로는 그대로 남기 때문에, 
 
 기존 repository 조회는 `PESSIMISTIC_WRITE`를 사용했다.
 
-```test
+```text
 @Lock(LockModeType.PESSIMISTIC_WRITE)
 @Query("select t from TimerState t where t.userId = :userId and t.todoId = :todoId")
 Optional<TimerState> findByUserIdAndTodoId(String userId, String todoId);
@@ -225,11 +225,10 @@ timerStateRepository.saveAndFlush(timerState);
 ```text
 try {
     timerStateRepository.saveAndFlush(timerState);
-} catch(
-DataIntegrityViolationException e){
-    log.warn("timer state 유일성 제약 조건 충돌, 재조회 후 업데이트. todoId={}",todoId);
-    timerState =timerStateRepository.findByUserIdAndTodoId(userId, todoId)
-        .orElseThrow(() ->e);
+} catch (DataIntegrityViolationException e) {
+    log.warn("timer state 유일성 제약 조건 충돌, 재조회 후 업데이트. todoId={}", todoId);
+    timerState = timerStateRepository.findByUserIdAndTodoId(userId, todoId)
+        .orElseThrow(() -> e);
     newVersion = nextVersion(timerState.getVersion());
     timerState.update(stateJson, newVersion);
     timerStateRepository.saveAndFlush(timerState);
@@ -282,19 +281,16 @@ Thread A가 winner row version 기준으로 nextVersion 재계산
 수정 후 테스트는 수정 전보다 전체 요청 수가 약 46% 많았음에도 timer PUT 실패가 69건에서 0건으로 감소했다.
 따라서 단순히 부하가 낮아져 실패가 줄어든 것이 아니라, first insert deadlock 경로가 제거된 것으로 판단했다.
 
-## 7. 배운 점
+## 7. 회고
 
 ### 전역 threshold 통과가 endpoint 정상성을 보장하지 않는다.
 
-전체 실패율 0.06%는 낮아 보인다.하지만 그 실패가 핵심 write path 하나에 집중되면 제품 정합성 문제다.부하 테스트 결과는 평균이나 전체 threshold만 보지 말고 endpoint별 실패 분포까지
-봐야 한다.
+전체 실패율 0.06%는 낮아 보인다. 하지만 그 실패가 핵심 write path 하나에 집중되면 제품 정합성 문제다. 부하 테스트 결과는 평균이나 전체 threshold만 보지 말고 endpoint별 실패 분포까지 봐야 한다.
 
 ### PESSIMISTIC_WRITE는 row가 없을 때 다른 락 동작을 만든다
 
-row가 존재하면 SELECT FOR UPDATE는 record lock으로 동작하지만, row가 없으면 InnoDB가 gap lock을 잡을 수 있다.ORM의 락 어노테이션만 보고 판단하지 말고, 실제 DB
-lock graph로 확인해야 한다.
+row가 존재하면 SELECT FOR UPDATE는 record lock으로 동작하지만, row가 없으면 InnoDB가 gap lock을 잡을 수 있다. ORM의 락 어노테이션만 보고 판단하지 말고, 실제 DB lock graph로 확인해야 한다.
 
 ### 오버 엔지니어링보다는 프로젝트 패턴에 맞는 최소 수정이 더 낫다.
 
-native upsert는 기술적으로 매력적이고 견고한 선택이었다.하지만 현재 프로젝트에는 native SQL과 트랜잭션 경계 복잡도를 추가할 만큼의 이득이 비용 대비 크지 않았다.원인을 만든 @Lock을 제거하고,
-남은 first insert 충돌만 기존 catch-retry 패턴으로 단순히 처리하는 방법이 더 좋은 해법이었다.
+native upsert는 기술적으로 매력적이고 견고한 선택이었다. 하지만 현재 프로젝트에는 native SQL과 트랜잭션 경계 복잡도를 추가할 만큼의 이득이 비용 대비 크지 않았다. 원인을 만든 @Lock을 제거하고, 남은 first insert 충돌만 기존 catch-retry 패턴으로 단순히 처리하는 방법이 더 좋은 해법이었다.
