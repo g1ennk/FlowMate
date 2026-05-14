@@ -100,7 +100,7 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 ### CI/CD (GitHub Actions, `.github/workflows/`)
 
 - **Dev (BE/FE/AI service)**: `main` push 시 자동. BE/AI service는 ECR push (`github.sha` 태그) → SSH `git reset --hard origin/main` → `docker compose up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
-- **Prod (BE/FE/AI service)**: tag `v*.*.*` push 시 자동. BE/AI service는 ECR push (tag + latest) → SSH `git fetch --all --tags && git reset --hard ${tag}` → `docker compose pull + up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
+- **Prod (BE/FE/AI service)**: tag `v*.*.*` push 시 자동. BE는 ECR push (tag + latest), AI service는 ECR push (tag만) → SSH `git fetch --all --tags && git reset --hard ${tag}` → `docker compose pull + up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
 - **glob 가드** `v*.*.*`로 `archive/*` / `pre-release/*` / `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
 - **롤백**: prod 자동 dispatch는 제거됨. 이전 tag로 재배포가 필요하면 후속 작업으로 신설할 `redeploy-prod-*` 워크플로(`workflow_dispatch(tag)` input)를 사용하거나 새 패치 tag(예: v1.10.2)로 재배포.
 

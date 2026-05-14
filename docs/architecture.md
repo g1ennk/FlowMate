@@ -140,82 +140,36 @@ sequenceDiagram
 
 ## 4. 인프라 및 배포
 
-### 4.1 환경 토폴로지
+### 1) 배포 프로세스
 
-| Layer | dev (showcase, managed 지향) | prod (cost-opt, single EC2) |
-|---|---|---|
-| Compute | ECS Fargate or EC2 ASG + ALB (지향) / 현재 1 EC2 + Compose | 1 × t3a.small + Docker Compose |
-| DB | RDS MySQL (지향) / 현재 Compose MySQL | Compose MySQL |
-| Cache | ElastiCache Redis (지향) / 현재 Compose Redis | Compose Redis |
-| Observability | OTel → Tempo + Loki + Mimir | OTel → Tempo + Loki + Mimir |
-| 코드 | **동일** | **동일** |
-| 분기 흡수 | Spring profile + `infra/dev/` IaC + 환경변수 | Spring profile + `infra/prod/` IaC + 환경변수 |
+| 환경   | 프론트엔드                                       | 백엔드                                                        | AI Service                                                |
+|------|---------------------------------------------|------------------------------------------------------------|-----------------------------------------------------------|
+| Dev  | `main` push → S3 sync + CloudFront invalidation | `main` push → ECR build → EC2 SSH deploy                  | `main` push → ECR build → EC2 SSH deploy                  |
+| Prod | tag `v*.*.*` push → S3 sync + CloudFront invalidation | tag push → ECR build (tag + latest) → EC2 SSH deploy | tag push → ECR build (tag) → EC2 SSH deploy               |
 
-> 본 문서 기준 dev/prod는 모두 1 EC2 + Docker Compose 상태이며, **dev managed services 전환은 별도 spec/plan에서 다룬다** (`.superpowers/specs/2026-05-14-branch-strategy-trunk-design.md` §4.2 scope 주의 참조). 본 §4는 브랜치 전략 + CI/CD 트리거 전환만 다룬다.
+- `main` push 한 번으로 dev 환경 세 서비스가 동시 갱신된다.
+- tag `v*.*.*` push 한 번으로 prod 환경 세 서비스가 동시 자동 배포된다. glob 가드로 `archive/*` · `pre-release/*` · `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
+- 코드는 동일하고 환경 차이는 `infra/{dev,prod}/` 디렉토리 + Spring profile + 환경변수로 흡수한다.
 
-### 4.2 배포 파이프라인 (현재 모델)
-
-| 환경 | 프론트엔드 | 백엔드 | AI Service | 비고 |
-|---|---|---|---|---|
-| Dev | `main` push → S3 sync + CF invalidation | `main` push → ECR push → EC2 SSH deploy | `main` push → ECR push → EC2 SSH deploy | 같은 main commit이 세 서비스에 동시 적용 |
-| Prod | tag `v*.*.*` push → S3 sync + CF invalidation | tag `v*.*.*` push → ECR push (tag/latest) → EC2 SSH deploy | tag `v*.*.*` push → ECR push → EC2 SSH deploy | tag 1개로 세 서비스 동시 prod 배포 |
+### 2) CI/CD 파이프라인
 
 ```mermaid
 flowchart TD
-    subgraph Dev["Dev 환경 — main push 자동"]
-        D0["push to main"] --> D1["Frontend workflow<br/>pnpm build --mode dev"]
-        D0 --> D2["Backend workflow<br/>docker build + push (SHA tag)"]
-        D0 --> D3["AI service workflow<br/>docker build + push (SHA tag)"]
-        D1 --> D4["S3 sync + CloudFront invalidation"]
-        D2 --> D5["EC2 SSH<br/>docker compose up -d backend alloy"]
-        D3 --> D6["EC2 SSH<br/>docker compose up -d ai-service postgres"]
+    subgraph Dev["Dev — main push 자동"]
+        D0["push to main"] --> D1["Frontend<br/>pnpm build → S3 + CF"]
+        D0 --> D2["Backend<br/>ECR build → SSH deploy"]
+        D0 --> D3["AI Service<br/>ECR build → SSH deploy"]
     end
 
-    subgraph Prod["Prod 환경 — tag push 자동"]
-        P0["push tag v*.*.*"] --> P1["Frontend workflow<br/>pnpm build --mode prod"]
-        P0 --> P2["Backend workflow<br/>docker build + push (tag + latest)"]
-        P0 --> P3["AI service workflow<br/>docker build + push (tag)"]
-        P1 --> P4["S3 sync + CloudFront invalidation"]
-        P2 --> P5["EC2 SSH<br/>git reset --hard tag<br/>docker compose pull + up"]
-        P3 --> P6["EC2 SSH<br/>git reset --hard tag<br/>docker compose pull + up"]
+    subgraph Prod["Prod — tag v*.*.* push 자동"]
+        P0["push tag"] --> P1["Frontend<br/>pnpm build → S3 + CF"]
+        P0 --> P2["Backend<br/>ECR (tag + latest) → SSH deploy"]
+        P0 --> P3["AI Service<br/>ECR (tag) → SSH deploy"]
     end
 ```
 
-- Dev: `main` push 한 번으로 BE/FE/AI service 모두 자동 갱신 — 세 서비스의 배포 리듬이 동일 commit으로 동기화됨.
-- Prod: tag push 한 번으로 세 서비스 prod 모두 동시 자동 배포. `workflow_dispatch`는 제거됨 (롤백은 별도 `redeploy-prod-*` 워크플로가 담당, 후속 작업).
-- tag glob `v*.*.*` 가드로 `archive/*` / `pre-release/*` / `hotfix/*` 등은 prod 트리거 안 됨.
+### 3) 모델 변천
 
-### 4.3 배포 모델 변천 (Before → After)
-
-#### 1) v1.8 ~ v1.9 모델 (2026-04-25 ~ 2026-05-14, 폐기)
-
-- 구조: `develop`(자세한 history) + `main`(squash 1릴리즈=1커밋), backmerge로 sync
-- FE prod = `main` push 자동 / BE prod = `workflow_dispatch(version)` 수동 (분리 트리거)
-- 매 릴리즈 5단계 수동 작업 (squash · tag · push main · backmerge · push develop)
-
-#### 2) 직면한 요구사항·한계
-
-1. 솔로 운영자에 두 브랜치 동시 운영 부담 — 18일간 9회 릴리즈 = 45단계
-2. backmerge 누락 → 다음 릴리즈 squash conflict 사고 (2026-04-08 사례)
-3. FE/BE 배포 트리거 불일치로 릴리즈 리듬 어긋남
-4. dev/prod를 다른 인프라 토폴로지로 가져가려면 브랜치 분리는 오히려 동기화 부담을 만듦 — 코드는 한 곳, 인프라만 두 갈래가 자연스러움
-5. `docs/review/2026-05-10.md` INF-H3: prod-backend의 build/deploy 분리 워크플로 버그
-
-#### 3) v1.10 ~ 모델 (2026-05-14 ~, 현재)
-
-- 구조: `main` 한 줄 + 단명 `feature/*` branch, tag(`v*.*.*`) = prod 진입권
-- dev = `main` push, prod = tag push 자동, FE/BE/AI service 동시
-- 환경 분기는 IaC 디렉토리 + Spring profile + 환경변수로 흡수
-- 머지는 `--no-ff` (자세한 history 보존), 머지 후 feature branch 삭제 (history는 main의 merge commit 아래 보존)
-- 자세한 history는 main에 직접 누적, GitHub Releases가 포트폴리오 메인 view
-
-#### 4) 효과
-
-| 지표 | Before | After |
-|---|---|---|
-| 릴리즈당 수동 단계 | 5 | 1~2 (`git push tag` [+ optional release notes]) |
-| Backmerge 사고 위험 | 있음 (1회 발생) | 0 |
-| FE/BE/AI service 배포 리듬 | 어긋남 | 동기화 (tag 1개로 동시) |
-| 두 브랜치 운영 부담 | 있음 | 0 |
-| 자세한 history 위치 | develop | main |
-| INF-H3 분리 버그 | 있음 | 해결 (단일 job 통합) |
+- **v1.8 ~ v1.9 (2026-05-14 폐기)**: `develop` + `main` + squash + backmerge. 1인 운영에 매 릴리즈 5단계 + backmerge 누락 사고 (2026-04-08).
+- **v1.10~ (현재)**: `main` 단일 + tag 기반 prod (GitHub Flow 변형). 릴리즈 단계 5 → 1~2, FE/BE/AI 동기화, `docs/review/2026-05-10.md` INF-H3 (prod-backend build/deploy 분리 버그) 해결.
+- 자세한 결정 근거와 마이그레이션 절차는 `.superpowers/specs/2026-05-14-branch-strategy-trunk-design.md` 참조.
