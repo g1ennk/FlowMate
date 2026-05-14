@@ -22,7 +22,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        # packageManager 필드 (pnpm@10.33.4) 자동 인식
+        with:
+          version: 10.33.4
 
       - uses: actions/setup-node@v4
         with:
