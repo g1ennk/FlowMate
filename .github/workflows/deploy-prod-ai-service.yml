@@ -2,22 +2,16 @@ name: Deploy AI Service (prod)
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'ai-service/**'
-      - '.github/workflows/deploy-prod-ai-service.yml'
-  workflow_dispatch:
+    tags:
+      - 'v*.*.*'
 
 env:
   AWS_REGION: ap-northeast-2
   ECR_REPOSITORY: flowmate-ai-service
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    outputs:
-      image_uri: ${{ steps.build.outputs.image_uri }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,28 +30,28 @@ jobs:
         id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ github.ref_name }}
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./ai-service
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    steps:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
+        env:
+          AI_SERVICE_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.ref_name }}
+          IMAGE_TAG: ${{ github.ref_name }}
         with:
           host: ${{ secrets.PROD_EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          envs: AI_SERVICE_IMAGE,IMAGE_TAG
           script: |
             set -euo pipefail
             cd ~/FlowMate
-            git fetch origin
+            git fetch --all --tags
             git checkout main
-            git reset --hard origin/main
+            git reset --hard "$IMAGE_TAG"
             cd infra/prod
 
             docker run --rm \
@@ -67,7 +61,6 @@ jobs:
               amazon/aws-cli:2.31.18 \
               ecr get-login-password --region ${{ env.AWS_REGION }} | \
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
-            export AI_SERVICE_IMAGE=${{ needs.build-and-push.outputs.image_uri }}
-            docker compose pull ai-service
-            docker compose up -d --remove-orphans ai-service postgres
+            AI_SERVICE_IMAGE="$AI_SERVICE_IMAGE" docker compose pull ai-service
+            AI_SERVICE_IMAGE="$AI_SERVICE_IMAGE" docker compose up -d --remove-orphans ai-service postgres
             docker compose ps ai-service postgres
