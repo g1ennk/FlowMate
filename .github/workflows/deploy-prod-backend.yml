@@ -2,29 +2,16 @@ name: Deploy Backend (prod)
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - 'infra/prod/**'
-      - '.github/workflows/deploy-prod-backend.yml'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: '배포할 버전 태그 (예: v1.0.0)'
-        required: true
-        type: string
+    tags:
+      - 'v*.*.*'
 
 env:
   AWS_REGION: ap-northeast-2
   ECR_REPOSITORY: flowmate-backend
 
 jobs:
-  build-and-push:
-    if: github.event_name == 'push'
+  build-and-deploy:
     runs-on: ubuntu-latest
-    outputs:
-      image_uri: ${{ steps.build.outputs.image_uri }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +35,7 @@ jobs:
         id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ github.ref_name }}
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
                        -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
@@ -57,48 +44,22 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-  deploy:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Tag version in ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          MANIFEST=$(aws ecr batch-get-image \
-            --repository-name $ECR_REPOSITORY \
-            --image-ids imageTag=latest \
-            --query 'images[0].imageManifest' \
-            --output text)
-          aws ecr put-image \
-            --repository-name $ECR_REPOSITORY \
-            --image-tag $VERSION \
-            --image-manifest "$MANIFEST" || echo "Tag already exists, skipping."
-
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
+        env:
+          ECR_IMAGE_URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.ref_name }}
+          IMAGE_TAG: ${{ github.ref_name }}
         with:
           host: ${{ secrets.PROD_EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          envs: ECR_IMAGE_URI,IMAGE_TAG
           script: |
             set -euo pipefail
             cd ~/FlowMate
-            git fetch origin
+            git fetch --all --tags
             git checkout main
-            git reset --hard origin/main
+            git reset --hard "$IMAGE_TAG"
             cd infra/prod
 
             docker run --rm \
@@ -108,9 +69,8 @@ jobs:
               amazon/aws-cli:2.31.18 \
               ecr get-login-password --region ${{ env.AWS_REGION }} | \
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
-            export ECR_IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ inputs.version }}
-            docker compose pull backend
-            docker compose up -d --remove-orphans backend
-            docker compose up -d --force-recreate alloy
+            ECR_IMAGE_URI="$ECR_IMAGE_URI" docker compose pull backend
+            ECR_IMAGE_URI="$ECR_IMAGE_URI" docker compose up -d --remove-orphans backend
+            ECR_IMAGE_URI="$ECR_IMAGE_URI" docker compose up -d --force-recreate alloy
             docker compose ps backend
             docker image prune -af --filter "until=24h"
