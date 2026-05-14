@@ -9,7 +9,7 @@ WORKDIR /app
 
 # 의존성 캐싱: 패키지 파일 먼저 복사
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile
 
 # 소스 복사 & 빌드
 COPY . .
@@ -27,7 +27,7 @@ RUN apk add --no-cache wget && \
 
 # 프로덕션 의존성만 설치
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile --prod
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile --prod
 
 # 빌드 산출물 복사
 COPY --from=builder /app/dist ./dist
