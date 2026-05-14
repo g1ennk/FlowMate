@@ -172,4 +172,3 @@ flowchart TD
 
 - **v1.8 ~ v1.9 (2026-05-14 폐기)**: `develop` + `main` + squash + backmerge. 1인 운영에 매 릴리즈 5단계 + backmerge 누락 사고 (2026-04-08).
 - **v1.10~ (현재)**: `main` 단일 + tag 기반 prod (GitHub Flow 변형). 릴리즈 단계 5 → 1~2, FE/BE/AI 동기화, `docs/review/2026-05-10.md` INF-H3 (prod-backend build/deploy 분리 버그) 해결.
-- 자세한 결정 근거와 마이그레이션 절차는 `.superpowers/specs/2026-05-14-branch-strategy-trunk-design.md` 참조.
