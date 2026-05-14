@@ -2,12 +2,8 @@ name: Deploy Frontend (prod)
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy-prod-frontend.yml'
-  workflow_dispatch:
+    tags:
+      - 'v*.*.*'
 
 jobs:
   deploy:
