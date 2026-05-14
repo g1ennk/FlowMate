@@ -53,7 +53,14 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 - 결과: 수정 후 전체 요청 163,205건 기준 timer PUT 실패 0건, `http_req_failed` 0.00%를 확인
 - 관련 문서: [Timer State 저장 경로의 InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
 
-### 2) X-Client-Id에서 OAuth + RTR까지: 인증 시스템 진화
+### 2) 멀티디바이스 타이머 동기화: SSE + 단조 증가 Version
+
+- 문제: 기기를 바꾸거나 새 탭을 열면 진행 중인 타이머가 사라짐 — 같은 계정이어도 기기·탭 간 상태 공유가 없었음
+- 선택 기준: WebSocket은 과잉, Polling은 실시간성 부족 — 단방향 push 요구에 SSE + REST 채택
+- 결과: 단조 증가 `version`과 snapshot fetch로 모든 기기에 즉시 반영되며, 재접속 후에도 최신 상태 유지 — k6 163,205 req · 에러율 0%
+- 관련 문서: [멀티디바이스 타이머 동기화: SSE + 단조 증가 `version`](docs/wiki/sse-sync.md)
+
+### 3) X-Client-Id에서 OAuth + RTR까지: 인증 시스템 진화
 
 - 배경: 서명·TTL 없는 `X-Client-Id`는 장기 인증 모델로 부적합, 게스트 연속성과 다중 기기 세션 요구가 겹치며 4단계 진화
 - 선택 기준: 게스트 연속성 유지 + XSS·CSRF 위험 최소화 + 다중 기기 세션 허용

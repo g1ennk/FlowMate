@@ -209,7 +209,7 @@ logout은 현재 세션을 종료한다. 서버 logout 이후 프론트엔드는
 | Reuse Detection               | 폐기된 token 재사용을 침해 의심 신호로 활용        | 지연 요청에 대한 오탐 가능성              | 오탐 위험보다 탈취 피해가 크다고 판단해 보수적으로 선택                                                      |
 | State JWT                     | 서버 저장소 없이 OAuth callback CSRF 방어   | 서버 측 즉시 revoke/1회 사용 추적 없음    | 짧은 TTL과 callback 후 삭제로 현재 요구 충족                                                      |
 
-## 9. 배운 점
+## 9. 회고
 
 ### 인증 시스템을 단계적으로 발전시켜 복잡도를 감당할 수 있었다.
 
@@ -225,3 +225,9 @@ Spring Security 라이브러리를 처음부터 붙였다면 내부적으로 어
 구체적으로 이해할 수 있었다.
 
 다만, 대부분 라이브러리를 통해 구현하므로 추후에 라이브러리를 도입하는 리팩토링도 진행하는 것이 좋겠다.
+
+### Redis 도입 시 인증 구조 개선 가능
+
+현재 Refresh Token은 MySQL `auth_refresh_tokens` 테이블에 저장한다. 토큰 조회가 refresh 요청마다 발생하고, 만료된 토큰은 별도 배치 삭제가 필요하다. Redis TTL 기반으로 이전하면 만료를 자동으로 처리하고 DB 부하를 줄일 수 있다.
+
+State JWT도 개선 여지가 있다. 현재는 Stateless JWT라 서버가 state를 저장하지 않아 1회 사용 보장과 즉시 무효화가 불가능하다. Redis에 state를 단기 저장(5분 TTL)하고 OAuth callback 후 즉시 삭제하면 1회 사용을 보장할 수 있다. Refresh Token 이전과 함께 묶어서 처리할 수 있는 작업이다.
