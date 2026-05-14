@@ -1,0 +1,41 @@
+name: CI AI Service
+
+on:
+  pull_request:
+    paths:
+      - 'ai-service/**'
+      - '.github/workflows/ci-ai-service.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'ai-service/**'
+      - '.github/workflows/ci-ai-service.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: ai-service/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
