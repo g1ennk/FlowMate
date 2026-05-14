@@ -142,34 +142,33 @@ sequenceDiagram
 
 ### 1) 배포 프로세스
 
-| 환경   | 프론트엔드                                                     | 백엔드                                                              | 비고                     |
-|------|-----------------------------------------------------------|------------------------------------------------------------------|------------------------|
-| Dev  | `develop` push → build → S3 업로드 + CloudFront invalidation | `develop` push → image build/push → EC2 SSH deploy               | `backend`, `alloy` 재기동 |
-| Prod | `main` push → build → S3 업로드 + CloudFront invalidation    | `main` push → image publish, `workflow_dispatch(version)`로 수동 배포 | 지정 version 반영          |
+| 환경   | 프론트엔드                                       | 백엔드                                                        | AI Service                                                |
+|------|---------------------------------------------|------------------------------------------------------------|-----------------------------------------------------------|
+| Dev  | `main` push → S3 sync + CloudFront invalidation | `main` push → ECR build → EC2 SSH deploy                  | `main` push → ECR build → EC2 SSH deploy                  |
+| Prod | tag `v*.*.*` push → S3 sync + CloudFront invalidation | tag push → ECR build (tag + latest) → EC2 SSH deploy | tag push → ECR build (tag) → EC2 SSH deploy               |
 
-- 프론트엔드는 EC2를 거치지 않고 S3 + CloudFront로 직접 배포된다.
-- API 도메인은 호스트 Nginx가 받고, 실제 애플리케이션 런타임은 EC2 내부 Docker Compose가 담당한다.
+- `main` push 한 번으로 dev 환경 세 서비스가 동시 갱신된다.
+- tag `v*.*.*` push 한 번으로 prod 환경 세 서비스가 동시 자동 배포된다. glob 가드로 `archive/*` · `pre-release/*` · `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
+- 코드는 동일하고 환경 차이는 `infra/{dev,prod}/` 디렉토리 + Spring profile + 환경변수로 흡수한다.
 
 ### 2) CI/CD 파이프라인
 
 ```mermaid
 flowchart TD
-    subgraph Dev["Dev"]
-        D1["push to develop"] --> D2["Frontend workflow<br/>pnpm build --mode dev"]
-        D1 --> D3["Backend workflow<br/>docker build + push (SHA tag)"]
-        D2 --> D4["S3 sync + CloudFront invalidation"]
-        D3 --> D5["EC2 SSH deploy<br/>docker compose up -d backend alloy"]
+    subgraph Dev["Dev — main push 자동"]
+        D0["push to main"] --> D1["Frontend<br/>pnpm build → S3 + CF"]
+        D0 --> D2["Backend<br/>ECR build → SSH deploy"]
+        D0 --> D3["AI Service<br/>ECR build → SSH deploy"]
     end
 
-    subgraph Prod["Prod"]
-        P1["push to main"] --> P2["Frontend workflow<br/>pnpm build --mode prod"]
-        P1 --> P3["Backend workflow<br/>docker build + push (latest + SHA tags)"]
-        P2 --> P4["S3 sync + CloudFront invalidation"]
-        P5["workflow_dispatch(version)"] --> P6["latest image를 version 태그로 재태깅"]
-        P3 -. " 배포 후보 이미지 준비 " .-> P6
-        P6 --> P7["EC2 SSH deploy<br/>docker compose up -d backend alloy"]
+    subgraph Prod["Prod — tag v*.*.* push 자동"]
+        P0["push tag"] --> P1["Frontend<br/>pnpm build → S3 + CF"]
+        P0 --> P2["Backend<br/>ECR (tag + latest) → SSH deploy"]
+        P0 --> P3["AI Service<br/>ECR (tag) → SSH deploy"]
     end
 ```
 
-- Dev는 브랜치 push만으로 프론트엔드와 백엔드를 모두 자동 배포한다.
-- Prod는 프론트엔드는 자동 배포하되, 백엔드는 image publish와 실제 배포를 분리해 운영자가 지정한 version만 반영한다.
+### 3) 모델 변천
+
+- **v1.8 ~ v1.9 (2026-05-14 폐기)**: `develop` + `main` + squash + backmerge. 1인 운영에 매 릴리즈 5단계 + backmerge 누락 사고 (2026-04-08).
+- **v1.10~ (현재)**: `main` 단일 + tag 기반 prod (GitHub Flow 변형). 릴리즈 단계 5 → 1~2, FE/BE/AI 동기화, `docs/review/2026-05-10.md` INF-H3 (prod-backend build/deploy 분리 버그) 해결.

@@ -3,11 +3,10 @@ name: Deploy AI Service (dev)
 on:
   push:
     branches:
-      - develop
+      - main
     paths:
       - 'ai-service/**'
       - '.github/workflows/deploy-dev-ai-service.yml'
-  workflow_dispatch:
 
 env:
   AWS_REGION: ap-northeast-2
@@ -58,8 +57,8 @@ jobs:
               docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
             cd ~/FlowMate
             git fetch origin
-            git checkout develop
-            git reset --hard origin/develop
+            git checkout main
+            git reset --hard origin/main
             cd infra/dev
             export AI_SERVICE_IMAGE=${{ needs.build-and-push.outputs.image_uri }}
             docker compose pull ai-service

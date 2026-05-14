@@ -91,18 +91,18 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 
 ### 환경 구성
 
-| 환경    | 브랜치                   | 프론트엔드          | 백엔드            | 도메인                                         |
-|-------|-----------------------|----------------|----------------|---------------------------------------------|
-| local | -                     | localhost:5173 | localhost:8080 | -                                           |
-| dev   | `develop` (자동)        | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
-| prod  | `main` (FE 자동, BE 수동) | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
+| 환경    | 트리거                                          | 프론트엔드          | 백엔드            | 도메인                                         |
+|-------|----------------------------------------------|----------------|----------------|---------------------------------------------|
+| local | -                                            | localhost:5173 | localhost:8080 | -                                           |
+| dev   | `main` push (자동, BE/FE/AI service 동시)         | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
+| prod  | tag `v*.*.*` push (자동, BE/FE/AI service 동시)   | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
 
 ### CI/CD (GitHub Actions, `.github/workflows/`)
 
-- **FE dev/prod**: pnpm build → S3 sync → CloudFront invalidation
-- **BE dev**: Dockerfile → ECR push (SHA 태그) → SSH → docker compose up
-- **BE prod**: push 시 ECR push (SHA+latest 태그), 수동 dispatch 시 version 태그 → SSH → docker compose up
-- 프로덕션 BE 배포는 `workflow_dispatch`로 version 입력 필요 (안전장치)
+- **Dev (BE/FE/AI service)**: `main` push 시 자동. BE/AI service는 ECR push (`github.sha` 태그) → SSH `git reset --hard origin/main` → `docker compose up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
+- **Prod (BE/FE/AI service)**: tag `v*.*.*` push 시 자동. BE는 ECR push (tag + latest), AI service는 ECR push (tag만) → SSH `git fetch --all --tags && git reset --hard ${tag}` → `docker compose pull + up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
+- **glob 가드** `v*.*.*`로 `archive/*` / `pre-release/*` / `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
+- **롤백**: prod 자동 dispatch는 제거됨. 이전 tag로 재배포가 필요하면 후속 작업으로 신설할 `redeploy-prod-*` 워크플로(`workflow_dispatch(tag)` input)를 사용하거나 새 패치 tag(예: v1.10.2)로 재배포.
 
 ### Docker Compose (`infra/{dev,prod}/`)
 
@@ -122,38 +122,70 @@ dev 3개 서비스: `mysql` + `backend` + `alloy`
 
 ## Git 워크플로우 & 릴리즈
 
-### 브랜치 전략
+### 브랜치 전략 (v1.10~ 모델)
 
-- `develop`: 활성 개발 브랜치 + 자세한 작업 히스토리 영구 보존. 직접 커밋 또는 feature 브랜치 → develop 머지. amend + force push 허용. dev 환경 자동 배포 트리거.
-- `main`: 프로덕션. develop → main **squash merge**로 1릴리즈 = 1커밋 = 1태그 깔끔하게 유지.
-- 두 브랜치는 **다른 흐름**: develop은 자세히, main은 마일스톤만. main 배포 전 develop(dev 환경)에서 부하/통합 테스트 검증 → 통과 시 main에 squash로 한 줄 기록.
-- hotfix: main에서 수정 후 `merge main into develop`로 역동기화.
+- `main`: 단일 활성 브랜치, SSoT, always-deployable. dev 환경의 진실이자 prod tag의 후보.
+- `feature/<name>`: 큰 작업/실험 격리용. 짧게 살고 머지 후 브랜치 삭제. 자세한 commit은 main의 `--no-ff` merge commit 아래에 보존 (GitHub Network 그래프로 확인 가능).
+- 작은 변경(1~3 commit)은 main 직접 commit 허용 — 단 항상 deployable 상태 유지 원칙 준수 (반쪽 commit 금지).
+- 머지는 `--no-ff` merge commit (분기 그래프 보존).
 
-### main 반영 절차 (squash merge + backmerge)
+### 일상 작업
 
 ```bash
-# 1. main에 squash merge
+# 작은 변경
 git checkout main && git pull
-git merge develop --squash
-git commit -m "feat: v1.x.0 — 릴리즈 요약"
-git tag v1.x.0
-git push origin main --tags
+git commit -m "feat: ..."
+git push origin main                      # → dev 자동 배포
 
-# 2. [필수] main을 develop으로 backmerge — 다음 릴리즈 머지 베이스 갱신
-git checkout develop
-git merge main --no-ff -m "chore: sync v1.x.0 release into develop"
-git push origin develop
+# 큰 작업
+git checkout -b feat/redis
+# ... 작업 ...
+git checkout main && git pull
+git merge --no-ff feat/redis
+git push origin main                      # → dev 자동 배포
+git branch -d feat/redis && git push origin --delete feat/redis
 ```
 
-- develop은 reset/force push 하지 않음. 원본 커밋들이 develop에 그대로 남아 자세한 작업 히스토리가 영구 보존됨.
-- backmerge가 머지 베이스를 squash 시점으로 갱신해서 다음 `develop → main --squash` 머지 시 "이미 적용된 변경"의 구조적 conflict를 방지함.
-- main은 릴리즈 단위로 1커밋 = 1버전 유지.
-- **backmerge를 빼먹으면** 다음 릴리즈 squash merge 시 3-way merge base가 과거로 잡히며 구조적 conflict 발생 (2026-04-08 사고 사례).
-- 그래프 결과: develop에는 원본 커밋들 + 릴리즈마다 backmerge 커밋 1개씩 누적. main은 릴리즈 1커밋씩 직선.
+### 릴리즈
 
-### 과거 절차 (deprecated, 2026-04-25 폐기)
+```bash
+git tag -a v1.10.0 -m "v1.10.0 — Redis 토큰 캐시"
+git push origin v1.10.0                   # → prod BE+FE+AI service 동시 자동 배포
 
-`develop reset --hard main + force push` 방식은 develop 작업 히스토리가 사라져 "develop은 자세하게 사용한다" 의도와 어긋남. v1.8.0까지 사용했고 v1.8.0 직후 backmerge 패턴으로 전환. v1.8.0의 develop 원본 15커밋은 `pre-release/v1.8.0` 백업 태그로 보존되어 있고, develop 브랜치 자체도 backmerge로 복원해 그래프상에 남아 있음.
+gh release create v1.10.0 \
+  --title "v1.10.0 — Redis 토큰 캐시" \
+  --notes-file .github/releases/v1.10.0.md
+```
+
+- tag glob 가드: `v*.*.*` 형식만 prod 트리거.
+- GitHub Releases가 포트폴리오 메인 view — 풍부한 release notes 작성.
+
+### Hotfix
+
+```bash
+# 평시 (main이 deployable)
+git commit -m "fix(timer): ..."
+git push origin main                      # → dev 자동 검증
+git tag v1.10.1 && git push origin v1.10.1
+
+# 예외 — main에 WIP 누적된 상태
+git checkout -b hotfix/v1.10.1 v1.10.0    # 마지막 tag에서 분기
+# fix commit
+git checkout main && git pull
+git merge --no-ff hotfix/v1.10.1
+git push origin main                      # → dev 검증
+git tag v1.10.1 && git push origin v1.10.1
+git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
+```
+
+### 릴리즈 모델 변천 이력
+
+1. **~v1.7**: `develop reset --hard main + force push` (2026-04-25 폐기)
+   - 폐기 이유: develop 작업 history 손실 → "develop은 자세하게 사용한다" 의도와 어긋남
+2. **v1.8 ~ v1.9**: squash + backmerge (2026-05-14 폐기)
+   - 폐기 이유: 1인 운영 부담 + backmerge 누락 사고 + 환경 토폴로지 분리 필요
+3. **v1.10~**: main 단일 + tag 기반 (현재)
+   - GitHub Flow 변형, dev = main HEAD, prod = tag
 
 ### 릴리즈 이력 (최신순)
 
