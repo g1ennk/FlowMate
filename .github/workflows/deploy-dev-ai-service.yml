@@ -6,7 +6,12 @@ on:
       - main
     paths:
       - 'ai-service/**'
+      - 'infra/dev/**'
       - '.github/workflows/deploy-dev-ai-service.yml'
+
+concurrency:
+  group: flowmate-dev-ec2-deploy
+  cancel-in-progress: false
 
 env:
   AWS_REGION: ap-northeast-2

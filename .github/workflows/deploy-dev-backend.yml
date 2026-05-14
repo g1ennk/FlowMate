@@ -9,6 +9,10 @@ on:
       - 'infra/dev/**'
       - '.github/workflows/deploy-dev-backend.yml'
 
+concurrency:
+  group: flowmate-dev-ec2-deploy
+  cancel-in-progress: false
+
 env:
   AWS_REGION: ap-northeast-2
   ECR_REPOSITORY: flowmate-backend
