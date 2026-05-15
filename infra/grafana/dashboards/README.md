@@ -1,79 +1,36 @@
-# FlowMate Grafana Dashboards
+# Grafana Dashboards
 
-자체 제작한 Grafana dashboard JSON을 git으로 관리하는 디렉토리. "Dashboard as Code" 패턴.
+`flowmate-overview.json` 1개를 git으로 관리한다. Spring Boot Observability, Node Exporter Full 같은 community dashboard는 Grafana
+Cloud UI에 import해서 그대로 두고 git에 안 넣는다.
 
-## 파일
+## flowmate-overview.json
 
-| 파일 | 역할 | 출처 |
-|---|---|---|
-| `flowmate-overview.json` | 매일 보는 1차 Overview dashboard | 자체 제작 |
+4 row · 15 panel. dev/prod 공용이며 `$env` variable로 환경을 고른다.
 
-## 자체 제작 vs 외부 import
+| Row                           | Panel                                             |
+|-------------------------------|---------------------------------------------------|
+| Overview (Stat 4)             | Total RPS, Error Rate %, p99 Latency, JVM Heap %  |
+| Request Flow (Timeseries 3)   | RPS by Endpoint, Status Code, Latency p50/p95/p99 |
+| Database & JVM (Timeseries 4) | HikariCP Pool, JVM Heap, GC Pause, JVM Threads    |
+| System (Timeseries 4)         | CPU, Memory, Disk, Network                        |
 
-| Dashboard | 관리 위치 |
-|---|---|
-| **FlowMate Backend Overview** (자체) | git ⭐ |
-| Spring Boot Observability (community, generic) | git X (reference 용) |
-| Node Exporter Full (community, generic) | git X (reference 용) |
+색상 임계치는 yellow가 heap 70% / p99 300ms / error rate 0.5% / CPU 70% / disk 75%, red가 heap 85% / p99 1s / error rate 2% /
+CPU 90% / disk 90%.
 
-자체 제작한 1개만 git 관리. 외부 community dashboard는 별도 관리 없이 Grafana Cloud UI에 그대로 유지.
+## 업데이트 절차
 
-## flowmate-overview.json — 구조
+**UI → git**
 
-4 row, 16 panels.
+1. Grafana UI에서 편집 후 Save
+2. Dashboard settings → JSON Model → JSON 복사
+3. `flowmate-overview.json` 덮어쓰기
+4. `git diff` 확인 후 commit
 
-```
-🎯 Overview — 지금 잘 작동하나?  (Stat 4)
-   ├─ Total RPS (excl. /actuator)
-   ├─ Error Rate %
-   ├─ p99 Latency (excl. SSE)
-   └─ JVM Heap %
+**git → UI**
 
-📡 Request Flow — 어디가 바쁘고 어디가 실패하나  (Timeseries 3)
-   ├─ RPS by Endpoint
-   ├─ Status Code Distribution (stacked bars)
-   └─ Latency Percentiles p50/p95/p99
+Grafana → Dashboards → Import → JSON 붙여넣기. 같은 uid면 overwrite 된다.
 
-🗄 Database & JVM — 자원 포화도  (Timeseries 4)
-   ├─ HikariCP Connection Pool (active/idle/pending)
-   ├─ JVM Heap Used vs Max
-   ├─ GC Pause Time / sec
-   └─ JVM Threads
+## 추가 예정
 
-🖥 System — 호스트 자원  (Timeseries 4)
-   ├─ CPU Usage %
-   ├─ Memory Usage (used / available / swap_used)
-   ├─ Disk Usage % (root)
-   └─ Network Traffic (eth0)
-```
-
-### Variables
-
-- `$env` — `dev` 또는 `prod` (default: prod)
-- `$datasource_prom` — Prometheus datasource (hidden, `grafanacloud-prom` 고정)
-
-### 색상 임계치
-
-- 🟢 Green: 정상
-- 🟡 Yellow: warning (예: heap 70%, p99 300ms)
-- 🔴 Red: critical (예: heap 85%, p99 1s, error rate 2%)
-
-## 업데이트 방법
-
-### UI에서 수정 → git 반영
-
-1. Grafana UI에서 dashboard 편집
-2. Save dashboard
-3. Dashboard settings → JSON Model 열기
-4. JSON 복사 → `flowmate-overview.json` 덮어쓰기
-5. `git diff` 검토 후 commit
-
-### git에서 수정 → UI 반영
-
-1. `flowmate-overview.json` 편집
-2. Grafana → Dashboards → Import → JSON 붙여넣기 (uid 같으면 overwrite)
-
-## 향후 추가 예정
-
-- `flowmate-slo.json` — SLO Compliance dashboard (Phase C)
-- `flowmate-sse.json` — SSE 도메인 특수 dashboard (Phase B)
+- `flowmate-slo.json` — SLO compliance
+- `flowmate-sse.json` — SSE 도메인 전용
