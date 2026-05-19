@@ -107,11 +107,11 @@ class SettingsServiceTest {
     }
 
     @Test
-    @DisplayName("updatePomodoro: flowMin 범위 초과면 PomodoroConfig VO IAE 가 서비스 밖으로 전파")
-    void updatePomodoro_flowMinOutOfRange_throwsIae() {
+    @DisplayName("updatePomodoro: flowMin 120분 초과면 PomodoroConfig VO IAE 가 서비스 밖으로 전파")
+    void updatePomodoro_flowMinBeyond120_throwsIae() {
         UserSettings existing = UserSettings.createWithDefaults(USER_ID);
         PomodoroSessionSettingsRequest request = new PomodoroSessionSettingsRequest();
-        request.setFlowMin(100);
+        request.setFlowMin(121);
         request.setBreakMin(5);
         request.setLongBreakMin(15);
         request.setCycleEvery(4);
@@ -119,7 +119,7 @@ class SettingsServiceTest {
 
         assertThatThrownBy(() -> settingsService.updatePomodoro(USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("1 and 90 minutes");
+                .hasMessageContaining("1 and 120 minutes");
     }
 
     @Test

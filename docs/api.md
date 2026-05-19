@@ -665,7 +665,7 @@ row가 없으면 기본값으로 응답하고, 수정 시점에만 row를 생성
 }
 ```
 
-- `flowMin`, `breakMin`, `longBreakMin`: `1-90`
+- `flowMin`, `breakMin`, `longBreakMin`: `1-120`
 - `cycleEvery`: `1-10`
 
 **Response** `200`

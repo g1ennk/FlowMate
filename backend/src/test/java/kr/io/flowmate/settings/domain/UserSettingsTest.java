@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("UserSettings")
 class UserSettingsTest {
@@ -21,6 +22,19 @@ class UserSettingsTest {
         assertThat(settings.getBreakMin()).isEqualTo(8);
         assertThat(settings.getLongBreakMin()).isEqualTo(20);
         assertThat(settings.getCycleEvery()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("PomodoroConfig: 120분까지 허용하고 121분부터 거부한다")
+    void pomodoroConfig_allowsUpTo120Minutes() {
+        PomodoroConfig config = new PomodoroConfig(120, 120, 120, 4);
+
+        assertThat(config.flowMin()).isEqualTo(120);
+        assertThat(config.breakMin()).isEqualTo(120);
+        assertThat(config.longBreakMin()).isEqualTo(120);
+        assertThatThrownBy(() -> new PomodoroConfig(121, 5, 15, 4))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("1 and 120 minutes");
     }
 
     @Test

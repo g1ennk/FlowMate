@@ -8,6 +8,7 @@ import kr.io.flowmate.settings.domain.UserSettings;
 import kr.io.flowmate.settings.dto.request.MiniDayRequest;
 import kr.io.flowmate.settings.dto.request.MiniDaysSettingsRequest;
 import kr.io.flowmate.settings.dto.request.PomodoroSessionSettingsRequest;
+import kr.io.flowmate.settings.dto.response.PomodoroSessionSettingsResponse;
 import kr.io.flowmate.settings.dto.response.SettingsResponse;
 import kr.io.flowmate.settings.service.SettingsService;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,10 +72,34 @@ class SettingsControllerTest {
     }
 
     @Test
-    @DisplayName("PUT /api/settings/pomodoro-session: flowMin=100 은 Bean Validation 400 + service 미호출")
-    void updatePomodoro_flowMinBeyondMax_returnsValidationErrorWithoutServiceCall() throws Exception {
+    @DisplayName("PUT /api/settings/pomodoro-session: flowMin=120 은 Bean Validation 통과 + service 호출")
+    void updatePomodoro_flowMinAt120_passesValidationAndCallsService() throws Exception {
+        when(currentUserResolver.resolve()).thenReturn(USER_ID);
+        when(settingsService.updatePomodoro(any(), any()))
+                .thenReturn(new PomodoroSessionSettingsResponse(120, 120, 120, 4));
+
         PomodoroSessionSettingsRequest body = new PomodoroSessionSettingsRequest();
-        body.setFlowMin(100);
+        body.setFlowMin(120);
+        body.setBreakMin(120);
+        body.setLongBreakMin(120);
+        body.setCycleEvery(4);
+
+        mockMvc.perform(put("/api/settings/pomodoro-session")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flowMin").value(120))
+                .andExpect(jsonPath("$.breakMin").value(120))
+                .andExpect(jsonPath("$.longBreakMin").value(120));
+
+        verify(settingsService).updatePomodoro(any(), any());
+    }
+
+    @Test
+    @DisplayName("PUT /api/settings/pomodoro-session: flowMin=121 은 Bean Validation 400 + service 미호출")
+    void updatePomodoro_flowMinBeyond120_returnsValidationErrorWithoutServiceCall() throws Exception {
+        PomodoroSessionSettingsRequest body = new PomodoroSessionSettingsRequest();
+        body.setFlowMin(121);
         body.setBreakMin(5);
         body.setLongBreakMin(15);
         body.setCycleEvery(4);

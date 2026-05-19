@@ -80,4 +80,64 @@ describe('PomodoroSettingsPage', () => {
 
     expect(screen.getByRole('button', { name: /Flow 시간.*30분/ })).toBeInTheDocument()
   })
+
+  it('saves 120 minutes as the maximum flow preset for a signed-in user', async () => {
+    const user = userEvent.setup()
+
+    useAuthStore.setState({
+      initialized: true,
+      state: {
+        type: 'member',
+        accessToken: 'member-token',
+        user: {
+          id: 'user-1',
+          email: null,
+          nickname: 'Glenn',
+        },
+      },
+    })
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Flow 시간.*25분/ }))
+    await user.click(await screen.findByRole('button', { name: '120분' }))
+
+    await waitFor(() => {
+      expect(readStoredSettings()?.pomodoroSession.flowMin).toBe(120)
+    })
+
+    expect(screen.getByRole('button', { name: /Flow 시간.*120분/ })).toBeInTheDocument()
+  })
+
+  it('saves 60 minutes as the maximum long break preset for a signed-in user', async () => {
+    const user = userEvent.setup()
+
+    useAuthStore.setState({
+      initialized: true,
+      state: {
+        type: 'member',
+        accessToken: 'member-token',
+        user: {
+          id: 'user-1',
+          email: null,
+          nickname: 'Glenn',
+        },
+      },
+    })
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /휴식 시간.*5, 15분/ }))
+    await user.click(await screen.findByRole('button', { name: '60분' }))
+
+    await waitFor(() => {
+      expect(readStoredSettings()?.pomodoroSession.longBreakMin).toBe(60)
+    })
+
+    expect(screen.getByRole('button', { name: /휴식 시간.*5, 60분/ })).toBeInTheDocument()
+  })
 })

@@ -14,9 +14,9 @@ import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
 import { useCoachMark } from '../../lib/useCoachMark'
 import { CoachMark } from '../../ui/CoachMark'
 
-const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90]
+const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90, 120]
 const SHORT_BREAK_PRESETS = [5, 10, 15, 20, 30]
-const LONG_BREAK_PRESETS = [15, 20, 30]
+const LONG_BREAK_PRESETS = [15, 20, 30, 45, 60]
 const CYCLE_PRESETS = Array.from({ length: 10 }, (_, index) => index + 1)
 const HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1)
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => index * 5)

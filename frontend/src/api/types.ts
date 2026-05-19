@@ -58,9 +58,9 @@ export const TodoReorderRequestSchema = z.object({
 })
 
 export const PomodoroSessionSettingsSchema = z.object({
-  flowMin: z.number().int().min(1).max(90),
-  breakMin: z.number().int().min(1).max(90),
-  longBreakMin: z.number().int().min(1).max(90),
+  flowMin: z.number().int().min(1).max(120),
+  breakMin: z.number().int().min(1).max(120),
+  longBreakMin: z.number().int().min(1).max(120),
   cycleEvery: z.number().int().min(1).max(10),
 })
 
