@@ -47,7 +47,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [showBreakSelection, setShowBreakSelection] = useState(false)
   const [showTotalTime, setShowTotalTime] = useState(false) // 디폴트: 현재 세션(false) vs 전체 누적(true)
   const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
-  const [nowMs, setNowMs] = useState(Date.now)
+  // 1초마다 re-render 트리거 (값은 사용하지 않음 — remainingMs는 Date.now() 인라인으로 계산).
+  // nowMs를 state로 두고 endAt-nowMs로 계산하면, idle→running 전환 첫 paint에서 stale nowMs가
+  // 사용되어 카운트다운이 "endAt - mount시각" 만큼 초과된 값(예: 90:09)을 잠깐 표시한다.
+  const [, setRenderTick] = useState(0)
   const baseSessionFocusSeconds = sessionFocusSeconds
 
   const { data: settings } = usePomodoroSettings()
@@ -132,7 +135,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
 
   useEffect(() => {
     if (!isOpen || !timer?.endAt) return
-    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000)
+    const intervalId = window.setInterval(() => setRenderTick((n) => n + 1), 1000)
     return () => window.clearInterval(intervalId)
   }, [isOpen, timer?.endAt])
 
@@ -167,7 +170,8 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   if (!mounted) return null
 
   const remainingMs = timer?.endAt
-    ? Math.max(0, timer.endAt - nowMs)
+    // eslint-disable-next-line react-hooks/purity
+    ? Math.max(0, timer.endAt - Date.now())
     : (timer?.remainingMs ?? (settings?.flowMin ?? 25) * MINUTE_MS)
   const isFlow = timer?.phase === 'flow'
 
