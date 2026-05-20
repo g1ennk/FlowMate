@@ -191,7 +191,8 @@ git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
 
 | 버전     | 날짜         | 주요 내용                             |
 |--------|------------|-----------------------------------|
-| v1.10.2 | 2026-05-20 | 타이머 prod 회귀 두 건 hotfix (SSE self-echo race로 리셋 후 재게 무반응 + 카운트다운 시작 첫 paint nowMs staleness) |
+| v1.10.3 | 2026-05-20 | 타이머 prod 회귀 두 건 hotfix (SSE self-echo race로 리셋 후 재게 무반응 + 카운트다운 시작 첫 paint nowMs staleness) |
+| v1.10.2 | 2026-05-19 | 뽀모도로 Flow / 휴식 프리셋 확장 (최대 120분, 긴 휴식 45·60분 추가) |
 | v1.10.1 | 2026-05-14 | v1.10.0 BE prod 배포 사고 hotfix (compose AI_SERVICE_IMAGE fail-fast 회귀 되돌림) |
 | v1.10.0 | 2026-05-14 | trunk-based 브랜치 전략 + 운영 안정성·보안·CI 게이트 — BE prod 배포 실패, v1.10.1 hotfix로 대체 |
 | v1.8.2 | 2026-04-28 | 회고 단건 조회 미존재 시 404→204 (콘솔 노이즈 제거) |
