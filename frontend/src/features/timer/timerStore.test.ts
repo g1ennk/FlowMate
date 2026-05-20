@@ -276,6 +276,33 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
     expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
   })
+
+  // 2026-05-20 prod 회귀: reset → initPomodoro/initStopwatch 시퀀스 직후 자기 자신이
+  // 보낸 SSE delete echo 가 도달했을 때, 방금 초기화한 idle timer 까지 삭제되어
+  // 재게/시작 버튼이 무반응이 되는 race. local idle 은 사용자 UI 상태이므로 보존해야 한다.
+  it('applyRemoteReset preserves local idle pomodoro timer (self-echo after reset+init)', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, settings)
+    expect(useTimerStore.getState().timers[TODO_ID]?.status).toBe('idle')
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 200)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer).toBeDefined()
+    expect(timer.status).toBe('idle')
+    expect(timer.mode).toBe('pomodoro')
+  })
+
+  it('applyRemoteReset preserves local idle stopwatch timer (self-echo after reset+init)', () => {
+    useTimerStore.getState().initStopwatch(TODO_ID, 0, settings)
+    expect(useTimerStore.getState().timers[TODO_ID]?.status).toBe('idle')
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 200)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer).toBeDefined()
+    expect(timer.status).toBe('idle')
+    expect(timer.mode).toBe('stopwatch')
+  })
 })
 
 // 2026-05-11 prod 사고 (todo 51e6bf2e): 120분 진행했는데 45분만 기록됨.

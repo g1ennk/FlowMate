@@ -228,13 +228,10 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const timers = { ...get().timers }
         delete timers[todoId]
         set({ timers })
-      } else if (existing) {
-        // idle 상태 timer 는 commit 없이 제거.
-        const timers = { ...get().timers }
-        delete timers[todoId]
-        set({ timers })
       }
-      // existing 이 undefined 이면 본 디바이스의 reset echo — no-op.
+      // existing 이 undefined: 본 디바이스의 self-echo (이미 reset됨) — no-op.
+      // existing 이 idle: reset → init 직후 self-echo 도착 시 freshly init한 idle timer를
+      // 지우면 재게 버튼이 무반응이 된다. local idle은 UI 진입 상태이므로 보존한다.
 
       applyingRemote = false
     },
