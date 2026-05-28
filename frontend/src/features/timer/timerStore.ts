@@ -602,8 +602,13 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     tick: () => {
       const timers = get().timers
+      // running 타이머가 하나도 없으면 매 틱 Object.entries 할당·iteration 자체를 건너뛴다.
+      // for...in 대신 Object.values 사용 — 프로토타입 체인 가드 없음 문제를 회피하고,
+      // 아래 forEach 의 Object.entries 와 키 순회 시맨틱이 일치한다.
+      if (!Object.values(timers).some((t) => t.status === 'running')) return
+
       const updates: Record<string, SingleTimerState> = {}
-      
+
       Object.entries(timers).forEach(([todoId, timer]) => {
         if (timer.status !== 'running') return
         

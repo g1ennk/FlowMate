@@ -175,9 +175,6 @@ export function useCreateSession() {
       qc.invalidateQueries({ queryKey: queryKeys.todos() })
       qc.invalidateQueries({ queryKey: queryKeys.todo(todoId) })
       qc.invalidateQueries({ queryKey: queryKeys.todoSessions(todoId) })
-      // 화면에 표시 중인 집계는 즉시 갱신 시도를 한 번 더 수행한다.
-      void qc.refetchQueries({ queryKey: queryKeys.todos(), type: 'active' })
-      void qc.refetchQueries({ queryKey: queryKeys.todo(todoId), type: 'active' })
     },
   })
 }
