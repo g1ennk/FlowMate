@@ -45,6 +45,29 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 
 ## 3. 주요 기술 결정
 
+### 1) 인증 시스템 진화: X-Client-Id에서 OAuth + RTR까지
+
+- 배경: 서명·TTL 없는 `X-Client-Id`는 장기 인증 모델로 부적합, 게스트 연속성과 다중 기기 세션 요구가 겹치며 4단계 진화
+- 선택 기준: 게스트 연속성 유지 + XSS·CSRF 위험 최소화 + 다중 기기 세션 허용
+- 결과: Memory Access Token + HttpOnly Refresh Token + RTR 조합으로 단일 토큰 탈취 차단
+- 관련 문서: [FlowMate 인증 시스템 진화: X-Client-Id에서 OAuth + RTR까지](docs/wiki/auth-evolution.md)
+
+### 2) 멀티디바이스 타이머 동기화: SSE + 단조 증가 `version`
+
+- 문제: 기기를 바꾸거나 새 탭을 열면 진행 중인 타이머가 사라짐 — 같은 계정이어도 기기·탭 간 상태 공유가 없었음
+- 선택 기준: WebSocket은 과잉, Polling은 실시간성 부족 — 단방향 push 요구에 SSE + REST 채택
+- 결과: 단조 증가 `version`과 snapshot fetch로 모든 기기에 즉시 반영되며, 재접속 후에도 최신 상태 유지 — k6 163,205 req · 에러율 0%
+- 관련 문서: [멀티디바이스 타이머 동기화: SSE + 단조 증가 `version`](docs/wiki/sse-sync.md)
+
+### 3) Self-hosted에서 Alloy + Grafana Cloud로 전환
+
+- 문제: Prometheus + Grafana + node-exporter를 직접 운영하면 로그와 트레이스 확장 시 컨테이너와 설정 파일이 계속 늘어남
+- 선택 기준: 단일 EC2에서 운영 복잡도를 줄이고, 메트릭·로그·트레이스를 한 수집기 경로로 관리
+- 결과: EC2 모니터링 컨테이너를 3개에서 Alloy 1개로 줄이고, Grafana Cloud의 Mimir·Loki·Tempo로 신호를 전송
+- 관련 문서: [Self-hosted에서 Alloy + Grafana Cloud로 전환](docs/wiki/monitoring-stack.md)
+
+## 4. 주요 트러블슈팅
+
 ### 1) Timer State 저장 경로의 InnoDB Deadlock 분석과 해결
 
 - 문제: k6 baseline에서 `PUT /api/timer/state/{todoId}` 실패 69건이 timer state 저장 경로에 집중
@@ -53,28 +76,15 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 - 결과: 수정 후 전체 요청 163,205건 기준 timer PUT 실패 0건, `http_req_failed` 0.00%를 확인
 - 관련 문서: [Timer State 저장 경로의 InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
 
-### 2) 멀티디바이스 타이머 동기화: SSE + 단조 증가 Version
+### 2) SSE 연결 유지 실패 분석과 해결: Workbox 충돌과 Nginx 60초 idle timeout
 
-- 문제: 기기를 바꾸거나 새 탭을 열면 진행 중인 타이머가 사라짐 — 같은 계정이어도 기기·탭 간 상태 공유가 없었음
-- 선택 기준: WebSocket은 과잉, Polling은 실시간성 부족 — 단방향 push 요구에 SSE + REST 채택
-- 결과: 단조 증가 `version`과 snapshot fetch로 모든 기기에 즉시 반영되며, 재접속 후에도 최신 상태 유지 — k6 163,205 req · 에러율 0%
-- 관련 문서: [멀티디바이스 타이머 동기화: SSE + 단조 증가 `version`](docs/wiki/sse-sync.md)
+- 문제: SSE 도입 직후 `/api/timer/sse`가 두 단계로 실패 — 먼저 `ERR_FAILED`로 오픈 자체가 막혔고, 이후 200 OK로 열려도 정확히 60초 후 504로 끊김
+- 원인: T1은 PWA Workbox가 `/api/*` 전체를 가로채 long-lived SSE 스트림을 처리하지 못함 / T2는 Nginx idle timeout 60초 + Backend heartbeat 부재 + Spring async timeout 미명시의 3중 구조
+- 해결: Workbox runtimeCaching에서 SSE 경로 예외 + Nginx `/api/timer/sse` 전용 location + 25초 heartbeat + `request-timeout 1h` + `AsyncRequestTimeoutException` 503 매핑
+- 결과: SSE 1시간 이상 안정 유지, nginx 504 / backend `AsyncRequestTimeoutException` 모두 0건
+- 관련 문서: [SSE 연결 유지 실패 분석과 해결: Workbox 충돌과 Nginx 60초 idle timeout](docs/wiki/sse-timeout.md)
 
-### 3) X-Client-Id에서 OAuth + RTR까지: 인증 시스템 진화
-
-- 배경: 서명·TTL 없는 `X-Client-Id`는 장기 인증 모델로 부적합, 게스트 연속성과 다중 기기 세션 요구가 겹치며 4단계 진화
-- 선택 기준: 게스트 연속성 유지 + XSS·CSRF 위험 최소화 + 다중 기기 세션 허용
-- 결과: Memory Access Token + HttpOnly Refresh Token + RTR + Reuse Detection 조합으로 토큰 탈취 대응
-- 관련 문서: [FlowMate 인증 시스템 진화: X-Client-Id에서 OAuth + RTR까지](docs/wiki/auth-evolution.md)
-
-### 4) Self-hosted에서 Alloy + Grafana Cloud로 전환
-
-- 문제: Prometheus + Grafana + node-exporter를 직접 운영하면 로그와 트레이스 확장 시 컨테이너와 설정 파일이 계속 늘어남
-- 선택 기준: 단일 EC2에서 운영 복잡도를 줄이고, 메트릭·로그·트레이스를 한 수집기 경로로 관리
-- 결과: EC2 모니터링 컨테이너를 3개에서 Alloy 1개로 줄이고, Grafana Cloud의 Mimir·Loki·Tempo로 신호를 전송
-- 관련 문서: [Self-hosted에서 Alloy + Grafana Cloud로 전환](docs/wiki/monitoring-stack.md)
-
-## 4. 기술 스택
+## 5. 기술 스택
 
 | 영역         | 기술                                                                       |
 |------------|--------------------------------------------------------------------------|
@@ -84,7 +94,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 | Infra      | EC2, Docker Compose, Host Nginx, S3, CloudFront, ECR, GitHub Actions     |
 | Monitoring | Grafana Cloud, Alloy, Mimir, Loki, Tempo                                 |
 
-## 5. 프로젝트 구조
+## 6. 프로젝트 구조
 
 ```txt
 FlowMate/
