@@ -191,6 +191,7 @@ git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
 
 | 버전     | 날짜         | 주요 내용                             |
 |--------|------------|-----------------------------------|
+| v1.10.4 | 2026-05-28 | 회고/AI 레포트 마크다운 렌더링 + 마크다운 스택 청크 분리 (vendor -41kB gzipped) + 타이머 틱·세션 refetch 핫패스 정리 |
 | v1.10.3 | 2026-05-20 | 타이머 prod 회귀 두 건 hotfix (SSE self-echo race로 리셋 후 재게 무반응 + 카운트다운 시작 첫 paint nowMs staleness) |
 | v1.10.2 | 2026-05-19 | 뽀모도로 Flow / 휴식 프리셋 확장 (최대 120분, 긴 휴식 45·60분 추가) |
 | v1.10.1 | 2026-05-14 | v1.10.0 BE prod 배포 사고 hotfix (compose AI_SERVICE_IMAGE fail-fast 회귀 되돌림) |
