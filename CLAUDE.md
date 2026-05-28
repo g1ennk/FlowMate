@@ -39,11 +39,10 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 ### 전체 구조
 
 - **Frontend**: React 19 + Vite 7 + TypeScript 5.9 (strict) + Tailwind CSS 4 + PWA (프로덕션만)
-- **Backend**: Spring Boot 4.0.5 + Java 21 + MySQL 8 + Flyway
-- **AI Service**: NestJS + Gemini API + PostgreSQL 16 — KPT 회고 레포트 생성 (`/api/ai`)
+- **Backend**: Spring Boot 4.0.5 + Java 21 + MySQL 8 + Flyway + Gemini API (`report` 도메인, v1.11.0~)
 - **인증**: 게스트 JWT(localStorage, 90일) → 카카오 OAuth → 멤버 JWT(메모리만, 15분) + HttpOnly refresh cookie(14일, RTR)
 - **실시간 동기화**: SSE로 타이머 상태 멀티디바이스 동기화 (쿼리파라미터 토큰, EventSource 제약)
-- **배포**: EC2 + Docker Compose (백엔드+MySQL+AI서비스+PostgreSQL+Alloy), S3 + CloudFront (프론트엔드)
+- **배포**: EC2 + Docker Compose (백엔드+MySQL+Alloy), S3 + CloudFront (프론트엔드)
 - **모니터링**: Grafana Cloud (Prometheus→Mimir, Docker logs→Loki, OTLP→Tempo) + Alloy 수집기
 
 ### Backend 도메인 패키지 (`kr.io.flowmate`)
@@ -55,6 +54,7 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 | `timer`    | 타이머 상태 push/pull + SSE broadcast (`SseEmitterRegistry`), state_json=null 소프트삭제, version 단조증가          |
 | `session`  | 포모도로/스톱워치 세션 기록 (client_session_id로 멱등성, break_seconds는 증가만 허용)                                       |
 | `review`   | 주간/월간 회고 (ReviewType enum, user_id+type+period_start unique)                                          |
+| `report`   | AI KPT 리포트 (Daily/Weekly/Monthly, Gemini REST, ReportPersistence 트랜잭션 분리, content JSONB)             |
 | `settings` | 포모도로 설정(flow/break/longBreak/cycle), 미니데이 구간 3개, 자동화 플래그                                              |
 | `common`   | `GlobalExceptionHandler`, `@CurrentUser` + `CurrentUserArgumentResolver`, `ListResponse`, `ApiError` (Record) |
 | `config`   | `SecurityConfig` (`/actuator/**` 앱 레벨 허용, Nginx에서 health만 외부 노출, JSON 401/403), `JwtAuthFilter` (단일 파싱), `CorsConfig`, `WebMvcConfig` |
@@ -94,20 +94,19 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 | 환경    | 트리거                                          | 프론트엔드          | 백엔드            | 도메인                                         |
 |-------|----------------------------------------------|----------------|----------------|---------------------------------------------|
 | local | -                                            | localhost:5173 | localhost:8080 | -                                           |
-| dev   | `main` push (자동, BE/FE/AI service 동시)         | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
-| prod  | tag `v*.*.*` push (자동, BE/FE/AI service 동시)   | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
+| dev   | `main` push (자동, BE/FE 동시)                    | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
+| prod  | tag `v*.*.*` push (자동, BE/FE 동시)              | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
 
 ### CI/CD (GitHub Actions, `.github/workflows/`)
 
-- **Dev (BE/FE/AI service)**: `main` push 시 자동. BE/AI service는 ECR push (`github.sha` 태그) → SSH `git reset --hard origin/main` → `docker compose up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
-- **Prod (BE/FE/AI service)**: tag `v*.*.*` push 시 자동. BE는 ECR push (tag + latest), AI service는 ECR push (tag만) → SSH `git fetch --all --tags && git reset --hard ${tag}` → `docker compose pull + up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
+- **Dev (BE/FE)**: `main` push 시 자동. BE는 ECR push (`github.sha` 태그) → SSH `git reset --hard origin/main` → `docker compose up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
+- **Prod (BE/FE)**: tag `v*.*.*` push 시 자동. BE는 ECR push (tag + latest) → SSH `git fetch --all --tags && git reset --hard ${tag}` → `docker compose pull + up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
 - **glob 가드** `v*.*.*`로 `archive/*` / `pre-release/*` / `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
 - **롤백**: prod 자동 dispatch는 제거됨. 이전 tag로 재배포가 필요하면 후속 작업으로 신설할 `redeploy-prod-*` 워크플로(`workflow_dispatch(tag)` input)를 사용하거나 새 패치 tag(예: v1.10.2)로 재배포.
 
 ### Docker Compose (`infra/{dev,prod}/`)
 
-prod 5개 서비스: `mysql` (8.0) + `backend` (ECR 이미지) + `postgres` (16, AI service용) + `ai-service` (NestJS + Gemini) + `alloy` (Grafana Alloy v1.8.3)
-dev 3개 서비스: `mysql` + `backend` + `alloy`
+3개 서비스: `mysql` (8.0) + `backend` (ECR 이미지, Gemini API key 포함) + `alloy` (Grafana Alloy v1.8.3). v1.11.0에서 별도 NestJS ai-service + PostgreSQL 컨테이너가 backend report 도메인으로 통합되어 제거됨.
 
 - Nginx: 호스트에서 직접 실행 (컨테이너 아닌), Let's Encrypt TLS, `/actuator` 차단 (health만 허용)
 - Alloy: Prometheus scrape (백엔드+호스트) → Mimir, Docker logs → Loki, OTLP → Tempo
@@ -119,6 +118,7 @@ dev 3개 서비스: `mysql` + `backend` + `alloy`
 - V3: timer_states (JSON blob + version + soft delete)
 - V4: todos에 review_round, original_todo_id 추가 (복습 스케줄 기능 제거 후 컬럼은 미사용 상태로 보존, 차기 contract 릴리즈에서 DROP 예정)
 - V5: user_settings에 created_at 추가, ON UPDATE CURRENT_TIMESTAMP 제거 (JPA Auditing 정합)
+- V6: reports (AI KPT 리포트, content JSON, (user_id,type,period_start) UNIQUE)
 
 ## Git 워크플로우 & 릴리즈
 
@@ -251,7 +251,7 @@ git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
 - DB 스키마 변경은 반드시 Flyway 마이그레이션 (`V{N}__description.sql`)
 - 프로필: `local` (개발), `dev` (개발 서버), `prod` (운영) — 환경변수로 DB/CORS/쿠키보안 분리
 - 디자인 시스템: `.impeccable.md` 참고 — Pretendard 폰트, emerald(#10b981) 주색상, 4px 그리드, 모바일 퍼스트 (max 512px)
-- 커밋 Co-Authored-By: FE 관련 커밋(scope `frontend` 또는 내용이 FE 중심)에만 `Co-Authored-By: Claude <noreply@anthropic.com>` 추가. BE/infra/ai-service/docs/ci 커밋에는 붙이지 않음
+- 커밋 Co-Authored-By: FE 관련 커밋(scope `frontend` 또는 내용이 FE 중심)에만 `Co-Authored-By: Claude <noreply@anthropic.com>` 추가. BE/infra/docs/ci 커밋에는 붙이지 않음
 
 ## Source of Truth 우선순위
 

@@ -55,6 +55,7 @@ services:
       KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
       KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS}
       JAVA_OPTS: >-
         -javaagent:/opt/opentelemetry-javaagent.jar
@@ -87,59 +88,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # PostgreSQL for AI Service
-  postgres:
-    image: postgres:16-alpine
-    container_name: flowmate-postgres-prod
-    restart: always
-    environment:
-      POSTGRES_DB: flowmate_reports
-      POSTGRES_USER: flowmate
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres-data-prod:/var/lib/postgresql/data
-      - ../../ai-service/migrations/001-create-reports.sql:/docker-entrypoint-initdb.d/001-create-reports.sql:ro
-    networks:
-      - flowmate-network
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U flowmate -d flowmate_reports" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # NestJS AI Service
-  ai-service:
-    image: ${AI_SERVICE_IMAGE:-flowmate-ai-service:placeholder}
-    container_name: flowmate-ai-service-prod
-    restart: always
-    ports:
-      - "127.0.0.1:3000:3000"
-    environment:
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: flowmate_reports
-      DATABASE_USER: flowmate
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      FLOWMATE_API_URL: http://backend:8080/api
-      PORT: 3000
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - flowmate-network
     logging:
       driver: "json-file"
       options:
@@ -187,6 +135,4 @@ networks:
 
 volumes:
   mysql-data-prod:
-    driver: local
-  postgres-data-prod:
     driver: local
