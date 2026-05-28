@@ -41,7 +41,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 
 - 집중 시간 타임라인과 누적 통계를 확인할 수 있습니다.
 - 일간·주간·월간 단위 회고를 작성하며 작업 흐름을 돌아볼 수 있습니다.
-- Gemini 기반 AI Service가 완료 Todo와 집중 기록을 바탕으로 KPT 회고 레포트를 생성합니다.
+- Spring backend의 report 도메인이 Gemini API로 완료 Todo와 집중 기록 기반 KPT 회고 레포트를 생성합니다 (v1.11.0~).
 
 ## 3. 주요 기술 결정
 
@@ -89,8 +89,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 | 영역         | 기술                                                                       |
 |------------|--------------------------------------------------------------------------|
 | Frontend   | React 19, TypeScript, Zustand, TanStack Query, Tailwind CSS 4, Vite, PWA |
-| Backend    | Spring Boot 4, Java 21, Spring Security, JPA, Flyway, MySQL 8            |
-| AI Service | NestJS, Gemini API, PostgreSQL 16                                        |
+| Backend    | Spring Boot 4, Java 21, Spring Security, JPA, Flyway, MySQL 8, Gemini API (AI 리포트) |
 | Infra      | EC2, Docker Compose, Host Nginx, S3, CloudFront, ECR, GitHub Actions     |
 | Monitoring | Grafana Cloud, Alloy, Mimir, Loki, Tempo                                 |
 
@@ -99,8 +98,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 ```txt
 FlowMate/
 ├── frontend/           # React 앱 (Vite + TypeScript)
-├── backend/            # Spring Boot API
-├── ai-service/         # NestJS AI Service (Gemini KPT 회고 레포트)
+├── backend/            # Spring Boot API (Gemini KPT 회고 레포트 포함)
 ├── infra/              # dev/prod 인프라 구성 (Docker Compose, Host Nginx, Alloy)
 ├── docs/               # 기준 문서 세트 (architecture, data-model, api, wiki)
 ├── images/             # 로고 및 README 이미지 자산

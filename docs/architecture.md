@@ -8,7 +8,7 @@
 
 - 프론트엔드는 S3 + CloudFront를 통해 정적 React SPA로 제공한다.
 - API 요청은 별도 도메인으로 EC2의 호스트 Nginx에 진입하며, Nginx가 TLS 종료와 reverse proxy를 담당한다.
-- 백엔드는 Docker Compose 기반으로 backend, mysql, ai-service(NestJS), postgres, alloy 컨테이너로 구성되며, Spring Boot는 127.0.0.1:8080, AI Service는 127.0.0.1:3000으로만 노출된다.
+- 백엔드는 Docker Compose 기반으로 backend, mysql, alloy 컨테이너로 구성되며, Spring Boot는 127.0.0.1:8080으로만 노출된다. (v1.11.0 이전에는 ai-service(NestJS) + PostgreSQL이 별도 컨테이너로 동작했으나 backend `report` 도메인으로 통합됨)
 - Alloy는 메트릭과 로그를 Grafana Cloud로 전송하고, trace 수집을 위한 OTLP 경로도 준비돼 있다.
 
 ```mermaid
@@ -22,20 +22,17 @@ flowchart LR
         subgraph Compose["Docker Compose"]
             Backend["Spring Boot API<br/>127.0.0.1:8080"]
             MySQL[("MySQL 8.0")]
-            AIService["NestJS AI Service<br/>127.0.0.1:3000"]
-            Postgres[("PostgreSQL 16")]
             Alloy["Grafana Alloy"]
         end
     end
 
     Grafana["Grafana Cloud<br/>Mimir · Loki · Tempo"]
+    Gemini["Gemini API<br/>generativelanguage.googleapis.com"]
     Browser <-->|정적 자산| CDN
     Browser -->|HTTPS /api/*| Nginx
-    Nginx -->|proxy_pass /api/ai| AIService
     Nginx -->|proxy_pass /api/*| Backend
     Backend --> MySQL
-    AIService --> Postgres
-    AIService -->|내부 API 호출| Backend
+    Backend -->|/api/ai/report| Gemini
     Backend -->|/actuator/prometheus| Alloy
     Backend -.->|OTLP traces| Alloy
     Alloy -->|metrics · logs| Grafana
@@ -142,13 +139,13 @@ sequenceDiagram
 
 ### 1) 배포 프로세스
 
-| 환경   | 프론트엔드                                       | 백엔드                                                        | AI Service                                                |
-|------|---------------------------------------------|------------------------------------------------------------|-----------------------------------------------------------|
-| Dev  | `main` push → S3 sync + CloudFront invalidation | `main` push → ECR build → EC2 SSH deploy                  | `main` push → ECR build → EC2 SSH deploy                  |
-| Prod | tag `v*.*.*` push → S3 sync + CloudFront invalidation | tag push → ECR build (tag + latest) → EC2 SSH deploy | tag push → ECR build (tag) → EC2 SSH deploy               |
+| 환경   | 프론트엔드 (S3+CF)                                | 백엔드 (EC2, AI 리포트 도메인 포함)                                  |
+|------|----------------------------------------------|---------------------------------------------------------|
+| Dev  | `main` push → pnpm build → S3 sync + CF invalidation | `main` push → ECR build → EC2 SSH deploy           |
+| Prod | tag `v*.*.*` push → pnpm build → S3 sync + CF invalidation | tag push → ECR build (tag + latest) → EC2 SSH deploy |
 
-- `main` push 한 번으로 dev 환경 세 서비스가 동시 갱신된다.
-- tag `v*.*.*` push 한 번으로 prod 환경 세 서비스가 동시 자동 배포된다. glob 가드로 `archive/*` · `pre-release/*` · `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
+- `main` push 한 번으로 dev 환경 FE/BE가 동시 갱신된다.
+- tag `v*.*.*` push 한 번으로 prod 환경 FE/BE가 동시 자동 배포된다. glob 가드로 `archive/*` · `pre-release/*` · `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
 - 코드는 동일하고 환경 차이는 `infra/{dev,prod}/` 디렉토리 + Spring profile + 환경변수로 흡수한다.
 
 ### 2) CI/CD 파이프라인
@@ -158,17 +155,15 @@ flowchart TD
     subgraph Dev["Dev — main push 자동"]
         D0["push to main"] --> D1["Frontend<br/>pnpm build → S3 + CF"]
         D0 --> D2["Backend<br/>ECR build → SSH deploy"]
-        D0 --> D3["AI Service<br/>ECR build → SSH deploy"]
     end
 
     subgraph Prod["Prod — tag v*.*.* push 자동"]
         P0["push tag"] --> P1["Frontend<br/>pnpm build → S3 + CF"]
         P0 --> P2["Backend<br/>ECR (tag + latest) → SSH deploy"]
-        P0 --> P3["AI Service<br/>ECR (tag) → SSH deploy"]
     end
 ```
 
 ### 3) 모델 변천
 
 - **v1.8 ~ v1.9 (2026-05-14 폐기)**: `develop` + `main` + squash + backmerge. 1인 운영에 매 릴리즈 5단계 + backmerge 누락 사고 (2026-04-08).
-- **v1.10~ (현재)**: `main` 단일 + tag 기반 prod (GitHub Flow 변형). 릴리즈 단계 5 → 1~2, FE/BE/AI 동기화, `docs/review/2026-05-10.md` INF-H3 (prod-backend build/deploy 분리 버그) 해결.
+- **v1.10~ (현재)**: `main` 단일 + tag 기반 prod (GitHub Flow 변형). 릴리즈 단계 5 → 1~2, FE/BE 동기화, `docs/review/2026-05-10.md` INF-H3 (prod-backend build/deploy 분리 버그) 해결.
