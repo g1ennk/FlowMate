@@ -36,14 +36,12 @@ public class AiReportGenerator {
 
     private final RestTemplate restTemplate;
     private final GeminiProperties props;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AiReportGenerator(@Qualifier("geminiRestTemplate") RestTemplate restTemplate,
-                             GeminiProperties props,
-                             ObjectMapper objectMapper) {
+                             GeminiProperties props) {
         this.restTemplate = restTemplate;
         this.props = props;
-        this.objectMapper = objectMapper;
     }
 
     public Result generate(ReportType type, List<Todo> todos, List<Review> weeklyReviews) {

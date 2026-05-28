@@ -11,7 +11,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatus;
@@ -44,7 +43,7 @@ class AiReportGeneratorTest {
         props.setApiKey("test-key");
         props.setBaseUrl("https://generativelanguage.googleapis.com/v1beta");
         props.setModel("gemini-2.5-flash");
-        generator = new AiReportGenerator(restTemplate, props, new ObjectMapper());
+        generator = new AiReportGenerator(restTemplate, props);
     }
 
     @Test
