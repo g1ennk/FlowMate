@@ -3,6 +3,7 @@ import { BottomSheet } from '../../../ui/BottomSheet'
 import type { AiReport } from '../../../api/aiReport'
 import { KPT_STYLES } from '../kptParser'
 import type { KptTag } from '../kptParser'
+import { MarkdownText } from './MarkdownText'
 
 type AiReportSheetProps = {
   isOpen: boolean
@@ -137,9 +138,9 @@ export function AiReportSheet({
                   <p className={`text-xs font-semibold ${style.colorClass}`}>
                     {style.icon} {style.label}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
-                    {displayReport[key]}
-                  </p>
+                  <div className="mt-1">
+                    <MarkdownText content={displayReport[key]} />
+                  </div>
                 </div>
               )
             })}
@@ -148,9 +149,9 @@ export function AiReportSheet({
                 <p className="text-xs font-semibold text-text-tertiary">
                   ❓ Question
                 </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-text-tertiary">
-                  {displayReport.referenceQuestion}
-                </p>
+                <div className="mt-1">
+                  <MarkdownText content={displayReport.referenceQuestion} muted />
+                </div>
               </div>
             )}
           </div>

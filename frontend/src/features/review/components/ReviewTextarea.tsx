@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { userTextDisplayClass } from '../../../lib/userTextStyles'
@@ -9,8 +9,20 @@ import { computeStreak } from '../reviewUtils'
 import { storageKeys } from '../../../lib/storageKeys'
 import { useAiReportSheet } from '../hooks/useAiReportSheet'
 import { formatReportAsKpt } from '../kptParser'
-import { AiReportSheet } from './AiReportSheet'
 import { KptText } from './KptText'
+
+// AiReportSheet는 react-markdown 스택을 끌고 들어와서 무겁다. 사용자가 시트를 처음 열기
+// 전까지는 별도 청크로 분리해두고, 한 번 열린 뒤에는 닫힘 애니메이션 보존을 위해 마운트 유지.
+// CDN/배포 직후 transient chunk fetch 실패는 1회 재시도로 흡수하고, 그래도 실패하면
+// 라우트 레벨 RouteErrorBoundary가 자동 새로고침으로 회복한다.
+const AiReportSheet = lazy(async () => {
+  const load = () => import('./AiReportSheet').then((m) => ({ default: m.AiReportSheet }))
+  try {
+    return await load()
+  } catch {
+    return await load()
+  }
+})
 
 type ReviewTextareaProps = {
   title: string
@@ -55,6 +67,13 @@ export function ReviewTextarea({
     isSheetOpenRef, sheetClosedAtRef,
     closeSheet, requestAiReport, handleRegenerate,
   } = useAiReportSheet(periodType, periodStart, completedTodoCount, totalSessionCount)
+
+  // 첫 오픈 전까지 AiReportSheet(+markdown 청크) 로드 자체를 지연. 한 번 열리고 나면
+  // BottomSheet의 닫힘 슬라이드 애니메이션 보존을 위해 마운트를 유지한다.
+  const [hasAiSheetMounted, setHasAiSheetMounted] = useState(false)
+  if (isSheetOpen && !hasAiSheetMounted) {
+    setHasAiSheetMounted(true)
+  }
 
   const streakFrom = useMemo(() => {
     const d = new Date(periodStart)
@@ -342,25 +361,29 @@ export function ReviewTextarea({
           )}
         </div>
       )}
-      <AiReportSheet
-        isOpen={isSheetOpen}
-        onClose={closeSheet}
-        report={aiReport}
-        isCached={canRegenerate}
-        isRegenerating={isAiLoading}
-        hasExistingReview={!!review.data?.id}
-        onStartWithAi={handleStartWithAi}
-        onSaveAsIs={handleSaveAsIs}
-        onRegenerate={handleRegenerate}
-        regenerateError={regenerateError}
-        isPreview={isPreview}
-        isThinData={isThinData}
-        onLogin={() => {
-          sessionStorage.setItem(storageKeys.oauthReturnTo, `/review?period=${periodType}&date=${periodStart}`)
-          closeSheet()
-          navigate('/login')
-        }}
-      />
+      {hasAiSheetMounted && (
+        <Suspense fallback={null}>
+          <AiReportSheet
+            isOpen={isSheetOpen}
+            onClose={closeSheet}
+            report={aiReport}
+            isCached={canRegenerate}
+            isRegenerating={isAiLoading}
+            hasExistingReview={!!review.data?.id}
+            onStartWithAi={handleStartWithAi}
+            onSaveAsIs={handleSaveAsIs}
+            onRegenerate={handleRegenerate}
+            regenerateError={regenerateError}
+            isPreview={isPreview}
+            isThinData={isThinData}
+            onLogin={() => {
+              sessionStorage.setItem(storageKeys.oauthReturnTo, `/review?period=${periodType}&date=${periodStart}`)
+              closeSheet()
+              navigate('/login')
+            }}
+          />
+        </Suspense>
+      )}
     </section>
   )
 }

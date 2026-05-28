@@ -1,51 +1,74 @@
 import { useMemo } from 'react'
-import { parseKpt, KPT_STYLES } from '../kptParser'
+import { parseKpt, KPT_STYLES, type KptSegment, type KptTag } from '../kptParser'
 import { userTextDisplayClass } from '../../../lib/userTextStyles'
+import { MarkdownText } from './MarkdownText'
+
+type Group =
+  | { kind: 'kpt'; type: KptTag; body: string }
+  | { kind: 'quote'; body: string }
+  | { kind: 'plain'; body: string }
+
+// 연속 plain 세그먼트를 직전 kpt/plain 그룹 body에 join하여 마크다운 리스트가 분리되지 않도록 함
+function groupSegments(segments: KptSegment[]): Group[] {
+  const groups: Group[] = []
+  let current: Group | null = null
+  for (const seg of segments) {
+    if (seg.type === 'keep' || seg.type === 'problem' || seg.type === 'try') {
+      if (current) groups.push(current)
+      current = { kind: 'kpt', type: seg.type, body: seg.text }
+    } else if (seg.type === 'quote') {
+      if (current) groups.push(current)
+      groups.push({ kind: 'quote', body: seg.text })
+      current = null
+    } else {
+      if (current && (current.kind === 'kpt' || current.kind === 'plain')) {
+        current.body = current.body ? `${current.body}\n${seg.text}` : seg.text
+      } else {
+        current = { kind: 'plain', body: seg.text }
+      }
+    }
+  }
+  if (current) groups.push(current)
+  return groups
+}
 
 export function KptText({ content }: { content: string }) {
-  const segments = useMemo(() => parseKpt(content), [content])
+  const groups = useMemo(() => {
+    const segments = parseKpt(content)
+    return segments ? groupSegments(segments) : null
+  }, [content])
 
-  if (!segments) {
-    return (
-      <p className={`whitespace-pre-wrap ${userTextDisplayClass} text-text-secondary`}>
-        {content}
-      </p>
-    )
+  if (!groups) {
+    return <MarkdownText content={content} />
   }
 
   return (
-    <div className="space-y-0.5">
-      {segments.map((seg, i) => {
-        if (seg.type === 'plain') {
-          if (!seg.text) return <div key={i} className="h-2" />
-          return (
-            <p key={i} className={`${userTextDisplayClass} text-text-secondary`}>
-              {seg.text}
-            </p>
-          )
+    <div className="space-y-1">
+      {groups.map((group, i) => {
+        if (group.kind === 'plain') {
+          if (!group.body.trim()) return null
+          return <MarkdownText key={i} content={group.body} />
         }
-        if (seg.type === 'quote') {
+        if (group.kind === 'quote') {
           return (
             <div key={i}>
               <p className={`font-semibold ${userTextDisplayClass} text-text-tertiary`}>
                 ❓ Question
               </p>
-              {seg.text && (
-                <p className={`${userTextDisplayClass} text-text-tertiary`}>
-                  - {seg.text}
-                </p>
-              )}
+              {group.body.trim() && <MarkdownText content={group.body} muted />}
             </div>
           )
         }
-        const style = KPT_STYLES[seg.type]
+        const style = KPT_STYLES[group.type]
         return (
-          <p key={i} className={`${userTextDisplayClass} text-text-secondary`}>
-            <span className={`font-semibold ${style.colorClass}`}>
-              {style.icon} {style.label}
-            </span>
-            {seg.text ? ` ${seg.text}` : ''}
-          </p>
+          <div key={i}>
+            <p className={`${userTextDisplayClass} text-text-secondary`}>
+              <span className={`font-semibold ${style.colorClass}`}>
+                {style.icon} {style.label}
+              </span>
+            </p>
+            {group.body.trim() && <MarkdownText content={group.body} />}
+          </div>
         )
       })}
     </div>
