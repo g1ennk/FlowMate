@@ -46,6 +46,7 @@ public class SecurityConfig {
                                 "/actuator/**"
                         ).permitAll()
                         .requestMatchers("/api/timer/state/**").hasRole("MEMBER")
+                        .requestMatchers("/api/ai/report/**").hasRole("MEMBER")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

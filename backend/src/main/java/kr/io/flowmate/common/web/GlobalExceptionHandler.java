@@ -5,6 +5,9 @@ import kr.io.flowmate.common.error.ApiError;
 import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import kr.io.flowmate.common.exception.IdempotencyConflictException;
 import kr.io.flowmate.common.exception.NotFoundException;
+import kr.io.flowmate.report.exception.AiServiceQuotaExceededException;
+import kr.io.flowmate.report.exception.AiServiceUnavailableException;
+import kr.io.flowmate.report.exception.ReportGenerationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
@@ -100,6 +103,30 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleIllegalArgumentException(IllegalArgumentException ex) {
         ApiError body = ApiError.of("BAD_REQUEST", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    // Gemini API quota 초과 — 한국어 메시지 그대로 노출
+    @ExceptionHandler(AiServiceQuotaExceededException.class)
+    public ResponseEntity<ApiError> handleAiQuota(AiServiceQuotaExceededException ex) {
+        log.warn("AI quota exceeded: {}", ex.getMessage());
+        ApiError body = ApiError.of("AI_QUOTA_EXCEEDED", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
+    }
+
+    // Gemini API 503 — 한국어 메시지 그대로
+    @ExceptionHandler(AiServiceUnavailableException.class)
+    public ResponseEntity<ApiError> handleAiUnavailable(AiServiceUnavailableException ex) {
+        log.warn("AI service unavailable: {}", ex.getMessage());
+        ApiError body = ApiError.of("AI_SERVICE_UNAVAILABLE", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    // Gemini 응답 파싱 실패 / 필수 필드 누락 등 → 500
+    @ExceptionHandler(ReportGenerationException.class)
+    public ResponseEntity<ApiError> handleReportGeneration(ReportGenerationException ex) {
+        log.error("Report generation failed", ex);
+        ApiError body = ApiError.of("REPORT_GENERATION_FAILED", "AI report generation failed");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 
     // 경로는 존재하지만 HTTP 메서드가 매칭되지 않는 경우를 405로 반환 (4xx → 5xx 유출 방지)
