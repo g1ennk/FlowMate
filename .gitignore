@@ -15,6 +15,9 @@ frontend/.vite/
 /shared/
 
 # 로컬 참고용 agent 문서
+/AGENTS.md
+/.agents
+/.codex
 /agent
 /output/
 
