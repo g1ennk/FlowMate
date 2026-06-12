@@ -1,14 +1,17 @@
-# Timer State 저장 경로의 InnoDB Deadlock 분석과 해결
+# 타이머 상태 저장의 동시성 제어: InnoDB Deadlock 분석과 해결
 
 ## 요약
 
-- 문제 배경: timer state 저장 API에서 부하테스트 중 deadlock 발생
-- 현상 분석: k6 endpoint별 실패 분포와 backend log로 timer state INSERT 실패 확인
+- 문제 배경: 진행 중인 타이머 상태를 저장하는 API에서 동시 요청 경합 상황에 deadlock 발생
+- 현상 분석: k6 endpoint별 실패 분포와 backend log로 타이머 상태 INSERT 실패 확인
 - 원인: row가 없는 first insert 경로에서 `SELECT FOR UPDATE`가 gap lock을 만들고, 동시 INSERT의 insert intention lock과 충돌
 - 해결: `PESSIMISTIC_WRITE` 제거 후 first insert 유일성 제약 조건 충돌을 catch-retry로 복구
 - 검증: 수정 후 전체 요청 163,205건 기준 timer PUT 실패 0건, `http_req_failed` 0.00%
 
 ## 1. 문제 배경
+
+이 문서는 진행 중인 타이머의 현재 상태를 서버에 저장하는 경로에서 실제 부하 테스트로 드러난 동시성 제어 문제를 다룬다.
+`timer_states`는 특정 Todo의 실행 중/일시정지/정지 상태와 version을 저장하는 row다. 단일 사용자 흐름에서는 보이지 않던 문제였지만, 여러 요청이 같은 row를 동시에 만들려고 할 때 InnoDB lock 경합이 deadlock으로 이어졌다.
 
 ### 타이머 SSE 동작 흐름
 
@@ -42,9 +45,9 @@ main 환경 배포 전 2026년 3월 26일 dev 환경에서 broad baseline으로 
 | `PUT /api/timer/state/{todoId}` paused  |    1 |
 | 기타 API                                  |    0 |
 
-총 69건의 실패가 사실상 timer state 저장 경로에 집중됐다.
+총 69건의 실패가 사실상 타이머 상태 저장 경로에 집중됐다.
 
-즉, 수동 기능 테스트와 단일 사용자 흐름에서는 정상처럼 보였지만, k6 baseline을 통해 부하 테스트를 돌리자 특정 경로에서 숨어 있던 동시성 버그가 드러났다.
+즉, 수동 기능 테스트와 단일 사용자 흐름에서는 정상처럼 보였지만, k6 baseline을 통해 부하 테스트를 돌리자 특정 경로에서 숨어 있던 동시성 제어 문제가 드러났다.
 
 ## 2. 현상 분석
 
@@ -162,7 +165,7 @@ RECORD LOCKS space id 10 page no 4 index PRIMARY
 
 | 선택지                                    | 장점                                            | 단점                                        | 판단                                    |
 |----------------------------------------|-----------------------------------------------|-------------------------------------------|---------------------------------------|
-| Native upsert                          | DB 레벨 atomic 처리                               | JPA 중심 코드에서 native SQL 증가, 트랜잭션 제어 복잡도 증가 | 가장 견고하지만 현재 timer state 도메인에는 과하다고 판단 |
+| Native upsert                          | DB 레벨 atomic 처리                               | JPA 중심 코드에서 native SQL 증가, 트랜잭션 제어 복잡도 증가 | 가장 견고하지만 현재 타이머 상태 저장 도메인에는 과하다고 판단 |
 | `TransactionTemplate` + deadlock retry | deadlock 발생 시 세밀한 복구 가능                       | gap lock 원인은 유지되고, 증상 완화에 가까움             | 근본 원인 제거보다 복잡도 증가가 큼                  |
 | `@Lock` 제거 + catch-retry               | first insert gap lock 경로 제거, 기존 코드 패턴과 일관성 유지 | 최초 충돌 시 재조회 쿼리 1회 추가                      | 현재 도메인 특성상 가장 단순하고 충분한 해결책            |
 
@@ -171,7 +174,7 @@ RECORD LOCKS space id 10 page no 4 index PRIMARY
 최종적으로는 `@Lock` 제거 + catch-retry 방법을 채택했다.
 
 native upsert는 DB 레벨에서 가장 원자적인 해결책이다.
-하지만 현재 timer state는 최신 상태를 계속 push하는 last-writer-wins 성격의 데이터다.
+하지만 현재 타이머 상태는 최신 상태를 계속 push하는 last-writer-wins 성격의 데이터다.
 기존 코드베이스도 JPA 중심으로 구성돼 있었기 때문에, 이 문제 하나 때문에 native SQL과 트랜잭션 경계 복잡도를 추가하는 것은 비용 대비 이득이 크지 않다고 판단했다.
 
 `TransactionTemplate` 기반 deadlock retry도 선택지였다.
@@ -182,7 +185,7 @@ gap lock을 유발한 `SELECT FOR UPDATE` 경로는 그대로 남기 때문에, 
 같은 프로젝트의 `TodoService.scheduleReview`가 이미 유사한 catch-retry 패턴을 쓰고 있어 코드 일관성도 유지할 수 있었다.
 
 정합성이 더 강하게 필요한 데이터였다면 native upsert, optimistic locking, 명시적인 retry 정책을 더 적극적으로 검토했을 것이다.
-하지만 timer state는 누적 정합성이 중요한 데이터라기보다 사용자의 최신 타이머 상태를 반영하는 데이터다.
+하지만 타이머 상태는 누적 정합성이 중요한 데이터라기보다 사용자의 최신 타이머 상태를 반영하는 데이터다.
 이 경로에서는 last-writer-wins 모델을 수용할 수 있다고 판단했다.
 
 ## 5. 해결
@@ -206,7 +209,7 @@ Optional<TimerState> findByUserIdAndTodoId(String userId, String todoId);
 이 변경으로 row가 없는 first insert 경로에서 `SELECT FOR UPDATE`가 먼저 gap lock을 잡는 구조를 제거했다.
 
 기존 row에 대한 동시 UPDATE는 last-writer-wins 모델로 처리한다.
-timer state는 사용자의 최신 타이머 상태를 저장하는 데이터이고, 모든 중간 상태를 누적해 정산하는 데이터가 아니다.
+타이머 상태는 사용자의 최신 타이머 상태를 저장하는 데이터이고, 모든 중간 상태를 누적해 정산하는 데이터가 아니다.
 SSE 이벤트도 `version` 기반으로 최신성을 판단하므로, 네트워크 순서가 뒤바뀌어도 오래된 이벤트가 다시 적용되지 않는다.
 
 ### 2) first insert 충돌은 catch-retry로 복구

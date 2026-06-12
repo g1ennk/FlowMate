@@ -68,13 +68,13 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 
 ## 4. 주요 트러블슈팅
 
-### 1) Timer State 저장 경로의 InnoDB Deadlock 분석과 해결
+### 1) 타이머 상태 저장의 동시성 제어: InnoDB Deadlock 분석과 해결
 
-- 문제: k6 baseline에서 `PUT /api/timer/state/{todoId}` 실패 69건이 timer state 저장 경로에 집중
+- 문제: k6 baseline에서 진행 중인 타이머 상태를 저장하는 `PUT /api/timer/state/{todoId}` 실패 69건이 한 경로에 집중
 - 원인: row가 없는 first insert 경로에서 `SELECT FOR UPDATE`가 gap lock을 만들고, 동시 INSERT의 insert intention lock과 충돌
 - 해결: `PESSIMISTIC_WRITE`를 제거하고, first insert 유일성 제약 조건 충돌은 winner row 재조회 후 update하는 catch-retry로 복구
 - 결과: 수정 후 전체 요청 163,205건 기준 timer PUT 실패 0건, `http_req_failed` 0.00%를 확인
-- 관련 문서: [Timer State 저장 경로의 InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
+- 관련 문서: [타이머 상태 저장의 동시성 제어: InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
 
 ### 2) SSE 연결 유지 실패 분석과 해결: Workbox 충돌과 Nginx 60초 idle timeout
 
