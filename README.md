@@ -59,12 +59,13 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 - 결과: 단조 증가 `version`과 snapshot fetch로 모든 기기에 즉시 반영되며, 재접속 후에도 최신 상태 유지 — k6 163,205 req · 에러율 0%
 - 관련 문서: [멀티디바이스 타이머 동기화: SSE + 단조 증가 `version`](docs/wiki/sse-sync.md)
 
-### 3) Self-hosted에서 Alloy + Grafana Cloud로 전환
+### 3) 운영 관찰성 개선: Self-hosted Prometheus/Grafana에서 Alloy + Grafana Cloud로 전환
 
-- 문제: Prometheus + Grafana + node-exporter를 직접 운영하면 로그와 트레이스 확장 시 컨테이너와 설정 파일이 계속 늘어남
-- 선택 기준: 단일 EC2에서 운영 복잡도를 줄이고, 메트릭·로그·트레이스를 한 수집기 경로로 관리
-- 결과: EC2 모니터링 컨테이너를 3개에서 Alloy 1개로 줄이고, Grafana Cloud의 Mimir·Loki·Tempo로 신호를 전송
-- 관련 문서: [Self-hosted에서 Alloy + Grafana Cloud로 전환](docs/wiki/monitoring-stack.md)
+- 문제: Spring Boot 운영 지표를 볼 수는 있어야 했지만, Prometheus + Grafana + node-exporter를 직접 운영하면 로그와 트레이스 확장 시 EC2 컨테이너와 설정 파일이 계속 늘어남
+- 선택 기준: 단일 EC2에는 Alloy 수집기 1개만 두고, Spring Boot Actuator 메트릭·Docker 로그·OTel trace를 Grafana Cloud의 Mimir·Loki·Tempo로 전송
+- 결과: EC2 모니터링 컨테이너를 3개에서 1개로 줄이고, HTTP/JVM/DB/Host 지표와 로그·트레이스를 Grafana Cloud에서 같은 시간축으로 확인
+- 활용: community dashboard(Spring Boot Observability, Node Exporter Full)와 직접 작성한 FlowMate Backend Overview(RED + Saturation)로 부하테스트 결과를 해석하고, HikariCP pool 증설 같은 잘못된 튜닝 방향을 걸러냄
+- 관련 문서: [운영 관찰성 개선: Self-hosted Prometheus/Grafana에서 Alloy + Grafana Cloud로 전환](docs/wiki/monitoring-stack.md)
 
 ## 4. 주요 트러블슈팅
 
