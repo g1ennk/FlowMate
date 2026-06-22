@@ -7,6 +7,13 @@ spring:
     async:
       request-timeout: 1h
 
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      timeout: 2s
+
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:flowmate}?serverTimezone=Asia/Seoul&useSSL=true
     username: ${DB_USERNAME}
