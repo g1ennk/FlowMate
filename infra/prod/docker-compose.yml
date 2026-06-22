@@ -38,6 +38,27 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Redis (SSE Pub/Sub 전용)
+  redis:
+    image: redis:7-alpine
+    container_name: flowmate-redis-prod
+    restart: always
+    entrypoint: ["sh", "-c", "[ -n \"$$REDIS_PASSWORD\" ] || (echo 'REDIS_PASSWORD missing' >&2; exit 1); exec redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - flowmate-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Spring Boot Backend
   backend:
     image: ${ECR_IMAGE_URI:-flowmate-backend:placeholder}
@@ -56,6 +77,9 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
       KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       CORS_ORIGINS: ${CORS_ORIGINS}
       JAVA_OPTS: >-
         -javaagent:/opt/opentelemetry-javaagent.jar
@@ -75,6 +99,8 @@ services:
       OTEL_METRICS_EXPORTER: none
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       alloy:
         condition: service_started
