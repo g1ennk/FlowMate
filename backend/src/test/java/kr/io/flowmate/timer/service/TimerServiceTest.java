@@ -3,6 +3,7 @@ package kr.io.flowmate.timer.service;
 import kr.io.flowmate.timer.domain.TimerState;
 import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
 import kr.io.flowmate.timer.dto.response.TimerStateResponse;
+import kr.io.flowmate.timer.event.TimerStateChangedEvent;
 import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.domain.Todo;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
@@ -14,8 +15,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -26,13 +27,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TimerService")
@@ -41,15 +37,20 @@ class TimerServiceTest {
     private static final String USER_ID = "user-1";
     private static final String TODO_ID = "todo-1";
 
-    @Mock private TimerStateRepository timerStateRepository;
-    @Mock private TodoRepository todoRepository;
-    @Mock private SseEmitterRegistry sseEmitterRegistry;
-    @Mock private ObjectMapper objectMapper;
+    @Mock
+    private TimerStateRepository timerStateRepository;
+    @Mock
+    private TodoRepository todoRepository;
+    @Mock
+    private ObjectMapper objectMapper;
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
 
-    @InjectMocks private TimerService timerService;
+    @InjectMocks
+    private TimerService timerService;
 
     @Test
-    @DisplayName("upsertState: running — stateJson 직렬화 + version=System.currentTimeMillis 범위 + SSE broadcast 호출")
+    @DisplayName("upsertState: running — stateJson 직렬화 + version=System.currentTimeMillis 범위 + domain event 발행")
     void upsertState_running_serializesAndBroadcasts() throws Exception {
         when(todoRepository.findByIdAndUserId(TODO_ID, USER_ID)).thenReturn(Optional.of(mock(Todo.class)));
         when(timerStateRepository.findByUserIdAndTodoId(USER_ID, TODO_ID)).thenReturn(Optional.empty());
@@ -61,11 +62,21 @@ class TimerServiceTest {
         TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, request);
 
         long after = System.currentTimeMillis();
+
+        // response 검증
         assertThat(response.todoId()).isEqualTo(TODO_ID);
         assertThat(response.state()).isEqualTo(request.getState());
         assertThat(response.version()).isBetween(before, after);
+
+        // DB 저장
         verify(timerStateRepository, times(1)).saveAndFlush(any(TimerState.class));
-        verify(sseEmitterRegistry).broadcast(eq(USER_ID), any(SseEmitter.SseEventBuilder.class));
+
+        // 도메인 이벤트 발행
+        TimerStateChangedEvent event = capturePublishedEvent();
+        assertThat(event.userId()).isEqualTo(USER_ID);
+        assertThat(event.todoId()).isEqualTo(TODO_ID);
+        assertThat(event.version()).isEqualTo(response.version());
+        assertThat(event.state()).isEqualTo("{\"status\":\"running\"}");
     }
 
     @Test
@@ -80,13 +91,21 @@ class TimerServiceTest {
 
         TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, request);
 
+        // response 검증
         assertThat(response.state()).isNull();
-        // idle 경로는 state 직렬화가 필요 없다
+
+        // idle 은 직렬화 스킵
         verify(objectMapper, never()).writeValueAsString(eq(request.getState()));
 
+        // DB 저장 — stateJson null (soft delete)
         ArgumentCaptor<TimerState> captor = ArgumentCaptor.forClass(TimerState.class);
         verify(timerStateRepository).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getStateJson()).isNull();
+
+        // 도메인 이벤트 발행
+        TimerStateChangedEvent event = capturePublishedEvent();
+        assertThat(event.version()).isEqualTo(response.version());
+        assertThat(event.state()).isNull();
     }
 
     @Test
@@ -114,7 +133,7 @@ class TimerServiceTest {
                 .isInstanceOf(TodoNotFoundException.class);
 
         verify(timerStateRepository, never()).saveAndFlush(any(TimerState.class));
-        verify(sseEmitterRegistry, never()).broadcast(anyString(), any());
+        verify(applicationEventPublisher, never()).publishEvent(any(TimerStateChangedEvent.class));
     }
 
     @Test
@@ -140,6 +159,10 @@ class TimerServiceTest {
         assertThat(response.version()).isGreaterThan(winnerVersion);
         verify(timerStateRepository, times(2)).saveAndFlush(any(TimerState.class));
         verify(timerStateRepository, times(2)).findByUserIdAndTodoId(USER_ID, TODO_ID);
+
+        // 도메인 이벤트에도 재계산된 version 사용
+        TimerStateChangedEvent event = capturePublishedEvent();
+        assertThat(event.version()).isEqualTo(response.version());
     }
 
     @Test
@@ -176,6 +199,13 @@ class TimerServiceTest {
 
         assertThat(result).isEmpty();
         verify(timerStateRepository).deleteStaleByUserId(eq(USER_ID), any(Instant.class));
+    }
+
+    private TimerStateChangedEvent capturePublishedEvent() {
+        ArgumentCaptor<TimerStateChangedEvent> captor =
+                ArgumentCaptor.forClass(TimerStateChangedEvent.class);
+        verify(applicationEventPublisher).publishEvent(captor.capture());
+        return captor.getValue();
     }
 
     private TimerStatePushRequest runningRequest() {
