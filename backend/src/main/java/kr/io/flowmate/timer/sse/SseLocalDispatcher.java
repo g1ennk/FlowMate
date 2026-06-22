@@ -52,7 +52,7 @@ public class SseLocalDispatcher implements MessageListener {
     public void onMessage(Message message, byte @Nullable [] pattern) {
         TimerStateChangedEvent event = serializer.deserialize(message.getBody());
         if (event == null) return;
-        fanOut(event);
+        sseDispatchExecutor.submit(() -> fanOut(event));
     }
 
     private void fanOut(TimerStateChangedEvent event) {

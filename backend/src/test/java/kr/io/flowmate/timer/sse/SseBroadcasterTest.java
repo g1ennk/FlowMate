@@ -28,7 +28,7 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 class SseBroadcasterTest {
 
-    private static final String CHANNEL = "flowmate:timer:state-changed";
+    private static final String CHANNEL = SseBroadcaster.CHANNEL;
 
     @Container
     static RedisContainer redis = new RedisContainer(DockerImageName.parse("redis:7-alpine"));
