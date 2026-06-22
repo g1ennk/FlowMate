@@ -6,6 +6,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.connection.Message;
@@ -13,6 +14,7 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
 import tools.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,6 +72,40 @@ class SseLocalDispatcherTest {
             releaseBroadcast.countDown();
             caller.shutdownNow();
         }
+    }
+
+    @Test
+    void 역직렬화_실패가_subscriber_호출자에게_전파되지_않음() {
+        Message message = mock(Message.class);
+        when(message.getBody()).thenReturn("invalid-json".getBytes(StandardCharsets.UTF_8));
+
+        assertThatCode(() -> dispatcher.onMessage(message, null))
+                .doesNotThrowAnyException();
+
+        verify(sseEmitterRegistry, never()).broadcast(anyString(), any());
+    }
+
+    @Test
+    void state_JSON_파싱_실패가_dispatch_task_밖으로_전파되지_않음() {
+        ExecutorService capturingExecutor = mock(ExecutorService.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JacksonJsonRedisSerializer<TimerStateChangedEvent> localSerializer =
+                new JacksonJsonRedisSerializer<>(objectMapper, TimerStateChangedEvent.class);
+        SseLocalDispatcher target = new SseLocalDispatcher(
+                sseEmitterRegistry, capturingExecutor, localSerializer, objectMapper, messageListenerContainer
+        );
+        TimerStateChangedEvent event = TimerStateChangedEvent.of(
+                "user-1", "todo-1", 1L, "not-json"
+        );
+        Message message = mock(Message.class);
+        when(message.getBody()).thenReturn(localSerializer.serialize(event));
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+
+        target.onMessage(message, null);
+        verify(capturingExecutor).submit(taskCaptor.capture());
+
+        assertThatCode(taskCaptor.getValue()::run).doesNotThrowAnyException();
+        verify(sseEmitterRegistry, never()).broadcast(anyString(), any());
     }
 
     private Message messageOf(String userId) {

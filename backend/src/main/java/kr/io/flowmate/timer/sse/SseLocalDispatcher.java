@@ -13,7 +13,6 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -50,9 +49,13 @@ public class SseLocalDispatcher implements MessageListener {
 
     @Override
     public void onMessage(Message message, byte @Nullable [] pattern) {
-        TimerStateChangedEvent event = serializer.deserialize(message.getBody());
-        if (event == null) return;
-        sseDispatchExecutor.submit(() -> fanOut(event));
+        try {
+            TimerStateChangedEvent event = serializer.deserialize(message.getBody());
+            if (event == null) return;
+            sseDispatchExecutor.submit(() -> fanOut(event));
+        } catch (Exception ex) {
+            log.warn("sse.dispatcher.exception phase=deserialize err={}", ex.getMessage(), ex);
+        }
     }
 
     private void fanOut(TimerStateChangedEvent event) {
@@ -70,8 +73,9 @@ public class SseLocalDispatcher implements MessageListener {
                     .name("timer-state")
                     .data(json);
             sseEmitterRegistry.broadcast(event.userId(), eventBuilder);
-        } catch (JacksonException ex) {
-            throw new IllegalStateException("timer-state payload 변환 실패", ex);
+        } catch (Exception ex) {
+            log.warn("sse.dispatcher.exception userId={} err={}",
+                    event.userId(), ex.getMessage(), ex);
         }
     }
 }
