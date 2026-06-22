@@ -13,6 +13,13 @@ spring:
     password: ${DB_PASSWORD:flowmate}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
   jpa:
     hibernate:
       ddl-auto: validate # JPA가 테이블을 만들거나 수정하지 않고, 엔티티와 DB 스키마가 맞는지만 검사 (즉, 스키마는 Flyway만 담당)

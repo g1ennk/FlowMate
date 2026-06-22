@@ -3,15 +3,16 @@ package kr.io.flowmate.timer.service;
 import kr.io.flowmate.timer.domain.TimerState;
 import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
 import kr.io.flowmate.timer.dto.response.TimerStateResponse;
+import kr.io.flowmate.timer.event.TimerStateChangedEvent;
 import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -30,7 +31,7 @@ public class TimerService {
 
     private final TimerStateRepository timerStateRepository;
     private final TodoRepository todoRepository;
-    private final SseEmitterRegistry sseEmitterRegistry;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -60,9 +61,11 @@ public class TimerService {
             timerStateRepository.saveAndFlush(timerState);
         }
 
-        Object responseState = isIdle ? null : request.getState();
-        broadcast(userId, todoId, responseState, newVersion);
+        applicationEventPublisher.publishEvent(
+                TimerStateChangedEvent.of(userId, todoId, newVersion, stateJson)
+        );
 
+        Object responseState = isIdle ? null : request.getState();
         return new TimerStateResponse(todoId, responseState, newVersion);
     }
 
@@ -99,20 +102,6 @@ public class TimerService {
             );
         } catch (JacksonException e) {
             throw new IllegalStateException("state 역직렬화 실패. todoId=" + state.getTodoId(), e);
-        }
-    }
-
-    // SSE broadcast 는 fire-and-forget.
-    // 전송 실패가 호출자 트랜잭션에 영향을 주지 않도록 SseEmitterRegistry 가 모든 예외를 흡수한다.
-    // 직렬화 실패만 여기서 로깅하고 전파하지 않으며, 클라이언트는 GET /api/timer/state 로 보정 가능하다.
-    private void broadcast(String userId, String todoId, Object state, long version) {
-        try {
-            String json = objectMapper.writeValueAsString(
-                    new TimerStateResponse(todoId, state, version)
-            );
-            sseEmitterRegistry.broadcast(userId, SseEmitter.event().name("timer-state").data(json));
-        } catch (JacksonException e) {
-            log.warn("SSE broadcast 직렬화 실패. userId={}, todoId={}", userId, todoId, e);
         }
     }
 }

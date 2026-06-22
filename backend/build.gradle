@@ -34,28 +34,34 @@ dependencies {
     // DB
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.flywaydb:flyway-mysql'
-    runtimeOnly    'com.mysql:mysql-connector-j'
+    runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
-    runtimeOnly    'io.jsonwebtoken:jjwt-impl:0.12.3'
-    runtimeOnly    'io.jsonwebtoken:jjwt-jackson:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.3'
 
     // Monitoring
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    runtimeOnly    'io.micrometer:micrometer-registry-prometheus'
-    runtimeOnly    'net.logstash.logback:logstash-logback-encoder:7.4'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+    runtimeOnly 'net.logstash.logback:logstash-logback-encoder:7.4'
 
     // Lombok
-    compileOnly    'org.projectlombok:lombok'
+    compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.security:spring-security-test'
-    testRuntimeOnly    'org.junit.platform:junit-platform-launcher'
-    testRuntimeOnly    'com.h2database:h2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly 'com.h2database:h2'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.4'
+    testImplementation 'com.redis:testcontainers-redis:2.2.2'
+    testImplementation 'org.awaitility:awaitility:4.2.2'
 }
 
 tasks.named('test') {
