@@ -1,0 +1,49 @@
+spring:
+  mvc:
+    async:
+      request-timeout: 1h
+
+  datasource:
+    url: jdbc:h2:mem:flowmate;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
+jwt:
+  secret: 64a7b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4
+  access-ttl: 900
+  guest-ttl: 7776000
+  state-ttl: 300
+  refresh-ttl: 1209600
+
+kakao:
+  client-id: dummy-test-kakao-client-id
+  client-secret: dummy-test-kakao-client-secret
+  redirect-uri: http://localhost:5173/oauth/kakao/callback
+
+gemini:
+  api-key: dummy-test-gemini-key
+  base-url: http://localhost
+  model: gemini-2.5-flash
+  connect-timeout-ms: 1000
+  read-timeout-ms: 1000
+
+cookie:
+  secure: false
+
+cors:
+  allowed-origins: http://localhost:5173
