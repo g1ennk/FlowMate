@@ -24,7 +24,7 @@ spring:
       timeout: 2s
 
 jwt:
-  secret: 64a7b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4
+  secret: aa11bb22cc33dd44ee55ff6600112233aa11bb22cc33dd44ee55ff6600112233
   access-ttl: 900
   guest-ttl: 7776000
   state-ttl: 300
