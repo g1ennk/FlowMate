@@ -37,7 +37,10 @@ async function enqueuePush(todoId: string, body: TimerStatePushBody): Promise<vo
       if (slot.latest !== snapshot || slot.cancelled) break
 
       try {
-        await timerApi.pushState(todoId, snapshot)
+        const pushedState = await timerApi.pushState(todoId, snapshot)
+        if (!slot.cancelled) {
+          useTimerStore.getState().recordPushedVersion(todoId, pushedState.version)
+        }
         succeeded = true
         pendingResync.delete(todoId)
         break

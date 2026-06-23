@@ -66,40 +66,48 @@ export function useBatchSelect() {
   const batchComplete = useCallback(async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    for (const id of ids) {
-      const timer = getTimer(id)
-      if (timer && timer.status !== 'idle') {
-        // 활성 timer 가 있으면 누적된 focus 를 flush 한 뒤 완료 처리.
-        await completeTaskFromTimer({
-          todoId: id,
-          timer,
-          settings: settings ?? undefined,
-          pause,
-          reset,
-          getTimer,
-          updateSessions,
-          syncSessionsImmediately: async (sessions) => {
-            for (const session of sessions) {
-              if (session.sessionFocusSeconds <= 0) continue
-              await createSession.mutateAsync({
-                todoId: id,
-                body: {
-                  sessionFocusSeconds: session.sessionFocusSeconds,
-                  breakSeconds: session.breakSeconds,
-                  clientSessionId: normalizeSessionId(session.clientSessionId),
-                },
-              })
-            }
-          },
-          applySessionAggregateDelta: (delta) => {
-            applySessionAggregateDelta(queryClient, id, delta)
-          },
-          updateTodo: updateTodo.mutateAsync,
-        })
-      } else {
-        updateTodo.mutate({ id, patch: { isDone: true } })
+    try {
+      for (const id of ids) {
+        const timer = getTimer(id)
+        if (timer && timer.status !== 'idle') {
+          // 활성 timer 가 있으면 누적된 focus 를 flush 한 뒤 완료 처리.
+          await completeTaskFromTimer({
+            todoId: id,
+            timer,
+            settings: settings ?? undefined,
+            pause,
+            reset,
+            getTimer,
+            updateSessions,
+            syncSessionsImmediately: async (sessions) => {
+              for (const session of sessions) {
+                if (session.sessionFocusSeconds <= 0) continue
+                await createSession.mutateAsync({
+                  todoId: id,
+                  body: {
+                    sessionFocusSeconds: session.sessionFocusSeconds,
+                    breakSeconds: session.breakSeconds,
+                    clientSessionId: normalizeSessionId(session.clientSessionId),
+                  },
+                })
+              }
+            },
+            applySessionAggregateDelta: (delta) => {
+              applySessionAggregateDelta(queryClient, id, delta)
+            },
+            updateTodo: updateTodo.mutateAsync,
+          })
+        } else {
+          updateTodo.mutate({ id, patch: { isDone: true } })
+        }
       }
+    } catch {
+      toast.error('타이머 저장에 실패했습니다. 다시 시도해주세요.', {
+        id: 'timer-save-failed',
+      })
+      return
     }
+
     toast.success(`${ids.length}개 완료 처리됨`, { id: 'batch-complete' })
     exitSelectMode()
   }, [selectedIds, queryClient, settings, createSession, updateTodo, getTimer, pause, reset, updateSessions, exitSelectMode])

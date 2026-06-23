@@ -65,6 +65,7 @@ const mocked = vi.hoisted(() => {
     updateTodoMutateAsync: vi.fn(),
     createSessionMutateAsync: vi.fn(),
     toastSuccess: vi.fn(),
+    toastError: vi.fn(),
   }
 })
 
@@ -87,6 +88,7 @@ vi.mock('../todos/hooks', () => ({
 vi.mock('react-hot-toast', () => ({
   toast: {
     success: mocked.toastSuccess,
+    error: mocked.toastError,
   },
 }))
 
@@ -139,6 +141,7 @@ describe('TimerFullScreen', () => {
     mocked.createSessionMutateAsync.mockReset()
     mocked.createSessionMutateAsync.mockResolvedValue(undefined)
     mocked.toastSuccess.mockClear()
+    mocked.toastError.mockClear()
 
     useMusicStore.getState().stopSession()
     useMusicStore.setState({
@@ -247,6 +250,41 @@ describe('TimerFullScreen', () => {
       currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
       isPlaying: false,
     })
+  })
+
+  it('keeps the completion modal open when immediate session sync fails', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    mocked.createSessionMutateAsync.mockRejectedValueOnce(new Error('session sync failed'))
+
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={onClose}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '완료' }))
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    await waitFor(() => {
+      expect(mocked.toastError).toHaveBeenCalledWith(
+        '타이머 저장에 실패했습니다. 다시 시도해주세요.',
+        { id: 'timer-save-failed' },
+      )
+    })
+    expect(screen.getByText('타이머를 완료하시겠습니까?')).toBeInTheDocument()
+    expect(mocked.timerStoreActions.updateSessions).not.toHaveBeenCalled()
+    expect(mocked.updateTodoMutateAsync).not.toHaveBeenCalled()
+    expect(mocked.timerStoreActions.reset).not.toHaveBeenCalled()
+    expect(mocked.toastSuccess).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('plays on focus toggle, pauses on break, and resumes when focus returns', async () => {

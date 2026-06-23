@@ -45,6 +45,7 @@ type TimerActions = {
   syncWithNow: () => void
   applyRemoteState: (todoId: string, state: SingleTimerState, version: number) => void
   applyRemoteReset: (todoId: string, version: number) => void
+  recordPushedVersion: (todoId: string, version: number) => void
   clearAll: () => void
   // reset 직전 호출되어, 휴식 진입/완료 처리를 거치지 않은 진행 중 focus 누적분을
   // pendingAutoSessions 큐로 보존한다 (background sync가 이어서 처리).
@@ -201,9 +202,16 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     getTimer: (todoId) => get().timers[todoId],
 
+    recordPushedVersion: (todoId, version) => {
+      const last = seenVersions.get(todoId) ?? 0
+      if (version > last) {
+        seenVersions.set(todoId, version)
+      }
+    },
+
     applyRemoteState: (todoId, remoteState, version) => {
       const last = seenVersions.get(todoId) ?? 0
-      if (version < last) return
+      if (version <= last) return
 
       seenVersions.set(todoId, version)
       applyingRemote = true
@@ -215,16 +223,13 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
     applyRemoteReset: (todoId, version) => {
       const last = seenVersions.get(todoId) ?? 0
-      if (version < last) return
+      if (version <= last) return
 
       seenVersions.set(todoId, version)
       applyingRemote = true
 
       const existing = get().timers[todoId]
       if (existing && existing.status !== 'idle') {
-        // 다른 디바이스가 idle PUT 한 경우, 본 디바이스의 진행 중 focus 누적분도
-        // sync 큐로 보존한 뒤 timer 를 제거한다.
-        get().commitPendingFocus(todoId)
         const timers = { ...get().timers }
         delete timers[todoId]
         set({ timers })

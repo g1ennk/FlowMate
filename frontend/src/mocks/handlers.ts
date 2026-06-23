@@ -47,6 +47,7 @@ const today = () => {
 }
 const latency = 200
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const timerVersions = new Map<string, number>()
 
 // 기본 설정 (Todo는 빈 상태)
 const defaultSessionSettings: PomodoroSessionSettings = {
@@ -359,9 +360,18 @@ export const handlers = [
     return HttpResponse.json([])
   }),
 
-  http.put('/api/timer/state/:todoId', async () => {
+  http.put('/api/timer/state/:todoId', async ({ params, request }) => {
     await delay(latency)
-    return new HttpResponse(null, { status: 200 })
+    const todoId = String(params.todoId)
+    const body = (await request.json()) as { state?: unknown }
+    const version = (timerVersions.get(todoId) ?? 0) + 1
+    timerVersions.set(todoId, version)
+
+    return HttpResponse.json({
+      todoId,
+      state: body.state ?? null,
+      version,
+    })
   }),
 
   http.get('/api/todos', async ({ request }) => {

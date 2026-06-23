@@ -49,8 +49,8 @@ const serverTimerStateSchema = z.object({
 })
 
 export const timerApi = {
-  pushState: (todoId: string, body: TimerStatePushBody): Promise<void> =>
-    api.put(`/timer/state/${todoId}`, body),
+  pushState: (todoId: string, body: TimerStatePushBody): Promise<ServerTimerState> =>
+    api.put(`/timer/state/${todoId}`, body, serverTimerStateSchema),
 
   getActiveStates: (): Promise<ServerTimerState[]> =>
     api.get('/timer/state', z.array(serverTimerStateSchema)) as Promise<ServerTimerState[]>,

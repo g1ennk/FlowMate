@@ -1,6 +1,10 @@
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { timerApi } from '../../api/timerApi'
+import { useAuthStore } from '../../store/authStore'
 import type { SingleTimerState } from './timerTypes'
 import { useTimerStore } from './timerStore'
+import { useSseTimerSync } from './useSseTimerSync'
 
 vi.mock('../../lib/sound', () => ({
   playNotificationSound: vi.fn(),
@@ -243,13 +247,13 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
   })
 
-  it('applyRemoteState with same version applies the state', () => {
+  it('applyRemoteState with same version drops the state', () => {
     useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
 
     const updated: SingleTimerState = { ...remoteTimer, status: 'paused', endAt: null }
     useTimerStore.getState().applyRemoteState(TODO_ID, updated, 100)
 
-    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('paused')
+    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
   })
 
   it('applyRemoteState with version < last is dropped', () => {
@@ -269,12 +273,46 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
   })
 
-  it('applyRemoteReset with same version removes the timer', () => {
+  it('applyRemoteReset with same version drops the reset', () => {
     useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
     expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
 
     useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
+    expect(useTimerStore.getState().timers[TODO_ID]).toBeDefined()
+  })
+
+  it('applyRemoteState with the same version as a reset stays removed', () => {
+    useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 100)
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 200)
     expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
+
+    useTimerStore.getState().applyRemoteState(TODO_ID, remoteTimer, 200)
+
+    expect(useTimerStore.getState().timers[TODO_ID]).toBeUndefined()
+  })
+
+  it('recordPushedVersion seeds the watermark without lowering a newer version', () => {
+    const { recordPushedVersion } = useTimerStore.getState()
+    expect(recordPushedVersion).toBeTypeOf('function')
+
+    useTimerStore.setState({ timers: { [TODO_ID]: remoteTimer } })
+    recordPushedVersion(TODO_ID, 300)
+
+    const sameVersionEcho: SingleTimerState = {
+      ...remoteTimer,
+      status: 'paused',
+      endAt: null,
+    }
+    useTimerStore.getState().applyRemoteState(TODO_ID, sameVersionEcho, 300)
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 299)
+
+    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
+
+    useTimerStore.getState().applyRemoteState(TODO_ID, sameVersionEcho, 400)
+    recordPushedVersion(TODO_ID, 350)
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 400)
+
+    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('paused')
   })
 
   // 2026-05-20 prod 회귀: reset → initPomodoro/initStopwatch 시퀀스 직후 자기 자신이
@@ -302,6 +340,150 @@ describe('useTimerStore applyRemoteState / applyRemoteReset', () => {
     expect(timer).toBeDefined()
     expect(timer.status).toBe('idle')
     expect(timer.mode).toBe('stopwatch')
+  })
+})
+
+describe('useTimerStore applyRemoteReset session duplication regression', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-23T00:00:00.000Z'))
+    useTimerStore.getState().clearAll()
+  })
+
+  afterEach(() => {
+    useTimerStore.getState().clearAll()
+    vi.useRealTimers()
+  })
+
+  function setInProgressStopwatch() {
+    useTimerStore.setState({
+      timers: {
+        [TODO_ID]: {
+          mode: 'stopwatch',
+          settingsSnapshot: null,
+          phase: 'flow',
+          status: 'running',
+          endAt: null,
+          remainingMs: null,
+          elapsedMs: 5_391_000,
+          initialFocusMs: 0,
+          startedAt: null,
+          cycleCount: 0,
+          flexiblePhase: 'focus',
+          focusElapsedMs: 5_391_000,
+          breakElapsedMs: 0,
+          breakTargetMs: null,
+          breakCompleted: false,
+          focusStartedAt: Date.now(),
+          breakStartedAt: null,
+          breakSessionPendingUpdate: false,
+          sessions: [],
+        },
+      },
+      pendingAutoSessions: {},
+    })
+  }
+
+  function expectResetWithoutNewSession() {
+    const state = useTimerStore.getState()
+    expect(state.pendingAutoSessions[TODO_ID]).toBeUndefined()
+    expect(state.pendingAutoSessions).toEqual({})
+    expect(state.timers[TODO_ID]).toBeUndefined()
+  }
+
+  it('pause → remote reset does not create a second session', () => {
+    setInProgressStopwatch()
+    useTimerStore.getState().pause(TODO_ID)
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
+
+    expectResetWithoutNewSession()
+  })
+
+  it('remote reset → pause does not create a second session', () => {
+    setInProgressStopwatch()
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
+    useTimerStore.getState().pause(TODO_ID)
+
+    expectResetWithoutNewSession()
+  })
+
+  it('remote reset without a preceding pause does not create a second session', () => {
+    setInProgressStopwatch()
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
+
+    expectResetWithoutNewSession()
+  })
+
+  it('duplicate remote reset does not create a second session', () => {
+    setInProgressStopwatch()
+
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
+    useTimerStore.getState().applyRemoteReset(TODO_ID, 100)
+
+    expectResetWithoutNewSession()
+  })
+})
+
+describe('useSseTimerSync pushed version watermark', () => {
+  beforeEach(() => {
+    useTimerStore.getState().clearAll()
+    useAuthStore.setState({
+      state: {
+        type: 'member',
+        accessToken: 'member-token',
+        user: { id: 'member-1', email: null, nickname: 'member' },
+      },
+      initialized: true,
+    })
+    vi.stubGlobal(
+      'EventSource',
+      class {
+        onerror: (() => void) | null = null
+        addEventListener() {}
+        close() {}
+      },
+    )
+  })
+
+  afterEach(() => {
+    useAuthStore.setState({ state: null, initialized: false })
+    useTimerStore.getState().clearAll()
+  })
+
+  it('drops an echo matching the version returned by a successful pushState', async () => {
+    const pushedTimer = createPomodoroTimer({
+      phase: 'flow',
+      status: 'running',
+      sessions: [],
+    })
+    vi.spyOn(timerApi, 'pushState').mockResolvedValue({
+      todoId: TODO_ID,
+      state: pushedTimer,
+      version: 500,
+    })
+    renderHook(() => useSseTimerSync())
+
+    act(() => {
+      useTimerStore.setState({ timers: { [TODO_ID]: pushedTimer } })
+    })
+    await waitFor(() => {
+      expect(timerApi.pushState).toHaveBeenCalledWith(TODO_ID, {
+        status: 'running',
+        state: pushedTimer,
+      })
+    })
+
+    const sameVersionEcho: SingleTimerState = {
+      ...pushedTimer,
+      status: 'paused',
+      endAt: null,
+    }
+    useTimerStore.getState().applyRemoteState(TODO_ID, sameVersionEcho, 500)
+
+    expect(useTimerStore.getState().timers[TODO_ID].status).toBe('running')
   })
 })
 

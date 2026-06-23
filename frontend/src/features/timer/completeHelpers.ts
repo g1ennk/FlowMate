@@ -107,28 +107,21 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
       newSessions[newSessions.length - 1]?.breakSeconds !==
         timer.sessions[timer.sessions.length - 1]?.breakSeconds)
 
-  if (sessionsChanged) {
-    updateSessions(todoId, newSessions)
-  }
-
   const focusDeltaSeconds = Math.max(0, totalFocusSec - oldFocusSec)
   const sessionCountDelta = Math.max(0, newSessions.length - oldSessionCount)
-  if (focusDeltaSeconds > 0 || sessionCountDelta > 0) {
-    deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
-  }
 
   // 마지막 1건이 아니라 전체 sessions 를 sync 한다. background sync 가 미완료된
   // 잔여 sessions 도 완료 시점에 책임지고 보내기 위함 (멱등 처리되어 안전).
   if (newSessions.length > 0) {
-    try {
-      await deps.syncSessionsImmediately?.(newSessions)
-    } catch (error) {
-      // 즉시 동기화 실패 시에도 로컬 큐/주기 동기화로 eventually 반영되도록 완료 플로우는 유지한다.
-      console.error('[completeTaskFromTimer] Immediate stopwatch sync failed', {
-        todoId,
-        error,
-      })
-    }
+    await deps.syncSessionsImmediately?.(newSessions)
+  }
+
+  if (sessionsChanged) {
+    updateSessions(todoId, newSessions)
+  }
+
+  if (focusDeltaSeconds > 0 || sessionCountDelta > 0) {
+    deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
   }
 }
 
@@ -157,24 +150,18 @@ async function completePomodoro(
       breakSeconds: 0,
       clientSessionId: generateSessionId(),
     })
-    updateSessions(todoId, newSessions)
 
     const newFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
     const focusDeltaSeconds = Math.max(0, newFocusSec - oldFocusSec)
     const sessionCountDelta = Math.max(0, newSessions.length - oldSessionCount)
+
+    // 마지막 1건이 아니라 전체 sessions 를 sync 한다 (멱등 처리, background sync 잔여분 보존).
+    await deps.syncSessionsImmediately?.(newSessions)
+
+    updateSessions(todoId, newSessions)
+
     if (focusDeltaSeconds > 0 || sessionCountDelta > 0) {
       deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
-    }
-
-    try {
-      // 마지막 1건이 아니라 전체 sessions 를 sync 한다 (멱등 처리, background sync 잔여분 보존).
-      await deps.syncSessionsImmediately?.(newSessions)
-    } catch (error) {
-      // 즉시 동기화 실패 시에도 로컬 큐/주기 동기화로 eventually 반영되도록 완료 플로우는 유지한다.
-      console.error('[completeTaskFromTimer] Immediate pomodoro sync failed', {
-        todoId,
-        error,
-      })
     }
   }
 }

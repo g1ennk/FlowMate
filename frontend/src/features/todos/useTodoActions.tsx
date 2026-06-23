@@ -55,33 +55,41 @@ export function useTodoActions(selectedDateKey: string) {
     if (next) {
       const timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
-        await completeTaskFromTimer({
-          todoId: id,
-          timer,
-          settings: settings ?? undefined,
-          pause,
-          reset,
-          getTimer,
-          updateSessions,
-          syncSessionsImmediately: async (sessions) => {
-            for (const session of sessions) {
-              if (session.sessionFocusSeconds <= 0) continue
-              await createSession.mutateAsync({
-                todoId: id,
-                body: {
-                  sessionFocusSeconds: session.sessionFocusSeconds,
-                  breakSeconds: session.breakSeconds,
-                  clientSessionId: normalizeSessionId(session.clientSessionId),
-                },
-              })
-            }
-          },
-          applySessionAggregateDelta: (delta) => {
-            applySessionAggregateDelta(queryClient, id, delta)
-          },
-          updateTodo: updateTodo.mutateAsync,
-          nextOrder,
-        })
+        try {
+          await completeTaskFromTimer({
+            todoId: id,
+            timer,
+            settings: settings ?? undefined,
+            pause,
+            reset,
+            getTimer,
+            updateSessions,
+            syncSessionsImmediately: async (sessions) => {
+              for (const session of sessions) {
+                if (session.sessionFocusSeconds <= 0) continue
+                await createSession.mutateAsync({
+                  todoId: id,
+                  body: {
+                    sessionFocusSeconds: session.sessionFocusSeconds,
+                    breakSeconds: session.breakSeconds,
+                    clientSessionId: normalizeSessionId(session.clientSessionId),
+                  },
+                })
+              }
+            },
+            applySessionAggregateDelta: (delta) => {
+              applySessionAggregateDelta(queryClient, id, delta)
+            },
+            updateTodo: updateTodo.mutateAsync,
+            nextOrder,
+          })
+        } catch {
+          toast.error('타이머 저장에 실패했습니다. 다시 시도해주세요.', {
+            id: 'timer-save-failed',
+          })
+          return
+        }
+
         toast.success('타이머 저장 완료!', { id: 'timer-saved' })
         return
       }

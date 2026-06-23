@@ -715,9 +715,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 취소
               </button>
               <button
-                onClick={() => {
-                  setShowCompleteModal(false)
-                  handleComplete()
+                onClick={async () => {
+                  const completed = await handleComplete()
+                  if (completed) {
+                    setShowCompleteModal(false)
+                  }
                 }}
                 className="flex-1 rounded-full bg-accent-hover py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent"
               >

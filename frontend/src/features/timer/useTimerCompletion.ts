@@ -59,38 +59,48 @@ export function useTimerCompletion({
 
   const handleComplete = useCallback(async () => {
     const timer = getTimer(todoId)
-    if (!timer) return
-    await completeTaskFromTimer({
-      todoId,
-      timer,
-      settings: settings ?? undefined,
-      pause,
-      reset,
-      getTimer,
-      updateSessions,
-      syncSessionsImmediately: async (sessions) => {
-        for (const session of sessions) {
-          if (session.sessionFocusSeconds <= 0) continue
-          await createSession.mutateAsync({
-            todoId,
-            body: {
-              sessionFocusSeconds: session.sessionFocusSeconds,
-              breakSeconds: session.breakSeconds,
-              clientSessionId: normalizeSessionId(session.clientSessionId),
-            },
-          })
-        }
-      },
-      applySessionAggregateDelta: (delta) => {
-        applySessionAggregateDelta(queryClient, todoId, delta)
-      },
-      updateTodo: updateTodo.mutateAsync,
-      nextOrder: getNextDoneOrder(),
-      debug: timer.mode === 'stopwatch',
-    })
+    if (!timer) return false
+
+    try {
+      await completeTaskFromTimer({
+        todoId,
+        timer,
+        settings: settings ?? undefined,
+        pause,
+        reset,
+        getTimer,
+        updateSessions,
+        syncSessionsImmediately: async (sessions) => {
+          for (const session of sessions) {
+            if (session.sessionFocusSeconds <= 0) continue
+            await createSession.mutateAsync({
+              todoId,
+              body: {
+                sessionFocusSeconds: session.sessionFocusSeconds,
+                breakSeconds: session.breakSeconds,
+                clientSessionId: normalizeSessionId(session.clientSessionId),
+              },
+            })
+          }
+        },
+        applySessionAggregateDelta: (delta) => {
+          applySessionAggregateDelta(queryClient, todoId, delta)
+        },
+        updateTodo: updateTodo.mutateAsync,
+        nextOrder: getNextDoneOrder(),
+        debug: timer.mode === 'stopwatch',
+      })
+    } catch {
+      toast.error('타이머 저장에 실패했습니다. 다시 시도해주세요.', {
+        id: 'timer-save-failed',
+      })
+      return false
+    }
+
     toast.success('태스크 완료! 🎉', { id: 'task-completed' })
     endMusicSession()
     onClose()
+    return true
   }, [
     todoId,
     settings,
