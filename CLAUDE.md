@@ -41,26 +41,28 @@ k6 run --out experimental-prometheus-rw k6/baseline.js
 - **Frontend**: React 19 + Vite 7 + TypeScript 5.9 (strict) + Tailwind CSS 4 + PWA (프로덕션만)
 - **Backend**: Spring Boot 4.0.5 + Java 21 + MySQL 8 + Flyway + Gemini API (`report` 도메인, v1.11.0~)
 - **인증**: 게스트 JWT(localStorage, 90일) → 카카오 OAuth → 멤버 JWT(메모리만, 15분) + HttpOnly refresh cookie(14일, RTR)
-- **실시간 동기화**: SSE로 타이머 상태 멀티디바이스 동기화 (쿼리파라미터 토큰, EventSource 제약)
+- **실시간 동기화**: SSE + Redis Pub/Sub으로 타이머 상태 멀티디바이스 동기화 (쿼리파라미터 토큰, EventSource 제약, 다중 인스턴스 대응)
 - **배포**: EC2 + Docker Compose (백엔드+MySQL+Alloy), S3 + CloudFront (프론트엔드)
 - **모니터링**: Grafana Cloud (Prometheus→Mimir, Docker logs→Loki, OTLP→Tempo) + Alloy 수집기
 
 ### Backend 도메인 패키지 (`kr.io.flowmate`)
 
-| 패키지        | 역할                                                                                                    |
-|------------|-------------------------------------------------------------------------------------------------------|
-| `auth`     | JWT 발급/검증, 카카오 OAuth (Strategy 패턴: `OAuthProvider` → `OAuthProviderRegistry`), Refresh Token Rotation |
-| `todo`     | Todo CRUD                                                                                             |
-| `timer`    | 타이머 상태 push/pull + SSE broadcast (`SseEmitterRegistry`), state_json=null 소프트삭제, version 단조증가          |
-| `session`  | 포모도로/스톱워치 세션 기록 (client_session_id로 멱등성, break_seconds는 증가만 허용)                                       |
-| `review`   | 주간/월간 회고 (ReviewType enum, user_id+type+period_start unique)                                          |
-| `report`   | AI KPT 리포트 (Daily/Weekly/Monthly, Gemini REST, ReportPersistence 트랜잭션 분리, content JSONB)             |
-| `settings` | 포모도로 설정(flow/break/longBreak/cycle), 미니데이 구간 3개, 자동화 플래그                                              |
-| `common`   | `GlobalExceptionHandler`, `@CurrentUser` + `CurrentUserArgumentResolver`, `ListResponse`, `ApiError` (Record) |
-| `config`   | `SecurityConfig` (`/actuator/**` 앱 레벨 허용, Nginx에서 health만 외부 노출, JSON 401/403), `JwtAuthFilter` (단일 파싱), `CorsConfig`, `WebMvcConfig` |
+| 패키지        | 역할                                                                                                                                                              |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `auth`     | JWT 발급/검증, 카카오 OAuth (Strategy 패턴: `OAuthProvider` → `OAuthProviderRegistry`), Refresh Token Rotation                                                           |
+| `todo`     | Todo CRUD                                                                                                                                                       |
+| `timer`    | 타이머 상태 push/pull + SSE broadcast (`SseEmitterRegistry`), Redis Pub/Sub 인스턴스 간 전파 (`SseBroadcaster` → `SseLocalDispatcher`), state_json=null 소프트삭제, version 단조증가 |
+| `session`  | 포모도로/스톱워치 세션 기록 (client_session_id로 멱등성, break_seconds는 증가만 허용)                                                                                                 |
+| `review`   | 주간/월간 회고 (ReviewType enum, user_id+type+period_start unique)                                                                                                    |
+| `report`   | AI KPT 리포트 (Daily/Weekly/Monthly, Gemini REST, ReportPersistence 트랜잭션 분리, content JSONB)                                                                        |
+| `settings` | 포모도로 설정(flow/break/longBreak/cycle), 미니데이 구간 3개, 자동화 플래그                                                                                                        |
+| `common`   | `GlobalExceptionHandler`, `@CurrentUser` + `CurrentUserArgumentResolver`, `ListResponse`, `ApiError` (Record)                                                   |
+| `config`   | `SecurityConfig` (`/actuator/**` 앱 레벨 허용, Nginx에서 health만 외부 노출, JSON 401/403), `JwtAuthFilter` (단일 파싱), `CorsConfig`, `WebMvcConfig`                           |
 
-패턴: Lombok `@RequiredArgsConstructor`, Entity에 `create()` static factory, `@PostConstruct`로 SecretKey 캐싱, `@CurrentUser` 어노테이션으로 userId 주입, `AuthenticationFailedException` → 401 매핑
-DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Setter` (Jackson setter 바인딩 + `@Valid` 호환). 예외: `ExchangeRequest`는 Record (필드 2개, setter 불필요)
+패턴: Lombok `@RequiredArgsConstructor`, Entity에 `create()` static factory, `@PostConstruct`로 SecretKey 캐싱, `@CurrentUser`
+어노테이션으로 userId 주입, `AuthenticationFailedException` → 401 매핑
+DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Setter` (Jackson setter 바인딩 + `@Valid` 호환). 예외:
+`ExchangeRequest`는 Record (필드 2개, setter 불필요)
 
 ### Frontend 구조 (`frontend/src/`)
 
@@ -85,28 +87,34 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 - 멤버 전용 (게스트 미지원), `?token={accessToken}` 쿼리 파라미터 인증
 - 이벤트: `connected` (1회), `heartbeat` (~25초), `timer-state` (상태 변경 시)
 - Nginx: `/api/timer/sse` 별도 location, proxy_buffering off, 1시간 타임아웃
-- 서버: state 저장 → 같은 userId의 모든 SseEmitter에 broadcast
+- 전파 흐름: `TimerService` → 도메인 이벤트 → `SseBroadcaster` (AFTER_COMMIT, Redis publish) → `SseLocalDispatcher` (구독 →
+  `sseDispatchExecutor` 비동기 fan-out) → `SseEmitterRegistry` (로컬 broadcast)
 
 ## 인프라 & 배포
 
 ### 환경 구성
 
-| 환경    | 트리거                                          | 프론트엔드          | 백엔드            | 도메인                                         |
-|-------|----------------------------------------------|----------------|----------------|---------------------------------------------|
-| local | -                                            | localhost:5173 | localhost:8080 | -                                           |
-| dev   | `main` push (자동, BE/FE 동시)                    | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
-| prod  | tag `v*.*.*` push (자동, BE/FE 동시)              | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
+| 환경    | 트리거                              | 프론트엔드          | 백엔드            | 도메인                                         |
+|-------|----------------------------------|----------------|----------------|---------------------------------------------|
+| local | -                                | localhost:5173 | localhost:8080 | -                                           |
+| dev   | `main` push (자동, BE/FE 동시)       | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
+| prod  | tag `v*.*.*` push (자동, BE/FE 동시) | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
 
 ### CI/CD (GitHub Actions, `.github/workflows/`)
 
-- **Dev (BE/FE)**: `main` push 시 자동. BE는 ECR push (`github.sha` 태그) → SSH `git reset --hard origin/main` → `docker compose up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
-- **Prod (BE/FE)**: tag `v*.*.*` push 시 자동. BE는 ECR push (tag + latest) → SSH `git fetch --all --tags && git reset --hard ${tag}` → `docker compose pull + up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
+- **Dev (BE/FE)**: `main` push 시 자동. BE는 ECR push (`github.sha` 태그) → SSH `git reset --hard origin/main` →
+  `docker compose up`. FE는 pnpm build → S3 sync → CloudFront invalidation.
+- **Prod (BE/FE)**: tag `v*.*.*` push 시 자동. BE는 ECR push (tag + latest) → SSH
+  `git fetch --all --tags && git reset --hard ${tag}` → `docker compose pull + up`. FE는 pnpm build → S3 sync →
+  CloudFront invalidation.
 - **glob 가드** `v*.*.*`로 `archive/*` / `pre-release/*` / `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
-- **롤백**: prod 자동 dispatch는 제거됨. 이전 tag로 재배포가 필요하면 후속 작업으로 신설할 `redeploy-prod-*` 워크플로(`workflow_dispatch(tag)` input)를 사용하거나 새 패치 tag(예: v1.10.2)로 재배포.
+- **롤백**: prod 자동 dispatch는 제거됨. 이전 tag로 재배포가 필요하면 후속 작업으로 신설할 `redeploy-prod-*` 워크플로(`workflow_dispatch(tag)` input)를
+  사용하거나 새 패치 tag(예: v1.10.2)로 재배포.
 
 ### Docker Compose (`infra/{dev,prod}/`)
 
-3개 서비스: `mysql` (8.0) + `backend` (ECR 이미지, Gemini API key 포함) + `alloy` (Grafana Alloy v1.8.3). v1.11.0에서 별도 NestJS ai-service + PostgreSQL 컨테이너가 backend report 도메인으로 통합되어 제거됨.
+3개 서비스: `mysql` (8.0) + `backend` (ECR 이미지, Gemini API key 포함) + `alloy` (Grafana Alloy v1.8.3). v1.11.0에서 별도 NestJS
+ai-service + PostgreSQL 컨테이너가 backend report 도메인으로 통합되어 제거됨.
 
 - Nginx: 호스트에서 직접 실행 (컨테이너 아닌), Let's Encrypt TLS, `/actuator` 차단 (health만 허용)
 - Alloy: Prometheus scrape (백엔드+호스트) → Mimir, Docker logs → Loki, OTLP → Tempo
@@ -125,7 +133,8 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 ### 브랜치 전략 (v1.10~ 모델)
 
 - `main`: 단일 활성 브랜치, SSoT, always-deployable. dev 환경의 진실이자 prod tag의 후보.
-- `feature/<name>`: 큰 작업/실험 격리용. 짧게 살고 머지 후 브랜치 삭제. 자세한 commit은 main의 `--no-ff` merge commit 아래에 보존 (GitHub Network 그래프로 확인 가능).
+- `feature/<name>`: 큰 작업/실험 격리용. 짧게 살고 머지 후 브랜치 삭제. 자세한 commit은 main의 `--no-ff` merge commit 아래에 보존 (GitHub Network 그래프로
+  확인 가능).
 - 작은 변경(1~3 commit)은 main 직접 commit 허용 — 단 항상 deployable 상태 유지 원칙 준수 (반쪽 commit 금지).
 - 머지는 `--no-ff` merge commit (분기 그래프 보존).
 
@@ -181,37 +190,37 @@ git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
 ### 릴리즈 모델 변천 이력
 
 1. **~v1.7**: `develop reset --hard main + force push` (2026-04-25 폐기)
-   - 폐기 이유: develop 작업 history 손실 → "develop은 자세하게 사용한다" 의도와 어긋남
+    - 폐기 이유: develop 작업 history 손실 → "develop은 자세하게 사용한다" 의도와 어긋남
 2. **v1.8 ~ v1.9**: squash + backmerge (2026-05-14 폐기)
-   - 폐기 이유: 1인 운영 부담 + backmerge 누락 사고 + 환경 토폴로지 분리 필요
+    - 폐기 이유: 1인 운영 부담 + backmerge 누락 사고 + 환경 토폴로지 분리 필요
 3. **v1.10~**: main 단일 + tag 기반 (현재)
-   - GitHub Flow 변형, dev = main HEAD, prod = tag
+    - GitHub Flow 변형, dev = main HEAD, prod = tag
 
 ### 릴리즈 이력 (최신순)
 
-| 버전     | 날짜         | 주요 내용                             |
-|--------|------------|-----------------------------------|
+| 버전      | 날짜         | 주요 내용                                                                                                   |
+|---------|------------|---------------------------------------------------------------------------------------------------------|
 | v1.11.0 | 2026-05-29 | ai-service(NestJS) → backend(Spring) report 도메인 통합 — 5 컨테이너 → 3 컨테이너, FE/응답 zero-touch, 스냅샷 6 + 트랜잭션 격리 |
-| v1.10.4 | 2026-05-28 | 회고/AI 레포트 마크다운 렌더링 + 마크다운 스택 청크 분리 (vendor -41kB gzipped) + 타이머 틱·세션 refetch 핫패스 정리 |
-| v1.10.3 | 2026-05-20 | 타이머 prod 회귀 두 건 hotfix (SSE self-echo race로 리셋 후 재게 무반응 + 카운트다운 시작 첫 paint nowMs staleness) |
-| v1.10.2 | 2026-05-19 | 뽀모도로 Flow / 휴식 프리셋 확장 (최대 120분, 긴 휴식 45·60분 추가) |
-| v1.10.1 | 2026-05-14 | v1.10.0 BE prod 배포 사고 hotfix (compose AI_SERVICE_IMAGE fail-fast 회귀 되돌림) |
-| v1.10.0 | 2026-05-14 | trunk-based 브랜치 전략 + 운영 안정성·보안·CI 게이트 — BE prod 배포 실패, v1.10.1 hotfix로 대체 |
-| v1.8.2 | 2026-04-28 | 회고 단건 조회 미존재 시 404→204 (콘솔 노이즈 제거) |
-| v1.8.1 | 2026-04-28 | Gemini 503 에러 처리 + 릴리즈 절차 정비      |
-| v1.8.0 | 2026-04-25 | 백엔드 도메인 11종 정합 + API 계약 정리        |
-| v1.7.4 | 2026-04-09 | cold load 빈 화면 제거                 |
-| v1.7.3 | 2026-04-08 | 회고 텍스트에어리어 데스크탑 스크롤 개선            |
-| v1.7.2 | 2026-04-08 | 배포 직후 청크 로드 실패 복구                 |
-| v1.7.0 | 2026-04-06 | AI KPT 회고 레포트 (NestJS + Gemini)   |
-| v1.6.0 | 2026-03-23 | 복습 일정 기능 (review_round 체인)        |
-| v1.5.1 | 2026-03-06 | 뽀모도로 경계 기록 보정 + 완료 후 타이머 초기화 |
-| v1.5.0 | 2026-03-04 | 날짜 이동 + 또 하기 기능              |
-| v1.4.x | 2026-03-03 | 타이머 배경음악 (Lo-fi 자동 순환)       |
-| v1.3.0 | 2026-03-03 | 타이머 동기화 + SSE 안정화            |
-| v1.2.0 | 2026-03-01 | 인증 강화 + 계획 페이지 개선            |
-| v1.1.x | 2026-02-27 | JWT/OAuth 인증 전환 + 프로덕션 안정화   |
-| v1.0.0 | 2026-02-22 | 최초 릴리즈                       |
+| v1.10.4 | 2026-05-28 | 회고/AI 레포트 마크다운 렌더링 + 마크다운 스택 청크 분리 (vendor -41kB gzipped) + 타이머 틱·세션 refetch 핫패스 정리                     |
+| v1.10.3 | 2026-05-20 | 타이머 prod 회귀 두 건 hotfix (SSE self-echo race로 리셋 후 재게 무반응 + 카운트다운 시작 첫 paint nowMs staleness)             |
+| v1.10.2 | 2026-05-19 | 뽀모도로 Flow / 휴식 프리셋 확장 (최대 120분, 긴 휴식 45·60분 추가)                                                         |
+| v1.10.1 | 2026-05-14 | v1.10.0 BE prod 배포 사고 hotfix (compose AI_SERVICE_IMAGE fail-fast 회귀 되돌림)                                |
+| v1.10.0 | 2026-05-14 | trunk-based 브랜치 전략 + 운영 안정성·보안·CI 게이트 — BE prod 배포 실패, v1.10.1 hotfix로 대체                               |
+| v1.8.2  | 2026-04-28 | 회고 단건 조회 미존재 시 404→204 (콘솔 노이즈 제거)                                                                      |
+| v1.8.1  | 2026-04-28 | Gemini 503 에러 처리 + 릴리즈 절차 정비                                                                            |
+| v1.8.0  | 2026-04-25 | 백엔드 도메인 11종 정합 + API 계약 정리                                                                              |
+| v1.7.4  | 2026-04-09 | cold load 빈 화면 제거                                                                                       |
+| v1.7.3  | 2026-04-08 | 회고 텍스트에어리어 데스크탑 스크롤 개선                                                                                  |
+| v1.7.2  | 2026-04-08 | 배포 직후 청크 로드 실패 복구                                                                                       |
+| v1.7.0  | 2026-04-06 | AI KPT 회고 레포트 (NestJS + Gemini)                                                                         |
+| v1.6.0  | 2026-03-23 | 복습 일정 기능 (review_round 체인)                                                                              |
+| v1.5.1  | 2026-03-06 | 뽀모도로 경계 기록 보정 + 완료 후 타이머 초기화                                                                            |
+| v1.5.0  | 2026-03-04 | 날짜 이동 + 또 하기 기능                                                                                         |
+| v1.4.x  | 2026-03-03 | 타이머 배경음악 (Lo-fi 자동 순환)                                                                                  |
+| v1.3.0  | 2026-03-03 | 타이머 동기화 + SSE 안정화                                                                                       |
+| v1.2.0  | 2026-03-01 | 인증 강화 + 계획 페이지 개선                                                                                       |
+| v1.1.x  | 2026-02-27 | JWT/OAuth 인증 전환 + 프로덕션 안정화                                                                              |
+| v1.0.0  | 2026-02-22 | 최초 릴리즈                                                                                                  |
 
 ## 문서 구조
 
@@ -252,7 +261,8 @@ git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
 - DB 스키마 변경은 반드시 Flyway 마이그레이션 (`V{N}__description.sql`)
 - 프로필: `local` (개발), `dev` (개발 서버), `prod` (운영) — 환경변수로 DB/CORS/쿠키보안 분리
 - 디자인 시스템: `.impeccable.md` 참고 — Pretendard 폰트, emerald(#10b981) 주색상, 4px 그리드, 모바일 퍼스트 (max 512px)
-- 커밋 Co-Authored-By: FE 관련 커밋(scope `frontend` 또는 내용이 FE 중심)에만 `Co-Authored-By: Claude <noreply@anthropic.com>` 추가. BE/infra/docs/ci 커밋에는 붙이지 않음
+- 커밋 Co-Authored-By: FE 관련 커밋(scope `frontend` 또는 내용이 FE 중심)에만 `Co-Authored-By: Claude <noreply@anthropic.com>` 추가.
+  BE/infra/docs/ci 커밋에는 붙이지 않음
 
 ## Source of Truth 우선순위
 

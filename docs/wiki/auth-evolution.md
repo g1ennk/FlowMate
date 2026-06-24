@@ -3,7 +3,7 @@
 ## 요약
 
 - 문제: 서명 및 TTL 없는 `X-Client-Id`는 사용자 신원 증명 불가, 장기적인 인증 모델로는 부적합
-- 선택 기준: 게스트 연속성 유지 + XSS·CSRF 위험 최소화 + 다중 기기 세션 허용
+- 해결: 게스트 연속성 유지 + XSS·CSRF 위험 최소화 + 다중 기기 세션 허용
 - 결과: Memory Access Token + HttpOnly Refresh Token + RTR + Reuse Detection 조합으로 토큰 탈취 대응
 
 ## 1. 문제 배경 및 타임라인

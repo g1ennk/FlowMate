@@ -8,7 +8,8 @@
 
 - 프론트엔드는 S3 + CloudFront를 통해 정적 React SPA로 제공한다.
 - API 요청은 별도 도메인으로 EC2의 호스트 Nginx에 진입하며, Nginx가 TLS 종료와 reverse proxy를 담당한다.
-- 백엔드는 Docker Compose 기반으로 backend, mysql, alloy 컨테이너로 구성되며, Spring Boot는 127.0.0.1:8080으로만 노출된다. (v1.11.0 이전에는 ai-service(NestJS) + PostgreSQL이 별도 컨테이너로 동작했으나 backend `report` 도메인으로 통합됨)
+- 백엔드는 Docker Compose 기반으로 backend, mysql, alloy 컨테이너로 구성되며, Spring Boot는 127.0.0.1:8080으로만 노출된다. (v1.11.0 이전에는
+  ai-service(NestJS) + PostgreSQL이 별도 컨테이너로 동작했으나 backend `report` 도메인으로 통합됨)
 - Alloy는 메트릭과 로그를 Grafana Cloud로 전송하고, trace 수집을 위한 OTLP 경로도 준비돼 있다.
 
 ```mermaid
@@ -104,48 +105,56 @@ sequenceDiagram
 
 - SSE 엔드포인트는 Member Access JWT 기반 로그인 사용자 전용이다.
 - EventSource가 Authorization 헤더를 지원하지 않아 `GET /api/timer/sse?token={accessToken}` 형태를 사용한다.
-- 같은 회원의 여러 탭과 기기에 timer-state 이벤트를 브로드캐스트한다
+- 같은 회원의 여러 탭과 기기에 timer-state 이벤트를 브로드캐스트한다.
+- 단일 인스턴스에서는 `SseEmitterRegistry`가 JVM 메모리에서 직접 broadcast하고, 다중 인스턴스에서는 Redis Pub/Sub으로 인스턴스 간 이벤트를 전파한다.
 
 ```mermaid
 sequenceDiagram
-    participant D as Desktop Browser
+    participant D as Desktop (SSE → Instance A)
     participant N as Host Nginx
-    participant S as Spring Boot
-    participant R as SseEmitterRegistry
-    participant M as Mobile Browser
+    participant A as Instance A
+    participant DB as MySQL
+    participant Rds as Redis Pub/Sub
+    participant B as Instance B
+    participant M as Mobile (SSE → Instance B)
     D ->> N: GET /api/timer/sse?token=accessToken
     Note over N: proxy_buffering off<br/>X-Accel-Buffering no<br/>proxy_read_timeout 3600s
-    N ->> S: proxy request
-    S ->> S: Access Token 검증 + member role 확인
-    S ->> R: register(userId)
-    R -->> D: connected
-    Note over R: userId -> List(SseEmitter)<br/>timeout 1시간<br/>heartbeat 약 25초
+    N ->> A: proxy request
+    A ->> A: Access Token 검증 + member role 확인
+    A ->> A: SseEmitterRegistry.register(userId)
+    A -->> D: connected
     M ->> N: GET /api/timer/sse?token=accessToken
-    N ->> S: proxy request
-    S ->> S: Access Token 검증 + member role 확인
-    S ->> R: register(userId)
-    R -->> M: connected
-    D ->> S: PUT /api/timer/state/{todoId}
-    S ->> S: 상태 저장 + version 갱신
-    S ->> R: broadcast(userId, timer-state)
-    R -->> D: timer-state
-    R -->> M: timer-state
+    N ->> B: proxy request
+    B ->> B: SseEmitterRegistry.register(userId)
+    B -->> M: connected
+    D ->> A: PUT /api/timer/state/{todoId}
+    A ->> DB: timer_states 저장 + version 갱신
+    Note over A, DB: 트랜잭션 커밋
+    A ->> Rds: AFTER_COMMIT publish (flowmate:timer:state-changed)
+    Rds -->> A: 구독 메시지 (self-echo)
+    Rds -->> B: 구독 메시지
+    Note over A, B: SseLocalDispatcher → sseDispatchExecutor 비동기 fan-out
+    A -->> D: timer-state
+    B -->> M: timer-state
 ```
 
-- `connected`와 `heartbeat`는 연결 유지 및 생존 확인용 이벤트이며, 클라이언트 상태 동기화에는 `timer-state`만 반영한다.
-- 서버는 타이머 상태를 저장한 뒤 같은 `userId`에 연결된 모든 SSE emitter로 최신 상태를 브로드캐스트한다.
+- `connected`와 `heartbeat`(~25초)는 연결 유지 및 생존 확인용 이벤트이며, 클라이언트 상태 동기화에는 `timer-state`만 반영한다.
+- `TimerService`는 DB 저장과 도메인 이벤트 발행까지만 담당하고, `SseBroadcaster`(AFTER_COMMIT publish)와 `SseLocalDispatcher`(Redis 구독 → 로컬
+  fan-out)가 전파를 처리한다.
+- 자세한 내용은 [SSE로 멀티디바이스 타이머 동기화하기](wiki/sse-sync.md) 및 [Redis Pub/Sub으로 SSE 수평 확장하기](wiki/redis-sse-pubsub.md)를 참고한다.
 
 ## 4. 인프라 및 배포
 
 ### 1) 배포 프로세스
 
-| 환경   | 프론트엔드 (S3+CF)                                | 백엔드 (EC2, AI 리포트 도메인 포함)                                  |
-|------|----------------------------------------------|---------------------------------------------------------|
-| Dev  | `main` push → pnpm build → S3 sync + CF invalidation | `main` push → ECR build → EC2 SSH deploy           |
+| 환경   | 프론트엔드 (S3+CF)                                              | 백엔드 (EC2, AI 리포트 도메인 포함)                             |
+|------|------------------------------------------------------------|------------------------------------------------------|
+| Dev  | `main` push → pnpm build → S3 sync + CF invalidation       | `main` push → ECR build → EC2 SSH deploy             |
 | Prod | tag `v*.*.*` push → pnpm build → S3 sync + CF invalidation | tag push → ECR build (tag + latest) → EC2 SSH deploy |
 
 - `main` push 한 번으로 dev 환경 FE/BE가 동시 갱신된다.
-- tag `v*.*.*` push 한 번으로 prod 환경 FE/BE가 동시 자동 배포된다. glob 가드로 `archive/*` · `pre-release/*` · `hotfix/*` 등 비-semver tag는 prod 트리거 안 됨.
+- tag `v*.*.*` push 한 번으로 prod 환경 FE/BE가 동시 자동 배포된다. glob 가드로 `archive/*` · `pre-release/*` · `hotfix/*` 등 비-semver tag는
+  prod 트리거 안 됨.
 - 코드는 동일하고 환경 차이는 `infra/{dev,prod}/` 디렉토리 + Spring profile + 환경변수로 흡수한다.
 
 ### 2) CI/CD 파이프라인
@@ -165,5 +174,7 @@ flowchart TD
 
 ### 3) 모델 변천
 
-- **v1.8 ~ v1.9 (2026-05-14 폐기)**: `develop` + `main` + squash + backmerge. 1인 운영에 매 릴리즈 5단계 + backmerge 누락 사고 (2026-04-08).
-- **v1.10~ (현재)**: `main` 단일 + tag 기반 prod (GitHub Flow 변형). 릴리즈 단계 5 → 1~2, FE/BE 동기화, `docs/review/2026-05-10.md` INF-H3 (prod-backend build/deploy 분리 버그) 해결.
+- **v1.8 ~ v1.9 (2026-05-14 폐기)**: `develop` + `main` + squash + backmerge. 1인 운영에 매 릴리즈 5단계 + backmerge 누락 사고 (
+  2026-04-08).
+- **v1.10~ (현재)**: `main` 단일 + tag 기반 prod (GitHub Flow 변형). 릴리즈 단계 5 → 1~2, FE/BE 동기화, `docs/review/2026-05-10.md`
+  INF-H3 (prod-backend build/deploy 분리 버그) 해결.
