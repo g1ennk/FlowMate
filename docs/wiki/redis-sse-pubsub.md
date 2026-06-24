@@ -4,9 +4,9 @@
 
 ## 요약
 
-- 문제: SSE broadcast가 단일 JVM 메모리 기반이므로, 인스턴스가 2대 이상이면 다른 인스턴스에 연결된 기기가 이벤트를 수신하지 못하는 구조적 한계가 발생
-- 해결: 정본은 MySQL이 관리하므로 메시지 영속성은 불필요하고, 인스턴스 간 이벤트 전파만 충족하면 된다. Redis Pub/Sub의 at-most-once 전달이 이 요구에 적합
-- 결과: 통합 테스트(fan-out 경로) → 로컬 2-JVM(도달률 0→100%) → 부하 측정(30,000건 유실 0%) → EC2 Redis(채널 실측) 4단계로 검증
+- 문제: SSE broadcast가 단일 JVM 메모리 기반이라, 인스턴스 2대 이상에서 cross-instance 이벤트 전파 불가
+- 해결: 정본은 MySQL이므로 메시지 영속성은 불필요. Redis Pub/Sub at-most-once 전달로 인스턴스 간 전파
+- 결과: 통합 테스트 → 로컬 2-JVM(도달률 0→100%) → 부하 30,000건 유실 0% → EC2 채널 실측, 4단계 검증
 
 ## 1. 문제 배경 — 단일 JVM broadcast의 한계
 
@@ -113,12 +113,12 @@ sequenceDiagram
 
 ### 핵심 설계 결정
 
-| 결정                        | 이유                                                                                                                                                     |
-|---------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **도메인 이벤트로 분리**           | `TimerService`는 “타이머 상태가 변경됨”만 발행하고, Redis publish와 로컬 fan-out은 `SseBroadcaster`, `SseLocalDispatcher`가 담당한다. 서비스 코드가 인프라에 직접 의존하지 않아 향후 전파 방식 변경이 쉽다. |
-| **AFTER_COMMIT에 publish** | 커밋 전에 publish하면 롤백될 상태가 클라이언트에 전파되는 유령 이벤트가 발생할 수 있다. 따라서 DB 커밋이 끝난 뒤에만 이벤트를 publish한다.                                                                    |
-| **fan-out은 executor에 위임** | Redis 구독 처리 흐름에서 직접 emitter에 전송하면 느린 클라이언트가 전체 broadcast를 지연시킬 수 있다. 그래서 SSE 전송은 `sseDispatchExecutor`에서 비동기로 처리한다.                                    |
-| **전파 실패는 요청 처리와 분리**      | Redis publish나 emitter 전송 실패가 타이머 상태 저장 자체와 강하게 묶이지 않도록 했다. 정본은 DB에 있으므로, 전파 실패가 사용자 `PUT` 요청이나 다른 기기 전송까지 연쇄적으로 막지 않도록 격리한다.                          |
+| 결정                        | 이유                                                                       |
+|---------------------------|--------------------------------------------------------------------------|
+| **도메인 이벤트로 분리**           | 서비스 코드가 인프라에 직접 의존하지 않아 향후 전파 방식 변경이 쉽다                                 |
+| **AFTER_COMMIT에 publish** | 커밋 전에 publish하면 롤백될 상태가 전파되는 유령 이벤트가 발생할 수 있다                           |
+| **fan-out은 executor에 위임** | 느린 클라이언트가 Redis 구독 처리를 지연시키지 않도록 비동기로 격리한다                              |
+| **전파 실패는 요청 처리와 분리**      | 정본은 DB에 있으므로, 전파 실패가 사용자 PUT이나 다른 기기 전송까지 연쇄적으로 막지 않도록 한다              |
 
 ## 4. 구현 컴포넌트
 
@@ -129,35 +129,12 @@ sequenceDiagram
 | `SseBroadcaster`         | 트랜잭션 커밋 후 Redis 채널(`flowmate:timer:state-changed`)에 이벤트를 publish한다.           |
 | `SseLocalDispatcher`     | Redis 메시지를 수신한 뒤 `sseDispatchExecutor`에 fan-out 작업을 위임한다.                     |
 | `SseEmitterRegistry`     | 기존처럼 `userId`별 emitter를 관리하고, 로컬 JVM에 연결된 기기들에게만 broadcast한다.                 |
+| `sseDispatchExecutor`    | Redis 구독 스레드와 SSE 전송을 격리하는 전용 스레드풀. `RedisConfig`에서 `@Bean`으로 정의한다.           |
 | `RedisConfig`            | Redis 연결, 메시지 리스너, serializer, executor를 설정한다.                                |
 
-컴포넌트 흐름은 다음과 같다. Redis 채널을 기준으로 위쪽은 **publish 경로**, 아래쪽은 **subscribe & fan-out 경로**다.
+컴포넌트 흐름은 다음과 같다. Redis 채널을 기준으로 왼쪽은 **publish 경로**, 오른쪽은 **subscribe & fan-out 경로**다.
 
-```mermaid
-flowchart TD
-    subgraph PUB["Publish 경로"]
-        TS["TimerService.upsertState()<br/>@Transactional"]
-        EV["TimerStateChangedEvent<br/>도메인 이벤트"]
-        BC["SseBroadcaster<br/>AFTER_COMMIT"]
-    end
-
-    RDS[("Redis Pub/Sub<br/>flowmate:timer:state-changed")]
-
-    subgraph SUB["Subscribe & Fan-out 경로"]
-        LD["SseLocalDispatcher<br/>MessageListener"]
-        EX["sseDispatchExecutor"]
-        REG["SseEmitterRegistry<br/>기존 로컬 emitter 관리"]
-        CL(["연결된 기기들"])
-    end
-
-    TS -->|publishEvent| EV
-    EV -->|커밋 후 처리| BC
-    BC -->|publish| RDS
-    RDS -->|message| LD
-    LD -->|submit| EX
-    EX -->|broadcast| REG
-    REG -->|SSE timer-state| CL
-```
+![redis-sse-component-flow](../../images/redis-sse-component-flow.png)
 
 리팩토링의 핵심은 `TimerService`에서 직접 broadcast 호출을 제거한 것으로, `TimerService`는 DB 저장과 도메인 이벤트 발행까지만 담당하고, Redis publish와 SSE
 fan-out은 각각 `SseBroadcaster`, `SseLocalDispatcher`가 담당한다.
@@ -238,18 +215,18 @@ $ docker exec flowmate-redis redis-cli -a *** SUBSCRIBE flowmate:timer:state-cha
 
 # 타이머 시작
 {"userId":"8fbb...","todoId":"b705...","version":1782170915939,
- "state":"{...\"status\":\"running\"...}"}
+ "ts":1782170915939,"state":"{...\"status\":\"running\"...}"}
 
 # 일시정지
 {"userId":"8fbb...","todoId":"b705...","version":1782170925205,
- "state":"{...\"status\":\"paused\"...}"}
+ "ts":1782170925205,"state":"{...\"status\":\"paused\"...}"}
 ```
 
 EC2 Redis 채널에서 메시지가 확인되었고, 멀티 탭 동기화로 구독 이후 fan-out과 브라우저 수신까지 검증했다.
 
 ## 6. 트레이드오프 요약
 
-이번 구조의 핵심 트레이드오프는 메시지 보장보다 단순한 이벤트 전파를 우선하여 결정했다.
+이번 구조의 핵심 트레이드오프는 메시지 보장보다 단순한 이벤트 전파를 우선한 것이다.
 
 | 결정                       | 얻은 것                                             | 감수한 비용                            | 판단                                  |
 |--------------------------|--------------------------------------------------|-----------------------------------|-------------------------------------|
