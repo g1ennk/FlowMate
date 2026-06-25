@@ -113,8 +113,8 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 
 ### Docker Compose (`infra/{dev,prod}/`)
 
-3개 서비스: `mysql` (8.0) + `backend` (ECR 이미지, Gemini API key 포함) + `alloy` (Grafana Alloy v1.8.3). v1.11.0에서 별도 NestJS
-ai-service + PostgreSQL 컨테이너가 backend report 도메인으로 통합되어 제거됨.
+4개 서비스: `mysql` (8.0) + `redis` (7-alpine, SSE Pub/Sub 전용) + `backend` (ECR 이미지, Gemini API key 포함) + `alloy` (Grafana Alloy v1.8.3). v1.11.0에서 별도 NestJS
+ai-service + PostgreSQL 컨테이너가 backend report 도메인으로 통합되어 제거됨. v1.12.0에서 SSE 수평 확장용 Redis 추가.
 
 - Nginx: 호스트에서 직접 실행 (컨테이너 아닌), Let's Encrypt TLS, `/actuator` 차단 (health만 허용)
 - Alloy: Prometheus scrape (백엔드+호스트) → Mimir, Docker logs → Loki, OTLP → Tempo
@@ -200,6 +200,8 @@ git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
 
 | 버전      | 날짜         | 주요 내용                                                                                                   |
 |---------|------------|---------------------------------------------------------------------------------------------------------|
+| v1.12.1 | 2026-06-23 | Redis SSE 도입 후 드러난 세션 중복 저장 수정 — FE version watermark 강화 + reset echo read-only 강등 (BE 무변경)          |
+| v1.12.0 | 2026-06-23 | SSE Pub/Sub Redis 도입 — cross-instance broadcast 격리 해소, 로컬 2-JVM 도달률 0→100%, 3→4 컨테이너                    |
 | v1.11.0 | 2026-05-29 | ai-service(NestJS) → backend(Spring) report 도메인 통합 — 5 컨테이너 → 3 컨테이너, FE/응답 zero-touch, 스냅샷 6 + 트랜잭션 격리 |
 | v1.10.4 | 2026-05-28 | 회고/AI 레포트 마크다운 렌더링 + 마크다운 스택 청크 분리 (vendor -41kB gzipped) + 타이머 틱·세션 refetch 핫패스 정리                     |
 | v1.10.3 | 2026-05-20 | 타이머 prod 회귀 두 건 hotfix (SSE self-echo race로 리셋 후 재게 무반응 + 카운트다운 시작 첫 paint nowMs staleness)             |

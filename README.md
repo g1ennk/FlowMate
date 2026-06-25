@@ -9,6 +9,8 @@ Todo를 적는 순간부터 집중 세션을 실행하고, 타이머 기록을 �
 - [Data Model](docs/data-model.md): 핵심 엔터티, 관계, 물리 모델, 설계 근거
 - [API Docs](docs/api.md): 인증, Todo, 타이머, 설정, 회고 API 계약
 
+![FlowMate 시스템 아키텍처](docs/images/system-architecture.png)
+
 ## 1. 프로젝트 배경
 
 개인적으로 Todo 관리는 `TodoMate`, 집중 시간 관리는 `Flow`를 함께 사용해왔습니다.
@@ -45,50 +47,49 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 
 ## 3. 주요 기술 결정
 
-### 1) 인증 시스템 진화: X-Client-Id에서 OAuth + RTR까지
+### 1) X-Client-Id에서 OAuth + RTR까지 인증 시스템 발전시키기
 
-- 배경: 서명·TTL 없는 `X-Client-Id`는 장기 인증 모델로 부적합, 게스트 연속성과 다중 기기 세션 요구가 겹치며 4단계 진화
-- 해결: 게스트 연속성 유지 + XSS·CSRF 위험 최소화 + 다중 기기 세션 허용
-- 결과: Memory Access Token + HttpOnly Refresh Token + RTR 조합으로 단일 토큰 탈취 차단
-- 관련 문서: [FlowMate 인증 시스템 진화: X-Client-Id에서 OAuth + RTR까지](docs/wiki/auth-evolution.md)
+- 문제: 초기 `X-Client-Id`는 서명도 TTL도 없는 브라우저 입력값으로, 사용자 신원 증명 불가
+- 해결: 게스트 연속성과 회원 보안을 모두 만족하는 이중 인증 구조 — Guest JWT + Memory AT + HttpOnly RT + RTR
+- 결과: 4단계 진화(X-Client-Id → Guest JWT → OAuth + RTR → Reuse Detection)를 거쳐 토큰 탈취 대응 구축
+- 관련 문서: [X-Client-Id에서 OAuth + RTR까지 인증 시스템 발전시키기](docs/wiki/auth-evolution.md)
 
-### 2) 멀티디바이스 타이머 동기화 — SSE + Redis Pub/Sub
+### 2) SSE로 멀티디바이스 타이머 동기화하기
 
-- 문제: 타이머 상태가 Zustand + localStorage로만 관리되어, 같은 계정이어도 기기·탭 간 상태가 공유되지 않는 문제가 발생
-- 해결: 서버 → 클라이언트 단방향 push만 필요하므로 SSE + REST를 채택하고, 단조 증가 `version`으로 이벤트 역전을 방지. 이후 수평 확장을 위해 Redis Pub/Sub으로 인스턴스 간 이벤트
-  전파를 추가
-- 결과: 모든 기기에 즉시 반영되며, 로컬 2-JVM 환경에서 cross-instance 도달률 0%→100% 개선. k6 부하 테스트에서 163,205 req · 에러율 0%를 확인
-- 관련 문서: [SSE로 멀티디바이스 타이머 동기화하기](docs/wiki/sse-sync.md) · [Redis Pub/Sub으로 SSE 수평 확장하기](docs/wiki/redis-sse-pubsub.md)
+- 문제: 타이머 상태가 Zustand + localStorage 기반이라, 같은 계정이어도 기기 간 상태 공유 불가
+- 해결: 서버 → 클라이언트 단방향 push만 필요하므로 SSE + REST 조합으로 인프라 추가 없이 구현
+- 결과: 타이머 조작이 모든 기기에 즉시 반영, version 단조 증가로 이벤트 역전 방지. k6 163K req 에러율 0%
+- 관련 문서: [SSE로 멀티디바이스 타이머 동기화하기](docs/wiki/sse-sync.md)
 
-### 3) 운영 관찰성 개선: Self-hosted Prometheus/Grafana에서 Alloy + Grafana Cloud로 전환
+### 3) Redis Pub/Sub으로 SSE 수평 확장하기
 
-- 문제: Spring Boot 운영 지표를 볼 수는 있어야 했지만, Prometheus + Grafana + node-exporter를 직접 운영하면 로그와 트레이스 확장 시 EC2 컨테이너와 설정 파일이 계속
-  늘어남
-- 해결: 단일 EC2에는 Alloy 수집기 1개만 두고, Spring Boot Actuator 메트릭·Docker 로그·OTel trace를 Grafana Cloud의 Mimir·Loki·Tempo로 전송
-- 결과: EC2 모니터링 컨테이너를 3개에서 1개로 줄이고, HTTP/JVM/DB/Host 지표와 로그·트레이스를 Grafana Cloud에서 같은 시간축으로 확인
-- 활용: community dashboard(Spring Boot Observability, Node Exporter Full)와 직접 작성한 FlowMate Backend Overview(RED +
-  Saturation)로 부하테스트 결과를 해석하고, HikariCP pool 증설 같은 잘못된 튜닝 방향을 걸러냄
-- 관련 문서: [운영 관찰성 개선: Self-hosted Prometheus/Grafana에서 Alloy + Grafana Cloud로 전환](docs/wiki/monitoring-stack.md)
+- 문제: SSE broadcast가 단일 JVM 메모리 기반이라, 인스턴스 2대 이상에서 cross-instance 이벤트 전파 불가
+- 해결: 정본은 MySQL이므로 메시지 영속성은 불필요. Redis Pub/Sub at-most-once 전달로 인스턴스 간 전파
+- 결과: 통합 테스트 → 로컬 2-JVM(도달률 0→100%) → 부하 30,000건 유실 0% → EC2 채널 실측, 4단계 검증
+- 관련 문서: [Redis Pub/Sub으로 SSE 수평 확장하기](docs/wiki/redis-sse-pubsub.md)
+
+### 4) Self-hosted 모니터링을 Alloy + Grafana Cloud로 전환하기
+
+- 문제: Self-hosted Prometheus + Grafana + node-exporter 구조에서 로그·트레이스를 붙일수록 컨테이너와 설정 파일이 증가
+- 해결: EC2에는 Alloy 수집기 1개만 두고, 메트릭·로그·트레이스를 Grafana Cloud(Mimir·Loki·Tempo)로 전송
+- 결과: 모니터링 컨테이너 3→1개, 이후 확장은 `config.alloy` 변경으로 처리
+- 관련 문서: [Self-hosted 모니터링을 Alloy + Grafana Cloud로 전환하기](docs/wiki/monitoring-stack.md)
 
 ## 4. 주요 트러블슈팅
 
 ### 1) 타이머 상태 저장의 동시성 제어: InnoDB Deadlock 분석과 해결
 
-- 문제: k6 baseline에서 진행 중인 타이머 상태를 저장하는 `PUT /api/timer/state/{todoId}` 실패 69건이 한 경로에 집중
-- 원인: row가 없는 first insert 경로에서 `SELECT FOR UPDATE`가 gap lock을 만들고, 동시 INSERT의 insert intention lock과 충돌
-- 해결: `PESSIMISTIC_WRITE`를 제거하고, first insert 유일성 제약 조건 충돌은 winner row 재조회 후 update하는 catch-retry로 복구
-- 결과: 수정 후 전체 요청 163,205건 기준 timer PUT 실패 0건, `http_req_failed` 0.00%를 확인
+- 문제: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 — first insert 시 gap lock과 insert intention lock 충돌
+- 해결: `PESSIMISTIC_WRITE` 제거 + first insert 충돌을 catch-retry로 복구
+- 결과: 요청 46% 증가(112K → 163K)에도 timer PUT 실패 0건, `http_req_failed` 0.00%
 - 관련 문서: [타이머 상태 저장의 동시성 제어: InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
 
-### 2) SSE 연결 유지 실패 분석과 해결: Workbox 충돌과 Nginx 60초 idle timeout
+### 2) SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout
 
-- 문제: SSE 도입 직후 `/api/timer/sse`가 두 단계로 실패 — 먼저 `ERR_FAILED`로 오픈 자체가 막혔고, 이후 200 OK로 열려도 정확히 60초 후 504로 끊김
-- 원인: T1은 PWA Workbox가 `/api/*` 전체를 가로채 long-lived SSE 스트림을 처리하지 못함 / T2는 Nginx idle timeout 60초 + Backend heartbeat
-  부재 + Spring async timeout 미명시의 3중 구조
-- 해결: Workbox runtimeCaching에서 SSE 경로 예외 + Nginx `/api/timer/sse` 전용 location + 25초 heartbeat + `request-timeout 1h` +
-  `AsyncRequestTimeoutException` 503 매핑
-- 결과: SSE 1시간 이상 안정 유지, nginx 504 / backend `AsyncRequestTimeoutException` 모두 0건
-- 관련 문서: [SSE 연결 유지 실패 분석과 해결: Workbox 충돌과 Nginx 60초 idle timeout](docs/wiki/sse-timeout.md)
+- 문제: SSE 도입 직후 두 단계로 연결 실패 — Workbox가 SSE를 가로채 `ERR_FAILED`, 해결 후에도 Nginx 60초 idle timeout으로 504
+- 해결: Workbox에서 SSE 경로 제외 + Nginx SSE 전용 location 분리 + 25초 heartbeat + Spring async timeout 정렬
+- 결과: SSE 1시간 이상 안정 유지, nginx 504 · `AsyncRequestTimeoutException` 모두 0건
+- 관련 문서: [SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout](docs/wiki/sse-timeout.md)
 
 ## 5. 기술 스택
 
@@ -96,7 +97,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 |------------|------------------------------------------------------------------------------------|
 | Frontend   | React 19, TypeScript, Zustand, TanStack Query, Tailwind CSS 4, Vite, PWA           |
 | Backend    | Spring Boot 4, Java 21, Spring Security, JPA, Flyway, MySQL 8, Gemini API (AI 리포트) |
-| Infra      | EC2, Docker Compose, Host Nginx, S3, CloudFront, ECR, GitHub Actions               |
+| Infra      | EC2, Docker Compose, Host Nginx, Redis 7, S3, CloudFront, ECR, GitHub Actions      |
 | Monitoring | Grafana Cloud, Alloy, Mimir, Loki, Tempo                                           |
 
 ## 6. 프로젝트 구조
