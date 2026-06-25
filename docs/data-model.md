@@ -1,6 +1,6 @@
 # FlowMate Data Model
 
-> Last updated: 2026-03-28
+> Last updated: 2026-06-25
 >
 > 관련 문서: [Architecture](architecture.md) · [API Reference](api.md)
 
@@ -34,21 +34,22 @@
 
 ### 1) 주요 내용
 
-| 엔터티           | 식별자       | 주요 속성                                                                                                 | 핵심 규칙                                                                                                                                                                                         |
-|---------------|-----------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Todo          | `id`      | `user_id`, `title`, `date`, `mini_day`, `day_order`, `timer_mode`                                     | `timer_mode`는 `'stopwatch' \| 'pomodoro' \| null`만 허용하고, 날짜 이동 시에도 Todo identity는 유지되며, 세션 집계 필드는 캐시이고 정본은 `todo_sessions`다.                                                                  |
-| TodoSession   | `id`      | `todo_id`, `user_id`, `client_session_id`, `session_order`, `session_focus_seconds`, `break_seconds`  | Todo의 정본 세션이며 `(todo_id, client_session_id)`와 `(todo_id, session_order)`에는 유일 제약이 있고, 멱등 재요청에서는 `break_seconds`만 증가 방향으로 갱신된다.                                                                |
-| TimerState    | `todo_id` | `user_id`, `state_json`, `version`                                                                    | Todo당 최대 1개만 존재하는 회원 전용 런타임 스냅샷이며, `state_json = null`은 행 삭제 대신 상태만 남기는 논리 삭제를 뜻하고 `version`은 단조 증가한다.                                                                                        |
-| UserSettings  | `user_id` | `flow_min`, `break_min`, `long_break_min`, `cycle_every`                                              | 사용자당 최대 1개이며 평면 컬럼으로 저장하고 행이 없을 때는 서비스가 기본값으로 응답한다.                                                                                                                                           |
-| Review        | `id`      | `user_id`, `type`, `period_start`, `period_end`                                                       | `(user_id, type, period_start)`에는 유일 제약이 있고 주간은 월요일 시작, 월간은 1일 시작 규칙을 따른다.                                                                                                                    |
-| Report        | `id`      | `user_id`, `type`, `period_start`, `content`, `prompt_version`                                        | `(user_id, type, period_start)` UNIQUE. `content`는 JSON (`{keep, problem, try, referenceQuestion?}`). 회원 전용 (게스트 사용 불가). 재생성 시 동일 키 row 덮어쓰기.                                                  |
-| User          | `id`      | `email`, `nickname`                                                                                   | 회원 계정 엔터티다.                                                                                                                                                                                   |
-| SocialAccount | `id`      | `user_id`, `provider`, `provider_user_id`                                                             | 회원 계정에 연결된 OAuth 계정이며 `(provider, provider_user_id)`에는 유일 제약이 있고 현재 구현 공급자는 `kakao`다.                                                                                                         |
-| RefreshToken  | `id`      | `user_id`, `token_hash`, `expires_at`, `revoked_at`                                                   | 회원 전용 인증 토큰 저장소이며 평문 대신 해시만 저장하고 `token_hash`에는 유일 제약을 둔다.                                                                                                                                    |
+| 엔터티           | 식별자       | 주요 속성                                                                                                | 핵심 규칙                                                                                                                                                                                     |
+|---------------|-----------|------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Todo          | `id`      | `user_id`, `title`, `date`, `mini_day`, `day_order`, `timer_mode`                                    | • `timer_mode` ∈ `{STOPWATCH, POMODORO, null}` (DB 저장값; `@Enumerated(STRING)`, API 표현은 소문자)<br>• 날짜 이동에도 Todo identity 유지<br>• 세션 집계 필드는 캐시, 정본은 `todo_sessions`                          |
+| TodoSession   | `id`      | `todo_id`, `user_id`, `client_session_id`, `session_order`, `session_focus_seconds`, `break_seconds` | • Todo의 정본 세션<br>• `(todo_id, client_session_id)`·`(todo_id, session_order)` UNIQUE<br>• 멱등 재요청 시 `break_seconds`만 증가 방향 갱신                                                               |
+| TimerState    | `todo_id` | `user_id`, `state_json`, `version`                                                                   | Todo당 최대 1개만 존재하는 회원 전용 런타임 스냅샷이며, `state_json = null`은 행 삭제 대신 상태만 남기는 논리 삭제를 뜻하고 `version`은 단조 증가한다.                                                                                    |
+| UserSettings  | `user_id` | `flow_min`, `break_min`, `long_break_min`, `cycle_every`                                             | 사용자당 최대 1개이며 평면 컬럼으로 저장하고 행이 없을 때는 서비스가 기본값으로 응답한다.                                                                                                                                       |
+| Review        | `id`      | `user_id`, `type`, `period_start`, `period_end`                                                      | `(user_id, type, period_start)`에는 유일 제약이 있고 주간은 월요일 시작, 월간은 1일 시작 규칙을 따른다.                                                                                                                |
+| Report        | `id`      | `user_id`, `type`, `period_start`, `content`, `prompt_version`                                       | `(user_id, type, period_start)` UNIQUE. `content`는 JSON (`{keep, problem, try, referenceQuestion}` — 4 키 항상 존재, `referenceQuestion`만 값 nullable). 회원 전용 (게스트 사용 불가). 재생성 시 동일 키 row 덮어쓰기. |
+| User          | `id`      | `email`, `nickname`                                                                                  | 회원 계정 엔터티다.                                                                                                                                                                               |
+| SocialAccount | `id`      | `user_id`, `provider`, `provider_user_id`                                                            | 회원 계정에 연결된 OAuth 계정이며 `(provider, provider_user_id)`에는 유일 제약이 있고 현재 구현 공급자는 `kakao`다.                                                                                                     |
+| RefreshToken  | `id`      | `user_id`, `token_hash`, `expires_at`, `revoked_at`                                                  | 회원 전용 인증 토큰 저장소이며 평문 대신 해시만 저장하고 `token_hash`에는 유일 제약을 둔다.                                                                                                                                |
 
 ### 2) 공통 규칙
 
-- `todos`, `todo_sessions`, `user_settings`, `reviews`의 `user_id`는 게스트/회원 공통 식별자다. `reports`는 멤버 전용이라 게스트 user_id가 들어올 일은 없으나 컬럼 구조는 동일하게 FK 없는 VARCHAR(36)를 유지한다.
+- `todos`, `todo_sessions`, `user_settings`, `reviews`의 `user_id`는 게스트/회원 공통 식별자다. `reports`는 멤버 전용이라 게스트 user_id가 들어올
+  일은 없으나 컬럼 구조는 동일하게 FK 없는 VARCHAR(36)를 유지한다.
 - 위 핵심 테이블의 `user_id`는 `users.id` FK가 아니다.
 - `auth_social_accounts`, `auth_refresh_tokens`만 `users.id`를 FK로 참조한다.
 - `timer_states`는 회원 전용 서버 상태다. 게스트 타이머는 서버 저장 대상이 아니다.
@@ -162,7 +163,7 @@ CREATE TABLE reports
     user_id        VARCHAR(36) NOT NULL, -- 회원 user_id (FK 없음, 멤버 전용)
     type           VARCHAR(10) NOT NULL, -- 'DAILY' | 'WEEKLY' | 'MONTHLY'
     period_start   DATE        NOT NULL,
-    content        JSON        NOT NULL, -- {keep, problem, try, referenceQuestion?}
+    content        JSON        NOT NULL, -- {keep, problem, try, referenceQuestion} (4 키 항상 존재, referenceQuestion만 nullable)
     prompt_version VARCHAR(20),          -- 'daily.v2' 등
     created_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -316,7 +317,8 @@ erDiagram
 
 ### 1) 핵심 테이블에 `users` FK를 두지 않은 이유
 
-- 선택: `todos`, `todo_sessions`, `user_settings`, `reviews`, `reports`의 `user_id`는 `users.id` FK가 아닌 게스트/회원 공통 문자열 식별자로 둔다.
+- 선택: `todos`, `todo_sessions`, `user_settings`, `reviews`, `reports`의 `user_id`는 `users.id` FK가 아닌 게스트/회원 공통 문자열 식별자로
+  둔다.
 - 이유: 게스트와 회원이 같은 Todo·Settings·Review 모델을 공유해야 하고, 게스트는 회원 행 없이도 동일한 도메인 흐름을 가져야 한다.
 - 대안과 기각 이유: 게스트 전용 테이블을 따로 두거나 모든 핵심 테이블에 회원 FK를 강제하는 방식도 가능하지만, 데이터 경로가 이원화되어 API·서비스·조회 로직이 불필요하게 복잡해진다.
 
@@ -331,3 +333,13 @@ erDiagram
 - 선택: idle 전환 시 `timer_states` 행을 삭제하지 않고 `state_json = NULL`로 남기며, `version`은 계속 단조 증가시킨다.
 - 이유: 타이머 상태는 최신성 비교가 중요하므로 행을 유지해야 다른 탭·기기와의 동기화에서 이전 상태보다 확실히 새로운 값을 구분할 수 있다.
 - 대안과 기각 이유: idle 때 행을 삭제하면 저장소는 단순해지지만, 다음 삽입/갱신에서 `version`이 초기화되어 새 상태가 오래된 상태로 오판될 위험이 있다.
+
+### 4) `reviews`와 `reports`를 한 테이블로 합치지 않은 이유
+
+- 선택: 사람이 직접 쓰는 회고는 `reviews`, AI가 생성하는 KPT 리포트는 `reports`로 테이블을 분리한다. `(user_id, type, period_start)` UNIQUE라는 키 구조는
+  같지만 별도 테이블이다.
+- 이유: 두 엔터티는 **쓰기 주체와 생명주기가 다르다.** Review는 사용자가 작성·수정하는 자유 텍스트(`content TEXT`)이고, Report는 Gemini가 생성하며 재생성 시 같은 키 row를
+  덮어쓰는 구조화 데이터(`content JSON` — keep/problem/try/referenceQuestion)다. Review는 게스트도 쓰지만 Report는 회원 전용이고 `prompt_version`
+  같은 AI 전용 메타데이터도 따라붙는다.
+- 대안과 기각 이유: `source` 컬럼(manual/ai)으로 한 테이블에 합칠 수도 있지만, content 포맷(TEXT vs JSON)·소유 범위(게스트 포함 vs 회원 전용)·AI 전용 컬럼이 한쪽에만
+  의미를 가져 NULL 컬럼과 분기 조건이 늘어난다. 키 구조가 같다는 이유로 합치면 오히려 두 도메인의 규칙이 한 테이블에 뒤섞인다.
