@@ -1,4 +1,4 @@
-# SSE 연결 유지 실패 분석과 해결: Workbox 충돌과 Nginx 60초 idle timeout
+# SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout
 
 ## 요약
 

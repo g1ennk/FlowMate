@@ -4,13 +4,15 @@
 
 ## 요약
 
-- 문제: 타이머 상태가 Zustand + localStorage로만 관리되어, 같은 계정이어도 기기·탭 간 상태가 공유되지 않는 문제가 발생
-- 해결: 서버 → 클라이언트 단방향 push만 필요하고 양방향 채널은 과잉이다. SSE + REST 조합이 인프라 추가 없이 요구사항을 충족
-- 결과: 타이머 조작이 연결된 모든 기기에 즉시 반영되며, 재접속 후에도 최신 상태를 유지했다. k6 부하 테스트에서 163,205 req · 에러율 0%를 확인
+- 문제: 타이머 상태가 Zustand + localStorage 기반이라, 같은 계정이어도 기기 간 상태 공유 불가
+- 해결: 서버 → 클라이언트 단방향 push만 필요하므로 SSE + REST 조합으로 인프라 추가 없이 구현
+- 결과: 타이머 조작이 모든 기기에 즉시 반영, version 단조 증가로 이벤트 역전 방지. k6 163K req 에러율 0%
 
 ## 1. 문제 배경 — 기기 간 상태 공유 부재
 
-FlowMate의 타이머는 초기에 Zustand 스토어 + localStorage로만 관리됐다. 한 기기 안에서는 새로고침해도 타이머가 유지됐지만, 기기 간에는 상태가 전혀 공유되지 않았다.
+FlowMate의 타이머는 초기에 Zustand 스토어 + localStorage로만 관리됐다.
+
+한 기기 안에서는 새로고침해도 타이머가 유지됐지만, 기기 간에는 상태가 전혀 공유되지 않았다.
 
 ```text
 Desktop: 25분 포모도로 시작 (running)
@@ -18,19 +20,14 @@ Desktop: 25분 포모도로 시작 (running)
 Mobile:  타이머 없음 (idle) ❌
 ```
 
-요구사항은 한 기기에서 타이머 상태를 변경하면 다른 기기에 즉시 반영되어야 하고, 이벤트 순서가 역전되어도 올바른 최신 상태를 유지해야 한다는 것이었다.
+요구사항은 두 가지였다. 한 기기에서 타이머를 변경하면 다른 기기에 즉시 반영될 것, 이벤트 순서가 역전되어도 최신 상태를 유지할 것.
 
-게스트 사용자는 동기화 대상에서 제외한다. 게스트 토큰은 서버가 UUID 기반으로 JWT를 발급하고 클라이언트가 localStorage에 저장하는 구조이므로 기기별로 독립된 정체성을 갖는다. 두 기기가 같은 게스트
-정체성을 공유할 경로가 없어, 동기화 대상 자체가 존재하지 않는다.
+게스트는 동기화 대상에서 제외한다. 게스트 토큰은 기기별로 독립된 정체성을 가지므로, 두 기기가 같은 게스트 계정을 공유할 경로가 없다.
 
 ## 2. 기술 선택 — WebSocket vs Polling vs SSE
 
-핵심 판단 기준은 타이머 동기화의 데이터 흐름이 비대칭인지 여부였다.
-
-클라이언트 → 서버는 사용자가 start / pause / resume / stop을 누를 때만 발생하므로 REST PUT으로 충분하지만, 서버 → 클라이언트는 다른 기기의 변경을 즉시 알려야 하므로 push가
-필요하다.
-
-다음과 같은 선택지를 고려했다.
+핵심 판단 기준은 데이터 흐름의 비대칭이었다. 클라이언트 → 서버는 start/pause/resume/stop 시점에만 발생하므로 REST PUT으로 충분하지만, 서버 → 클라이언트는 다른 기기의 변경을 즉시 알려야
+하므로 push가 필요하다.
 
 | 방식                | 장점                              | 단점                             | 판단     |
 |-------------------|---------------------------------|--------------------------------|--------|
@@ -40,12 +37,10 @@ Mobile:  타이머 없음 (idle) ❌
 
 ### SSE + REST를 선택한 이유
 
-WebSocket은 양방향 채널이 강력하지만, 타이머 동기화에는 단방향 push면 충분하다. STOMP 브로커 인프라까지 따라오는 복잡도는 현재 요구사항에 비해 과잉이었다.
+WebSocket(STOMP)은 양방향 채널이 강력하지만, 타이머 동기화에는 단방향 push면 충분하다. 브로커 인프라까지 따라오는 복잡도는 현재 요구사항에 비해 과잉이었다. Polling은 인프라가 가장
+단순하지만, 페이즈 전환 순간 다른 기기에서 몇 초간 이전 상태가 보이는 경험은 부적합했다.
 
-Polling은 인프라가 가장 단순하지만 실시간성을 포기해야 한다. 사용자가 휴식 페이즈로 전환한 순간 다른 기기에서 몇 초간 이전 상태가 보이는 경험은 부적합했다.
-
-SSE는 서버 → 클라이언트 단방향 push에 정확히 맞는다. HTTP 표준이라 별도 인프라 없이 Nginx 설정만으로 동작하고, Spring이 `SseEmitter`를 내장 지원해 추가 라이브러리 없이 구현할 수
-있다.
+SSE는 서버 → 클라이언트 단방향 push에 정확히 맞는다. HTTP 표준이라 Nginx 설정만으로 동작하고, Spring이 `SseEmitter`를 내장 지원해 추가 라이브러리 없이 구현할 수 있다.
 
 ## 3. 아키텍처
 
@@ -70,7 +65,7 @@ sequenceDiagram
     R -->> M: timer-state
 ```
 
-`SseEmitterRegistry`가 해당 사용자의 모든 emitter를 같은 JVM 메모리에서 관리하므로, 단일 인스턴스에서는 같은 사용자의 모든 기기에 broadcast가 정상적으로 도달한다.
+단일 인스턴스에서는 `SseEmitterRegistry`가 모든 emitter를 같은 JVM 메모리에서 관리하므로 broadcast가 모든 기기에 도달한다.
 
 ## 4. 구현
 
@@ -110,11 +105,10 @@ CREATE INDEX idx_timer_states_user ON timer_states (user_id, updated_at DESC);
 long newVersion = Math.max(System.currentTimeMillis(), lastVersion + 1);
 ```
 
-세 가지 경우를 모두 처리한다.
+`max(now, lastVersion + 1)`은 두 가지 위험을 동시에 방지한다.
 
 - `System.currentTimeMillis()`만 쓰면: NTP 보정 등으로 시계가 뒤로 가면 단조성이 깨진다
-- `lastVersion + 1`만 쓰면: 시간 기반 추적이 불가능해져 디버깅과 감사 로그에서 순서 파악이 어렵다
-- `max(now, lastVersion + 1)`: 두 경우 모두 단조성을 보장하면서 실제 시간과 큰 차이가 나지 않게 유지
+- `lastVersion + 1`만 쓰면: 시간 기반 추적이 불가능해져 디버깅 시 순서 파악이 어렵다
 
 클라이언트는 `todoId`별로 마지막으로 적용한 version을 Map에 보관한다.
 
@@ -142,7 +136,7 @@ v=102: running   state_json = "{...}"
 
 SseEmitterRegistry는 같은 `userId`의 여러 SSE 연결을 추적하고 broadcast를 담당한다.
 
-```text
+```java
 private final ConcurrentHashMap<String, CopyOnWriteArrayList<ConnectionEntry>> connections;
 
 private record ConnectionEntry(String internalId, SseEmitter emitter, ScheduledFuture<?> heartbeatTask) {
@@ -171,24 +165,24 @@ emitter.send(SseEmitter.event().name("connected").data("ok"));
 
 #### 25초 heartbeat
 
-각 연결에 `scheduleAtFixedRate`로 25초 간격 heartbeat를 등록한다. 인프라 타임아웃(Nginx `proxy_read_timeout 3600s`, Spring `SseEmitter` 1시간)
-이 길어도 25초 heartbeat가 필요한 이유는 세 가지다.
+각 연결에 `scheduleAtFixedRate`로 25초 간격 heartbeat를 등록한다.
 
-- **중간망 idle timeout 대응**: 모바일 캐리어 NAT, 기업 프록시, ISP 방화벽 등은 idle 연결을 30초~수 분 안에 자체적으로 끊을 수 있다. 서버 타임아웃이 길어도 중간 구간에서 끊기면
-  의미가 없다.
-- **죽은 연결 감지**: 클라이언트가 비정상 종료되면 서버는 다음 broadcast 전까지 이를 알 수 없다. heartbeat write 실패를 통해 죽은 연결을 빠르게 정리할 수 있다.
-- **빠른 재연결 유도**: 네트워크 장애 시 25초 이내에 브라우저 `EventSource.onerror`가 발동되어 클라이언트가 재연결을 시도할 수 있다.
+인프라 타임아웃(Nginx `proxy_read_timeout 3600s`, Spring `SseEmitter` 1시간)이 길어도 25초 heartbeat가 필요한 이유는 세 가지다.
+
+- **중간망 idle timeout 대응**: 모바일 NAT, 기업 프록시, ISP 방화벽 등이 idle 연결을 30초~수 분 안에 끊을 수 있다.
+- **죽은 연결 감지**: 클라이언트 비정상 종료 시 heartbeat write 실패로 빠르게 정리한다.
+- **빠른 재연결 유도**: 네트워크 장애 시 25초 이내에 브라우저 `EventSource.onerror`가 발동되어 재연결을 시도한다.
 
 #### broadcast fire-and-forget
 
-`broadcast`는 같은 `userId`의 모든 emitter에 이벤트를 순차 전송하되, 개별 전송 실패 시 해당 연결만 정리하고 예외는 삼킨다. 끊긴 연결의 전송 실패가 나머지 기기 전파를 중단시키지 않도록 격리하기 위해서다. 정본은 MySQL에 이미 저장된 상태이므로, 전파 실패가 데이터 손실로 이어지지는 않는다.
+`broadcast`는 같은 `userId`의 모든 emitter에 이벤트를 순차 전송하되, 개별 전송 실패 시 해당 연결만 정리하고 예외는 삼킨다. 끊긴 연결의 전송 실패가 나머지 기기 전파를 중단시키지 않도록
+격리하기 위해서다. 정본은 MySQL에 이미 저장된 상태이므로, 전파 실패가 데이터 손실로 이어지지는 않는다.
 
 #### self-echo — 발신자 식별 없이 전체 broadcast
 
 `broadcast`는 같은 `userId`의 모든 SSE 연결에 동일한 이벤트를 전송한다. 따라서 `PUT`을 일으킨 발신자 기기도 자기 이벤트를 다시 수신한다(self-echo).
 
-발신자를 제외하는 방식도 가능하지만, 서버 로직을 단순하게 유지하기 위해 발신자가 자기 이벤트를 받더라도 `version` 비교로 중복 적용을 방지한다. 이 self-echo 원리는 후속 Redis Pub/Sub
-구조에서도 그대로 적용된다.
+발신자를 제외하는 방식도 가능하지만, 서버 로직을 단순하게 유지하기 위해 발신자가 자기 이벤트를 받더라도 `version` 비교로 중복 적용을 방지한다.
 
 ### 4.5 SSE 인증 — 쿼리 파라미터 기반 토큰 전달
 
@@ -223,7 +217,7 @@ new EventSource(`/api/timer/sse?token=${encodeURIComponent(token)}`)
 | version 단조 증가      | `TimerServiceTest`       | 기존 row가 있을 때 `newVersion ≥ lastVersion + 1` 보장                |
 | 동시 first insert 충돌 | `TimerServiceTest`       | `DataIntegrityViolationException` 발생 시 winner version 위에서 재계산 |
 | soft delete        | `TimerServiceTest`       | idle 시 `stateJson = null` 설정, 활성 조회 시 idle row 제외             |
-| broadcast 실패 격리    | `SseEmitterRegistryTest` | 전송 실패 시 예외를 삼키고 dead connection만 정리                           |
+| broadcast 실패 격리    | `SseEmitterRegistryTest` | 전송 실패 시 예외를 호출자에게 전파하지 않음                                     |
 | 다중 연결 broadcast    | `SseEmitterRegistryTest` | 같은 userId의 모든 emitter에 이벤트 전달                                 |
 | SSE 인증 — member 허용 | `TimerControllerTest`    | 유효한 member 토큰이면 `SseEmitterRegistry.register()` 호출            |
 | SSE 인증 — guest 차단  | `TimerControllerTest`    | `role ≠ member`이면 401                                         |
@@ -231,7 +225,7 @@ new EventSource(`/api/timer/sse?token=${encodeURIComponent(token)}`)
 
 ### 5.2 k6 부하 테스트
 
-dev 환경에 k6 baseline 부하를 걸어 SSE를 포함한 전체 API의 안정성을 정량으로 확인했다.
+dev 환경에 k6 baseline 부하를 걸어 163,205건 요청에서 에러율 0%를 확인했다.
 
 | 측정 항목  | 결과        |
 |--------|-----------|
@@ -240,31 +234,35 @@ dev 환경에 k6 baseline 부하를 걸어 SSE를 포함한 전체 API의 안정
 | p95    | 45.58ms   |
 | p99    | 150.14ms  |
 
-163,205건 요청에서 단 한 건의 실패도 발생하지 않았다.
-
 ## 6. 트레이드오프 요약
 
 이번 구조의 핵심 트레이드오프는 인프라 단순성과 정본 단일화를 우선하여 결정했다.
 
-| 결정                            | 얻은 것                     | 감수한 비용                 | 판단                      |
-|-------------------------------|--------------------------|------------------------|-------------------------|
-| **SSE + REST 선택**             | 단순 인프라, Spring 내장 지원     | 클라이언트 → 서버는 REST 병행 필요 | 타이머 동기화는 단방향 push로 충분   |
-| **MySQL 단일 정본**               | 정본 단일화                   | 초기 로딩 시 서버 의존          | snapshot fetch로 보완      |
-| **단조 증가 `version`**           | 이벤트 역전을 단일 정수로 해결        | 연결 끊김 중 이벤트는 replay 없음 | Last-Writer-Wins 구조에 충분 |
-| **`state_json = NULL`**       | version 연속성 유지           | idle row 잔존            | version 연속성을 위해 유지      |
-| **25초 heartbeat**             | 중간망 단절 방지, 죽은 연결 감지      | 주기적 트래픽 발생             | 인프라 타임아웃만으로 중간망 통제 불가   |
-| **fire-and-forget broadcast** | 한 연결 실패가 다른 기기 전파를 막지 않음 | 일부 SSE 누락 가능           | 재접속 snapshot으로 해결       |
-| **self-echo**                 | 서버 로직 단순화                | 발신자도 자기 이벤트 수신         | version 비교로 클라이언트가 처리   |
-| **query parameter 토큰 인증**     | 별도 인프라 없이 기존 토큰 재사용      | URL 노출 위험              | 짧은 TTL + HTTPS 전제에서 수용  |
+| 결정                    | 얻은 것            | 감수한 비용         | 판단                 |
+|-----------------------|-----------------|----------------|--------------------|
+| **SSE + REST**        | 단순 인프라, 내장 지원   | REST 병행 필요     | 단방향 push로 충분       |
+| **MySQL 단일 정본**       | 정본 단일화          | 초기 로딩 시 서버 의존  | snapshot fetch로 보완 |
+| **단조 증가 version**     | 역전을 정수 하나로 해결   | replay 없음      | LWW 구조에 충분         |
+| **state_json = NULL** | version 연속성 유지  | idle row 잔존    | 연속성 우선             |
+| **25초 heartbeat**     | 중간망 단절·죽은 연결 감지 | 주기적 트래픽        | 타임아웃만으로 중간망 통제 불가  |
+| **fire-and-forget**   | 실패 격리           | 일부 SSE 누락 가능   | 재접속 snapshot으로 복구  |
+| **self-echo**         | 서버 로직 단순화       | 발신자도 자기 이벤트 수신 | version 비교로 처리     |
+| **query param 토큰**    | 기존 토큰 재사용       | URL 노출 위험      | 짧은 TTL + HTTPS로 수용 |
 
 ## 7. 회고
 
-### 단방향 push와 version 필터로 동기화 문제를 해결했다
+### 단방향 push만으로 동기화 요구사항을 충족했다
 
 타이머 동기화에 양방향 채널은 필요하지 않았다. 서버 → 클라이언트 단방향 push만으로 요구사항을 충족했고, SSE + REST 조합으로 별도 인프라 없이 구현할 수 있었다. 이벤트 역전 문제는 단조 증가
-`version` 을 적용해 클라이언트가 자신이 마지막으로 적용한 version보다 작은 이벤트를 무시하는 것으로 해결했다.
+`version`을 적용해 클라이언트가 자신이 마지막으로 적용한 version보다 작은 이벤트를 무시하는 것으로 해결했다.
 
-### 단일 인스턴스의 구조적 한계는 후속 작업에서 해결했다
+### SSE는 코드 구현만으로 끝나지 않았다
 
-이 구조에서 `SseEmitterRegistry`는 JVM 메모리에 연결을 보관하므로, 인스턴스가 2대 이상으로 확장되면 다른 인스턴스에 연결된 기기에 이벤트가 도달하지 못하는 한계가 있다. 이 문제는 후속 작업에서
-Redis Pub/Sub을 도입해 해결했다. 자세한 내용은 [Redis Pub/Sub으로 SSE 수평 확장하기](redis-sse-pubsub.md)를 참고하면 된다.
+SSE 연결은 Spring의 `SseEmitter`를 활용해 구현하는 것과, 그 연결이 실제 HTTPS 환경에서 유지되는 것은 별개의 문제였다. 브라우저 `EventSource`의 재연결 동작, Nginx의
+proxy buffering과 timeout 설정, 중간망의 idle 연결 정리 같은 인프라와 네트워크 레벨의 이해가 함께 필요했다. 이 부분에 대한 선행 지식 없이 진행해 프로덕션에서 SSE 연결이 끊기는 문제를
+겪었고, 이 경험은 [SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout](sse-timeout.md)에 정리했다.
+
+### 단일 인스턴스의 구조적 한계
+
+이 구조에서 `SseEmitterRegistry`는 JVM 메모리에 연결을 보관하므로, 인스턴스가 2대 이상으로 확장되면 다른 인스턴스에 연결된 기기에 이벤트가 도달하지 못하는 한계가 있다. 이 문제는 이후
+Redis Pub/Sub을 도입해 해결했으며, 자세한 내용은 [Redis Pub/Sub으로 SSE 수평 확장하기](redis-sse-pubsub.md)에 정리했다.
