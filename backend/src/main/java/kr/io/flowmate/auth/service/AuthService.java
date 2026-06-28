@@ -47,6 +47,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final SocialAccountRepository socialAccountRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenRevoker refreshTokenRevoker;
     private final JwtProperties jwtProps;
 
     /**
@@ -141,8 +142,7 @@ public class AuthService {
         if (!refreshToken.isValid()) {
             // 폐기된 토큰 재사용 = 탈취 의심 → 해당 사용자의 모든 활성 토큰 revoke
             if (refreshToken.isStolenReuse()) {
-                refreshTokenRepository.findAllActiveByUserId(refreshToken.getUserId(), Instant.now())
-                        .forEach(RefreshToken::revoke);
+                refreshTokenRevoker.revokeAll(refreshToken.getUserId());
             }
             throw new AuthenticationFailedException("만료 또는 폐기된 Refresh Token");
         }

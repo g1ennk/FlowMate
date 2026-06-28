@@ -29,7 +29,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +46,7 @@ class AuthServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private SocialAccountRepository socialAccountRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private RefreshTokenRevoker refreshTokenRevoker;
     @Mock private JwtProperties jwtProps;
     @Mock private OAuthProvider oAuthProvider;
 
@@ -115,7 +115,7 @@ class AuthServiceTest {
         verify(userRepository).save(any(User.class));
         verify(refreshTokenRepository).save(any(RefreshToken.class));
         // 로그인은 기존 RT를 revoke하지 않음 (디바이스별 공존)
-        verify(refreshTokenRepository, never()).findAllActiveByUserId(anyString(), any(Instant.class));
+        verify(refreshTokenRevoker, never()).revokeAll(anyString());
     }
 
     @Test
@@ -142,7 +142,7 @@ class AuthServiceTest {
         assertThat(existingUser.getNickname()).isEqualTo("테스터");
         assertThat(oldRt.getRevokedAt()).isNull(); // 기존 RT는 살아있다 (멀티디바이스 공존)
         verify(userRepository, never()).save(any(User.class));
-        verify(refreshTokenRepository, never()).findAllActiveByUserId(anyString(), any(Instant.class));
+        verify(refreshTokenRevoker, never()).revokeAll(anyString());
         verify(refreshTokenRepository).save(any(RefreshToken.class)); // 새 RT는 발급됨
     }
 
@@ -185,19 +185,13 @@ class AuthServiceTest {
                 Instant.now().plusSeconds(3600));
         revokedRt.revoke();
 
-        RefreshToken activeRt = RefreshToken.create("user-1", "other-hash",
-                Instant.now().plusSeconds(3600));
-
         when(refreshTokenRepository.findByTokenHash(anyString()))
                 .thenReturn(Optional.of(revokedRt));
-        when(refreshTokenRepository.findAllActiveByUserId(eq("user-1"), any(Instant.class)))
-                .thenReturn(List.of(activeRt));
 
         assertThatThrownBy(() -> authService.refresh("stolen", httpResponse))
                 .isInstanceOf(AuthenticationFailedException.class);
 
-        // reuse detection: 다른 활성 토큰도 revoke됨
-        assertThat(activeRt.getRevokedAt()).isNotNull();
+        verify(refreshTokenRevoker).revokeAll("user-1");
     }
 
     @Test
@@ -212,8 +206,8 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.refresh("expired", httpResponse))
                 .isInstanceOf(AuthenticationFailedException.class);
 
-        // 만료(revokedAt=null)는 reuse가 아니므로 findAllActive 호출 안 함
-        verify(refreshTokenRepository, never()).findAllActiveByUserId(anyString(), any());
+        // 만료(revokedAt=null)는 reuse가 아니므로 revoke-all 호출 안 함
+        verify(refreshTokenRevoker, never()).revokeAll(anyString());
     }
 
     // ── logout ──
