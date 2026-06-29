@@ -1,6 +1,6 @@
 # FlowMate 아키텍처
 
-> Last updated: 2026-06-25
+> Last updated: 2026-06-29
 >
 > 관련 문서: [API Reference](api.md) · [Data Model](data-model.md)
 
@@ -38,7 +38,8 @@
 
 - Guest 사용자는 Guest JWT로 시작하고, 회원 로그인 후에는 Member Access JWT + Refresh Token 조합으로 전환된다.
 - refresh 시 기존 RT를 즉시 revoke하고 새 RT로 교체하므로, 이미 폐기된 RT로는 이후 재발급이 성공하지 않는다.
-- 폐기된 RT로 재사용을 시도하면 401로 차단한다.
+- 폐기된 RT로 재사용을 시도하면 401로 차단하고, 같은 사용자의 active RT 전체를 revoke한다.
+- reuse detection의 전체 폐기는 별도 서비스의 `REQUIRES_NEW` 트랜잭션에서 먼저 커밋한다. 이후 401 예외로 refresh 트랜잭션이 rollback되어도 폐기 결과가 DB에 남는다.
 - 로그인은 기존 활성 RT를 유지한 채 새 RT를 추가 발급한다. 같은 회원이 여러 디바이스에서 동시에 세션을 유지할 수 있으며, SSE 멀티디바이스 동기화 전제와 정합한다.
 
 ## 3. SSE 아키텍처
@@ -72,4 +73,3 @@
 ### 2) CI/CD 파이프라인
 
 ![CI/CD 파이프라인](images/cicd-pipeline.png)
-

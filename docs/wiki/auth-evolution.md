@@ -118,14 +118,15 @@ revoke(): revokedAt = now
 
 ## 7. 현재 인증 흐름
 
-현재 인증은 5가지 경로로 구성된다. OAuth login과 RTR의 상세 흐름은 아래 시퀀스 다이어그램에서 확인할 수 있다.
+현재 인증은 주요 6가지 경로로 구성된다. OAuth login과 RTR의 상세 흐름은 아래 시퀀스 다이어그램에서 확인할 수 있다.
 
 | 경로                         | 핵심 동작                                                              |
 |----------------------------|--------------------------------------------------------------------|
 | Guest start                | `POST /api/auth/guest/token` → Guest JWT 발급 → localStorage 저장      |
 | OAuth login                | State JWT 발급 → Kakao 인가 → code 교환 → AT(body) + RT(HttpOnly cookie) |
 | Refresh (RTR)              | RT cookie 자동 전송 → 기존 RT revoke → 새 RT + AT 발급                      |
-| Page load (silent refresh) | authMode 힌트 확인 → member면 자동 refresh → 실패 시 게스트 폴백                  |
+| Page load (silent refresh) | authMode 힌트 확인 → member면 자동 refresh → 실패 시 게스트 폴백 없이 로그인 유도        |
+| API 401 refresh 실패         | 회원 refresh 실패 → member 세션 종료 → 게스트 토큰 재시도 없이 로그인 유도                |
 | Logout                     | 현재 RT만 revoke → cookie 삭제 → 게스트 전환                                 |
 
 ```mermaid
@@ -157,10 +158,14 @@ sequenceDiagram
         C ->> S: POST /api/auth/refresh (쿠키에 RT 자동 포함)
         S ->> DB: SHA-256 해시로 RT 조회
         S ->> S: revoked / expired 여부 검증
-        S ->> S: 신규 Refresh Token 생성
-        S ->> DB: 기존 RT revoke + 신규 RT 해시 저장
-        S -->> C: 신규 Access Token + 신규 Refresh Token 쿠키 설정
-        Note over C, S: 폐기된 RT 재사용 시 해당 사용자 전체 RT revoke (Reuse Detection)
+        alt revoked RT 재사용
+            S ->> DB: REQUIRES_NEW로 해당 사용자 active RT 전체 revoke
+            S -->> C: 401 Authentication Failed
+        else 유효한 RT
+            S ->> S: 신규 Refresh Token 생성
+            S ->> DB: 기존 RT revoke + 신규 RT 해시 저장
+            S -->> C: 신규 Access Token + 신규 Refresh Token 쿠키 설정
+        end
     end
 ```
 
@@ -196,5 +201,4 @@ Spring Security OAuth2 Client를 처음부터 붙였다면 내부적으로 어�
 현재 State JWT는 stateless라 서버가 state를 저장하지 않아 1회 사용 보장과 즉시 무효화가 불가능하다. 5분 TTL 안에서 replay가 이론적으로 가능한데, 공격자가 state를 가로채려면 이미
 세션을 탈취한 상태이므로 현재 규모에서 실 위험은 낮다.
 
-RT는 MySQL `auth_refresh_tokens`에 저장해 만료된 토큰을 별도 배치로 삭제해야 한다. Redis TTL 기반으로 이전하면 State JWT의 1회 사용 보장과 RT 만료 자동 처리를 함께
-해결할 수 있다.
+RT는 MySQL `auth_refresh_tokens`에 저장하고, `expires_at`으로 만료 여부를 검증한다. 만료된 RT를 물리 삭제하는 배치는 아직 없다. cleanup batch를 두거나 Redis TTL 기반 저장소로 옮기면 State JWT의 1회 사용 보장과 RT 만료 자동 처리를 함께 해결할 수 있다.
