@@ -76,8 +76,8 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
         })
     }
     await refreshPromise
-    // 회원 세션이 만료되어 refresh 실패 → logout() → 게스트로 전환된 경우
-    // 게스트 토큰으로 재시도하면 다른 계정에 데이터가 쓰이므로 에러를 던진다
+    // 회원 세션이 만료되어 refresh 실패 → 로그인 유도 상태로 전환된 경우
+    // 비회원 토큰으로 재시도하면 다른 주체에 데이터가 쓰일 수 있으므로 에러를 던진다
     if (typeBefore === 'member' && useAuthStore.getState().state?.type !== 'member') {
       throw await parseError(response)
     }

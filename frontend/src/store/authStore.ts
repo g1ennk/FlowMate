@@ -8,11 +8,14 @@ interface AuthStore {
   state: AuthState | null
   initialized: boolean
   init: () => Promise<void>
+  startGuest: () => Promise<void>
   login: (provider: string, code: string, stateToken: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
   getToken: () => string
 }
+
+let memberRefreshPromise: Promise<void> | null = null
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
   state: null,
@@ -22,7 +25,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
    * 앱 초기화: authMode 힌트로 경로 분기.
    * - 과거에 회원으로 로그인한 적 없는 사용자(=authMode !== 'member')는
    *   /auth/refresh 호출을 건너뛰어 cold load 빈 화면을 단축한다.
-   * - 회원 힌트가 있으면 refresh 시도, 실패 시 게스트로 폴백.
+   * - 회원 힌트가 있으면 refresh 시도, 실패 시 로그인 화면으로 유도한다.
    */
   init: async () => {
     const mode = getAuthMode()
@@ -30,17 +33,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // 1. 회원 힌트가 있을 때만 refresh 시도
     if (mode === 'member') {
       try {
-        const res = await fetch(buildApiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' })
-        if (res.ok) {
-          const data = await res.json()
-          set({ state: { type: 'member', accessToken: data.accessToken, user: data.user }, initialized: true })
-          return
-        }
+        await get().refresh()
       } catch {
-        // refresh 실패 → 게스트 폴백
+        set({ state: null, initialized: true })
+        return
       }
-      // refresh 실패: 만료된 힌트 제거
-      clearAuthMode()
+      set({ initialized: true })
+      return
     }
 
     // 2. 게스트 토큰이 이미 있으면 즉시 사용 (API 호출 0회)
@@ -53,14 +52,21 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     // 3. 없으면 새 게스트 토큰 발급
     try {
-      const res = await fetch(buildApiUrl('/auth/guest/token'), { method: 'POST' })
-      const data = await res.json()
-      localStorage.setItem(storageKeys.guestToken, data.guestToken)
-      setAuthMode('guest')
-      set({ state: { type: 'guest', token: data.guestToken }, initialized: true })
+      await get().startGuest()
+      set({ initialized: true })
     } catch {
       set({ initialized: true })
     }
+  },
+
+  /** 명시적 게스트 시작 */
+  startGuest: async () => {
+    const res = await fetch(buildApiUrl('/auth/guest/token'), { method: 'POST' })
+    if (!res.ok) throw new Error('게스트 토큰 발급 실패')
+    const data = await res.json()
+    localStorage.setItem(storageKeys.guestToken, data.guestToken)
+    setAuthMode('guest')
+    set({ state: { type: 'guest', token: data.guestToken } })
   },
 
   /** 소셜 로그인 */
@@ -90,11 +96,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     // 새 게스트 토큰 발급
     try {
-      const res = await fetch(buildApiUrl('/auth/guest/token'), { method: 'POST' })
-      const data = await res.json()
-      localStorage.setItem(storageKeys.guestToken, data.guestToken)
-      setAuthMode('guest')
-      set({ state: { type: 'guest', token: data.guestToken } })
+      await get().startGuest()
     } catch {
       // 게스트 토큰 발급 실패 시 상태를 null로 초기화 (로그인 페이지로 리다이렉트됨)
       localStorage.removeItem(storageKeys.guestToken)
@@ -106,38 +108,43 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   /** Access Token 재발급 (401 인터셉터에서 호출) */
   refresh: async () => {
     const currentState = get().state
+    const refreshStartedFromState = currentState
 
     if (currentState?.type === 'guest') {
       // 게스트는 새 토큰 재발급
-      const res = await fetch(buildApiUrl('/auth/guest/token'), { method: 'POST' })
-      const data = await res.json()
-      localStorage.setItem(storageKeys.guestToken, data.guestToken)
-      set({ state: { type: 'guest', token: data.guestToken } })
+      await get().startGuest()
       return
     }
 
     // 회원은 Refresh Token 쿠키로 재발급
-    const res = await fetch(buildApiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' })
-    if (!res.ok) {
-      // Refresh Token 만료 → 세션 종료. 게스트 전환이 아닌 로그인 페이지로 유도
-      // (logout()은 게스트 토큰을 발급해 state: guest로 세팅하므로 여기서는 직접 null 처리)
-      try {
-        await fetch(buildApiUrl('/auth/logout'), { method: 'POST', credentials: 'include' })
-      } catch {
-        // 서버 revoke 실패는 무시 (어차피 토큰이 만료됨)
-      }
-      localStorage.removeItem(storageKeys.guestToken)
-      clearAuthMode()
-      set({ state: null })
-      return
+    if (!memberRefreshPromise) {
+      memberRefreshPromise = (async () => {
+        const isStaleRefresh = () => get().state !== refreshStartedFromState
+        const res = await fetch(buildApiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' })
+        if (!res.ok) {
+          if (isStaleRefresh()) return
+          // Refresh Token 만료/폐기 → 세션 종료. 게스트 전환이 아닌 로그인 페이지로 유도
+          // (logout()은 게스트 토큰을 발급해 state: guest로 세팅하므로 여기서는 직접 null 처리)
+          try {
+            await fetch(buildApiUrl('/auth/logout'), { method: 'POST', credentials: 'include' })
+          } catch {
+            // 서버 revoke 실패는 무시 (어차피 토큰이 만료됨)
+          }
+          if (isStaleRefresh()) return
+          localStorage.removeItem(storageKeys.guestToken)
+          clearAuthMode()
+          set({ state: null })
+          return
+        }
+        const data = await res.json()
+        if (isStaleRefresh()) return
+        // accessToken은 메모리(state)에만 저장, user도 동기화
+        set({ state: { type: 'member', accessToken: data.accessToken, user: data.user } })
+      })().finally(() => {
+        memberRefreshPromise = null
+      })
     }
-    const data = await res.json()
-    // accessToken은 메모리(state)에만 저장, user도 동기화
-    set((s) =>
-      s.state?.type === 'member'
-        ? { state: { ...s.state, accessToken: data.accessToken, user: data.user } }
-        : s,
-    )
+    return memberRefreshPromise
   },
 
   /** 현재 유효한 토큰 반환 (게스트/회원 구분 없이) */

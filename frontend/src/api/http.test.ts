@@ -104,7 +104,7 @@ describe('http 401 refresh singleton', () => {
     expect(calls[3][1]?.headers).toHaveProperty('Authorization', 'Bearer new-token')
   })
 
-  it('throws when member becomes guest after refresh failure', async () => {
+  it('throws when member session ends after refresh failure', async () => {
     const { http, getState } = await loadHttp()
 
     let stateAfterRefresh = false
@@ -116,8 +116,8 @@ describe('http 401 refresh singleton', () => {
     getState.mockImplementation(() => {
       if (stateAfterRefresh) {
         return {
-          state: { type: 'guest' },
-          getToken: vi.fn().mockReturnValue('guest-token'),
+          state: null,
+          getToken: vi.fn().mockReturnValue(''),
           refresh: refreshFn,
         }
       }

@@ -99,6 +99,7 @@ function LoginPage() {
   const navigate = useNavigate()
   const authState = useAuthStore((s) => s.state)
   const initialized = useAuthStore((s) => s.initialized)
+  const startGuest = useAuthStore((s) => s.startGuest)
 
   if (!initialized) return null
 
@@ -106,12 +107,20 @@ function LoginPage() {
     return <Navigate to="/todos" replace />
   }
 
-  const handleGuestStart = () => {
-    setOnboardingSeen(true)
-    navigate('/todos', { replace: true })
-    if (!localStorage.getItem('flowmate/ui/guest-notice-seen')) {
-      localStorage.setItem('flowmate/ui/guest-notice-seen', '1')
-      setTimeout(() => toast('게스트 데이터는 이 기기에만 저장돼요', { id: 'guest-notice', duration: 4000 }), 500)
+  const handleGuestStart = async () => {
+    try {
+      if (authState?.type !== 'guest') {
+        await startGuest()
+      }
+      setOnboardingSeen(true)
+      navigate('/todos', { replace: true })
+      if (!localStorage.getItem('flowmate/ui/guest-notice-seen')) {
+        localStorage.setItem('flowmate/ui/guest-notice-seen', '1')
+        setTimeout(() => toast('게스트 데이터는 이 기기에만 저장돼요', { id: 'guest-notice', duration: 4000 }), 500)
+      }
+    } catch (e) {
+      console.error('[LoginPage] 게스트 시작 실패', e)
+      toast.error('게스트 모드를 시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
     }
   }
 

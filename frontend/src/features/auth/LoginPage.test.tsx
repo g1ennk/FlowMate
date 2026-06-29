@@ -8,13 +8,14 @@ import { renderApp } from '../../test/renderApp'
 import LoginPage from './LoginPage'
 
 const mocked = vi.hoisted(() => ({
+  toast: vi.fn(),
   toastError: vi.fn(),
 }))
 
 vi.mock('react-hot-toast', () => ({
-  default: {
+  default: Object.assign(mocked.toast, {
     error: mocked.toastError,
-  },
+  }),
 }))
 
 const initialAuthStore = useAuthStore.getState()
@@ -65,6 +66,7 @@ describe('LoginPage', () => {
       },
     })
     setOnboardingSeen(true)
+    mocked.toast.mockReset()
     mocked.toastError.mockReset()
   })
 
@@ -101,6 +103,29 @@ describe('LoginPage', () => {
 
     await user.click(screen.getByRole('button', { name: /게스트로 둘러보기/ }))
 
+    expect(await screen.findByText('todos page')).toBeInTheDocument()
+  })
+
+  it('creates a guest session before navigating when there is no current auth state', async () => {
+    const user = userEvent.setup()
+    useAuthStore.setState({ state: null })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ guestToken: 'new-guest-token' }),
+      }),
+    )
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /게스트로 둘러보기/ }))
+
+    await waitFor(() => {
+      expect(window.fetch).toHaveBeenCalledWith('/api/auth/guest/token', { method: 'POST' })
+      expect(useAuthStore.getState().state).toEqual({ type: 'guest', token: 'new-guest-token' })
+    })
     expect(await screen.findByText('todos page')).toBeInTheDocument()
   })
 
