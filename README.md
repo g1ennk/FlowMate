@@ -91,6 +91,13 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 - 결과: SSE 1시간 이상 안정 유지, nginx 504 · `AsyncRequestTimeoutException` 모두 0건
 - 관련 문서: [SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout](docs/wiki/sse-timeout.md)
 
+### 3) 폐기된 Refresh Token 재사용 시 revoke-all이 DB에 반영되지 않은 이유
+
+- 문제: 폐기된 RT 재사용 요청은 401로 차단됐지만, 같은 트랜잭션에서 실행한 revoke-all이 예외와 함께 롤백되어 DB에 반영되지 않았다.
+- 해결: revoke-all을 별도 Bean의 `REQUIRES_NEW` 트랜잭션으로 분리해, 실패 응답과 무관하게 먼저 커밋되도록 보장했다.
+- 결과: 브라우저 검증에서 폐기된 RT 재사용 시 같은 사용자의 active RT가 14개에서 0개로 감소하며, revoke-all이 실제 DB에 반영됨을 확인했다.
+- 관련 문서: [폐기된 Refresh Token 재사용 시 revoke-all이 DB에 반영되지 않은 이유](docs/wiki/auth-reuse-detection-rollback.md)
+
 ## 5. 기술 스택
 
 | 영역         | 기술                                                                                 |
