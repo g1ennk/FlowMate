@@ -6,7 +6,7 @@
 
 - 문제: SSE broadcast가 단일 JVM 메모리 기반이라, 인스턴스 2대 이상에서 cross-instance 이벤트 전파 불가
 - 해결: 정본은 MySQL이므로 메시지 영속성은 불필요. Redis Pub/Sub at-most-once 전달로 인스턴스 간 전파
-- 결과: 통합 테스트 → 로컬 2-JVM(도달률 0→100%) → 부하 30,000건 유실 0% → EC2 채널 실측, 4단계 검증
+- 결과: cross-instance 도달률 0→100%, 부하 30,000건 유실 0% — 통합 테스트·로컬 2-JVM·EC2 채널 4단계 검증
 
 ## 1. 문제 배경 — 단일 JVM broadcast의 한계
 

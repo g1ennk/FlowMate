@@ -65,7 +65,7 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 
 - 문제: SSE broadcast가 단일 JVM 메모리 기반이라, 인스턴스 2대 이상에서 cross-instance 이벤트 전파 불가
 - 해결: 정본은 MySQL이므로 메시지 영속성은 불필요. Redis Pub/Sub at-most-once 전달로 인스턴스 간 전파
-- 결과: 통합 테스트 → 로컬 2-JVM(도달률 0→100%) → 부하 30,000건 유실 0% → EC2 채널 실측, 4단계 검증
+- 결과: cross-instance 도달률 0→100%, 부하 30,000건 유실 0% — 통합 테스트·로컬 2-JVM·EC2 채널 4단계 검증
 - 관련 문서: [Redis Pub/Sub으로 SSE 수평 확장하기](docs/wiki/redis-sse-pubsub.md)
 
 ### 4) Self-hosted 모니터링을 Alloy + Grafana Cloud로 전환하기
@@ -93,9 +93,9 @@ FlowMate는 Todo를 중심으로 태스크와 집중 세션을 한 흐름에서 
 
 ### 3) 폐기된 Refresh Token 재사용 시 revoke-all이 DB에 반영되지 않은 이유
 
-- 문제: 폐기된 RT 재사용 요청은 401로 차단됐지만, 같은 트랜잭션에서 실행한 revoke-all이 예외와 함께 롤백되어 DB에 반영되지 않았다.
-- 해결: revoke-all을 별도 Bean의 `REQUIRES_NEW` 트랜잭션으로 분리해, 실패 응답과 무관하게 먼저 커밋되도록 보장했다.
-- 결과: 브라우저 검증에서 폐기된 RT 재사용 시 같은 사용자의 active RT가 14개에서 0개로 감소하며, revoke-all이 실제 DB에 반영됨을 확인했다.
+- 문제: 폐기된 RT 재사용 요청은 401로 차단됐지만, 같은 트랜잭션에서 실행한 revoke-all이 예외와 함께 롤백되어 DB에 반영되지 않음
+- 해결: revoke-all을 별도 Bean의 `REQUIRES_NEW` 트랜잭션으로 분리해 실패 응답과 무관하게 먼저 커밋
+- 결과: 폐기된 RT 재사용 시 active RT 14개 → 0개, revoke-all DB 반영 확인
 - 관련 문서: [폐기된 Refresh Token 재사용 시 revoke-all이 DB에 반영되지 않은 이유](docs/wiki/auth-reuse-detection-rollback.md)
 
 ## 5. 기술 스택
