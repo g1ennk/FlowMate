@@ -123,14 +123,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         const res = await fetch(buildApiUrl('/auth/refresh'), { method: 'POST', credentials: 'include' })
         if (!res.ok) {
           if (isStaleRefresh()) return
-          // Refresh Token 만료/폐기 → 세션 종료. 게스트 전환이 아닌 로그인 페이지로 유도
-          // (logout()은 게스트 토큰을 발급해 state: guest로 세팅하므로 여기서는 직접 null 처리)
-          try {
-            await fetch(buildApiUrl('/auth/logout'), { method: 'POST', credentials: 'include' })
-          } catch {
-            // 서버 revoke 실패는 무시 (어차피 토큰이 만료됨)
-          }
-          if (isStaleRefresh()) return
+          // Refresh Token 만료/폐기 → 자동 서버 logout 없이 로컬 회원 세션만 종료한다.
+          // stale /auth/refresh 자체는 여전히 BE reuse detection을 발동시킬 수 있지만,
+          // FE가 실패 후 추가 /auth/logout을 보내는 벡터는 여기서 제거한다.
           localStorage.removeItem(storageKeys.guestToken)
           clearAuthMode()
           set({ state: null })

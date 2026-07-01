@@ -59,7 +59,7 @@ describe('authStore refresh coordination', () => {
     })
   })
 
-  it('clears member session without creating a guest session when member refresh fails', async () => {
+  it('clears local member session without calling logout when member refresh fails', async () => {
     window.localStorage.setItem(storageKeys.guestToken, 'stale-guest-token')
     setAuthMode('member')
     useAuthStore.setState({
@@ -71,21 +71,74 @@ describe('authStore refresh coordination', () => {
       initialized: true,
     })
 
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).endsWith('/auth/refresh')) {
         return jsonResponse({ error: { message: 'Unauthorized' } }, { status: 401 })
       }
       if (String(input).endsWith('/auth/logout')) {
-        return new Response(null, { status: 204 })
+        throw new Error('refresh failure must not call logout')
       }
       throw new Error(`unexpected fetch: ${String(input)}`)
     })
+    globalThis.fetch = fetchMock
 
     await useAuthStore.getState().refresh()
+
+    const calledUrls = fetchMock.mock.calls.map(([input]) => String(input))
 
     expect(useAuthStore.getState().state).toBeNull()
     expect(window.localStorage.getItem(storageKeys.guestToken)).toBeNull()
     expect(getAuthMode()).toBeNull()
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/auth\/refresh$/),
+      { method: 'POST', credentials: 'include' },
+    )
+    expect(calledUrls).toHaveLength(1)
+    expect(calledUrls).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/\/auth\/logout$/)]),
+    )
+  })
+
+  it('keeps explicit logout calling logout endpoint before starting guest session', async () => {
+    setAuthMode('member')
+    useAuthStore.setState({
+      state: {
+        type: 'member',
+        accessToken: 'member-token',
+        user: { id: 'user-1', email: null, nickname: 'Glenn' },
+      },
+      initialized: true,
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/logout')) {
+        return new Response(null, { status: 204 })
+      }
+      if (String(input).endsWith('/auth/guest/token')) {
+        return jsonResponse({ guestToken: 'guest-token-after-logout' })
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`)
+    })
+    globalThis.fetch = fetchMock
+
+    await useAuthStore.getState().logout()
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringMatching(/\/auth\/logout$/),
+      { method: 'POST', credentials: 'include' },
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/\/auth\/guest\/token$/),
+      { method: 'POST' },
+    )
+    expect(useAuthStore.getState().state).toEqual({
+      type: 'guest',
+      token: 'guest-token-after-logout',
+    })
+    expect(window.localStorage.getItem(storageKeys.guestToken)).toBe('guest-token-after-logout')
+    expect(getAuthMode()).toBe('guest')
   })
 
   it('does not let a stale member refresh failure clear a newer guest session', async () => {
