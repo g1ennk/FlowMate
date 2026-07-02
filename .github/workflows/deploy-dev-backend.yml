@@ -1,13 +1,17 @@
 name: Deploy Backend (dev)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - 'infra/dev/**'
-      - '.github/workflows/deploy-dev-backend.yml'
+  workflow_dispatch:
+
+  # Dev EC2 is usually stopped to reduce cost.
+  # Keep the original auto-deploy trigger here so it can be restored quickly.
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'backend/**'
+  #     - 'infra/dev/**'
+  #     - '.github/workflows/deploy-dev-backend.yml'
 
 concurrency:
   group: flowmate-dev-ec2-deploy

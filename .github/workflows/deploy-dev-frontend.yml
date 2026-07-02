@@ -1,12 +1,16 @@
 name: Deploy Frontend (dev)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy-dev-frontend.yml'
+  workflow_dispatch:
+
+  # Dev frontend deploy is kept manual while dev backend is usually stopped.
+  # Keep the original auto-deploy trigger here so it can be restored quickly.
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'frontend/**'
+  #     - '.github/workflows/deploy-dev-frontend.yml'
 
 jobs:
   deploy:
