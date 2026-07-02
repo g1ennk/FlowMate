@@ -10,6 +10,7 @@ vi.mock('../features/system/useBackendWatcher', () => ({
 }))
 
 const initialState = useSystemStore.getState()
+const serviceUnavailableTitle = '지금은 운영 시간이 아니에요'
 
 describe('BackendStatusGate', () => {
   beforeEach(() => {
@@ -29,7 +30,7 @@ describe('BackendStatusGate', () => {
     )
     expect(screen.getByText('Flow')).toBeInTheDocument()
     expect(screen.queryByText('children content')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '잠시 쉬는 중이에요' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: serviceUnavailableTitle })).not.toBeInTheDocument()
   })
 
   it('status가 unavailable이면 ServiceUnavailable을 렌더한다', () => {
@@ -39,7 +40,7 @@ describe('BackendStatusGate', () => {
         <div>children content</div>
       </BackendStatusGate>,
     )
-    expect(screen.getByRole('heading', { name: '잠시 쉬는 중이에요' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: serviceUnavailableTitle })).toBeInTheDocument()
     expect(screen.queryByText('children content')).not.toBeInTheDocument()
   })
 
@@ -51,7 +52,7 @@ describe('BackendStatusGate', () => {
       </BackendStatusGate>,
     )
     expect(screen.getByText('children content')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '잠시 쉬는 중이에요' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: serviceUnavailableTitle })).not.toBeInTheDocument()
   })
 
   it('useBackendWatcher 훅을 호출한다', async () => {
