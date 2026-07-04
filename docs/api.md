@@ -1,8 +1,8 @@
-# API Reference – FlowMate
+# API Reference - FlowMate
 
 > Last updated: 2026-06-25
 >
-> 관련 문서: [Architecture](architecture.md) · [Data Model](data-model.md)
+> 관련 문서: [Architecture](architecture.md), [Data Model](data-model.md)
 
 Base URL: `/api`
 
@@ -13,14 +13,14 @@ Base URL: `/api`
 
 ## 0. 공통 규칙
 
-| 규칙                | 설명                                                                                                                                    |
-|-------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| Guest JWT         | `localStorage`에 90일 보관한다. 비로그인 사용자도 같은 API를 사용할 수 있게 하는 식별 토큰이다.                                                                      |
-| Member Access JWT | 메모리(JS)에만 보관한다. 인증이 필요한 요청은 `Authorization: Bearer {token}` 헤더를 사용한다.                                                                 |
-| Refresh Token     | HttpOnly 쿠키로만 전송한다. refresh 시 기존 RT 1개를 revoke하고 새 RT를 발급한다.                                                                          |
-| SSE               | `GET /api/timer/sse`만 EventSource 제약 때문에 쿼리 파라미터 `token`을 사용한다. 상세 배경은 [architecture.md — SSE 아키텍처](./architecture.md#3-sse-아키텍처) 참고. |
-| 리스트 응답            | 대부분 `{ "items": [...] }` 형태의 `ListResponse<T>`를 사용한다. 예외는 `GET /api/timer/state`의 직접 배열 반환이다.                                         |
-| 도메인 용어            | `MiniDay`, `dayOrder`, `TodoSession`, `TimerState` 등 용어 정의는 [data-model.md — 개념적 모델링](./data-model.md#1-개념적-모델링) 참고.                  |
+| 규칙                | 설명                                                                                                                                   |
+|-------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| Guest JWT         | `localStorage`에 90일 보관한다. 비로그인 사용자도 같은 API를 사용할 수 있게 하는 식별 토큰이다.                                                                     |
+| Member Access JWT | 메모리(JS)에만 보관한다. 인증이 필요한 요청은 `Authorization: Bearer {token}` 헤더를 사용한다.                                                                |
+| Refresh Token     | HttpOnly 쿠키로만 전송한다. refresh 시 기존 RT 1개를 revoke하고 새 RT를 발급한다.                                                                         |
+| SSE               | `GET /api/timer/sse`만 EventSource 제약 때문에 쿼리 파라미터 `token`을 사용한다. 상세 배경은 [architecture.md의 SSE 아키텍처](./architecture.md#3-sse-아키텍처) 참고. |
+| 리스트 응답            | 대부분 `{ "items": [...] }` 형태의 `ListResponse<T>`를 사용한다. 예외는 `GET /api/timer/state`의 직접 배열 반환이다.                                        |
+| 도메인 용어            | `MiniDay`, `dayOrder`, `TodoSession`, `TimerState` 등 용어 정의는 [data-model.md의 개념적 모델링](./data-model.md#1-개념적-모델링) 참고.                  |
 
 ## 1. 인증
 
@@ -160,7 +160,7 @@ Set-Cookie: 새 `refreshToken`으로 교체
 **Errors**
 
 - `401 Unauthorized` `refreshToken` 쿠키 없음 (controller 가 직접 반환, body 비어 있을 수 있음)
-- `401 AUTHENTICATION_FAILED` `refreshToken` 무효 · 만료 · 폐기 (서비스 예외 → `AuthenticationFailedException`)
+- `401 AUTHENTICATION_FAILED` `refreshToken` 무효, 만료, 폐기 (서비스 예외 -> `AuthenticationFailedException`)
 
 - 쿠키가 없으면 controller 가 즉시 `401` 을 반환한다.
 - 쿠키는 있지만 토큰 검증에 실패하면 service 가 `AuthenticationFailedException` 을 던져 `GlobalExceptionHandler` 가 `401` JSON 응답으로 매핑한다.
@@ -211,8 +211,8 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 쿼리 파라미터 (상호 배타):
 
-- `date` optional, `YYYY-MM-DD` — 단일 날짜 조회
-- `from` + `to` optional, `YYYY-MM-DD` — 기간 범위 조회 (둘 다 주어야 하며 `from <= to`)
+- `date` optional, `YYYY-MM-DD`: 단일 날짜 조회
+- `from` + `to` optional, `YYYY-MM-DD`: 기간 범위 조회 (둘 다 주어야 하며 `from <= to`)
 - `date`와 `from`/`to`를 동시에 주면 `400 BAD_REQUEST`
 - `from`/`to` 중 하나만 주거나 `from > to`이면 `400 BAD_REQUEST`
 - 모두 생략하면 사용자 전체 Todo를 `date ASC`, `miniDay ASC`, `dayOrder ASC`, `createdAt ASC` 순으로 반환한다.
@@ -475,7 +475,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 Member Access JWT 전용.
 
-> 멀티탭·기기 간 타이머 상태 일관성을 위해 SSE 브로드캐스트를 사용한다.
+> 멀티탭과 기기 간 타이머 상태 일관성을 위해 SSE 브로드캐스트를 사용한다.
 > 클라이언트는 `version` 단조 증가 값을 기준으로 이벤트 중복 적용을 방지한다.
 
 ### 4.1 SSE 구독
@@ -497,7 +497,7 @@ Member Access JWT 전용.
 **재연결**
 
 - 브라우저 `EventSource`는 끊기면 자동 재연결한다.
-- 앱 초기화·회원 복원 시 `GET /api/timer/state`로 스냅샷을 fetch하고, SSE `timer-state` 이벤트는 `version`으로 비교해 중복 적용을 막는다.
+- 앱 초기화와 회원 복원 시 `GET /api/timer/state`로 스냅샷을 fetch하고, SSE `timer-state` 이벤트는 `version`으로 비교해 중복 적용을 막는다.
 
 **Errors**
 
@@ -803,8 +803,8 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 **Response**
 
-- `200 OK` — 회고가 존재하면 `Review` 본문 반환
-- `204 No Content` — 해당 기간의 회고가 없는 경우 (본문 없음)
+- `200 OK`: 회고가 존재하면 `Review` 본문 반환
+- `204 No Content`: 해당 기간의 회고가 없는 경우 (본문 없음)
 
 ---
 
@@ -887,28 +887,28 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 }
 ```
 
-| 코드 / 상태                    | HTTP | 설명                                                                             |
-|----------------------------|------|--------------------------------------------------------------------------------|
-| `VALIDATION_ERROR`         | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                                                    |
-| `BAD_REQUEST`              | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, VO 불변식 위반 등                                            |
-| `AUTHENTICATION_FAILED`    | 401  | JWT · Refresh Token · SSE subscribe 토큰 검증 실패 (`AuthenticationFailedException`) |
-| `NOT_FOUND`                | 404  | 리소스 없음 또는 타 사용자 소유                                                             |
-| `METHOD_NOT_ALLOWED`       | 405  | 경로는 존재하지만 HTTP 메서드가 미지원                                                        |
-| `CONFLICT`                 | 409  | 데드락 retry 소진 등 일시적 충돌                                                          |
-| `IDEMPOTENCY_CONFLICT`     | 409  | 동일 idempotency key 재사용 + payload 불일치 (세션 `sessionFocusSeconds` mismatch 등)     |
-| `AI_QUOTA_EXCEEDED`        | 429  | Gemini API quota 초과 — `AI 서비스가 일시적으로 사용량이 초과되었습니다`                             |
-| `AI_SERVICE_UNAVAILABLE`   | 503  | Gemini API 503 — `AI 서비스가 일시적으로 사용 불가 상태입니다. 잠시 후 다시 시도해 주세요`                  |
-| `REPORT_GENERATION_FAILED` | 500  | Gemini 응답 파싱 실패, 필수 필드 누락 (`AI report generation failed`)                      |
-| `BAD_REQUEST`              | 400  | 요청 본문 파싱 실패 (malformed JSON 등)                                                 |
-| `INTERNAL_ERROR`           | 500  | 처리되지 않은 예외, 방어 코드 ISE                                                          |
-| `UNAUTHORIZED`             | 401  | Spring Security 인증 실패. body 가 비어 있을 수 있음                                       |
-| `FORBIDDEN`                | 403  | Spring Security 인가 실패. body 가 비어 있을 수 있음                                       |
+| 코드 / 상태                    | HTTP | 설명                                                                           |
+|----------------------------|------|------------------------------------------------------------------------------|
+| `VALIDATION_ERROR`         | 400  | `@Valid`, 제약조건 위반, 필드 단위 오류                                                  |
+| `BAD_REQUEST`              | 400  | 서비스 규칙 위반, 잘못된 파라미터 조합, VO 불변식 위반 등                                          |
+| `AUTHENTICATION_FAILED`    | 401  | JWT, Refresh Token, SSE subscribe 토큰 검증 실패 (`AuthenticationFailedException`) |
+| `NOT_FOUND`                | 404  | 리소스 없음 또는 타 사용자 소유                                                           |
+| `METHOD_NOT_ALLOWED`       | 405  | 경로는 존재하지만 HTTP 메서드가 미지원                                                      |
+| `CONFLICT`                 | 409  | 데드락 retry 소진 등 일시적 충돌                                                        |
+| `IDEMPOTENCY_CONFLICT`     | 409  | 동일 idempotency key 재사용 + payload 불일치 (세션 `sessionFocusSeconds` mismatch 등)   |
+| `AI_QUOTA_EXCEEDED`        | 429  | Gemini API quota 초과. `AI 서비스가 일시적으로 사용량이 초과되었습니다`                            |
+| `AI_SERVICE_UNAVAILABLE`   | 503  | Gemini API 503. `AI 서비스가 일시적으로 사용 불가 상태입니다. 잠시 후 다시 시도해 주세요`                 |
+| `REPORT_GENERATION_FAILED` | 500  | Gemini 응답 파싱 실패, 필수 필드 누락 (`AI report generation failed`)                    |
+| `BAD_REQUEST`              | 400  | 요청 본문 파싱 실패 (malformed JSON 등)                                               |
+| `INTERNAL_ERROR`           | 500  | 처리되지 않은 예외, 방어 코드 ISE                                                        |
+| `UNAUTHORIZED`             | 401  | Spring Security 인증 실패. body 가 비어 있을 수 있음                                     |
+| `FORBIDDEN`                | 403  | Spring Security 인가 실패. body 가 비어 있을 수 있음                                     |
 
 참고:
 
 - `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 retry 소진) 에만 사용된다. `IDEMPOTENCY_CONFLICT` 는 별도 code 로 구분.
 - `GET /api/timer/sse` 는 SecurityFilter 가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member 가
-  `401 AUTHENTICATION_FAILED` 로 내려온다 (이전 버전에서는 400 이었음 — Phase 2 에서 semantic 정합 교체).
+  `401 AUTHENTICATION_FAILED` 로 내려온다 (이전 버전에서는 400 이었고, Phase 2에서 semantic 정합 교체).
 - `UNAUTHORIZED`, `FORBIDDEN` 은 Spring Security 가 만드는 HTTP 상태이며, `ApiError.error.code` 를 항상 의미하지는 않는다. 서비스 레이어에서 던지는 도메인
   401 은 `AUTHENTICATION_FAILED` code 를 사용한다.
 - `429 TOO_MANY_REQUESTS` 는 AI 리포트 quota 보호 외에는 사용하지 않는다 (애플리케이션 자체 throttle 미적용).
@@ -917,7 +917,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 ## 8. AI 리포트 (Reports)
 
-KPT 형식의 일간/주간/월간 회고 리포트를 Gemini API로 생성·저장한다. 모든 엔드포인트는 멤버 JWT 전용 (게스트 차단).
+KPT 형식의 일간/주간/월간 회고 리포트를 Gemini API로 생성하고 저장한다. 모든 엔드포인트는 멤버 JWT 전용 (게스트 차단).
 
 **대표 Report 응답 (200 OK)**
 
@@ -953,16 +953,16 @@ KPT 형식의 일간/주간/월간 회고 리포트를 Gemini API로 생성·저
 2. 해당 기간의 todos 조회 (todos 0개면 400 BAD_REQUEST + "생성할 데이터가 없습니다")
 3. MONTHLY인 경우 weekly reviews 추가 조회
 4. Gemini API 호출 (gemini-2.5-flash, `responseMimeType=application/json`)
-5. `(user_id, type, period_start)` UNIQUE 키 기준 upsert — 재호출 시 같은 row 덮어쓰기
+5. `(user_id, type, period_start)` UNIQUE 키 기준 upsert. 재호출 시 같은 row 덮어쓰기
 
 **Responses**:
 
-- `200 OK` — Report 본문
-- `400 BAD_REQUEST` — todos 0개 또는 validation 오류
-- `401 UNAUTHORIZED` — 토큰 누락/만료/게스트 토큰
-- `429 AI_QUOTA_EXCEEDED` — Gemini quota 초과
-- `503 AI_SERVICE_UNAVAILABLE` — Gemini 일시 장애
-- `500 REPORT_GENERATION_FAILED` — Gemini 응답 파싱 실패
+- `200 OK`: Report 본문
+- `400 BAD_REQUEST`: todos 0개 또는 validation 오류
+- `401 UNAUTHORIZED`: 토큰 누락/만료/게스트 토큰
+- `429 AI_QUOTA_EXCEEDED`: Gemini quota 초과
+- `503 AI_SERVICE_UNAVAILABLE`: Gemini 일시 장애
+- `500 REPORT_GENERATION_FAILED`: Gemini 응답 파싱 실패
 
 ### 8.2 리포트 단건 조회
 
@@ -972,7 +972,7 @@ KPT 형식의 일간/주간/월간 회고 리포트를 Gemini API로 생성·저
 
 **Responses**:
 
-- `200 OK` — Report 본문
-- `204 NO CONTENT` — 해당 키 조합 없음 (오류 아님)
-- `400 BAD_REQUEST` — query 검증 오류
-- `401 UNAUTHORIZED` — 인증/권한 오류
+- `200 OK`: Report 본문
+- `204 NO CONTENT`: 해당 키 조합 없음 (오류 아님)
+- `400 BAD_REQUEST`: query 검증 오류
+- `401 UNAUTHORIZED`: 인증/권한 오류

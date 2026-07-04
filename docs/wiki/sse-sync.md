@@ -5,17 +5,17 @@
 ## 요약
 
 - 문제: 타이머 상태가 Zustand + localStorage 기반이라, 같은 계정이어도 기기 간 상태 공유 불가
-- 해결: 서버 → 클라이언트 단방향 push만 필요하므로 SSE + REST 조합으로 인프라 추가 없이 구현
-- 결과: 타이머 조작이 모든 기기에 즉시 반영, version 단조 증가로 이벤트 역전 방지. k6 163,205건 에러율 0%
+- 해결: 서버 -> 클라이언트 단방향 push만 필요하므로 SSE + REST 조합으로 인프라 추가 없이 구현
+- 결과: 타이머 조작이 모든 기기에 즉시 반영, version 단조 증가로 이벤트 역전 방지. k6 163,205건 에러율 0%, p95 45.58ms
 
-## 1. 문제 배경 — 기기 간 상태 공유 부재
+## 1. 문제 배경: 기기 간 상태 공유 부재
 
 FlowMate의 타이머는 초기에 Zustand 스토어 + localStorage로만 관리됐다.
 
 한 기기 안에서는 새로고침해도 타이머가 유지됐지만, 기기 간에는 상태가 전혀 공유되지 않았다.
 
 ```text
-Desktop: 25분 포모도로 시작 (running)
+Desktop: 25분 뽀모도로 시작 (running)
                 ↓ 사용자가 모바일로 전환
 Mobile:  타이머 없음 (idle) ❌
 ```
@@ -24,23 +24,23 @@ Mobile:  타이머 없음 (idle) ❌
 
 게스트는 동기화 대상에서 제외한다. 게스트 토큰은 기기별로 독립된 정체성을 가지므로, 두 기기가 같은 게스트 계정을 공유할 경로가 없다.
 
-## 2. 기술 선택 — WebSocket vs Polling vs SSE
+## 2. 기술 선택: WebSocket vs Polling vs SSE
 
-핵심 판단 기준은 데이터 흐름의 비대칭이었다. 클라이언트 → 서버는 start/pause/resume/stop 시점에만 발생하므로 REST PUT으로 충분하지만, 서버 → 클라이언트는 다른 기기의 변경을 즉시 알려야
+핵심 판단 기준은 데이터 흐름의 비대칭이었다. 클라이언트 -> 서버는 start/pause/resume/stop 시점에만 발생하므로 REST PUT으로 충분하지만, 서버 -> 클라이언트는 다른 기기의 변경을 즉시 알려야
 하므로 push가 필요하다.
 
-| 방식                | 장점                              | 단점                             | 판단     |
-|-------------------|---------------------------------|--------------------------------|--------|
-| WebSocket (STOMP) | 완전한 양방향 실시간 채널                  | 메시지 브로커 인프라, 세션·구독 관리 복잡도      | 과잉     |
-| Polling           | 구현 단순, 인프라 변경 없음                | 실시간성 부족, 빈 응답 트래픽 낭비           | 부적합    |
-| **SSE + REST**    | HTTP 표준, Spring `SseEmitter` 내장 | 클라이언트 → 서버 단방향 불가 (REST 병행 필요) | **채택** |
+| 방식                | 장점                              | 단점                              | 판단     |
+|-------------------|---------------------------------|---------------------------------|--------|
+| WebSocket (STOMP) | 완전한 양방향 실시간 채널                  | 메시지 브로커 인프라, 세션과 구독 관리 복잡도      | 과잉     |
+| Polling           | 구현 단순, 인프라 변경 없음                | 실시간성 부족, 빈 응답 트래픽 낭비            | 부적합    |
+| **SSE + REST**    | HTTP 표준, Spring `SseEmitter` 내장 | 클라이언트 -> 서버 단방향 불가 (REST 병행 필요) | **채택** |
 
 ### SSE + REST를 선택한 이유
 
 WebSocket(STOMP)은 양방향 채널이 강력하지만, 타이머 동기화에는 단방향 push면 충분하다. 브로커 인프라까지 따라오는 복잡도는 현재 요구사항에 비해 과잉이었다. Polling은 인프라가 가장
 단순하지만, 페이즈 전환 순간 다른 기기에서 몇 초간 이전 상태가 보이는 경험은 부적합했다.
 
-SSE는 서버 → 클라이언트 단방향 push에 정확히 맞는다. HTTP 표준이라 Nginx 설정만으로 동작하고, Spring이 `SseEmitter`를 내장 지원해 추가 라이브러리 없이 구현할 수 있다.
+SSE는 서버 -> 클라이언트 단방향 push에 정확히 맞는다. HTTP 표준이라 Nginx 설정만으로 동작하고, Spring이 `SseEmitter`를 내장 지원해 추가 라이브러리 없이 구현할 수 있다.
 
 ## 3. 아키텍처
 
@@ -89,13 +89,13 @@ CREATE TABLE timer_states
 CREATE INDEX idx_timer_states_user ON timer_states (user_id, updated_at DESC);
 ```
 
-| 컬럼                      | 설계 결정                                         |
-|-------------------------|-----------------------------------------------|
-| `todo_id` PK            | Todo와 1:1 관계, 별도 합성 ID 불필요                    |
-| `user_id`               | broadcast 대상 조회 + 인덱스 키                       |
-| `state_json`            | `NULL`이면 idle, JSON이면 활성 상태                   |
-| `version`               | 이벤트 최신성 판단 기준값, 변경 시마다 단조 증가                  |
-| `idx_timer_states_user` | `user_id, updated_at DESC` — 사용자별 최근 상태 조회 커버 |
+| 컬럼                      | 설계 결정                                        |
+|-------------------------|----------------------------------------------|
+| `todo_id` PK            | Todo와 1:1 관계, 별도 합성 ID 불필요                   |
+| `user_id`               | broadcast 대상 조회 + 인덱스 키                      |
+| `state_json`            | `NULL`이면 idle, JSON이면 활성 상태                  |
+| `version`               | 이벤트 최신성 판단 기준값, 변경 시마다 단조 증가                 |
+| `idx_timer_states_user` | `user_id, updated_at DESC`. 사용자별 최근 상태 조회 커버 |
 
 ### 4.2 `version` 단조 증가 방식
 
@@ -119,7 +119,7 @@ A의 클라이언트가 늦게 도착한 자신의 pause(v=100)를 수신
 → seenVersion[todoId] = 101 > 100 이므로 무시
 ```
 
-### 4.3 Soft Delete — state_json = NULL
+### 4.3 Soft Delete: state_json = NULL
 
 타이머를 정지하면 행을 삭제하지 않고 `state_json`을 `NULL`로 설정한다.
 
@@ -132,7 +132,7 @@ v=102: running   state_json = "{...}"
 이유는 **version 연속성**이다. 만약 idle 시점에 행을 삭제하면 v=102에서 새 행이 생기고, 다른 기기는 v=101(삭제됨)과 v=102(새로 생긴) 사이의 관계를 판단할 수 없다. `NULL`로
 유지하면 같은 row의 version이 단조 증가하므로 모든 기기가 정확히 최신 상태를 판별할 수 있다.
 
-### 4.4 SseEmitterRegistry — 연결 관리와 broadcast
+### 4.4 SseEmitterRegistry: 연결 관리와 broadcast
 
 SseEmitterRegistry는 같은 `userId`의 여러 SSE 연결을 추적하고 broadcast를 담당한다.
 
@@ -143,7 +143,7 @@ private record ConnectionEntry(String internalId, SseEmitter emitter, ScheduledF
 }
 ```
 
-멀티 연결 등록·제거가 동시에 발생하므로 `ConcurrentHashMap` + `CopyOnWriteArrayList`로 thread-safe하게 관리한다.
+멀티 연결 등록과 제거가 동시에 발생하므로 `ConcurrentHashMap` + `CopyOnWriteArrayList`로 thread-safe하게 관리한다.
 
 - `userId` 키 아래에 여러 `ConnectionEntry`를 보관 (PC + 모바일 + 다중 탭)
 - 각 연결의 `internalId`로 제거 시점 식별
@@ -160,7 +160,7 @@ emitter.onError(e -> removeEntry(userId, internalId));
 emitter.send(SseEmitter.event().name("connected").data("ok"));
 ```
 
-연결 직후 `connected` 이벤트를 1회 전송해 클라이언트가 SSE 진입 성공을 즉시 확인할 수 있게 한다. 정상 완료·timeout·오류 중 어떤 이유로 끊기든 정리 로직은 동일하므로 세 콜백 모두
+연결 직후 `connected` 이벤트를 1회 전송해 클라이언트가 SSE 진입 성공을 즉시 확인할 수 있게 한다. 정상 완료, timeout, 오류 중 어떤 이유로 끊기든 정리 로직은 동일하므로 세 콜백 모두
 `removeEntry`를 호출한다.
 
 #### 25초 heartbeat
@@ -178,13 +178,13 @@ emitter.send(SseEmitter.event().name("connected").data("ok"));
 `broadcast`는 같은 `userId`의 모든 emitter에 이벤트를 순차 전송하되, 개별 전송 실패 시 해당 연결만 정리하고 예외는 삼킨다. 끊긴 연결의 전송 실패가 나머지 기기 전파를 중단시키지 않도록
 격리하기 위해서다. 정본은 MySQL에 이미 저장된 상태이므로, 전파 실패가 데이터 손실로 이어지지는 않는다.
 
-#### self-echo — 발신자 식별 없이 전체 broadcast
+#### self-echo: 발신자 식별 없이 전체 broadcast
 
 `broadcast`는 같은 `userId`의 모든 SSE 연결에 동일한 이벤트를 전송한다. 따라서 `PUT`을 일으킨 발신자 기기도 자기 이벤트를 다시 수신한다(self-echo).
 
 발신자를 제외하는 방식도 가능하지만, 서버 로직을 단순하게 유지하기 위해 발신자가 자기 이벤트를 받더라도 `version` 비교로 중복 적용을 방지한다.
 
-### 4.5 SSE 인증 — 쿼리 파라미터 기반 토큰 전달
+### 4.5 SSE 인증: 쿼리 파라미터 기반 토큰 전달
 
 브라우저 표준 `EventSource` API는 커스텀 `Authorization` 헤더 설정을 지원하지 않는다.
 
@@ -196,7 +196,7 @@ new EventSource('/api/timer/sse', {headers: {'Authorization': 'Bearer ...'}})
 new EventSource(`/api/timer/sse?token=${encodeURIComponent(token)}`)
 ```
 
-서버는 쿼리 파라미터로 받은 토큰을 `parseToken` 한 번으로 만료·서명을 동시 검증하고, `role=member`가 아니면 401로 거절한다.
+서버는 쿼리 파라미터로 받은 토큰을 `parseToken` 한 번으로 만료와 서명을 동시 검증하고, `role=member`가 아니면 401로 거절한다.
 
 | 방식                       | 장점                                   | 단점                            | 판단     |
 |--------------------------|--------------------------------------|-------------------------------|--------|
@@ -219,9 +219,9 @@ new EventSource(`/api/timer/sse?token=${encodeURIComponent(token)}`)
 | soft delete        | `TimerServiceTest`       | idle 시 `stateJson = null` 설정, 활성 조회 시 idle row 제외             |
 | broadcast 실패 격리    | `SseEmitterRegistryTest` | 전송 실패 시 예외를 호출자에게 전파하지 않음                                     |
 | 다중 연결 broadcast    | `SseEmitterRegistryTest` | 같은 userId의 모든 emitter에 이벤트 전달                                 |
-| SSE 인증 — member 허용 | `TimerControllerTest`    | 유효한 member 토큰이면 `SseEmitterRegistry.register()` 호출            |
-| SSE 인증 — guest 차단  | `TimerControllerTest`    | `role ≠ member`이면 401                                         |
-| SSE 인증 — 무효 토큰     | `TimerControllerTest`    | 서명·만료 검증 실패 시 401                                             |
+| SSE 인증: member 허용  | `TimerControllerTest`    | 유효한 member 토큰이면 `SseEmitterRegistry.register()` 호출            |
+| SSE 인증: guest 차단   | `TimerControllerTest`    | `role ≠ member`이면 401                                         |
+| SSE 인증: 무효 토큰      | `TimerControllerTest`    | 서명과 만료 검증 실패 시 401                                            |
 
 ### 5.2 k6 부하 테스트
 
@@ -238,22 +238,22 @@ dev 환경에 k6 baseline 부하를 걸어 163,205건 요청에서 에러율 0%�
 
 이번 구조의 핵심 트레이드오프는 인프라 단순성과 정본 단일화를 우선하여 결정했다.
 
-| 결정                    | 얻은 것            | 감수한 비용         | 판단                 |
-|-----------------------|-----------------|----------------|--------------------|
-| **SSE + REST**        | 단순 인프라, 내장 지원   | REST 병행 필요     | 단방향 push로 충분       |
-| **MySQL 단일 정본**       | 정본 단일화          | 초기 로딩 시 서버 의존  | snapshot fetch로 보완 |
-| **단조 증가 version**     | 역전을 정수 하나로 해결   | replay 없음      | LWW 구조에 충분         |
-| **state_json = NULL** | version 연속성 유지  | idle row 잔존    | 연속성 우선             |
-| **25초 heartbeat**     | 중간망 단절·죽은 연결 감지 | 주기적 트래픽        | 타임아웃만으로 중간망 통제 불가  |
-| **fire-and-forget**   | 실패 격리           | 일부 SSE 누락 가능   | 재접속 snapshot으로 복구  |
-| **self-echo**         | 서버 로직 단순화       | 발신자도 자기 이벤트 수신 | version 비교로 처리     |
-| **query param 토큰**    | 기존 토큰 재사용       | URL 노출 위험      | 짧은 TTL + HTTPS로 수용 |
+| 결정                    | 얻은 것             | 감수한 비용         | 판단                 |
+|-----------------------|------------------|----------------|--------------------|
+| **SSE + REST**        | 단순 인프라, 내장 지원    | REST 병행 필요     | 단방향 push로 충분       |
+| **MySQL 단일 정본**       | 정본 단일화           | 초기 로딩 시 서버 의존  | snapshot fetch로 보완 |
+| **단조 증가 version**     | 역전을 정수 하나로 해결    | replay 없음      | LWW 구조에 충분         |
+| **state_json = NULL** | version 연속성 유지   | idle row 잔존    | 연속성 우선             |
+| **25초 heartbeat**     | 중간망 단절과 죽은 연결 감지 | 주기적 트래픽        | 타임아웃만으로 중간망 통제 불가  |
+| **fire-and-forget**   | 실패 격리            | 일부 SSE 누락 가능   | 재접속 snapshot으로 복구  |
+| **self-echo**         | 서버 로직 단순화        | 발신자도 자기 이벤트 수신 | version 비교로 처리     |
+| **query param 토큰**    | 기존 토큰 재사용        | URL 노출 위험      | 짧은 TTL + HTTPS로 수용 |
 
 ## 7. 회고
 
 ### 단방향 push만으로 동기화 요구사항을 충족했다
 
-타이머 동기화에 양방향 채널은 필요하지 않았다. 서버 → 클라이언트 단방향 push만으로 요구사항을 충족했고, SSE + REST 조합으로 별도 인프라 없이 구현할 수 있었다. 이벤트 역전 문제는 단조 증가
+타이머 동기화에 양방향 채널은 필요하지 않았다. 서버 -> 클라이언트 단방향 push만으로 요구사항을 충족했고, SSE + REST 조합으로 별도 인프라 없이 구현할 수 있었다. 이벤트 역전 문제는 단조 증가
 `version`을 적용해 클라이언트가 자신이 마지막으로 적용한 version보다 작은 이벤트를 무시하는 것으로 해결했다.
 
 ### SSE는 코드 구현만으로 끝나지 않았다

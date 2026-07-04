@@ -60,8 +60,9 @@ public class SseEmitterRegistry {
     }
 
     // broadcast 는 fire-and-forget.
-    // 전송 실패로 예외를 호출자에게 던지면 upsertState 의 DB 트랜잭션이 롤백되어 정본 저장이 사라진다.
-    // 어떤 예외든 삼키고 dead connection 만 정리한다.
+    // Redis 구독 후 sseDispatchExecutor 의 비동기 fan-out(SseLocalDispatcher)에서 호출되므로
+    // DB 정본은 이미 커밋된 상태다. 전송 실패가 같은 사용자의 나머지 emitter 전송을
+    // 끊지 않도록 어떤 예외든 삼키고 dead connection 만 정리한다.
     public void broadcast(String userId, SseEmitter.SseEventBuilder event) {
         CopyOnWriteArrayList<ConnectionEntry> entries = connections.get(userId);
         if (entries == null) return;

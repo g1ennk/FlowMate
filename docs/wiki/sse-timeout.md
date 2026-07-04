@@ -1,21 +1,23 @@
 # SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout
 
+> 선행 문서: [SSE로 멀티디바이스 타이머 동기화하기](sse-sync.md)
+
 ## 요약
 
-- 문제: SSE 도입 직후 두 단계로 연결 실패 — Workbox가 SSE를 가로채 `ERR_FAILED`, 해결 후에도 Nginx 60초 idle timeout으로 504
+- 문제: SSE 도입 직후 두 단계로 연결 실패. Workbox가 SSE를 가로채 `ERR_FAILED`, 해결 후에도 Nginx 60초 idle timeout으로 504
 - 해결: Workbox에서 SSE 경로 제외 + Nginx SSE 전용 location 분리 + 25초 heartbeat + Spring async timeout 정렬
-- 결과: SSE 1시간 이상 안정 유지, nginx 504 · `AsyncRequestTimeoutException` 모두 0건
+- 결과: SSE 1시간 이상 안정 유지, nginx 504와 `AsyncRequestTimeoutException` 모두 0건
 
 ## 1. 문제 배경
 
-FlowMate의 타이머는 [SSE로 멀티디바이스 동기화](sse-sync.md)한다. dev 환경에 처음 올린 직후 두 단계로 에러가 발견됐다.
+FlowMate의 타이머는 [SSE로 멀티디바이스 타이머 동기화](sse-sync.md)를 지원한다. dev 환경에 처음 올린 직후 두 단계로 에러가 발견됐다.
 
-1. 유저 로그인 직후 SSE 연결이 곧장 실패 — 콘솔에 `ERR_FAILED`·`workbox no-response`·CORS
-2. 위 문제 해결 후 SSE가 연결되기 시작했지만, 정확히 60초 경계에서 끊김 — 콘솔에 `ERR_HTTP2_PROTOCOL_ERROR 200 (OK)`·`504`·CORS
+1. 유저 로그인 직후 SSE 연결이 곧장 실패. 콘솔에 `ERR_FAILED`, `workbox no-response`, CORS
+2. 위 문제 해결 후 SSE가 연결되기 시작했지만, 정확히 60초 경계에서 끊김. 콘솔에 `ERR_HTTP2_PROTOCOL_ERROR 200 (OK)`, `504`, CORS
 
 두 에러 모두 브라우저 콘솔에 CORS 메시지가 함께 표시됐다.
 
-## 2. 원인 1 — Workbox 서비스워커와 SSE 충돌
+## 2. 원인 1: Workbox 서비스워커와 SSE 충돌
 
 ### 증상
 
@@ -37,12 +39,12 @@ workbox-*.js: no-response
 
 ### 시도: Bypass for network
 
-Chrome DevTools → Application → Service Workers → **Bypass for network** 토글을 켜자 모든 오류가 사라졌다. 브라우저가 백엔드와 직접 통신할 때는 정상이고
+Chrome DevTools -> Application -> Service Workers -> **Bypass for network** 토글을 켜자 모든 오류가 사라졌다. 브라우저가 백엔드와 직접 통신할 때는 정상이고
 service worker가 개입할 때만 실패한다는 의미로 백엔드 CORS 문제에서 service worker 충돌로 좁혀졌다.
 
 ### 실제 원인
 
-FlowMate는 PWA라 Workbox 서비스워커가 `/api/*` 전체를 `NetworkOnly`로 라우팅하고 있었다. 문제는 일반 REST와 SSE의 성격이 다르다는 점이다. REST는 "요청 → 응답"이 한
+FlowMate는 PWA라 Workbox 서비스워커가 `/api/*` 전체를 `NetworkOnly`로 라우팅하고 있었다. 문제는 일반 REST와 SSE의 성격이 다르다는 점이다. REST는 "요청 -> 응답"이 한
 번에 끝나는 단건 통신이라 서비스워커도 이를 가정한다. 반면 SSE의 `EventSource`는 한 번 요청한 뒤 응답이 **수십 분에서 수 시간 열린 채로 유지**되는 long-lived 스트림이다.
 
 서비스워커의 fetch 핸들러는 끝나지 않는 응답을 처리하지 못해 SSE 요청에 `ERR_FAILED` + `workbox no-response`를 던졌고, 브라우저는 이 실패를 CORS 메시지로 연쇄 출력했다.
@@ -74,7 +76,7 @@ workbox: {
 
 배포 후 SSE 요청이 백엔드까지 도달했지만, 연결 직후 정확히 60초에 다시 끊기는 새로운 에러가 드러났다.
 
-## 3. 원인 2 — Nginx 60초 idle timeout과 heartbeat 부재
+## 3. 원인 2: Nginx 60초 idle timeout과 heartbeat 부재
 
 ### 증상
 
@@ -93,26 +95,26 @@ No 'Access-Control-Allow-Origin' header
 | 계층               | 사고 당시 상태                                        | 결과                                |
 |------------------|-------------------------------------------------|-----------------------------------|
 | Nginx            | SSE 전용 location 없음, `proxy_read_timeout 60s` 기본 | 60초 idle 시 504                    |
-| Backend          | heartbeat·`connected` 이벤트 없음                    | SSE idle 유지 → timeout 발화          |
+| Backend          | heartbeat와 `connected` 이벤트 없음                   | SSE idle 유지 -> timeout 발화         |
 | Spring MVC async | `request-timeout` 미명시                           | `AsyncRequestTimeoutException` 반복 |
 
 세 계층 모두 long-lived SSE 스트림을 가정하지 않은 기본값 상태였다.
 
 ### 해결
 
-**1. Nginx — SSE 전용 location 분리**
+**1. Nginx: SSE 전용 location 분리**
 
 [`nginx.conf`](../../infra/dev/config/nginx/nginx.conf#L49-L69)에 SSE 전용 location을 분리했다.
 
 ```nginx
-# = exact match — /api prefix 블록보다 먼저 평가되어 일반 블록의 60초 timeout에 걸리지 않음
+# = exact match. /api prefix 블록보다 먼저 평가되어 일반 블록의 60초 timeout에 걸리지 않음
 location = /api/timer/sse {
     proxy_pass http://127.0.0.1:8080;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     # proxy_set_header (Host, X-Real-IP 등) 생략
 
-    # SSE 청크 즉시 전달 — 켜져 있으면 nginx가 청크를 모았다 한 번에 전달해 실시간 push 지연
+    # SSE 청크 즉시 전달. 켜져 있으면 nginx가 청크를 모았다 한 번에 전달해 실시간 push 지연
     proxy_buffering off;
     proxy_cache off;
     chunked_transfer_encoding off;
@@ -124,7 +126,7 @@ location = /api/timer/sse {
 }
 ```
 
-**2. Backend — heartbeat 추가**
+**2. Backend: heartbeat 추가**
 
 [`SseEmitterRegistry`](../../backend/src/main/java/kr/io/flowmate/timer/service/SseEmitterRegistry.java#L21-L42)에서 25초마다
 heartbeat를 보내 nginx가 upstream을 살아있다고 인식하게 했다.
@@ -145,7 +147,7 @@ public SseEmitter register(String userId) {
 }
 ```
 
-**3. Spring MVC async — timeout 정렬 + 예외 매핑**
+**3. Spring MVC async: timeout 정렬 + 예외 매핑**
 
 Spring async timeout은 총 시간 기준이라 heartbeat로 막을 수 없어 SSE 수명(`SseEmitter` 1h)에 맞춰 늘렸다. 두 값이 어긋나면 짧은 쪽이 먼저
 `AsyncRequestTimeoutException`을 던지므로 동일하게 정렬한다.
@@ -191,11 +193,11 @@ dev 배포 후 EventStream 패널 + nginx 로그 + backend 컨테이너 로그�
 
 위 수정으로 SSE가 안정화된 뒤 `/api/timer/sse`는 다음과 같은 계약을 갖는다.
 
-| 이벤트           | 데이터                       | 의미                       |
-|---------------|---------------------------|--------------------------|
-| `connected`   | `ok`                      | 등록 직후 1회 — 연결 성공 확인      |
-| `heartbeat`   | `keepalive`               | 25초 간격 — idle timeout 방지 |
-| `timer-state` | `TimerStateResponse JSON` | 실제 타이머 상태 동기화            |
+| 이벤트           | 데이터                       | 의미                      |
+|---------------|---------------------------|-------------------------|
+| `connected`   | `ok`                      | 등록 직후 1회. 연결 성공 확인      |
+| `heartbeat`   | `keepalive`               | 25초 간격. idle timeout 방지 |
+| `timer-state` | `TimerStateResponse JSON` | 실제 타이머 상태 동기화           |
 
 ## 5. 회고
 

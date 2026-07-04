@@ -2,9 +2,9 @@
 
 ## 요약
 
-- 문제: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 — first insert 시 gap lock과 insert intention lock 충돌
+- 문제: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 발생. first insert 시 gap lock과 insert intention lock 충돌
 - 해결: `PESSIMISTIC_WRITE` 제거 + first insert 충돌을 catch-retry로 복구
-- 결과: 요청 46% 증가(112K → 163K)에도 timer PUT 실패 0건, `http_req_failed` 0.00%
+- 결과: 요청 46% 증가(112K -> 163K)에도 timer PUT 실패 0건, `http_req_failed` 0.00%, p95 64.62 -> 45.58ms(29%↓)
 
 ## 1. 문제 배경
 
@@ -52,16 +52,7 @@ could not execute statement
 [insert into timer_states (created_at,state_json,updated_at,user_id,version,todo_id) values (?,?,?,?,?,?)]
 ```
 
-위 로그에서 핵심 필드를 추출하면 다음과 같다.
-
-```text
-ErrorCode: 1213
-SQLState: 40001
-Exception: CannotAcquireLockException
-Message: Deadlock found when trying to get lock; try restarting transaction
-SQL: insert into timer_states (created_at, state_json, updated_at, user_id, version, todo_id)
-     values (?, ?, ?, ?, ?, ?)
-```
+ErrorCode 1213(SQLState 40001)은 InnoDB deadlock이고, 실패한 문장은 `timer_states`의 first insert였다.
 
 ### 왜 처음에 lock을 걸었나
 
@@ -76,11 +67,11 @@ SQL: insert into timer_states (created_at, state_json, updated_at, user_id, vers
 
 ```text
 TimerController.pushState(todoId)
-  -> TimerService.upsertState(userId, todoId, request)
-    -> timerStateRepository.findByUserIdAndTodoId(userId, todoId)
-    -> row가 없으면 TimerState.create(todoId, userId)
-    -> timerStateRepository.saveAndFlush(timerState)
-       -> INSERT 시점에 deadlock
+  → TimerService.upsertState(userId, todoId, request)
+    → timerStateRepository.findByUserIdAndTodoId(userId, todoId)
+    → row가 없으면 TimerState.create(todoId, userId)
+    → timerStateRepository.saveAndFlush(timerState)
+       → INSERT 시점에 deadlock
 ```
 
 row가 이미 존재할 때는 이 전략이 의도대로 동작한다.
@@ -91,16 +82,16 @@ row가 이미 존재할 때는 이 전략이 의도대로 동작한다.
 여러 요청이 동시에 gap lock을 잡은 뒤 INSERT를 시도하면, INSERT에 필요한 insert intention lock이 서로의 gap lock과 충돌하면서 deadlock이 발생할 수 있다.
 
 ```text
-요청 A: SELECT FOR UPDATE -> row 없음 -> gap lock 획득
-요청 B: SELECT FOR UPDATE -> row 없음 -> gap lock 획득
+요청 A: SELECT FOR UPDATE → row 없음 → gap lock 획득
+요청 B: SELECT FOR UPDATE → row 없음 → gap lock 획득
 
-요청 A: INSERT 시도 -> insert intention lock 필요
-요청 B: INSERT 시도 -> insert intention lock 필요
+요청 A: INSERT 시도 → insert intention lock 필요
+요청 B: INSERT 시도 → insert intention lock 필요
 
 서로의 gap lock 때문에 insert intention lock 대기
--> 순환 대기
--> MySQL이 한 트랜잭션 롤백
--> 1213 deadlock
+→ 순환 대기
+→ MySQL이 한 트랜잭션 롤백
+→ 1213 deadlock
 ```
 
 ### deadlock graph로 확인
@@ -146,11 +137,11 @@ RECORD LOCKS space id 10 page no 4 index PRIMARY
 
 ## 3. 해결안 비교
 
-| 선택지                                    | 장점                       | 단점                     | 판단                  |
-|----------------------------------------|--------------------------|------------------------|---------------------|
-| Native upsert                          | DB 레벨 atomic 처리          | native SQL·트랜잭션 복잡도 증가 | 견고하지만 현재 도메인에 과잉    |
-| `TransactionTemplate` + deadlock retry | deadlock 후 세밀한 복구        | gap lock 원인 유지, 증상 완화  | 근본 원인 제거보다 복잡도 증가   |
-| **`@Lock` 제거 + catch-retry**           | gap lock 경로 제거, 기존 패턴 일관 | 충돌 시 재조회 1회 추가         | **채택** — 가장 단순하고 충분 |
+| 선택지                                    | 장점                       | 단점                      | 판단                 |
+|----------------------------------------|--------------------------|-------------------------|--------------------|
+| Native upsert                          | DB 레벨 atomic 처리          | native SQL과 트랜잭션 복잡도 증가 | 견고하지만 현재 도메인에 과잉   |
+| `TransactionTemplate` + deadlock retry | deadlock 후 세밀한 복구        | gap lock 원인 유지, 증상 완화   | 근본 원인 제거보다 복잡도 증가  |
+| **`@Lock` 제거 + catch-retry**           | gap lock 경로 제거, 기존 패턴 일관 | 충돌 시 재조회 1회 추가          | **채택**. 가장 단순하고 충분 |
 
 타이머 상태는 최신 값을 계속 덮어쓰는 last-writer-wins 성격의 데이터라, native upsert 수준의 원자성은 불필요했다. TransactionTemplate retry도 gap lock 원인을
 유지한 채 증상만 완화하는 구조라 제외했다.
@@ -207,21 +198,21 @@ try {
 핵심은 catch 블록에서 `newVersion`을 winner row의 version 기준으로 다시 계산하는 것이다. 클라이언트는 version이 작은 이벤트를 무시하므로 단조 증가가 깨지면 안 된다.
 
 ```text
-Thread A: row 없음 -> newVersion = 1_700_000_000_000
-Thread B: row 없음 -> newVersion = 1_700_000_000_001
+Thread A: row 없음 → newVersion = 1_700_000_000_000
+Thread B: row 없음 → newVersion = 1_700_000_000_001
 
-Thread B: INSERT 성공 -> DB version = 1_700_000_000_001
+Thread B: INSERT 성공 → DB version = 1_700_000_000_001
 Thread A: 유일성 제약 조건 충돌 후 재조회
 
 잘못된 처리:
 Thread A가 기존 newVersion 그대로 UPDATE
--> DB version = 1_700_000_000_000
--> winner보다 작은 version으로 역전
+→ DB version = 1_700_000_000_000
+→ winner보다 작은 version으로 역전
 
 올바른 처리:
 Thread A가 winner row version 기준으로 nextVersion 재계산
--> DB version = 1_700_000_000_002
--> 단조 증가 유지
+→ DB version = 1_700_000_000_002
+→ 단조 증가 유지
 ```
 
 ## 5. 검증
@@ -255,6 +246,7 @@ lock graph까지 확인해서 확실하게 원인 파악을 해야 한다.
 
 ### 오버 엔지니어링보다는 프로젝트 패턴에 맞는 최소 수정이 더 낫다
 
-native upsert는 기술적으로 가장 견고한 선택일 수 있다. 하지만 현재 프로젝트에는 native SQL과 트랜잭션 경계 복잡도를 추가할 만큼의 이득이 비용 대비 크지 않았다. 원인을 만든 `@Lock`을 제거하고, 남은 first insert 충돌만 기존 catch-retry 패턴으로 처리하는 방법이 더 좋은 방법이었다.
+native upsert는 기술적으로 가장 견고한 선택일 수 있다. 하지만 현재 프로젝트에는 native SQL과 트랜잭션 경계 복잡도를 추가할 만큼의 이득이 비용 대비 크지 않았다. 원인을 만든
+`@Lock`을 제거하고, 남은 first insert 충돌만 기존 catch-retry 패턴으로 처리하는 방법이 더 좋은 방법이었다.
 
 이후 다중 인스턴스 확장은 [Redis Pub/Sub으로 SSE 수평 확장하기](redis-sse-pubsub.md)에 정리했다.

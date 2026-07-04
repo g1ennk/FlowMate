@@ -6,7 +6,7 @@
 
 - 문제: 폐기된 RT 재사용 요청은 401로 차단됐지만, 같은 트랜잭션에서 실행한 revoke-all이 예외와 함께 롤백되어 DB에 반영되지 않음
 - 해결: revoke-all을 별도 Bean의 `REQUIRES_NEW` 트랜잭션으로 분리해 실패 응답과 무관하게 먼저 커밋
-- 결과: 폐기된 RT 재사용 시 active RT 14개 → 0개, revoke-all DB 반영 확인
+- 결과: 폐기된 RT 재사용 시 active RT 14개 -> 0개, revoke-all DB 반영 확인
 
 ## 1. 문제 배경
 
@@ -17,7 +17,7 @@ FlowMate는 RTR(Refresh Token Rotation)과 Reuse Detection을 사용한다. RTR 
 
 즉, 요청 자체는 인증 실패로 차단됐지만 Reuse Detection의 핵심 조치인 revoke-all은 실제 DB에 반영되지 않았고, 그 결과 다른 디바이스의 세션도 유지된 상태였다.
 
-## 2. 원인 — revoke-all이 같은 트랜잭션에서 롤백됨
+## 2. 원인: revoke-all이 같은 트랜잭션에서 롤백됨
 
 수정 전 `refresh()` 메서드의 Reuse Detection 경로는 다음과 같았다.
 
@@ -58,8 +58,8 @@ public LoginResponse refresh(...) {
 
 따라서 해결 방향은 반드시 커밋되어야 하는 revoke-all을 기존 `refresh()` 트랜잭션 경계 밖으로 분리하는 것이었다.
 
-이를 위해 revoke-all 로직에는 독립적인 트랜잭션이 필요했다. Spring의 선언적 트랜잭션은 기본적으로
-`RuntimeException` 계열의 unchecked exception 발생 시 현재 트랜잭션을 롤백하므로, revoke-all이 `refresh()` 트랜잭션에 함께 묶여 있으면 같은 문제가 반복될 수 있다.
+이를 위해 revoke-all 로직에는 독립적인 트랜잭션이 필요했다. 앞서 본 unchecked exception 롤백 규칙 때문에, revoke-all이
+`refresh()` 트랜잭션에 함께 묶여 있는 한 같은 문제가 반복될 수밖에 없다.
 
 또한 `@Transactional`은 Spring AOP proxy를 통해 적용된다. 같은 클래스 내부에서
 `REQUIRES_NEW`가 붙은 메서드를 직접 호출하는 self-invocation(자기 호출) 구조에서는 proxy를 거치지 않기 때문에 새 트랜잭션이 시작되지 않는다.
@@ -70,7 +70,7 @@ public LoginResponse refresh(...) {
 - 롤백되면 안 되는 revoke-all의 DB 상태 변경은 `REQUIRES_NEW` 트랜잭션으로 분리한다.
 - `REQUIRES_NEW`가 실제 적용되도록 revoke-all 메서드를 별도 Bean으로 분리해 Spring proxy를 거치게 한다.
 
-## 4. 해결 — revoke-all을 독립 트랜잭션으로 분리
+## 4. 해결: revoke-all을 독립 트랜잭션으로 분리
 
 revoke-all을 담당하는 별도 Bean을 만들고, 해당 메서드에 `REQUIRES_NEW` 트랜잭션을 적용했다.
 
@@ -102,9 +102,9 @@ if (!refreshToken.isValid()) {
 결과적으로 `RefreshTokenRevoker`의 `REQUIRES_NEW` 트랜잭션이 먼저 커밋된다. 이후 `AuthService.refresh()`에서
 `AuthenticationFailedException`이 발생해 outer 트랜잭션이 롤백되더라도, 이미 커밋된 revoke-all 결과는 유지된다.
 
-### 트랜잭션 경계 — Before / After
+### 트랜잭션 경계: Before / After
 
-#### Before — revoke-all이 outer TX에 묶인 상태
+#### Before: revoke-all이 outer TX에 묶인 상태
 
 ```mermaid
 sequenceDiagram
@@ -119,7 +119,7 @@ sequenceDiagram
     A-->>C: 401
 ```
 
-#### After — revoke-all을 REQUIRES_NEW로 분리
+#### After: revoke-all을 REQUIRES_NEW로 분리
 
 ```mermaid
 sequenceDiagram
@@ -205,5 +205,3 @@ Reuse Detection 분기 자체는 처음부터 의도대로 작성돼 있었다. 
 이번 해결 과정에서 `@Transactional`이 AOP proxy 기반으로 동작하고, self-invocation은 proxy를 우회한다는 점을 새로 알게 됐다.
 
 공식 문서와 관련 자료를 확인하며 문제를 해결했지만, Spring AOP의 동작 원리, 트랜잭션 전파 방식, proxy 생성 메커니즘은 더 공부해야 한다고 느꼈다.
-
-
