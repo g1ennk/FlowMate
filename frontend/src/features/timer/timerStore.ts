@@ -8,7 +8,13 @@ import {
   getTimerConflictMessage,
 } from './timerHelpers'
 import { hydrateState } from './timerHydration'
-import { generateSessionId, normalizeSessionId } from '../../lib/sessionId'
+import { isSessionId } from '../../lib/sessionId'
+import {
+  advanceSessionIdentity,
+  createSessionIdentity,
+  resolveSessionIdentity,
+  resolveSessionRecordId,
+} from './timerSessionIdentity'
 import type { PendingPomodoroSession, SessionRecord, SingleTimerState, TimerPhase } from './timerTypes'
 
 export type {
@@ -111,7 +117,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
     const normalized: PendingPomodoroSession = {
       sessionFocusSeconds: Math.max(0, Math.round(session.sessionFocusSeconds)),
       breakSeconds: Math.max(0, Math.round(session.breakSeconds)),
-      clientSessionId: normalizeSessionId(session.clientSessionId),
+      clientSessionId: isSessionId(session.clientSessionId ?? '')
+        ? session.clientSessionId
+        : resolveSessionIdentity(todoId, get().timers[todoId]).activeSessionId,
     }
 
     if (normalized.sessionFocusSeconds <= 0) return
@@ -175,8 +183,13 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       newSessions = sessionsUpdate(timer.sessions)
     }
 
+    const identity = phase === 'flow'
+      ? advanceSessionIdentity(todoId, timer)
+      : resolveSessionIdentity(todoId, timer)
+
     if (autoStart) {
       updateTimer(todoId, {
+        ...identity,
         phase,
         status: 'running',
         endAt: computeEndAt(duration),
@@ -186,6 +199,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       })
     } else {
       updateTimer(todoId, {
+        ...identity,
         phase,
         status: 'waiting',
         endAt: null,
@@ -216,7 +230,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       seenVersions.set(todoId, version)
       applyingRemote = true
       set((state) => ({
-        timers: { ...state.timers, [todoId]: hydrateState(remoteState) },
+        timers: { ...state.timers, [todoId]: hydrateState(todoId, remoteState) },
       }))
       applyingRemote = false
     },
@@ -272,7 +286,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         enqueuePendingAutoSession(todoId, {
           sessionFocusSeconds: currentSessionSec,
           breakSeconds: 0,
-          clientSessionId: generateSessionId(),
+          clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
         })
         return
       }
@@ -293,7 +307,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         enqueuePendingAutoSession(todoId, {
           sessionFocusSeconds: elapsedSec,
           breakSeconds: 0,
-          clientSessionId: generateSessionId(),
+          clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
         })
       }
     },
@@ -325,8 +339,10 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const endAt = computeEndAt(settings.flowMin)
       // 기존 sessions 유지 (앱 메모리 상태 기준)
       const existingSessions = existingTimer?.sessions ?? []
+      const identity = createSessionIdentity()
       
       const newTimer: SingleTimerState = {
+        ...identity,
         mode: 'pomodoro',
         settingsSnapshot: settings,
         phase: 'flow',
@@ -359,6 +375,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const existingSessions = existingTimer?.sessions ?? []
 
       const newTimer: SingleTimerState = {
+        sessionSequenceSeed: null,
+        sessionSequence: 0,
+        activeSessionId: null,
         mode: 'pomodoro',
         settingsSnapshot: settings,
         phase: 'flow',
@@ -405,8 +424,10 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       
       // 기존 타이머가 있고 idle 상태면 업데이트, 없으면 새로 생성
       if (existingTimer && existingTimer.mode === 'stopwatch' && existingTimer.status === 'idle') {
+        const identity = createSessionIdentity()
         // idle 상태의 기존 타이머 업데이트 (sessions 유지)
         updateTimer(todoId, {
+          ...identity,
           settingsSnapshot: settings ?? existingTimer.settingsSnapshot,  // 설정이 제공되면 업데이트, 없으면 기존 설정 유지
           status: 'running',
           elapsedMs: initialElapsedMs,
@@ -425,6 +446,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       }
       
       const newTimer: SingleTimerState = {
+        ...createSessionIdentity(),
         mode: 'stopwatch',
         settingsSnapshot: settings ?? null,  // 뽀모도로 설정 저장 (자동화 옵션 사용)
         phase: 'flow',
@@ -457,6 +479,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const existingSessions = existingTimer?.sessions ?? []
 
       const newTimer: SingleTimerState = {
+        sessionSequenceSeed: null,
+        sessionSequence: 0,
+        activeSessionId: null,
         mode: 'stopwatch',
         settingsSnapshot: settings ?? null,
         phase: 'flow',
@@ -534,6 +559,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         } else if (timer.status === 'idle') {
           // idle 상태에서 재개 = 새로 시작 (focus phase로)
           updateTimer(todoId, {
+            ...createSessionIdentity(),
             flexiblePhase: 'focus',
             status: 'running',
             focusElapsedMs: timer.initialFocusMs ?? 0,
@@ -553,6 +579,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const settings = timer.settingsSnapshot
         const endAt = computeEndAt(settings.flowMin)
         updateTimer(todoId, {
+          ...createSessionIdentity(),
           status: 'running',
           endAt,
           remainingMs: null,
@@ -666,7 +693,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                       {
                         sessionFocusSeconds: currentSessionSec,
                         breakSeconds: currentBreakSec,
-                        clientSessionId: generateSessionId(),
+                        clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
                       },
                     ]
                   }
@@ -676,6 +703,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
                   const initialFocusElapsed = timer.status === 'running' ? 100 : 0
                   const newInitialFocusMs = focusElapsedMs + initialFocusElapsed
                   updateTimer(todoId, {
+                    ...advanceSessionIdentity(todoId, timer),
                     flexiblePhase: 'focus',
                     breakElapsedMs: 0,
                     breakStartedAt: null,
@@ -757,7 +785,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const completedSession: PendingPomodoroSession = {
           sessionFocusSeconds: flowSeconds,
           breakSeconds: 0,
-          clientSessionId: generateSessionId(),
+          clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
         }
 
         // Flow → Break 자동 전환: 자동 완료 세션 큐에 적재 (todo별 누적)
@@ -831,7 +859,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const completedSession: PendingPomodoroSession = {
           sessionFocusSeconds: elapsedSec,
           breakSeconds: 0,
-          clientSessionId: generateSessionId(),
+          clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
         }
 
         if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
@@ -997,7 +1025,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
           {
             sessionFocusSeconds: currentSessionSec,
             breakSeconds: 0,
-            clientSessionId: generateSessionId(),
+            clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
           },
         ]
         recordedAtBreakStart = true
@@ -1005,6 +1033,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
       // 휴식 시작
       updateTimer(todoId, {
+        ...resolveSessionIdentity(todoId, timer),
         flexiblePhase: targetMs ? 'break_suggested' : 'break_free',
         focusElapsedMs: newFocusElapsed,
         elapsedMs: newFocusElapsed,
@@ -1058,7 +1087,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         newSessions.push({
           sessionFocusSeconds: currentSessionSec,
           breakSeconds: currentBreakSec,
-          clientSessionId: generateSessionId(),
+          clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
         })
       }
       
@@ -1081,6 +1110,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const newInitialFocusMs = focusElapsedMs + initialFocusElapsed
       
       updateTimer(todoId, {
+        ...advanceSessionIdentity(todoId, timer),
         flexiblePhase: 'focus',
         breakElapsedMs: 0,
         breakStartedAt: null,
@@ -1114,9 +1144,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const timer = get().timers[todoId]
       if (!timer) return
 
-      const normalizedSessions = sessions.map((session) => ({
+      const normalizedSessions = sessions.map((session, index) => ({
         ...session,
-        clientSessionId: normalizeSessionId(session.clientSessionId),
+        clientSessionId: resolveSessionRecordId(todoId, timer, session, index),
       }))
 
       if (timer.mode === 'pomodoro' && normalizedSessions.length > timer.sessions.length) {
@@ -1125,13 +1155,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         })
 
         if (appended.length > 0) {
-          setPendingAutoSessions((current) => {
-            const existing = current[todoId] ?? []
-            return {
-              ...current,
-              [todoId]: [...existing, ...appended],
-            }
-          })
+          appended.forEach((session) => enqueuePendingAutoSession(todoId, session))
         }
       }
 

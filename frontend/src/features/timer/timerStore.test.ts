@@ -100,6 +100,46 @@ describe('useTimerStore pomodoro elapsed boundary handling', () => {
     ])
   })
 
+  it('derives the same next focus id when independent runtimes finish the same break', () => {
+    const sharedTimer = createPomodoroTimer({
+      sessionSequenceSeed: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      sessionSequence: 0,
+      activeSessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      phase: 'short',
+      endAt: Date.now(),
+      remainingMs: 0,
+    })
+
+    setTimer(sharedTimer)
+    useTimerStore.getState().skipToNext(TODO_ID)
+    const firstId = useTimerStore.getState().timers[TODO_ID].activeSessionId
+
+    setTimer({ ...sharedTimer, sessions: [...sharedTimer.sessions] })
+    useTimerStore.getState().skipToNext(TODO_ID)
+    const secondId = useTimerStore.getState().timers[TODO_ID].activeSessionId
+
+    expect(firstId).toBe(secondId)
+    expect(firstId).not.toBe(sharedTimer.activeSessionId)
+  })
+
+  it('upserts an appended session into the pending queue by clientSessionId', () => {
+    const session = {
+      sessionFocusSeconds: 600,
+      breakSeconds: 60,
+      clientSessionId: EXISTING_SESSION_ID,
+    }
+    setTimer(createPomodoroTimer({ phase: 'flow', sessions: [] }))
+    useTimerStore.setState({
+      pendingAutoSessions: {
+        [TODO_ID]: [{ ...session, breakSeconds: 0 }],
+      },
+    })
+
+    useTimerStore.getState().updateSessions(TODO_ID, [session])
+
+    expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]).toEqual([session])
+  })
+
   it('does not record a 59 second break when returning to flow manually', () => {
     setTimer(
       createPomodoroTimer({

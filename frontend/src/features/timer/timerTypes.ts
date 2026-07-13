@@ -18,6 +18,9 @@ export type PendingPomodoroSession = {
 }
 
 export type SingleTimerState = {
+  sessionSequenceSeed?: string | null
+  sessionSequence?: number
+  activeSessionId?: string | null
   mode: TimerMode
   phase: TimerPhase
   status: TimerStatus

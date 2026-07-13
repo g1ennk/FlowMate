@@ -5,7 +5,7 @@ import {
   getPlannedMs as getPlannedMsUtil,
   getPomodoroElapsedMs,
 } from './timerHelpers'
-import { generateSessionId } from '../../lib/sessionId'
+import { resolveSessionIdentity, resolveSessionRecordId } from './timerSessionIdentity'
 
 type UpdateTodoArgs = {
   id: string
@@ -29,6 +29,7 @@ type CompletionDeps = {
 
 async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) {
   const { todoId, updateSessions, debug } = deps
+  const activeSessionId = resolveSessionIdentity(todoId, timer).activeSessionId
 
   const oldFocusSec = timer.sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
   const oldSessionCount = timer.sessions.length
@@ -44,7 +45,10 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
     currentBreakMs = timer.breakElapsedMs + delta
   }
 
-  const newSessions = [...timer.sessions]
+  const newSessions = timer.sessions.map((session, index) => ({
+    ...session,
+    clientSessionId: resolveSessionRecordId(todoId, timer, session, index),
+  }))
   const isInBreak =
     timer.flexiblePhase === 'break_suggested' || timer.flexiblePhase === 'break_free'
 
@@ -69,14 +73,14 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
       newSessions.push({
         sessionFocusSeconds: currentSessionSec,
         breakSeconds: currentBreakSec,
-        clientSessionId: generateSessionId(),
+        clientSessionId: activeSessionId,
       })
     }
   } else if (shouldRecordCurrentSession) {
     newSessions.push({
       sessionFocusSeconds: currentSessionSec,
       breakSeconds: 0,
-      clientSessionId: generateSessionId(),
+      clientSessionId: activeSessionId,
     })
   }
 
@@ -131,6 +135,7 @@ async function completePomodoro(
   settings?: PomodoroSettings,
 ) {
   const { todoId, updateSessions } = deps
+  const activeSessionId = resolveSessionIdentity(todoId, timer).activeSessionId
   const oldFocusSec = timer.sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
   const oldSessionCount = timer.sessions.length
 
@@ -142,13 +147,16 @@ async function completePomodoro(
   const elapsedMs = getPomodoroElapsedMs(timer, plannedMs)
   const elapsedSec = Math.round(elapsedMs / 1000)
 
-  const newSessions = [...timer.sessions]
+  const newSessions = timer.sessions.map((session, index) => ({
+    ...session,
+    clientSessionId: resolveSessionRecordId(todoId, timer, session, index),
+  }))
 
   if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
     newSessions.push({
       sessionFocusSeconds: elapsedSec,
       breakSeconds: 0,
-      clientSessionId: generateSessionId(),
+      clientSessionId: activeSessionId,
     })
 
     const newFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)

@@ -1,7 +1,13 @@
 import { initialSingleTimerState } from './timerDefaults'
+import { resolveSessionIdentity, resolveSessionRecordId } from './timerSessionIdentity'
 import type { SingleTimerState } from './timerTypes'
 
-export function hydrateState(state: SingleTimerState): SingleTimerState {
+export function hydrateState(todoId: string, state: SingleTimerState): SingleTimerState {
+  const identity = resolveSessionIdentity(todoId, state)
+  const sessions = (state.sessions ?? []).map((session, index) => ({
+    ...session,
+    clientSessionId: resolveSessionRecordId(todoId, state, session, index),
+  }))
   const now = Date.now()
   let endAt = state.endAt
   let remainingMs = state.remainingMs
@@ -65,6 +71,7 @@ export function hydrateState(state: SingleTimerState): SingleTimerState {
 
   return {
     ...state,
+    ...identity,
     endAt,
     remainingMs,
     elapsedMs,
@@ -73,6 +80,6 @@ export function hydrateState(state: SingleTimerState): SingleTimerState {
     focusStartedAt,
     breakStartedAt,
     breakSessionPendingUpdate: state.breakSessionPendingUpdate ?? false,
-    sessions: state.sessions ?? [],
+    sessions,
   }
 }

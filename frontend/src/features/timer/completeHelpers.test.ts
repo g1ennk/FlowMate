@@ -60,6 +60,63 @@ function createPomodoroTimer(overrides: Partial<SingleTimerState> = {}): SingleT
 }
 
 describe('completeTaskFromTimer', () => {
+  it.each([
+    ['stopwatch', createStopwatchTimer({ focusElapsedMs: 4_522_000 })],
+    ['pomodoro', createPomodoroTimer()],
+  ] as const)('uses the same session id when two writers complete the same %s snapshot', async (_mode, timer) => {
+    const capturedIds: string[] = []
+    const complete = () => completeTaskFromTimer({
+      todoId: 'todo-multi-writer',
+      timer: { ...timer, sessions: [...timer.sessions] },
+      settings,
+      pause: vi.fn(),
+      reset: vi.fn(),
+      getTimer: vi.fn(),
+      updateSessions: vi.fn(),
+      updateTodo: vi.fn().mockResolvedValue(undefined),
+      syncSessionsImmediately: vi.fn(async (sessions) => {
+        capturedIds.push(sessions.at(-1)?.clientSessionId ?? '')
+      }),
+      applySessionAggregateDelta: vi.fn(),
+    })
+
+    await Promise.all([complete(), complete()])
+
+    expect(capturedIds).toHaveLength(2)
+    expect(capturedIds[0]).toBe(capturedIds[1])
+  })
+
+  it('uses the same deterministic id when two writers seal a legacy break session', async () => {
+    const timer = createStopwatchTimer({
+      flexiblePhase: 'break_free',
+      focusElapsedMs: 120_000,
+      initialFocusMs: 120_000,
+      breakElapsedMs: 60_000,
+      breakSessionPendingUpdate: true,
+      sessions: [{ sessionFocusSeconds: 120, breakSeconds: 0 }],
+    })
+    const capturedIds: string[] = []
+    const complete = () => completeTaskFromTimer({
+      todoId: 'todo-legacy-break',
+      timer: { ...timer, sessions: timer.sessions.map((session) => ({ ...session })) },
+      settings,
+      pause: vi.fn(),
+      reset: vi.fn(),
+      getTimer: vi.fn(),
+      updateSessions: vi.fn(),
+      updateTodo: vi.fn().mockResolvedValue(undefined),
+      syncSessionsImmediately: vi.fn(async (sessions) => {
+        capturedIds.push(sessions[0].clientSessionId ?? '')
+      }),
+      applySessionAggregateDelta: vi.fn(),
+    })
+
+    await Promise.all([complete(), complete()])
+
+    expect(capturedIds[0]).toBe(capturedIds[1])
+    expect(capturedIds[0]).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
   it('resets stopwatch timer after successfully completing a task', async () => {
     const updateSessions = vi.fn()
     const syncSessionsImmediately = vi.fn().mockResolvedValue(undefined)

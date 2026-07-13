@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useCreateSession } from '../todos/hooks'
 import { useTimerStore } from './timerStore'
 import type { SessionRecord, SingleTimerState } from './timerTypes'
-import { normalizeSessionId } from '../../lib/sessionId'
+import { resolveSessionRecordId } from './timerSessionIdentity'
 import { type RetryState, canRetry, markRetry, clearRetry } from './timerSyncRetry'
 
 type SyncCursorEntry = { count: number; signatures: string[] }
@@ -27,14 +27,14 @@ function isSameCursorEntry(left?: SyncCursorEntry, right?: SyncCursorEntry) {
   return left.signatures.every((value, index) => value === right.signatures[index])
 }
 
-function getSessionSignature(session: SessionRecord) {
-  return `${normalizeSessionId(session.clientSessionId)}:${session.sessionFocusSeconds}:${session.breakSeconds}`
+export function getSessionSignature(todoId: string, timer: SingleTimerState, session: SessionRecord, index: number) {
+  return `${resolveSessionRecordId(todoId, timer, session, index)}:${session.sessionFocusSeconds}:${session.breakSeconds}`
 }
 
-function findFirstSyncDiffIndex(sessions: SessionRecord[], entry: SyncCursorEntry) {
+function findFirstSyncDiffIndex(todoId: string, timer: SingleTimerState, sessions: SessionRecord[], entry: SyncCursorEntry) {
   const compareLimit = Math.min(entry.count, sessions.length)
   for (let index = 0; index < compareLimit; index += 1) {
-    if (entry.signatures[index] !== getSessionSignature(sessions[index])) {
+    if (entry.signatures[index] !== getSessionSignature(todoId, timer, sessions[index], index)) {
       return index
     }
   }
@@ -89,7 +89,7 @@ export function useStopwatchSessionSync() {
       if (!latestSession) break
 
       const session = latestSession
-      const signature = getSessionSignature(session)
+      const signature = getSessionSignature(todoId, latestTimer, session, i)
 
       if (session.sessionFocusSeconds <= 0) {
         entry = {
@@ -109,7 +109,7 @@ export function useStopwatchSessionSync() {
           body: {
             sessionFocusSeconds: session.sessionFocusSeconds,
             breakSeconds: session.breakSeconds,
-            clientSessionId: normalizeSessionId(session.clientSessionId),
+            clientSessionId: resolveSessionRecordId(todoId, latestTimer, session, i),
           },
         })
         entry = {
@@ -174,7 +174,7 @@ export function useStopwatchSessionSync() {
         changed = true
       }
 
-      const startIndex = findFirstSyncDiffIndex(sessions, entry)
+      const startIndex = findFirstSyncDiffIndex(todoId, timer, sessions, entry)
       if (startIndex === -1) continue
       if (inFlightRef.current.has(todoId)) continue
       if (!canRetry(retryRef.current, todoId)) continue

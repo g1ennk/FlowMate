@@ -21,6 +21,9 @@ const sessionRecordSchema = z.object({
 })
 
 const singleTimerStateSchema = z.object({
+  sessionSequenceSeed: z.string().nullable().optional(),
+  sessionSequence: z.number().optional(),
+  activeSessionId: z.string().nullable().optional(),
   mode: z.enum(['pomodoro', 'stopwatch']),
   phase: z.enum(['flow', 'short', 'long']),
   status: z.enum(['idle', 'running', 'paused', 'waiting']),

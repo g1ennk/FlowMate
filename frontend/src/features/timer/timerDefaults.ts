@@ -15,6 +15,9 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
 }
 
 export const initialSingleTimerState: SingleTimerState = {
+  sessionSequenceSeed: null,
+  sessionSequence: 0,
+  activeSessionId: null,
   mode: 'pomodoro',
   phase: 'flow',
   status: 'idle',
