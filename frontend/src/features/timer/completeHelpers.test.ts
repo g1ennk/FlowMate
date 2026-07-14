@@ -77,7 +77,6 @@ describe('completeTaskFromTimer', () => {
       syncSessionsImmediately: vi.fn(async (sessions) => {
         capturedIds.push(sessions.at(-1)?.clientSessionId ?? '')
       }),
-      applySessionAggregateDelta: vi.fn(),
     })
 
     await Promise.all([complete(), complete()])
@@ -108,7 +107,6 @@ describe('completeTaskFromTimer', () => {
       syncSessionsImmediately: vi.fn(async (sessions) => {
         capturedIds.push(sessions[0].clientSessionId ?? '')
       }),
-      applySessionAggregateDelta: vi.fn(),
     })
 
     await Promise.all([complete(), complete()])
@@ -133,7 +131,6 @@ describe('completeTaskFromTimer', () => {
       updateSessions,
       updateTodo,
       syncSessionsImmediately,
-      applySessionAggregateDelta: vi.fn(),
     })
 
     expect(updateSessions).toHaveBeenCalledWith(
@@ -184,7 +181,6 @@ describe('completeTaskFromTimer', () => {
       updateSessions,
       updateTodo,
       syncSessionsImmediately,
-      applySessionAggregateDelta: vi.fn(),
     })
 
     expect(updateSessions).toHaveBeenCalledWith(
@@ -227,7 +223,6 @@ describe('completeTaskFromTimer', () => {
     async (_mode, timer) => {
       const syncError = new Error('session sync failed')
       const updateSessions = vi.fn()
-      const applySessionAggregateDelta = vi.fn()
       const updateTodo = vi.fn().mockResolvedValue(undefined)
       const reset = vi.fn()
 
@@ -242,18 +237,16 @@ describe('completeTaskFromTimer', () => {
           updateSessions,
           updateTodo,
           syncSessionsImmediately: vi.fn().mockRejectedValue(syncError),
-          applySessionAggregateDelta,
         }),
       ).rejects.toBe(syncError)
 
       expect(updateSessions).not.toHaveBeenCalled()
-      expect(applySessionAggregateDelta).not.toHaveBeenCalled()
       expect(updateTodo).not.toHaveBeenCalled()
       expect(reset).not.toHaveBeenCalled()
     },
   )
 
-  it('applies the aggregate delta once after a failed sync is retried successfully', async () => {
+  it('updates the todo once after a failed sync is retried successfully', async () => {
     const timer = createStopwatchTimer()
     const syncError = new Error('session sync failed')
     const syncSessionsImmediately = vi
@@ -261,7 +254,6 @@ describe('completeTaskFromTimer', () => {
       .mockRejectedValueOnce(syncError)
       .mockResolvedValueOnce(undefined)
     const updateSessions = vi.fn()
-    const applySessionAggregateDelta = vi.fn()
     const updateTodo = vi.fn().mockResolvedValue(undefined)
     const reset = vi.fn()
     const deps = {
@@ -274,18 +266,12 @@ describe('completeTaskFromTimer', () => {
       updateSessions,
       updateTodo,
       syncSessionsImmediately,
-      applySessionAggregateDelta,
     }
 
     await expect(completeTaskFromTimer(deps)).rejects.toBe(syncError)
     await completeTaskFromTimer(deps)
 
     expect(syncSessionsImmediately).toHaveBeenCalledTimes(2)
-    expect(applySessionAggregateDelta).toHaveBeenCalledTimes(1)
-    expect(applySessionAggregateDelta).toHaveBeenCalledWith({
-      focusDeltaSeconds: 120,
-      sessionCountDelta: 1,
-    })
     expect(updateTodo).toHaveBeenCalledTimes(1)
     expect(reset).toHaveBeenCalledTimes(1)
   })

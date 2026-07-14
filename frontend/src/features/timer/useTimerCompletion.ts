@@ -7,7 +7,6 @@ import { useTimerStore } from './timerStore'
 import type { SingleTimerState } from './timerTypes'
 import { completeTaskFromTimer } from './completeHelpers'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
-import { applySessionAggregateDelta } from '../todos/sessionAggregateCache'
 import { normalizeSessionId } from '../../lib/sessionId'
 import { queryKeys } from '../../lib/queryKeys'
 
@@ -83,9 +82,6 @@ export function useTimerCompletion({
             })
           }
         },
-        applySessionAggregateDelta: (delta) => {
-          applySessionAggregateDelta(queryClient, todoId, delta)
-        },
         updateTodo: updateTodo.mutateAsync,
         nextOrder: getNextDoneOrder(),
         debug: timer.mode === 'stopwatch',
@@ -110,7 +106,6 @@ export function useTimerCompletion({
     updateSessions,
     createSession,
     updateTodo,
-    queryClient,
     getNextDoneOrder,
     endMusicSession,
     onClose,

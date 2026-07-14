@@ -6,7 +6,6 @@ import { useCreateSession, useDeleteTodo, useUpdateTodo } from './hooks'
 import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
 import { completeTaskFromTimer } from '../timer/completeHelpers'
-import { applySessionAggregateDelta } from './sessionAggregateCache'
 import { normalizeSessionId } from '../../lib/sessionId'
 import { queryKeys } from '../../lib/queryKeys'
 import type { Todo, TodoList } from '../../api/types'
@@ -92,9 +91,6 @@ export function useBatchSelect() {
                 })
               }
             },
-            applySessionAggregateDelta: (delta) => {
-              applySessionAggregateDelta(queryClient, id, delta)
-            },
             updateTodo: updateTodo.mutateAsync,
           })
         } else {
@@ -110,7 +106,7 @@ export function useBatchSelect() {
 
     toast.success(`${ids.length}개 완료 처리됨`, { id: 'batch-complete' })
     exitSelectMode()
-  }, [selectedIds, queryClient, settings, createSession, updateTodo, getTimer, pause, reset, updateSessions, exitSelectMode])
+  }, [selectedIds, settings, createSession, updateTodo, getTimer, pause, reset, updateSessions, exitSelectMode])
 
   const batchDelete = useCallback(() => {
     const ids = Array.from(selectedIds)

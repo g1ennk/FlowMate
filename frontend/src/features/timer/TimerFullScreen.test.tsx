@@ -1,6 +1,8 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TodoList } from '../../api/types'
+import { queryKeys } from '../../lib/queryKeys'
 import { renderApp } from '../../test/renderApp'
 import { DEFAULT_MUSIC_TRACK_INDEX, MUSIC_LABEL } from './musicTracks'
 import { DEFAULT_MUSIC_VOLUME, useMusicStore } from './musicStore'
@@ -251,6 +253,71 @@ describe('TimerFullScreen', () => {
       isPlaying: false,
     })
   })
+
+  it.each(['stopwatch', 'pomodoro'] as const)(
+    'does not add the completed %s focus twice when the session refetch updates the cache first',
+    async (mode) => {
+      const user = userEvent.setup()
+
+      Object.assign(mocked.timerState, {
+        mode,
+        phase: 'flow',
+        status: 'paused',
+        focusElapsedMs: 240_000,
+        initialFocusMs: 120_000,
+        remainingMs: mode === 'pomodoro' ? mocked.settings.flowMin * 60_000 - 120_000 : null,
+        sessions: [],
+        breakElapsedMs: 0,
+        breakStartedAt: null,
+        flexiblePhase: mode === 'stopwatch' ? 'focus' : null,
+      })
+
+      const view = renderApp(
+        <TimerFullScreen
+          isOpen
+          onClose={vi.fn()}
+          todoId="todo-1"
+          todoTitle="타이머 테스트"
+          sessionFocusSeconds={120}
+          sessionCount={1}
+          initialMode={mode}
+          isDone={false}
+        />,
+      )
+      view.queryClient.setQueryDefaults(queryKeys.todos(), { gcTime: Number.POSITIVE_INFINITY })
+      const baseTodo = {
+        id: 'todo-1',
+        title: '타이머 테스트',
+        note: null,
+        date: '2026-07-14',
+        miniDay: 0,
+        dayOrder: 0,
+        isDone: false,
+        sessionCount: 1,
+        sessionFocusSeconds: 120,
+        timerMode: mode,
+        createdAt: '2026-07-14T00:00:00Z',
+        updatedAt: '2026-07-14T00:00:00Z',
+      }
+      view.queryClient.setQueryData<TodoList>(queryKeys.todos(), { items: [baseTodo] })
+      mocked.createSessionMutateAsync.mockImplementationOnce(async () => {
+        view.queryClient.setQueryData<TodoList>(queryKeys.todos(), {
+          items: [{ ...baseTodo, sessionCount: 2, sessionFocusSeconds: 240 }],
+        })
+      })
+
+      await user.click(await screen.findByRole('button', { name: '완료' }))
+      await user.click(screen.getByRole('button', { name: '확인' }))
+
+      await waitFor(() => {
+        expect(mocked.updateTodoMutateAsync).toHaveBeenCalled()
+      })
+      expect(view.queryClient.getQueryData<TodoList>(queryKeys.todos())?.items[0]).toMatchObject({
+        sessionCount: 2,
+        sessionFocusSeconds: 240,
+      })
+    },
+  )
 
   it('keeps the completion modal open when immediate session sync fails', async () => {
     const user = userEvent.setup()

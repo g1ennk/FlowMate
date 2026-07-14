@@ -13,7 +13,6 @@ import {
 import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
 import { completeTaskFromTimer } from '../timer/completeHelpers'
-import { applySessionAggregateDelta } from './sessionAggregateCache'
 import { normalizeSessionId } from '../../lib/sessionId'
 import { useNoteModal } from './useNoteModal'
 import { useDatePickerActions } from './useDatePickerActions'
@@ -76,9 +75,6 @@ export function useTodoActions(selectedDateKey: string) {
                   },
                 })
               }
-            },
-            applySessionAggregateDelta: (delta) => {
-              applySessionAggregateDelta(queryClient, id, delta)
             },
             updateTodo: updateTodo.mutateAsync,
             nextOrder,

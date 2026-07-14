@@ -22,7 +22,6 @@ type CompletionDeps = {
   updateSessions: (todoId: string, sessions: SessionRecord[]) => void
   updateTodo: (args: UpdateTodoArgs) => Promise<unknown>
   syncSessionsImmediately?: (sessions: SessionRecord[]) => Promise<void>
-  applySessionAggregateDelta?: (delta: { focusDeltaSeconds: number; sessionCountDelta: number }) => void
   nextOrder?: number
   debug?: boolean
 }
@@ -31,8 +30,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
   const { todoId, updateSessions, debug } = deps
   const activeSessionId = resolveSessionIdentity(todoId, timer).activeSessionId
 
-  const oldFocusSec = timer.sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
-  const oldSessionCount = timer.sessions.length
   const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
   const initialMs = timer.initialFocusMs ?? 0
 
@@ -111,9 +108,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
       newSessions[newSessions.length - 1]?.breakSeconds !==
         timer.sessions[timer.sessions.length - 1]?.breakSeconds)
 
-  const focusDeltaSeconds = Math.max(0, totalFocusSec - oldFocusSec)
-  const sessionCountDelta = Math.max(0, newSessions.length - oldSessionCount)
-
   // 마지막 1건이 아니라 전체 sessions 를 sync 한다. background sync 가 미완료된
   // 잔여 sessions 도 완료 시점에 책임지고 보내기 위함 (멱등 처리되어 안전).
   if (newSessions.length > 0) {
@@ -122,10 +116,6 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
 
   if (sessionsChanged) {
     updateSessions(todoId, newSessions)
-  }
-
-  if (focusDeltaSeconds > 0 || sessionCountDelta > 0) {
-    deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
   }
 }
 
@@ -136,8 +126,6 @@ async function completePomodoro(
 ) {
   const { todoId, updateSessions } = deps
   const activeSessionId = resolveSessionIdentity(todoId, timer).activeSessionId
-  const oldFocusSec = timer.sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
-  const oldSessionCount = timer.sessions.length
 
   if (timer.phase !== 'flow') {
     return
@@ -159,18 +147,10 @@ async function completePomodoro(
       clientSessionId: activeSessionId,
     })
 
-    const newFocusSec = newSessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
-    const focusDeltaSeconds = Math.max(0, newFocusSec - oldFocusSec)
-    const sessionCountDelta = Math.max(0, newSessions.length - oldSessionCount)
-
     // 마지막 1건이 아니라 전체 sessions 를 sync 한다 (멱등 처리, background sync 잔여분 보존).
     await deps.syncSessionsImmediately?.(newSessions)
 
     updateSessions(todoId, newSessions)
-
-    if (focusDeltaSeconds > 0 || sessionCountDelta > 0) {
-      deps.applySessionAggregateDelta?.({ focusDeltaSeconds, sessionCountDelta })
-    }
   }
 }
 
@@ -191,6 +171,8 @@ export async function completeTaskFromTimer(deps: CompletionDeps) {
     await completePomodoro(deps, timer, deps.settings)
   }
 
+  // session POST 이후 Todo 응답이 커밋된 세션 집계를 반환한다.
+  // 이 사이에 로컬 delta 를 더하면 선행 refetch 값과 이중 집계될 수 있다.
   await deps.updateTodo({
     id: todoId,
     patch: {
