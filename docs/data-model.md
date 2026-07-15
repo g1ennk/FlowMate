@@ -1,6 +1,6 @@
 # FlowMate Data Model
 
-> Last updated: 2026-06-25
+> Last updated: 2026-07-15
 >
 > 관련 문서: [Architecture](architecture.md), [API Reference](api.md)
 
@@ -214,6 +214,10 @@ CREATE TABLE auth_refresh_tokens
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE INDEX uq_token_hash (token_hash)
 );
+
+-- Reuse Detection 시 사용자별 활성·미만료 RT revoke-all 대상 조회/갱신
+CREATE INDEX idx_refresh_tokens_active_by_user
+    ON auth_refresh_tokens (user_id, revoked_at, expires_at);
 ```
 
 ### 3) 런타임 테이블

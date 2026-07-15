@@ -153,7 +153,44 @@ sequenceDiagram
 - `REQUIRES_NEW`를 임시로 제거한 뒤 테스트를 실행해 버그가 실제로 재현되는지 확인했다. 이때 active RT의 `revoked_at`이 `null`로 남으며 테스트가 실패했다 (Red).
 - `REQUIRES_NEW`를 복구하자 같은 테스트가 통과했고, 예외 발생 이후에도 revoke-all 결과가 DB에 커밋되는 것을 확인했다 (Green).
 
-### 5.2 브라우저 직접 검증
+### 5.2 활성 RT revoke-all 실행 계획
+
+RTR 환경에서는 login·refresh가 반복될수록 사용자별 Refresh Token 이력이 누적될 수 있다. Reuse Detection이 발생하면 아래 조건으로 같은 사용자의 활성·미만료 RT를 모두 revoke해야 한다.
+
+```sql
+UPDATE auth_refresh_tokens
+SET revoked_at = :now
+WHERE user_id = :userId
+  AND revoked_at IS NULL
+  AND expires_at > :now;
+```
+
+초기에는 FK 보조 인덱스인 `fk_refresh_user(user_id)`만 존재했다. 이 인덱스는 사용자별 RT 이력 전체를 찾는 데는 사용할 수 있지만, `revoked_at`과
+`expires_at` 조건은 이후에 행별 filter로 처리한다.
+
+따라서 Flyway V7에서 다음 복합 인덱스를 추가했다.
+
+```sql
+CREATE INDEX idx_refresh_tokens_active_by_user
+    ON auth_refresh_tokens (user_id, revoked_at, expires_at);
+```
+
+앞의 `user_id`, `revoked_at`은 동등 조건이고
+`expires_at`은 범위 조건이므로, 동등 조건을 앞에 두고 범위 조건을 마지막에 둔다. 이 순서라야 사용자 한 명의 전체 이력 대신 활성·미만료 RT 범위를 인덱스에서 바로 좁힐 수 있다.
+
+`UPDATE`와 같은 `WHERE` 절을 사용하는 `SELECT id`로 MySQL 8.0.46의 `EXPLAIN ANALYZE`를 측정했다. 데이터 변경 없이 실제 접근 행 수를 비교하기 위해서다.
+
+| 구분     | 실행 계획                                                   | 인덱스에서 읽은 행 |  반환 행 |   총 실행 시간 |
+|--------|---------------------------------------------------------|-----------:|------:|----------:|
+| Before | `fk_refresh_user` lookup 후 filter                       |    100,000 | 1,000 |   약 137ms |
+| After  | `idx_refresh_tokens_active_by_user` covering range scan |      1,000 | 1,000 | 약 0.929ms |
+
+After 계획에서는 `user_id = ? AND revoked_at IS NULL AND expires_at > NOW()` 범위로 final 복합 인덱스를 읽었다.
+`SELECT id`는 secondary index에 포함되는 PK를 함께 읽을 수 있어 covering scan으로 처리됐다.
+
+이 측정은 로컬 MySQL에서 합성한 RT 100,000건(폐기 99,000건, 활성 1,000건)을 대상으로 한 실행 계획 검증이다. 캐시, 장비, 실제 사용자별 토큰 분포가 다르므로 운영 SLA나 일반적인 API 응답시간으로 해석하지 않는다.
+
+### 5.3 브라우저 직접 검증
 
 데스크톱과 모바일로 같은 계정에 로그인해 기기별 active RT chain을 만들었다. 이후 DB에서 데스크톱의 최신 active RT row 하나만
 `revoked_at = NOW()`로 수동 세팅하여, 폐기된 RT가 다시 전송되는 상황을 재현했다.
