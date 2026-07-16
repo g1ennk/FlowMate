@@ -21,7 +21,6 @@ export function useBatchSelect() {
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const updateSessions = useTimerStore((s) => s.updateSessions)
   const clearPendingAutoSessions = useTimerStore((s) => s.clearPendingAutoSessions)
 
   const deleteTodoRef = useRef(deleteTodo.mutate)
@@ -77,7 +76,6 @@ export function useBatchSelect() {
             pause,
             reset,
             getTimer,
-            updateSessions,
             syncSessionsImmediately: async (sessions) => {
               for (const session of sessions) {
                 if (session.sessionFocusSeconds <= 0) continue
@@ -106,7 +104,7 @@ export function useBatchSelect() {
 
     toast.success(`${ids.length}개 완료 처리됨`, { id: 'batch-complete' })
     exitSelectMode()
-  }, [selectedIds, settings, createSession, updateTodo, getTimer, pause, reset, updateSessions, exitSelectMode])
+  }, [selectedIds, settings, createSession, updateTodo, getTimer, pause, reset, exitSelectMode])
 
   const batchDelete = useCallback(() => {
     const ids = Array.from(selectedIds)

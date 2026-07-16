@@ -30,7 +30,6 @@ export function useTimerCompletion({
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const updateSessions = useTimerStore((s) => s.updateSessions)
   const startBreak = useTimerStore((s) => s.startBreak)
 
   const getPlannedMs = useCallback(
@@ -68,7 +67,6 @@ export function useTimerCompletion({
         pause,
         reset,
         getTimer,
-        updateSessions,
         syncSessionsImmediately: async (sessions) => {
           for (const session of sessions) {
             if (session.sessionFocusSeconds <= 0) continue
@@ -103,7 +101,6 @@ export function useTimerCompletion({
     pause,
     reset,
     getTimer,
-    updateSessions,
     createSession,
     updateTodo,
     getNextDoneOrder,

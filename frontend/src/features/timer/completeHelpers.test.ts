@@ -72,7 +72,6 @@ describe('completeTaskFromTimer', () => {
       pause: vi.fn(),
       reset: vi.fn(),
       getTimer: vi.fn(),
-      updateSessions: vi.fn(),
       updateTodo: vi.fn().mockResolvedValue(undefined),
       syncSessionsImmediately: vi.fn(async (sessions) => {
         capturedIds.push(sessions.at(-1)?.clientSessionId ?? '')
@@ -102,7 +101,6 @@ describe('completeTaskFromTimer', () => {
       pause: vi.fn(),
       reset: vi.fn(),
       getTimer: vi.fn(),
-      updateSessions: vi.fn(),
       updateTodo: vi.fn().mockResolvedValue(undefined),
       syncSessionsImmediately: vi.fn(async (sessions) => {
         capturedIds.push(sessions[0].clientSessionId ?? '')
@@ -116,7 +114,6 @@ describe('completeTaskFromTimer', () => {
   })
 
   it('resets stopwatch timer after successfully completing a task', async () => {
-    const updateSessions = vi.fn()
     const syncSessionsImmediately = vi.fn().mockResolvedValue(undefined)
     const updateTodo = vi.fn().mockResolvedValue(undefined)
     const reset = vi.fn()
@@ -128,21 +125,10 @@ describe('completeTaskFromTimer', () => {
       pause: vi.fn(),
       reset,
       getTimer: vi.fn(),
-      updateSessions,
       updateTodo,
       syncSessionsImmediately,
     })
 
-    expect(updateSessions).toHaveBeenCalledWith(
-      'todo-1',
-      expect.arrayContaining([
-        expect.objectContaining({
-          sessionFocusSeconds: 120,
-          breakSeconds: 0,
-          clientSessionId: expect.any(String),
-        }),
-      ]),
-    )
     expect(syncSessionsImmediately).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
@@ -166,7 +152,6 @@ describe('completeTaskFromTimer', () => {
   })
 
   it('resets pomodoro timer after successfully completing a task', async () => {
-    const updateSessions = vi.fn()
     const syncSessionsImmediately = vi.fn().mockResolvedValue(undefined)
     const updateTodo = vi.fn().mockResolvedValue(undefined)
     const reset = vi.fn()
@@ -178,21 +163,10 @@ describe('completeTaskFromTimer', () => {
       pause: vi.fn(),
       reset,
       getTimer: vi.fn(),
-      updateSessions,
       updateTodo,
       syncSessionsImmediately,
     })
 
-    expect(updateSessions).toHaveBeenCalledWith(
-      'todo-2',
-      expect.arrayContaining([
-        expect.objectContaining({
-          sessionFocusSeconds: 120,
-          breakSeconds: 0,
-          clientSessionId: expect.any(String),
-        }),
-      ]),
-    )
     expect(syncSessionsImmediately).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
@@ -222,7 +196,6 @@ describe('completeTaskFromTimer', () => {
     'keeps the %s timer and session state when immediate session sync fails',
     async (_mode, timer) => {
       const syncError = new Error('session sync failed')
-      const updateSessions = vi.fn()
       const updateTodo = vi.fn().mockResolvedValue(undefined)
       const reset = vi.fn()
 
@@ -234,13 +207,11 @@ describe('completeTaskFromTimer', () => {
           pause: vi.fn(),
           reset,
           getTimer: vi.fn(),
-          updateSessions,
           updateTodo,
           syncSessionsImmediately: vi.fn().mockRejectedValue(syncError),
         }),
       ).rejects.toBe(syncError)
 
-      expect(updateSessions).not.toHaveBeenCalled()
       expect(updateTodo).not.toHaveBeenCalled()
       expect(reset).not.toHaveBeenCalled()
     },
@@ -253,7 +224,6 @@ describe('completeTaskFromTimer', () => {
       .fn()
       .mockRejectedValueOnce(syncError)
       .mockResolvedValueOnce(undefined)
-    const updateSessions = vi.fn()
     const updateTodo = vi.fn().mockResolvedValue(undefined)
     const reset = vi.fn()
     const deps = {
@@ -263,7 +233,6 @@ describe('completeTaskFromTimer', () => {
       pause: vi.fn(),
       reset,
       getTimer: vi.fn(),
-      updateSessions,
       updateTodo,
       syncSessionsImmediately,
     }

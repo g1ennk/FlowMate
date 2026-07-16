@@ -30,7 +30,6 @@ export function useTodoActions(selectedDateKey: string) {
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const updateSessions = useTimerStore((s) => s.updateSessions)
   const clearPendingAutoSessions = useTimerStore((s) => s.clearPendingAutoSessions)
 
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -62,7 +61,6 @@ export function useTodoActions(selectedDateKey: string) {
             pause,
             reset,
             getTimer,
-            updateSessions,
             syncSessionsImmediately: async (sessions) => {
               for (const session of sessions) {
                 if (session.sessionFocusSeconds <= 0) continue

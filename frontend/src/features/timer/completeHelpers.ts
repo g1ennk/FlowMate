@@ -19,7 +19,6 @@ type CompletionDeps = {
   pause: (todoId: string) => void
   reset: (todoId: string) => void
   getTimer: (todoId: string) => SingleTimerState | undefined
-  updateSessions: (todoId: string, sessions: SessionRecord[]) => void
   updateTodo: (args: UpdateTodoArgs) => Promise<unknown>
   syncSessionsImmediately?: (sessions: SessionRecord[]) => Promise<void>
   nextOrder?: number
@@ -27,7 +26,7 @@ type CompletionDeps = {
 }
 
 async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) {
-  const { todoId, updateSessions, debug } = deps
+  const { todoId, debug } = deps
   const activeSessionId = resolveSessionIdentity(todoId, timer).activeSessionId
 
   const currentFocusMs = timer.focusElapsedMs ?? timer.elapsedMs
@@ -101,21 +100,15 @@ async function completeStopwatch(deps: CompletionDeps, timer: SingleTimerState) 
     })
   }
 
-  const sessionsChanged =
-    newSessions.length !== timer.sessions.length ||
-    (newSessions.length > 0 &&
-      timer.sessions.length > 0 &&
-      newSessions[newSessions.length - 1]?.breakSeconds !==
-        timer.sessions[timer.sessions.length - 1]?.breakSeconds)
-
   // 마지막 1건이 아니라 전체 sessions 를 sync 한다. background sync 가 미완료된
   // 잔여 sessions 도 완료 시점에 책임지고 보내기 위함 (멱등 처리되어 안전).
+  //
+  // NOTE: 여기서 timerStore 의 sessions 를 갱신(updateSessions)하지 않는다.
+  // 완료 직후 reset(todoId) 이 타이머를 곧바로 제거하므로 store 갱신은 버려지는
+  // write 이고, 그 사이 완료 확인 모달이 재렌더되면 현재 세션이 sessions 에도,
+  // focusElapsed 에도 남아 총 Flow 시간이 두 배로 표시되는 결함이 있었다.
   if (newSessions.length > 0) {
     await deps.syncSessionsImmediately?.(newSessions)
-  }
-
-  if (sessionsChanged) {
-    updateSessions(todoId, newSessions)
   }
 }
 
@@ -124,7 +117,7 @@ async function completePomodoro(
   timer: SingleTimerState,
   settings?: PomodoroSettings,
 ) {
-  const { todoId, updateSessions } = deps
+  const { todoId } = deps
   const activeSessionId = resolveSessionIdentity(todoId, timer).activeSessionId
 
   if (timer.phase !== 'flow') {
@@ -148,9 +141,9 @@ async function completePomodoro(
     })
 
     // 마지막 1건이 아니라 전체 sessions 를 sync 한다 (멱등 처리, background sync 잔여분 보존).
+    // completeStopwatch 와 동일하게 store 의 sessions 는 갱신하지 않는다 (reset 으로 폐기 +
+    // 모달 이중 집계 방지). syncSessionsImmediately 가 서버 반영을 책임진다.
     await deps.syncSessionsImmediately?.(newSessions)
-
-    updateSessions(todoId, newSessions)
   }
 }
 
