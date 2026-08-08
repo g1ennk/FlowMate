@@ -1,0 +1,152 @@
+# FlowMate Local (실사용) Docker Compose
+# 목적: AWS 운영을 대체해 맥에서 상시 실행하는 단일 인스턴스.
+#       infra/prod/docker-compose.yml을 베이스로, 관측 스택(Alloy/OTEL)과 TLS만 제거했다.
+# 실행: cd infra/local && docker compose up -d
+# 진입점: http://localhost:8180 (nginx가 프론트+API 단일 오리진으로 서빙)
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:${MYSQL_VERSION:-8.0}
+    container_name: flowmate-mysql-run
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TZ:-Asia/Seoul}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max-connections=200
+      - --innodb-buffer-pool-size=512M
+      - --slow-query-log=ON
+      - --long-query-time=1
+      - --log-output=FILE
+      - --slow-query-log-file=/var/lib/mysql/slow.log
+    volumes:
+      - mysql-data-local:/var/lib/mysql
+    networks:
+      - flowmate-local-network
+    ports:
+      # 실데이터 조회/백엔드 공부용으로 호스트에 노출 (prod는 내부망 전용)
+      - "127.0.0.1:${MYSQL_BIND_PORT:-3406}:3306"
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis (SSE Pub/Sub 전용)
+  redis:
+    image: redis:7-alpine
+    container_name: flowmate-redis-run
+    restart: always
+    entrypoint: [ "sh", "-c", "[ -n \"$$REDIS_PASSWORD\" ] || (echo 'REDIS_PASSWORD missing' >&2; exit 1); exec redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass \"$$REDIS_PASSWORD\"" ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - flowmate-local-network
+    ports:
+      - "127.0.0.1:${REDIS_BIND_PORT:-6479}:6379"
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Spring Boot Backend — ECR pull 대신 로컬 소스에서 직접 빌드
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    image: flowmate-backend:local
+    container_name: flowmate-backend-run
+    restart: always
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      # Alloy/OTEL 없음 — javaagent 제거 (수집기가 없어 export 실패 로그만 쌓임)
+      JAVA_OPTS: >-
+        -Xms512m
+        -Xmx1024m
+        -XX:+UseG1GC
+        -XX:MaxGCPauseMillis=200
+        -XX:+HeapDumpOnOutOfMemoryError
+        -XX:HeapDumpPath=/tmp/heapdump.hprof
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowmate-local-network
+    ports:
+      # nginx를 우회해 직접 확인할 때만 사용. 앱 접속은 항상 8180(nginx)으로.
+      - "127.0.0.1:${BACKEND_BIND_PORT:-18080}:8080"
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx — 프론트(정적 SPA) + API 리버스 프록시 단일 오리진 (S3+CloudFront + 호스트 nginx 대체)
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: flowmate-nginx-run
+    restart: always
+    volumes:
+      - ../../frontend/dist:/usr/share/nginx/html:ro
+      - ./config/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - flowmate-local-network
+    ports:
+      - "127.0.0.1:${NGINX_BIND_PORT:-8180}:80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  flowmate-local-network:
+    driver: bridge
+
+volumes:
+  mysql-data-local:
+    driver: local

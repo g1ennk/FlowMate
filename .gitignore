@@ -12,6 +12,8 @@ frontend/.vite/
 /frontend/.env.local
 /infra/dev/.env
 /infra/prod/.env
+/infra/local/.env
+/infra/local/.migration/
 /shared/
 
 # 로컬 참고용 agent 문서
