@@ -68,11 +68,13 @@ FlowMate는 Todo와 집중 세션을 한 흐름으로 기록하고, 캘린더와
 
 ## 4. 주요 기술 결정
 
-### 1) [X-Client-Id에서 OAuth + RTR까지 인증 시스템 발전시키기](docs/wiki/auth-evolution.md)
+### 1) [임시 식별자에서 토큰 탈취 대응까지: 인증 구조 4단계 진화](docs/wiki/auth-evolution.md)
 
-- **문제**: 초기 `X-Client-Id`는 서명도 TTL도 없는 브라우저 입력값으로, 사용자 신원 증명 불가
-- **해결**: 게스트와 회원의 보안을 모두 만족하는 이중 인증 구조, Guest JWT + Memory AT + HttpOnly RT + RTR
-- **결과**: 4단계 진화(X-Client-Id -> Guest JWT -> OAuth + RTR -> Reuse Detection)로 **보안 리스크 6건 완화**, TTL 분리
+**문제**: 초기 `X-Client-Id`는 서명과 만료 없이 **클라이언트가 보낸 UUID 형식만 검증**해, 값을 바꿔도 신원 증명이 불가능
+
+**해결**: 게스트와 회원 모두 JWT로 인증하고, 회원 로그인은 OAuth, 갱신은 기기별 **Refresh Token Rotation과 재사용 탐지**로 구현
+
+**결과**: 게스트와 회원 모두 서명된 토큰으로 신원을 검증하고, **새 기기 로그인은 기존 세션을 유지**하며 **탈취된 토큰 재사용에는 즉시 대응**
 
 ### 2) [SSE로 멀티디바이스 타이머 동기화하기](docs/wiki/sse-sync.md)
 
