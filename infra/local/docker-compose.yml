@@ -3,6 +3,25 @@
 #       infra/prod/docker-compose.yml을 베이스로, 관측 스택(Alloy/OTEL)과 TLS만 제거했다.
 # 실행: cd infra/local && docker compose up -d
 # 진입점: http://localhost:8180 (nginx가 프론트+API 단일 오리진으로 서빙)
+#
+# 모바일 접속 (Tailscale)
+#   nginx는 127.0.0.1에만 바인딩한다. LAN에 열지 않고 tailnet으로만 노출한다.
+#     tailscale serve --bg --yes 8180   -> https://<machine>.<tailnet>.ts.net (재부팅 후에도 설정 유지)
+#   사전 조건: Tailscale 관리 콘솔 DNS 탭에서 HTTPS Certificates 활성화.
+#     미활성 상태면 serve가 출력 없이 멈춘다. `tailscale cert <도메인>`으로 원인 확인 가능
+#     ("your Tailscale account does not support getting TLS certs").
+#   TLS가 붙으므로 .env를 tailnet 오리진 기준으로 맞춘다:
+#     COOKIE_SECURE=true
+#     KAKAO_REDIRECT_URI=https://<machine>.<tailnet>.ts.net/auth/callback
+#     CORS_ORIGINS에 같은 오리진 추가
+#   KAKAO_REDIRECT_URI는 백엔드에 단일 값이라, 카카오 콘솔에도 같은 Redirect URI + 사이트 도메인을 등록해야 한다.
+#   Safari는 http://localhost에서 Secure 쿠키를 거부하므로, 맥에서도 localhost 대신 ts.net 주소로 접속할 것.
+#
+# 상시 가동 전제 (하나라도 꺼져 있으면 폰에서 접속이 끊긴다)
+#   - 맥 잠자기 해제: 시스템 설정 > 배터리 > 옵션 > "디스플레이가 꺼져 있을 때 전원 어댑터 사용 시
+#     컴퓨터를 자동으로 잠자지 않게 하기" (= pmset -c sleep 0). 배터리 모드에서는 여전히 잠든다.
+#   - Docker Desktop 자동 시작: Settings > General > Start Docker Desktop when you sign in
+#     (restart: always는 Docker 데몬이 떠 있을 때만 의미가 있다)
 
 services:
   # MySQL Database

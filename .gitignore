@@ -13,6 +13,7 @@ frontend/.vite/
 /infra/dev/.env
 /infra/prod/.env
 /infra/local/.env
+/infra/local/.env.bak.*
 /infra/local/.migration/
 /shared/
 
