@@ -1,6 +1,6 @@
 # 임시 식별자에서 토큰 탈취 대응까지: 인증 구조 4단계 진화
 
-> 관련 문서: [폐기된 Refresh Token 재사용 시 revoke-all이 DB에 반영되지 않은 이유](auth-reuse-detection-rollback.md)
+> 관련 문서: [폐기된 Refresh Token 재사용 시 활성 RT 즉시 무효화: revoke-all 트랜잭션 분리](auth-reuse-detection-rollback.md)
 
 ## 요약
 
