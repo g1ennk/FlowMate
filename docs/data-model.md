@@ -1,6 +1,6 @@
 # FlowMate Data Model
 
-> Last updated: 2026-07-15
+> Last updated: 2026-10-01
 >
 > 관련 문서: [Architecture](architecture.md), [API Reference](api.md)
 
@@ -36,10 +36,10 @@
 
 | 엔터티           | 식별자       | 주요 속성                                                                                                | 핵심 규칙                                                                                                                                                                                         |
 |---------------|-----------|------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Todo          | `id`      | `user_id`, `title`, `date`, `mini_day`, `day_order`, `timer_mode`                                    | • `timer_mode` ∈ `{STOPWATCH, POMODORO, null}` (DB 저장값; `@Enumerated(STRING)`, API 표현은 소문자)<br>• 날짜 이동에도 Todo identity 유지<br>• 세션 집계 필드는 캐시, 정본은 `todo_sessions`                              |
+| Todo          | `id`      | `user_id`, `title`, `date`, `mini_day`, `day_order`, `timer_mode`, `review_round`, `original_todo_id` | • `timer_mode` ∈ `{STOPWATCH, POMODORO, null}` (DB 저장값; `@Enumerated(STRING)`, API 표현은 소문자)<br>• 날짜 이동에도 Todo identity 유지<br>• 세션 집계 필드는 캐시, 정본은 `todo_sessions`<br>• `mini_day` 0은 구간 미지정, 1~3은 UserSettings의 `day1`~`day3` 구간 번호<br>• 복습 Todo는 `review_round`(1~6)와 루트 Todo를 가리키는 `original_todo_id`를 가진다(같은 테이블 참조, FK 없음) |
 | TodoSession   | `id`      | `todo_id`, `user_id`, `client_session_id`, `session_order`, `session_focus_seconds`, `break_seconds` | • Todo의 정본 세션<br>• `(todo_id, client_session_id)`, `(todo_id, session_order)` UNIQUE<br>• 멱등 재요청 시 `break_seconds`만 증가 방향 갱신                                                                  |
 | TimerState    | `todo_id` | `user_id`, `state_json`, `version`                                                                   | Todo당 최대 1개만 존재하는 회원 전용 런타임 스냅샷이며, `state_json = null`은 행 삭제 대신 상태만 남기는 논리 삭제를 뜻하고 `version`은 단조 증가한다.                                                                                        |
-| UserSettings  | `user_id` | `flow_min`, `break_min`, `long_break_min`, `cycle_every`                                             | 사용자당 최대 1개이며 평면 컬럼으로 저장하고 행이 없을 때는 서비스가 기본값으로 응답한다.                                                                                                                                           |
+| UserSettings  | `user_id` | `flow_min`, `break_min`, `long_break_min`, `cycle_every`, `auto_start_break`, `auto_start_session`, `day1~3_label`, `day1~3_start_min`, `day1~3_end_min` | 사용자당 최대 1개이며 평면 컬럼으로 저장하고 행이 없을 때는 서비스가 기본값으로 응답한다. MiniDay 3구간은 엔티티에서 `MiniDay` VO로 다루고 DB에는 구간별 컬럼 3개씩 펼쳐 저장한다(설계 근거 4-5). |
 | Review        | `id`      | `user_id`, `type`, `period_start`, `period_end`                                                      | `(user_id, type, period_start)`에는 유일 제약이 있고 주간은 월요일 시작, 월간은 1일 시작 규칙을 따른다.                                                                                                                    |
 | Report        | `id`      | `user_id`, `type`, `period_start`, `content`, `prompt_version`                                       | `(user_id, type, period_start)` UNIQUE. `content`는 JSON이며 `{keep, problem, try, referenceQuestion}` 4개 키가 항상 존재하고 `referenceQuestion`만 값이 nullable이다. 회원 전용 (게스트 사용 불가). 재생성 시 동일 키 row 덮어쓰기. |
 | User          | `id`      | `email`, `nickname`                                                                                  | 회원 계정 엔터티다.                                                                                                                                                                                   |
@@ -90,11 +90,15 @@ CREATE TABLE todos
     session_count         INT          NOT NULL DEFAULT 0,
     session_focus_seconds INT          NOT NULL DEFAULT 0,
     timer_mode            VARCHAR(20),
+    review_round          INT          NULL,              -- 복습 회차 (null=일반 Todo, 1~6=복습)
+    original_todo_id      VARCHAR(36)  NULL,              -- 복습 체인의 루트 Todo ID
     created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_todos_user_order ON todos (user_id, date, mini_day, day_order, created_at);
+CREATE UNIQUE INDEX uq_todos_review_round ON todos (user_id, original_todo_id, review_round);
+CREATE INDEX idx_todos_original ON todos (user_id, original_todo_id);
 
 CREATE TABLE todo_sessions
 (
@@ -272,6 +276,8 @@ erDiagram
         int day_order
         int session_count
         int session_focus_seconds
+        int review_round
+        varchar original_todo_id "복습 루트 Todo (FK 없음)"
     }
     todo_sessions {
         varchar id PK
@@ -294,6 +300,17 @@ erDiagram
         int break_min
         int long_break_min
         int cycle_every
+        tinyint auto_start_break
+        tinyint auto_start_session
+        varchar day1_label "MiniDay 1~3: label, start_min, end_min"
+        int day1_start_min
+        int day1_end_min
+        varchar day2_label
+        int day2_start_min
+        int day2_end_min
+        varchar day3_label
+        int day3_start_min
+        int day3_end_min
     }
     reviews {
         varchar id PK
@@ -315,7 +332,10 @@ erDiagram
     users ||--o{ auth_refresh_tokens: ""
     todos ||--o{ todo_sessions: ""
     todos ||--o| timer_states: ""
+    user_settings |o..o{ todos: "mini_day 1~3 → dayN (FK 없음)"
 ```
+
+점선은 FK 없이 값으로만 이어지는 참조다. `todos.mini_day`는 같은 사용자의 `user_settings` 구간 번호를 가리키지만, 설정 행이 없을 수 있고(기본값 응답) 0은 미지정이라 FK를 둘 수 없다.
 
 ## 4. 설계 근거
 
@@ -347,3 +367,10 @@ erDiagram
   같은 AI 전용 메타데이터도 따라붙는다.
 - 대안과 기각 이유: `source` 컬럼(manual/ai)으로 한 테이블에 합칠 수도 있지만, content 포맷(TEXT vs JSON), 소유 범위(게스트 포함 vs 회원 전용), AI 전용 컬럼이 한쪽에만
   의미를 가져 NULL 컬럼과 분기 조건이 늘어난다. 키 구조가 같다는 이유로 합치면 오히려 두 도메인의 규칙이 한 테이블에 뒤섞인다.
+
+### 5) MiniDay 구간을 `user_settings`에 평면 컬럼으로 둔 이유
+
+- 선택: MiniDay 3구간을 별도 테이블이 아니라 `user_settings`에 `day1~3_label`, `day1~3_start_min`, `day1~3_end_min` 9개 컬럼으로 펼쳐 저장하고, 엔티티에서는 `MiniDay` VO 3개로 조립한다.
+- 이유: 구간 수는 제품 규칙상 3개로 고정이고, API(`GET/PUT /api/settings/mini-days`)도 `day1`~`day3`을 한 번에 읽고 한 번에 바꾼다. 늘 함께 읽고 쓰는 고정 개수 값이라 사용자당 한 행이면 조인과 행 단위 정합성 관리가 필요 없다. 구간 검증(시작 < 종료, label 1~50자)은 `MiniDay` VO가 맡는다.
+- 대안과 기각 이유: `user_mini_days(user_id, day_no, label, start_min, end_min)`로 분리하면 반복 컬럼은 사라지지만, 고정 3행을 항상 같이 다루기 위한 조인과 행 개수 보장 로직이 늘어난다. 정규화하더라도 설정 행이 없을 수 있고 `mini_day = 0`이 미지정이라 `todos.mini_day`에 FK를 걸 수는 없다.
+- 재검토 조건: 사용자가 구간 개수를 바꿀 수 있게 되면 `user_mini_days`로 분리한다. 이때는 API의 `day1`~`day3` 객체를 배열로 바꾸고 `todos.mini_day`의 의미도 함께 재정의해야 한다.
