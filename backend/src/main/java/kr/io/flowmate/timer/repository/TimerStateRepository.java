@@ -47,4 +47,14 @@ public interface TimerStateRepository extends JpaRepository<TimerState, String> 
     // upsert 직후 같은 트랜잭션에서 확정 version을 읽는다. 값만 읽으므로 1차 캐시를 거치지 않는다
     @Query("select t.version from TimerState t where t.todoId = :todoId")
     long findVersionByTodoId(String todoId);
+
+    // 복원 대상: idle이 아니고 threshold 이후에 갱신된 상태. TTL은 조회에서만 적용하고 행은 지우지 않는다
+    @Query("""
+            select t from TimerState t
+            where t.userId = :userId
+              and t.stateJson is not null
+              and t.updatedAt >= :threshold
+            order by t.updatedAt desc
+            """)
+    List<TimerState> findActiveSince(String userId, Instant threshold);
 }
