@@ -38,7 +38,7 @@
 |---------------|-----------|------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Todo          | `id`      | `user_id`, `title`, `date`, `mini_day`, `day_order`, `timer_mode`, `review_round`, `original_todo_id` | • `timer_mode` ∈ `{STOPWATCH, POMODORO, null}` (DB 저장값; `@Enumerated(STRING)`, API 표현은 소문자)<br>• 날짜 이동에도 Todo identity 유지<br>• 세션 집계 필드는 캐시, 정본은 `todo_sessions`<br>• `mini_day` 0은 구간 미지정, 1~3은 UserSettings의 `day1`~`day3` 구간 번호<br>• 복습 Todo는 `review_round`(1~6)와 루트 Todo를 가리키는 `original_todo_id`를 가진다(같은 테이블 참조, FK 없음) |
 | TodoSession   | `id`      | `todo_id`, `user_id`, `client_session_id`, `session_order`, `session_focus_seconds`, `break_seconds` | • Todo의 정본 세션<br>• `(todo_id, client_session_id)`, `(todo_id, session_order)` UNIQUE<br>• 멱등 재요청 시 `break_seconds`만 증가 방향 갱신                                                                  |
-| TimerState    | `todo_id` | `user_id`, `state_json`, `version`                                                                   | Todo당 최대 1개만 존재하는 회원 전용 런타임 스냅샷이며, `state_json = null`은 행 삭제 대신 상태만 남기는 논리 삭제를 뜻하고 `version`은 단조 증가한다.                                                                                        |
+| TimerState    | `todo_id` | `user_id`, `state_json`, `version`                                                                   | Todo당 최대 1개만 존재하는 회원 전용 런타임 스냅샷이며, `state_json = null`은 행 삭제 대신 상태만 남기는 논리 삭제를 뜻한다. `version`은 Todo별로 저장할 때마다 DB가 1씩 올리는 순서 번호다. 행은 Todo가 삭제될 때만 함께 삭제된다.                                                                                        |
 | UserSettings  | `user_id` | `flow_min`, `break_min`, `long_break_min`, `cycle_every`, `auto_start_break`, `auto_start_session`, `day1~3_label`, `day1~3_start_min`, `day1~3_end_min` | 사용자당 최대 1개이며 평면 컬럼으로 저장하고 행이 없을 때는 서비스가 기본값으로 응답한다. MiniDay 3구간은 엔티티에서 `MiniDay` VO로 다루고 DB에는 구간별 컬럼 3개씩 펼쳐 저장한다(설계 근거 4-5). |
 | Review        | `id`      | `user_id`, `type`, `period_start`, `period_end`                                                      | `(user_id, type, period_start)`에는 유일 제약이 있고 주간은 월요일 시작, 월간은 1일 시작 규칙을 따른다.                                                                                                                    |
 | Report        | `id`      | `user_id`, `type`, `period_start`, `content`, `prompt_version`                                       | `(user_id, type, period_start)` UNIQUE. `content`는 JSON이며 `{keep, problem, try, referenceQuestion}` 4개 키가 항상 존재하고 `referenceQuestion`만 값이 nullable이다. 회원 전용 (게스트 사용 불가). 재생성 시 동일 키 row 덮어쓰기. |
@@ -232,8 +232,8 @@ CREATE TABLE timer_states
     todo_id    VARCHAR(36)  NOT NULL PRIMARY KEY,
     user_id    VARCHAR(36)  NOT NULL,
     state_json TEXT         NULL,               -- idle 시 NULL (논리 삭제), 활성 상태면 JSON 저장
-    version    BIGINT       NOT NULL DEFAULT 0, -- 단조 증가. max(now, lastVersion + 1)을 앱 서버가 계산
-    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    version    BIGINT       NOT NULL DEFAULT 0, -- Todo별 순차 증가. 저장 시 DB가 +1 (원자적 upsert)
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), -- 앱이 바인딩한 저장 시각 (기본값에 의존하지 않음)
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     CONSTRAINT fk_timer_states_todo
@@ -352,11 +352,12 @@ erDiagram
 - 이유: 목록 렌더링과 회고 계산은 Todo 단위 합계를 자주 읽기 때문에 매번 `todo_sessions`를 집계하는 비용을 줄일 수 있다.
 - 대안과 기각 이유: 세션 테이블만 정본으로 두고 매 조회 시 합계를 계산할 수도 있지만, 읽기 비용이 커지고 목록과 회고 응답 경로가 무거워져 현재 사용 패턴에 비해 비효율적이다.
 
-### 3) `state_json` 논리 삭제와 `version` 단조성 보장
+### 3) `state_json` 논리 삭제와 `version` 순차 증가
 
-- 선택: idle 전환 시 `timer_states` 행을 삭제하지 않고 `state_json = NULL`로 남기며, `version`은 계속 단조 증가시킨다.
-- 이유: 타이머 상태는 최신성 비교가 중요하므로 행을 유지해야 다른 탭과 기기와의 동기화에서 이전 상태보다 확실히 새로운 값을 구분할 수 있다.
-- 대안과 기각 이유: idle 때 행을 삭제하면 저장소는 단순해지지만, 다음 삽입/갱신에서 `version`이 초기화되어 새 상태가 오래된 상태로 오판될 위험이 있다.
+- 선택: idle 전환 시 `timer_states` 행을 삭제하지 않고 `state_json = NULL`로 남긴다. 최초 저장과 갱신은 `INSERT … ON DUPLICATE KEY UPDATE` 한 문장으로 처리하고, `version`은 DB가 `+1` 한다(새 행은 1).
+- 이유: 같은 Todo의 동시 쓰기가 InnoDB 행 잠금으로 직렬화되므로 `version`이 중복되거나 커밋 순서와 어긋나지 않는다. 행을 유지해야 `version`이 끊기지 않고, 다른 탭과 기기가 이전 상태보다 새로운 값을 구분할 수 있다.
+- 24시간 TTL은 조회 필터다: 오래된 행을 물리 삭제하면 다시 만들어진 행의 `version`이 1부터 시작해, 열려 있던 탭이 새 이벤트를 버린다. 그래서 행은 Todo가 삭제될 때만 함께 삭제된다.
+- 대안과 기각 이유: 애플리케이션에서 `max(now, lastVersion + 1)`을 계산하던 이전 방식은 락 없는 읽기 값으로 계산해 동시 갱신에서 같은 version이 나오거나 역전됐다. 같은 Todo에 동시에 처음 저장하면 PK 충돌로 요청이 실패했다(Issue #35).
 
 ### 4) `reviews`와 `reports`를 한 테이블로 합치지 않은 이유
 
