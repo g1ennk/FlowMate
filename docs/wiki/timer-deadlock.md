@@ -154,10 +154,10 @@ RECORD LOCKS space id 10 page no 4 index PRIMARY
 타이머 상태는 최신 값을 계속 덮어쓰는 last-writer-wins 성격의 데이터라, native upsert 수준의 원자성은 불필요했다. TransactionTemplate retry도 gap lock 원인을
 유지한 채 증상만 완화하는 구조라 제외했다.
 
-gap lock을 유발한 `@Lock`을 제거하고, 남는 first insert 경합은 유일성 제약 조건 충돌을 catch-retry로 복구하는 방향을 선택했다. 타이머는 사용자와 Todo별로 나뉘고 조작도 사람 손으로만 일어나, 같은 Todo에 동시 저장이 몰리는 일은 드물다고 봤다. 같은 프로젝트의
+gap lock을 유발한 `@Lock`을 제거하고, 남는 first insert 경합은 유일성 제약 조건 충돌을 catch-retry로 복구하는 방향을 선택했다. 타이머는 사용자와 Todo별로 나뉘고 조작도 사람 손으로만 일어나, 같은 Todo에 동시 저장이 몰리는 일은 드물 것으로 예상했다. 같은 프로젝트의
 `TodoService.scheduleReview`가 이미 유사한 패턴을 쓰고 있어 코드 일관성도 유지할 수 있었다.
 
-> 이 판단(upsert는 과잉, catch-retry면 충분)은 후속 검증에서 뒤집혔다. 덮어쓰는 데이터라도 클라이언트가 version으로 적용할 이벤트를 고르기 때문에 version 정합성은 지켜야 했고, 결국 upsert로 바꿨다([6절](#6-후속-검증과-최종-해결)).
+> 이 판단은 후속 검증에서 뒤집혔다. 같은 트랜잭션 안의 catch-retry는 동작하지 않았고, 락을 지우면서 version이 중복되거나 역전됐다. 최신 값으로 덮어쓰는 데이터라도, 각 기기는 version이 더 큰 이벤트만 화면에 반영하므로 version이 틀리면 최신 상태를 버리게 된다. 그래서 저장과 version 증가를 한 번에 처리하는 upsert를 선택했다([6절](#6-후속-검증과-최종-해결)).
 
 ## 4. 해결
 
