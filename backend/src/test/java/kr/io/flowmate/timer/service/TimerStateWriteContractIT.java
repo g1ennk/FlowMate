@@ -2,14 +2,21 @@ package kr.io.flowmate.timer.service;
 
 import kr.io.flowmate.support.MySqlIntegrationTest;
 import kr.io.flowmate.timer.domain.TimerState;
+import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
+import kr.io.flowmate.timer.dto.response.TimerStateResponse;
+import kr.io.flowmate.timer.event.TimerStateChangedEvent;
 import kr.io.flowmate.timer.repository.TimerStateRepository;
+import kr.io.flowmate.timer.sse.SseBroadcaster;
 import kr.io.flowmate.todo.domain.Todo;
+import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import kr.io.flowmate.todo.service.TodoService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -17,13 +24,20 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * 타이머 쓰기 계약(원자적 upsert, Todo별 순차 version, 확정 version 재조회)을 실제 MySQL 8.0에서 검증한다.
@@ -46,6 +60,12 @@ class TimerStateWriteContractIT extends MySqlIntegrationTest {
 
     @Autowired
     private TodoService todoService;
+
+    @MockitoSpyBean
+    private SseBroadcaster sseBroadcaster;
+
+    @Autowired
+    private TimerService timerService;
 
     @Test
     void 첫_저장은_version_1로_행을_만든다() {
@@ -156,6 +176,42 @@ class TimerStateWriteContractIT extends MySqlIntegrationTest {
             }
         }
         return -1;
+    }
+
+    @Test
+    void 응답과_DB와_커밋_후_이벤트의_version과_상태가_일치한다() {
+        String userId = newUser();
+        String todoId = newTodo(userId);
+        clearInvocations(sseBroadcaster);
+
+        TimerStateResponse response = timerService.upsertState(userId, todoId, runningRequest());
+
+        ArgumentCaptor<TimerStateChangedEvent> event = ArgumentCaptor.forClass(TimerStateChangedEvent.class);
+        verify(sseBroadcaster, times(1)).onTimerStateChanged(event.capture());
+        TimerState saved = timerStateRepository.findById(todoId).orElseThrow();
+        assertThat(response.version()).isEqualTo(saved.getVersion());
+        assertThat(event.getValue().version()).isEqualTo(saved.getVersion());
+        assertThat(event.getValue().state()).isEqualTo(saved.getStateJson());
+    }
+
+    @Test
+    void 다른_사용자의_Todo에_저장하면_404이고_행도_이벤트도_생기지_않는다() {
+        String ownerId = newUser();
+        String todoId = newTodo(ownerId);
+        clearInvocations(sseBroadcaster);
+
+        assertThatThrownBy(() -> timerService.upsertState(newUser(), todoId, runningRequest()))
+                .isInstanceOf(TodoNotFoundException.class);
+
+        assertThat(timerRowCount(todoId)).isZero();
+        verify(sseBroadcaster, never()).onTimerStateChanged(any());
+    }
+
+    private static TimerStatePushRequest runningRequest() {
+        TimerStatePushRequest request = new TimerStatePushRequest();
+        request.setStatus("running");
+        request.setState(Map.of("status", "running"));
+        return request;
     }
 
     private long upsertAndReadVersion(String todoId, String userId, String stateJson, Instant now) {
