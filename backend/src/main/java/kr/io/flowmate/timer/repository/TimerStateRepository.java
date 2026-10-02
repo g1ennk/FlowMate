@@ -15,6 +15,8 @@ public interface TimerStateRepository extends JpaRepository<TimerState, String> 
     /**
      * 같은 Todo의 최초 저장과 갱신을 한 문장으로 처리한다.
      * version은 새 행이면 1, 기존 행이면 DB가 +1 한다. 같은 Todo의 동시 쓰기는 InnoDB 행 X락으로 직렬화된다.
+     * FK 검사 때문에 갱신 경로에서도 부모 todos 행에 공유(S) 잠금을 커밋까지 잡는다. 정합성은 이 잠금에 의존하지 않지만,
+     * 같은 Todo의 세션 저장(Todo 행 X락)·Todo 수정과는 짧게 서로 기다린다.
      * 시각은 호출자가 바인딩한다. 이 SQL에서 NOW()·CURRENT_TIMESTAMP를 쓰지 않는다.
      * 쓰기 경로는 TimerState 엔티티를 로드하지 않으므로 flush/clear 강제 옵션을 쓰지 않는다.
      * 반환값(INSERT 1, UPDATE 2)은 CLIENT_FOUND_ROWS 설정에 따라 의미가 달라지므로 쓰지 않는다.

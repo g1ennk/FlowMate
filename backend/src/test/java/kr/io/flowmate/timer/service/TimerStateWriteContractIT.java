@@ -20,10 +20,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -212,6 +217,40 @@ class TimerStateWriteContractIT extends MySqlIntegrationTest {
         request.setStatus("running");
         request.setState(Map.of("status", "running"));
         return request;
+    }
+
+    @Test
+    void upsert는_기존_행을_갱신할_때도_부모_Todo_행에_공유_잠금을_커밋까지_잡는다() {
+        String userId = newUser();
+        String todoId = newTodo(userId);
+        upsertAndReadVersion(todoId, userId, RUNNING_JSON, now());
+
+        List<String> locks = tx().execute(status -> {
+            timerStateRepository.upsert(todoId, userId, null, now());
+            // 트랜잭션이 열려 있는 동안 이 Todo에 걸린 레코드 잠금을 다른 연결(root)로 읽는다
+            return recordLocksOn(todoId);
+        });
+
+        // FK 검사 때문에 갱신 경로에서도 부모 todos 행에 S락이 걸린다. 정합성은 이 잠금에 의존하지 않는다
+        assertThat(locks).contains("todos:S,REC_NOT_GAP", "timer_states:X,REC_NOT_GAP");
+    }
+
+    private static List<String> recordLocksOn(String key) {
+        String sql = "select concat(object_name, ':', lock_mode) from performance_schema.data_locks "
+                + "where lock_type = 'RECORD' and lock_data like ?";
+        try (Connection root = openRootConnection();
+             PreparedStatement statement = root.prepareStatement(sql)) {
+            statement.setString(1, "%" + key + "%");
+            List<String> locks = new ArrayList<>();
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    locks.add(rows.getString(1));
+                }
+            }
+            return locks;
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private long upsertAndReadVersion(String todoId, String userId, String stateJson, Instant now) {

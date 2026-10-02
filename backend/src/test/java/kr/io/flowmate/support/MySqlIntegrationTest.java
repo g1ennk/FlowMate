@@ -8,6 +8,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
 /**
  * 실제 MySQL 8.0 + Redis에서 도는 통합 테스트의 공통 설정.
  * H2로는 InnoDB의 PK 충돌·gap lock·MVCC 스냅샷 동작을 재현할 수 없다.
@@ -27,7 +31,8 @@ public abstract class MySqlIntegrationTest {
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
+        // 운영과 같은 Connector/J 시간대 설정으로 Instant 왕복을 검증한다
+        registry.add("spring.datasource.url", () -> withServerTimezone(MYSQL.getJdbcUrl()));
         registry.add("spring.datasource.username", MYSQL::getUsername);
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
@@ -37,5 +42,14 @@ public abstract class MySqlIntegrationTest {
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+    }
+
+    private static String withServerTimezone(String jdbcUrl) {
+        return jdbcUrl + (jdbcUrl.contains("?") ? "&" : "?") + "serverTimezone=Asia/Seoul";
+    }
+
+    /** performance_schema처럼 테스트 사용자 권한 밖의 진단 테이블을 읽을 때만 쓴다. */
+    protected static Connection openRootConnection() throws SQLException {
+        return DriverManager.getConnection(MYSQL.getJdbcUrl(), "root", MYSQL.getPassword());
     }
 }

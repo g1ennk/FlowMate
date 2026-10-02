@@ -11,6 +11,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.sql.DataSource;
+
+import java.sql.Connection;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -39,6 +42,9 @@ class TimerStateTimeIT extends MySqlIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Test
     void 바인딩한_밀리초_시각이_그대로_저장되고_읽힌다() {
@@ -104,6 +110,13 @@ class TimerStateTimeIT extends MySqlIntegrationTest {
         assertThat(timerStateRepository.findById(todoId).orElseThrow().getUpdatedAt())
                 .as(recorded)
                 .isEqualTo(now);
+    }
+
+    @Test
+    void IT_연결은_운영과_같은_Connector_J_시간대_설정을_쓴다() throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            assertThat(connection.getMetaData().getURL()).contains("serverTimezone=Asia/Seoul");
+        }
     }
 
     private String newTimerAt(String userId, String stateJson, Instant updatedAt) {
