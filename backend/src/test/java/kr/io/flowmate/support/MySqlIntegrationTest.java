@@ -15,7 +15,8 @@ import java.sql.SQLException;
 /**
  * 실제 MySQL 8.0 + Redis에서 도는 통합 테스트의 공통 설정.
  * H2로는 InnoDB의 PK 충돌·gap lock·MVCC 스냅샷 동작을 재현할 수 없다.
- * 컨테이너는 JVM당 한 번만 띄우고 하위 클래스가 같은 Spring 컨텍스트를 공유한다.
+ * 컨테이너는 JVM당 한 번만 띄운다. Spring 컨텍스트는 하위 클래스의 Bean override 조합별로 캐시되므로,
+ * 같은 도메인의 IT는 공통 하위 클래스(예: TimerIntegrationTest)에서 override를 한 번만 선언한다.
  */
 @SpringBootTest
 @ActiveProfiles("test")

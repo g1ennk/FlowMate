@@ -1,16 +1,13 @@
 package kr.io.flowmate.timer.service;
 
-import kr.io.flowmate.support.MySqlIntegrationTest;
 import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,16 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 서로 다른 Todo의 동시 첫 저장에서 gap lock deadlock이 생기는 조건을 검증한다.
  * Todo id는 UUID(16진수)보다 뒤에 정렬되는 "zz-" 접두사로 만들어 항상 같은 gap에 들어가게 한다.
  */
-class TimerGapLockDeadlockIT extends MySqlIntegrationTest {
+class TimerGapLockDeadlockIT extends TimerIntegrationTest {
 
     private static final int ROUNDS = 10;
-    private static final int MYSQL_DEADLOCK = 1213;
     private static final String USER_ID = "gap-user";
 
     private static ExecutorService executor;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -60,12 +53,12 @@ class TimerGapLockDeadlockIT extends MySqlIntegrationTest {
 
         assertThat(outcomes)
                 .as("%d라운드 × 2트랜잭션, SELECT FOR UPDATE → (둘 다 조회 완료) → INSERT", ROUNDS)
-                .containsEntry("DEADLOCK", ROUNDS)
+                .containsEntry("DEADLOCK(1213)", ROUNDS)
                 .containsEntry("OK", ROUNDS);
     }
 
     @Test
-    void 현재_경로_잠금없는_SELECT_후_INSERT는_같은_순서로_끼어들어도_deadlock이_없다() throws Exception {
+    void 직전_경로_잠금없는_SELECT_후_INSERT는_같은_순서로_끼어들어도_deadlock이_없다() throws Exception {
         Map<String, Integer> outcomes = firstSaveTwoTodos("plain", false);
 
         assertThat(outcomes)
@@ -82,7 +75,7 @@ class TimerGapLockDeadlockIT extends MySqlIntegrationTest {
             CyclicBarrier barrier = new CyclicBarrier(threads);
             List<Future<String>> futures = new ArrayList<>();
             for (int i = 0; i < threads; i++) {
-                String todoId = newTodo("svc-%02d-%d".formatted(round, i));
+                String todoId = newTodoInGap("svc-%02d-%d".formatted(round, i));
                 futures.add(executor.submit(() -> {
                     barrier.await(5, TimeUnit.SECONDS);
                     try {
@@ -114,7 +107,7 @@ class TimerGapLockDeadlockIT extends MySqlIntegrationTest {
             CyclicBarrier bothSelected = new CyclicBarrier(2);
             List<Future<String>> futures = new ArrayList<>();
             for (String suffix : List.of("a", "b")) {
-                String todoId = newTodo("%s-%02d-%s".formatted(prefix, round, suffix));
+                String todoId = newTodoInGap("%s-%02d-%s".formatted(prefix, round, suffix));
                 futures.add(executor.submit(() -> {
                     try {
                         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
@@ -137,7 +130,7 @@ class TimerGapLockDeadlockIT extends MySqlIntegrationTest {
         return outcomes;
     }
 
-    private String newTodo(String key) {
+    private String newTodoInGap(String key) {
         String todoId = "zz-" + key;
         jdbcTemplate.update("insert into todos (id, user_id, title, date) values (?, ?, 'gap', curdate())",
                 todoId, USER_ID);
@@ -150,15 +143,6 @@ class TimerGapLockDeadlockIT extends MySqlIntegrationTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    private static String classify(Throwable e) {
-        for (Throwable c = e; c != null; c = c.getCause()) {
-            if (c instanceof SQLException sql && sql.getErrorCode() == MYSQL_DEADLOCK) {
-                return "DEADLOCK";
-            }
-        }
-        return e.getClass().getSimpleName();
     }
 
     private static TimerStatePushRequest running() {

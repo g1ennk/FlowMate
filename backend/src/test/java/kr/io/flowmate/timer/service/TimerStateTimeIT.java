@@ -1,13 +1,9 @@
 package kr.io.flowmate.timer.service;
 
-import kr.io.flowmate.support.MySqlIntegrationTest;
 import kr.io.flowmate.timer.domain.TimerState;
 import kr.io.flowmate.timer.repository.TimerStateRepository;
-import kr.io.flowmate.todo.domain.Todo;
-import kr.io.flowmate.todo.repository.TodoRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -15,10 +11,8 @@ import javax.sql.DataSource;
 
 import java.sql.Connection;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,18 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 시각은 모두 애플리케이션 값으로 바인딩한다. 이 테스트는 "앱 바인딩 경로끼리 일관된다"를 증명하며,
  * DB에 저장된 절대 UTC 값의 정확성이나 운영 DB 시간대까지 증명하지는 않는다.
  */
-class TimerStateTimeIT extends MySqlIntegrationTest {
+class TimerStateTimeIT extends TimerIntegrationTest {
 
     private static final String RUNNING_JSON = "{\"status\":\"running\"}";
 
     @Autowired
     private TimerStateRepository timerStateRepository;
-
-    @Autowired
-    private TodoRepository todoRepository;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -130,11 +118,4 @@ class TimerStateTimeIT extends MySqlIntegrationTest {
                 .executeWithoutResult(status -> timerStateRepository.upsert(todoId, userId, stateJson, now));
     }
 
-    private String newTodo(String userId) {
-        return todoRepository.save(Todo.create(userId, "timer-it", null, LocalDate.now(), 0, 0)).getId();
-    }
-
-    private static String newUser() {
-        return "it-" + UUID.randomUUID().toString().substring(0, 8);
-    }
 }

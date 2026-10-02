@@ -9,6 +9,7 @@ import kr.io.flowmate.todo.domain.Todo;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,9 +29,12 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hibernate.exception.ConstraintViolationException.ConstraintKind.FOREIGN_KEY;
+import static org.hibernate.exception.ConstraintViolationException.ConstraintKind.UNIQUE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -119,8 +123,8 @@ class TimerServiceTest {
     void upsertState_todoDeletedDuringUpsert_throwsNotFoundWithoutEvent() throws Exception {
         givenOwnedTodo();
         when(objectMapper.writeValueAsString(any())).thenReturn(RUNNING_JSON);
-        when(timerStateRepository.upsert(eq(TODO_ID), eq(USER_ID), eq(RUNNING_JSON), any(Instant.class)))
-                .thenThrow(integrityViolation(1452, TimerService.TODO_FOREIGN_KEY));
+        doThrow(integrityViolation(FOREIGN_KEY, TimerService.TODO_FOREIGN_KEY))
+                .when(timerStateRepository).upsert(eq(TODO_ID), eq(USER_ID), eq(RUNNING_JSON), any(Instant.class));
 
         assertThatThrownBy(() -> timerService.upsertState(USER_ID, TODO_ID, runningRequest()))
                 .isInstanceOf(TodoNotFoundException.class);
@@ -134,9 +138,9 @@ class TimerServiceTest {
     void upsertState_otherIntegrityViolation_propagatesOriginal() throws Exception {
         givenOwnedTodo();
         when(objectMapper.writeValueAsString(any())).thenReturn(RUNNING_JSON);
-        DataIntegrityViolationException duplicate = integrityViolation(1062, "PRIMARY");
-        when(timerStateRepository.upsert(eq(TODO_ID), eq(USER_ID), eq(RUNNING_JSON), any(Instant.class)))
-                .thenThrow(duplicate);
+        DataIntegrityViolationException duplicate = integrityViolation(UNIQUE, "PRIMARY");
+        doThrow(duplicate)
+                .when(timerStateRepository).upsert(eq(TODO_ID), eq(USER_ID), eq(RUNNING_JSON), any(Instant.class));
 
         assertThatThrownBy(() -> timerService.upsertState(USER_ID, TODO_ID, runningRequest()))
                 .isSameAs(duplicate);
@@ -145,14 +149,14 @@ class TimerServiceTest {
     }
 
     @Test
-    @DisplayName("isTodoForeignKeyViolation: 1452이고 제약 이름이 Todo FK일 때만 true")
-    void isTodoForeignKeyViolation_matchesOnlyTodoForeignKeyWith1452() {
+    @DisplayName("isTodoForeignKeyViolation: FK 위반이고 제약 이름이 Todo FK일 때만 true")
+    void isTodoForeignKeyViolation_matchesOnlyTodoForeignKey() {
         assertThat(TimerService.isTodoForeignKeyViolation(
-                integrityViolation(1452, TimerService.TODO_FOREIGN_KEY))).isTrue();
+                integrityViolation(FOREIGN_KEY, TimerService.TODO_FOREIGN_KEY))).isTrue();
         assertThat(TimerService.isTodoForeignKeyViolation(
-                integrityViolation(1452, "fk_other_parent"))).isFalse();
+                integrityViolation(FOREIGN_KEY, "fk_other_parent"))).isFalse();
         assertThat(TimerService.isTodoForeignKeyViolation(
-                integrityViolation(1062, TimerService.TODO_FOREIGN_KEY))).isFalse();
+                integrityViolation(UNIQUE, TimerService.TODO_FOREIGN_KEY))).isFalse();
         assertThat(TimerService.isTodoForeignKeyViolation(
                 new DataIntegrityViolationException("no cause"))).isFalse();
     }
@@ -166,7 +170,7 @@ class TimerServiceTest {
         when(active.getVersion()).thenReturn(123L);
         when(timerStateRepository.findActiveSince(eq(USER_ID), any(Instant.class))).thenReturn(List.of(active));
         when(objectMapper.readValue(RUNNING_JSON, Object.class)).thenReturn("deserialized-state");
-        Instant before = Instant.now().truncatedTo(ChronoUnit.MILLIS).minus(24, ChronoUnit.HOURS);
+        Instant before = Instant.now().minus(24, ChronoUnit.HOURS);
 
         List<TimerStateResponse> result = timerService.getActiveStates(USER_ID);
 
@@ -207,10 +211,10 @@ class TimerServiceTest {
         return request;
     }
 
-    private static DataIntegrityViolationException integrityViolation(int mysqlErrorCode, String constraintName) {
-        SQLException sql = new SQLException("constraint violation", "23000", mysqlErrorCode);
+    private static DataIntegrityViolationException integrityViolation(ConstraintKind kind, String constraintName) {
+        SQLException sql = new SQLException("constraint violation", "23000");
         ConstraintViolationException hibernate =
-                new ConstraintViolationException("could not execute statement", sql, constraintName);
+                new ConstraintViolationException("could not execute statement", sql, kind, constraintName);
         return new DataIntegrityViolationException("could not execute statement", hibernate);
     }
 }

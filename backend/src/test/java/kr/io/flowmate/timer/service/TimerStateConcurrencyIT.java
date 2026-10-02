@@ -2,27 +2,20 @@ package kr.io.flowmate.timer.service;
 
 import kr.io.flowmate.session.dto.request.SessionCreateRequest;
 import kr.io.flowmate.session.service.SessionService;
-import kr.io.flowmate.support.MySqlIntegrationTest;
 import kr.io.flowmate.timer.domain.TimerState;
 import kr.io.flowmate.timer.dto.request.TimerStatePushRequest;
 import kr.io.flowmate.timer.dto.response.TimerStateResponse;
 import kr.io.flowmate.timer.repository.TimerStateRepository;
-import kr.io.flowmate.timer.sse.SseBroadcaster;
 import kr.io.flowmate.todo.domain.Todo;
-import kr.io.flowmate.todo.repository.TodoRepository;
 import kr.io.flowmate.todo.service.TodoService;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.sql.SQLException;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,16 +41,13 @@ import static org.mockito.Mockito.verify;
  * 같은 Todo에 대한 동시 타이머 저장과, 다른 쓰기 경로(세션 생성·Todo 삭제·활성 조회)와의 경합을
  * 실제 MySQL 8.0에서 검증한다. 모든 시나리오는 CyclicBarrier로 동시에 출발시키는 최악 조건이다.
  */
-class TimerStateConcurrencyIT extends MySqlIntegrationTest {
+class TimerStateConcurrencyIT extends TimerIntegrationTest {
 
     private static final int ROUNDS = 30;
     private static final int WRITERS = 4;
     private static final String RUNNING_JSON = "{\"status\":\"running\"}";
 
     private static ExecutorService executor;
-
-    @MockitoSpyBean
-    private SseBroadcaster sseBroadcaster;
 
     @Autowired
     private TimerService timerService;
@@ -66,16 +56,10 @@ class TimerStateConcurrencyIT extends MySqlIntegrationTest {
     private TimerStateRepository timerStateRepository;
 
     @Autowired
-    private TodoRepository todoRepository;
-
-    @Autowired
     private TodoService todoService;
 
     @Autowired
     private SessionService sessionService;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -286,35 +270,6 @@ class TimerStateConcurrencyIT extends MySqlIntegrationTest {
 
     private static List<Long> range(long from, long to) {
         return LongStream.rangeClosed(from, to).boxed().toList();
-    }
-
-    private static String classify(Throwable e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SQLException sql) {
-                return switch (sql.getErrorCode()) {
-                    case 1213 -> "DEADLOCK(1213)";
-                    case 1205 -> "LOCK_WAIT_TIMEOUT(1205)";
-                    case 1062 -> "DUPLICATE_KEY(1062)";
-                    case 1452 -> "FK_PARENT_MISSING(1452)";
-                    default -> "SQL(" + sql.getErrorCode() + ")";
-                };
-            }
-        }
-        return e.getClass().getSimpleName();
-    }
-
-    private int timerRowCount(String todoId) {
-        Integer count = jdbcTemplate.queryForObject(
-                "select count(*) from timer_states where todo_id = ?", Integer.class, todoId);
-        return count;
-    }
-
-    private String newTodo(String userId) {
-        return todoRepository.save(Todo.create(userId, "timer-it", null, LocalDate.now(), 0, 0)).getId();
-    }
-
-    private static String newUser() {
-        return "it-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
     private TimerStatePushRequest running(int writer) {
