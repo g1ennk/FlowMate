@@ -1,18 +1,18 @@
-# SSE로 멀티디바이스 타이머 동기화하기
+# SSE 멀티디바이스 타이머 동기화: 단방향 push와 version 기반 순서 보장
 
 > 후속 문서: [Redis Pub/Sub으로 SSE 수평 확장하기](redis-sse-pubsub.md)
 
 ## 요약
 
-- 문제: 타이머 상태가 Zustand + localStorage 기반이라, 같은 계정이어도 기기 간 상태 공유 불가
-- 해결: 서버 -> 클라이언트 단방향 push만 필요하므로 SSE + REST 조합으로 인프라 추가 없이 구현
-- 결과: 타이머 조작이 모든 기기에 즉시 반영, version 단조 증가로 이벤트 역전 방지. k6 163,205건 에러율 0%, p95 45.58ms
+**문제**: 타이머 상태가 Zustand + localStorage 기반이라, **같은 계정이어도 기기 간 상태가 전혀 공유되지 않음**
+
+**해결**: 서버 -> 클라이언트 단방향 동기화만 필요하므로 **SSE + REST** 조합으로 인프라 추가 없이 구현하고, 단조 증가하는 `version`으로 이벤트 역전을 방지
+
+**결과**: 타이머 조작이 **같은 계정의 모든 기기에 즉시 반영**되고, 이벤트 역전 상황에서도 **최신 상태를 유지**
 
 ## 1. 문제 배경: 기기 간 상태 공유 부재
 
-FlowMate의 타이머는 초기에 Zustand 스토어 + localStorage로만 관리됐다.
-
-한 기기 안에서는 새로고침해도 타이머가 유지됐지만, 기기 간에는 상태가 전혀 공유되지 않았다.
+FlowMate의 타이머는 초기에 Zustand 스토어 + localStorage로만 관리돼, 한 기기 안에서는 새로고침해도 유지됐지만 기기 간에는 상태가 전혀 공유되지 않았다.
 
 ```text
 Desktop: 25분 뽀모도로 시작 (running)
@@ -20,14 +20,17 @@ Desktop: 25분 뽀모도로 시작 (running)
 Mobile:  타이머 없음 (idle) ❌
 ```
 
-요구사항은 두 가지였다. 한 기기에서 타이머를 변경하면 다른 기기에 즉시 반영될 것, 이벤트 순서가 역전되어도 최신 상태를 유지할 것.
+요구사항은 두 가지였다.
 
-게스트는 동기화 대상에서 제외한다. 게스트 토큰은 기기별로 독립된 정체성을 가지므로, 두 기기가 같은 게스트 계정을 공유할 경로가 없다.
+- 한 기기에서 타이머를 변경하면 다른 기기에 즉시 반영될 것
+- 이벤트 순서가 역전되어도 최신 상태를 유지할 것
+
+단, 게스트는 동기화 대상에서 제외한다. 게스트 토큰은 기기별로 독립된 정체성을 가지므로, 두 기기가 같은 게스트 계정을 공유할 경로가 없다.
 
 ## 2. 기술 선택: WebSocket vs Polling vs SSE
 
-핵심 판단 기준은 데이터 흐름의 비대칭이었다. 클라이언트 -> 서버는 start/pause/resume/stop 시점에만 발생하므로 REST PUT으로 충분하지만, 서버 -> 클라이언트는 다른 기기의 변경을 즉시 알려야
-하므로 push가 필요하다.
+핵심 판단 기준은 데이터 흐름의 비대칭이었다. 클라이언트 -> 서버는 start/pause/resume/stop 시점에만 발생하므로 REST PUT으로 충분하지만, 서버 -> 클라이언트는 다른 기기의 변경을
+미리 열어둔 채널로 즉시 알려야 하므로 push가 필요하다.
 
 | 방식                | 장점                              | 단점                              | 판단     |
 |-------------------|---------------------------------|---------------------------------|--------|
@@ -35,16 +38,12 @@ Mobile:  타이머 없음 (idle) ❌
 | Polling           | 구현 단순, 인프라 변경 없음                | 실시간성 부족, 빈 응답 트래픽 낭비            | 부적합    |
 | **SSE + REST**    | HTTP 표준, Spring `SseEmitter` 내장 | 클라이언트 -> 서버 단방향 불가 (REST 병행 필요) | **채택** |
 
-### SSE + REST를 선택한 이유
-
-WebSocket(STOMP)은 양방향 채널이 강력하지만, 타이머 동기화에는 단방향 push면 충분하다. 브로커 인프라까지 따라오는 복잡도는 현재 요구사항에 비해 과잉이었다. Polling은 인프라가 가장
-단순하지만, 페이즈 전환 순간 다른 기기에서 몇 초간 이전 상태가 보이는 경험은 부적합했다.
-
-SSE는 서버 -> 클라이언트 단방향 push에 정확히 맞는다. HTTP 표준이라 Nginx 설정만으로 동작하고, Spring이 `SseEmitter`를 내장 지원해 추가 라이브러리 없이 구현할 수 있다.
+WebSocket의 양방향 채널은 이 비대칭 요구사항엔 쓰이지 않는 절반만큼 인프라 비용이 낭비였고, Polling은 페이즈 전환 순간 다른 기기에서 몇 초간 이전 상태가 보이는 경험이 부적합했다.
+SSE는 HTTP 표준이라 Nginx 설정만으로 동작하고, Spring이 `SseEmitter`를 내장 지원해 추가 라이브러리 없이 구현할 수 있었다.
 
 ## 3. 아키텍처
 
-이 문서는 Redis 도입 전 단일 인스턴스 구현을 다룬다. SSE 연결 인증, register, PUT, broadcast가 모두 하나의 JVM 안에서 처리된다.
+전반적인 아키텍처는 다음과 같다. 단일 인스턴스에서는 SseEmitterRegistry가 사용자별 emitter를 같은 JVM 메모리에서 관리하므로, 타이머 상태 변경 시 해당 사용자의 모든 기기에 이벤트를 broadcast할 수 있다.
 
 ```mermaid
 sequenceDiagram
@@ -53,9 +52,11 @@ sequenceDiagram
     participant R as SseEmitterRegistry
     participant M as Mobile Browser
     D ->> S: GET /api/timer/sse?token=accessToken
+    S ->> S: token 검증 (role=member)
     S ->> R: register(userId)
     S -->> D: SSE connected
     M ->> S: GET /api/timer/sse?token=accessToken
+    S ->> S: token 검증 (role=member)
     S ->> R: register(userId)
     S -->> M: SSE connected
     D ->> S: PUT /api/timer/state/{todoId}
@@ -64,8 +65,6 @@ sequenceDiagram
     R -->> D: timer-state
     R -->> M: timer-state
 ```
-
-단일 인스턴스에서는 `SseEmitterRegistry`가 모든 emitter를 같은 JVM 메모리에서 관리하므로 broadcast가 모든 기기에 도달한다.
 
 ## 4. 구현
 
@@ -80,7 +79,7 @@ CREATE TABLE timer_states
     user_id    VARCHAR(36)  NOT NULL,
     state_json TEXT         NULL,
     version    BIGINT       NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     CONSTRAINT fk_timer_states_todo
@@ -89,17 +88,18 @@ CREATE TABLE timer_states
 CREATE INDEX idx_timer_states_user ON timer_states (user_id, updated_at DESC);
 ```
 
-| 컬럼                      | 설계 결정                                        |
-|-------------------------|----------------------------------------------|
-| `todo_id` PK            | Todo와 1:1 관계, 별도 합성 ID 불필요                   |
-| `user_id`               | broadcast 대상 조회 + 인덱스 키                      |
-| `state_json`            | `NULL`이면 idle, JSON이면 활성 상태                  |
-| `version`               | 이벤트 최신성 판단 기준값, 변경 시마다 단조 증가                 |
-| `idx_timer_states_user` | `user_id, updated_at DESC`. 사용자별 최근 상태 조회 커버 |
+| 컬럼                      | 설계 결정                                                     |
+|-------------------------|-----------------------------------------------------------|
+| `todo_id` PK            | Todo와 1:1 관계, 별도 합성 ID 불필요                                |
+| `user_id`               | broadcast 대상 조회 + 인덱스 키                                   |
+| `state_json`            | `NULL`이면 idle, JSON이면 활성 상태                               |
+| `version`               | 이벤트 최신성 판단 기준값, 변경 시마다 단조 증가                              |
+| `updated_at`            | `ON UPDATE`로 상태 변경마다 자동 갱신, `idx_timer_states_user` 정렬 기준 |
+| `idx_timer_states_user` | `user_id, updated_at DESC`. 사용자별 최근 상태 조회 커버              |
 
 ### 4.2 `version` 단조 증가 방식
 
-상태마다 단조 증가하는 정수 `version`을 부여하고, 클라이언트는 마지막으로 적용한 version보다 작은 이벤트를 무시한다.
+상태마다 단조 증가하는 정수 `version`을 부여하고, 클라이언트는 마지막으로 적용한 version보다 작거나 같은 이벤트를 무시한다.
 
 ```text
 long newVersion = Math.max(System.currentTimeMillis(), lastVersion + 1);
@@ -108,7 +108,7 @@ long newVersion = Math.max(System.currentTimeMillis(), lastVersion + 1);
 `max(now, lastVersion + 1)`은 두 가지 위험을 동시에 방지한다.
 
 - `System.currentTimeMillis()`만 쓰면: NTP 보정 등으로 시계가 뒤로 가면 단조성이 깨진다
-- `lastVersion + 1`만 쓰면: 시간 기반 추적이 불가능해져 디버깅 시 순서 파악이 어렵다
+- `lastVersion + 1`만 쓰면: 버전 값만으로 발생 시각을 가늠할 수 없어 디버깅이 불편해진다
 
 클라이언트는 `todoId`별로 마지막으로 적용한 version을 Map에 보관한다.
 
@@ -129,8 +129,8 @@ v=101: idle      state_json = NULL    (행 유지)
 v=102: running   state_json = "{...}"
 ```
 
-이유는 **version 연속성**이다. 만약 idle 시점에 행을 삭제하면 v=102에서 새 행이 생기고, 다른 기기는 v=101(삭제됨)과 v=102(새로 생긴) 사이의 관계를 판단할 수 없다. `NULL`로
-유지하면 같은 row의 version이 단조 증가하므로 모든 기기가 정확히 최신 상태를 판별할 수 있다.
+이유는 **version 연속성**이다. 행을 삭제하면 이전 version 기억(`lastVersion`)이 사라져, 새 행의 version은 `max(현재 시각, 1)` 즉 현재 시각만으로 정해진다 — 시계가 정상이면 문제없지만, 하필 NTP 보정으로 시계가 뒤로 가는 드문 순간과 겹치면 새 version이
+v=101보다 낮아질 수 있다. `NULL`로 유지하면 같은 row의 version이 이어지므로 이 위험이 아예 없다.
 
 ### 4.4 SseEmitterRegistry: 연결 관리와 broadcast
 

@@ -60,7 +60,7 @@
 - `connected`와 `heartbeat`(~25초)는 연결 유지 및 생존 확인용 이벤트이며, 클라이언트 상태 동기화에는 `timer-state`만 반영한다.
 - `TimerService`는 DB 저장과 도메인 이벤트 발행까지만 담당하고, `SseBroadcaster`(AFTER_COMMIT publish)와 `SseLocalDispatcher`(Redis 구독 -> 로컬
   fan-out)가 전파를 처리한다.
-- 자세한 내용은 [SSE로 멀티디바이스 타이머 동기화하기](wiki/sse-sync.md) 및 [Redis Pub/Sub으로 SSE 수평 확장하기](wiki/redis-sse-pubsub.md)를 참고한다.
+- 자세한 내용은 [SSE 멀티디바이스 타이머 동기화: 단방향 push와 version 기반 순서 보장](wiki/sse-sync.md) 및 [Redis Pub/Sub으로 SSE 수평 확장하기](wiki/redis-sse-pubsub.md)를 참고한다.
 
 ## 4. 인프라 및 배포
 

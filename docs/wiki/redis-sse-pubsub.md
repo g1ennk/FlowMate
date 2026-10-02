@@ -1,6 +1,6 @@
 # Redis Pub/Sub으로 SSE 수평 확장하기
 
-> 선행 문서: [SSE로 멀티디바이스 타이머 동기화하기](sse-sync.md)
+> 선행 문서: [SSE 멀티디바이스 타이머 동기화: 단방향 push와 version 기반 순서 보장](sse-sync.md)
 
 ## 요약
 

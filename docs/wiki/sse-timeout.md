@@ -1,6 +1,6 @@
 # SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout
 
-> 선행 문서: [SSE로 멀티디바이스 타이머 동기화하기](sse-sync.md)
+> 선행 문서: [SSE 멀티디바이스 타이머 동기화: 단방향 push와 version 기반 순서 보장](sse-sync.md)
 
 ## 요약
 
@@ -10,7 +10,7 @@
 
 ## 1. 문제 배경
 
-FlowMate의 타이머는 [SSE로 멀티디바이스 타이머 동기화](sse-sync.md)를 지원한다. dev 환경에 처음 올린 직후 두 단계로 에러가 발견됐다.
+FlowMate의 타이머는 [SSE 멀티디바이스 타이머 동기화](sse-sync.md)를 지원한다. dev 환경에 처음 올린 직후 두 단계로 에러가 발견됐다.
 
 1. 유저 로그인 직후 SSE 연결이 곧장 실패. 콘솔에 `ERR_FAILED`, `workbox no-response`, CORS
 2. 위 문제 해결 후 SSE가 연결되기 시작했지만, 정확히 60초 경계에서 끊김. 콘솔에 `ERR_HTTP2_PROTOCOL_ERROR 200 (OK)`, `504`, CORS
