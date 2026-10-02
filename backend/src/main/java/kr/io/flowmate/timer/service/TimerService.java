@@ -9,6 +9,7 @@ import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -28,6 +30,8 @@ public class TimerService {
 
     private static final String IDLE_STATUS = "idle";
     private static final long STALE_TTL_HOURS = 24;
+    private static final int MYSQL_FK_PARENT_MISSING = 1452;
+    static final String TODO_FOREIGN_KEY = "fk_timer_states_todo";
 
     private final TimerStateRepository timerStateRepository;
     private final TodoRepository todoRepository;
@@ -83,6 +87,25 @@ public class TimerService {
 
     private long nextVersion(long lastVersion) {
         return Math.max(System.currentTimeMillis(), lastVersion + 1);
+    }
+
+    /**
+     * upsert에서 난 무결성 오류가 "소유권 확인 뒤 Todo가 삭제된 경합"인지 판별한다.
+     * MySQL 오류 코드 1452와 제약 이름이 모두 맞을 때만 true다. 다른 무결성 오류는 삼키지 않는다.
+     * 패키지 전용인 이유: 결정적 재현 IT가 실제 MySQL 예외에 이 로직을 그대로 적용해 검증한다.
+     */
+    static boolean isTodoForeignKeyViolation(DataIntegrityViolationException e) {
+        boolean parentMissing = false;
+        String constraintName = null;
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation && violation.getConstraintName() != null) {
+                constraintName = violation.getConstraintName();
+            }
+            if (cause instanceof SQLException sql && sql.getErrorCode() == MYSQL_FK_PARENT_MISSING) {
+                parentMissing = true;
+            }
+        }
+        return parentMissing && TODO_FOREIGN_KEY.equalsIgnoreCase(constraintName);
     }
 
     private String serializeState(Object state) {

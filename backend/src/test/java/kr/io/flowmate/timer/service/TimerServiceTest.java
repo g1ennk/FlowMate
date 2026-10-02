@@ -8,6 +8,7 @@ import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.domain.Todo;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +20,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import tools.jackson.databind.ObjectMapper;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -213,5 +215,25 @@ class TimerServiceTest {
         request.setStatus("running");
         request.setState(new Object());
         return request;
+    }
+
+    @Test
+    @DisplayName("isTodoForeignKeyViolation: 1452이고 제약 이름이 Todo FK일 때만 true")
+    void isTodoForeignKeyViolation_matchesOnlyTodoForeignKeyWith1452() {
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                integrityViolation(1452, TimerService.TODO_FOREIGN_KEY))).isTrue();
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                integrityViolation(1452, "fk_other_parent"))).isFalse();
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                integrityViolation(1062, TimerService.TODO_FOREIGN_KEY))).isFalse();
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                new DataIntegrityViolationException("no cause"))).isFalse();
+    }
+
+    private static DataIntegrityViolationException integrityViolation(int mysqlErrorCode, String constraintName) {
+        SQLException sql = new SQLException("constraint violation", "23000", mysqlErrorCode);
+        ConstraintViolationException hibernate =
+                new ConstraintViolationException("could not execute statement", sql, constraintName);
+        return new DataIntegrityViolationException("could not execute statement", hibernate);
     }
 }
