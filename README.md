@@ -99,9 +99,9 @@ FlowMate는 Todo와 집중 세션을 한 흐름으로 기록하고, 캘린더와
 - **1차 문제**: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 발생. first insert 시 gap lock·insert intention lock 충돌
 - **1차 해결**: `PESSIMISTIC_WRITE`를 제거해 gap lock deadlock 경로를 없애고, first insert 충돌에는 catch-retry 도입(이후 실제 MySQL 동시성 테스트에서 동작하지 않음을 확인)
 - **1차 결과**: 요청 46% 증가(112K -> 163K)에도 **PUT 실패 0건**, 에러율 0.00%, p95 64.62 -> 45.58ms(29%↓)
-- **2차 문제**: 같은 Todo 동시 요청에서 catch-retry가 동작하지 않아 최초 저장 4건 중 3건 실패, 동시 갱신에서 version 중복·역전
+- **2차 문제**: 1차의 catch-retry가 동작하지 않아 동시 최초 저장 4건 중 3건 실패, 락 제거로 version 중복과 역전 발생
 - **2차 해결**: 원자적 upsert(`INSERT … ON DUPLICATE KEY UPDATE`) + DB가 올리는 순차 version
-- **2차 결과**: 같은 Todo 동시 최초 저장 **30/120 → 120/120 성공**, version 중복·역전 0건
+- **2차 결과**: 동시 최초 저장 **30/120 → 120/120 성공**, version 중복과 역전 0건
 
 ### 2) [SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout](docs/wiki/sse-timeout.md)
 
