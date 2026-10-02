@@ -70,11 +70,9 @@ FlowMate는 Todo와 집중 세션을 한 흐름으로 기록하고, 캘린더와
 
 ### 1) [임시 식별자에서 토큰 탈취 대응까지: 인증 구조 4단계 진화](docs/wiki/auth-evolution.md)
 
-**문제**: 초기 `X-Client-Id`는 서명과 만료 없이 **클라이언트가 보낸 UUID 형식만 검증**해, 값을 바꿔도 신원 증명이 불가능
-
-**해결**: 게스트와 회원 모두 JWT로 인증하고, 회원 로그인은 OAuth, 갱신은 기기별 **Refresh Token Rotation과 재사용 탐지**로 구현
-
-**결과**: 게스트와 회원 모두 서명된 토큰으로 신원을 검증하고, **새 기기 로그인은 기존 세션을 유지**하며 **탈취된 토큰 재사용에는 즉시 대응**
+- **문제**: 초기 `X-Client-Id`는 서명과 만료 없이 **클라이언트가 보낸 UUID 형식만 검증**해, 값을 바꿔도 신원 증명이 불가능
+- **해결**: 게스트와 회원 모두 JWT로 인증하고, 회원 로그인은 OAuth, 갱신은 기기별 **Refresh Token Rotation과 재사용 탐지**로 구현
+- **결과**: 게스트와 회원 모두 서명된 토큰으로 신원을 검증하고, **새 기기 로그인은 기존 세션을 유지**하며 **탈취된 토큰 재사용에는 즉시 대응**
 
 ### 2) [SSE 멀티디바이스 타이머 동기화: 단방향 push와 version 기반 순서 보장](docs/wiki/sse-sync.md)
 
@@ -98,9 +96,12 @@ FlowMate는 Todo와 집중 세션을 한 흐름으로 기록하고, 캘린더와
 
 ### 1) [타이머 상태 저장의 동시성 제어: InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
 
-- **문제**: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 발생. first insert 시 gap lock·insert intention lock 충돌
-- **해결**: `PESSIMISTIC_WRITE` 제거 + first insert 충돌을 catch-retry로 복구
-- **결과**: 요청 46% 증가(112K -> 163K)에도 **PUT 실패 0건**, 에러율 0.00%, p95 64.62 -> 45.58ms(29%↓)
+- **1차 문제**: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 발생. first insert 시 gap lock·insert intention lock 충돌
+- **1차 해결**: `PESSIMISTIC_WRITE` 제거 + first insert 충돌을 catch-retry로 복구
+- **1차 결과**: 요청 46% 증가(112K -> 163K)에도 **PUT 실패 0건**, 에러율 0.00%, p95 64.62 -> 45.58ms(29%↓)
+- **2차 문제**: 같은 Todo 동시 요청에서 catch-retry가 동작하지 않아 최초 저장 4건 중 3건 실패, 동시 갱신에서 version 중복·역전
+- **2차 해결**: 원자적 upsert(`INSERT … ON DUPLICATE KEY UPDATE`) + DB가 올리는 순차 version
+- **2차 결과**: 같은 Todo 동시 최초 저장 **30/120 → 120/120 성공**, version 중복·역전 0건
 
 ### 2) [SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout](docs/wiki/sse-timeout.md)
 
@@ -110,11 +111,9 @@ FlowMate는 Todo와 집중 세션을 한 흐름으로 기록하고, 캘린더와
 
 ### 3) [폐기된 Refresh Token 재사용 시 활성 RT 즉시 무효화: revoke-all 트랜잭션 분리](docs/wiki/auth-reuse-detection-rollback.md)
 
-**문제**: 폐기된 RT 재사용 요청은 401로 차단됐지만, 같은 트랜잭션에서 실행한 **revoke-all이 예외와 함께 롤백**되어 DB에 반영되지 않음
-
-**해결**: revoke-all을 별도 Bean의 **`REQUIRES_NEW` 트랜잭션**으로 분리해 실패 응답과 무관하게 먼저 커밋하고, **복합 인덱스**로 조회 성능까지 개선
-
-**결과**: 폐기된 RT 재사용 시 활성 RT 전체가 즉시 무효화되고, 로그아웃 전환까지 검증, 조회 행 100,000건 → 1,000건까지 최적화
+- **문제**: 폐기된 RT 재사용 요청은 401로 차단됐지만, 같은 트랜잭션에서 실행한 **revoke-all이 예외와 함께 롤백**되어 DB에 반영되지 않음
+- **해결**: revoke-all을 별도 Bean의 **`REQUIRES_NEW` 트랜잭션**으로 분리해 실패 응답과 무관하게 먼저 커밋하고, **복합 인덱스**로 조회 성능까지 개선
+- **결과**: 폐기된 RT 재사용 시 활성 RT 전체가 즉시 무효화되고, 로그아웃 전환까지 검증, 조회 행 100,000건 → 1,000건까지 최적화
 
 ## 6. 프로젝트 구조
 
