@@ -476,7 +476,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 Member Access JWT 전용.
 
 > 멀티탭과 기기 간 타이머 상태 일관성을 위해 SSE 브로드캐스트를 사용한다.
-> 클라이언트는 `version` 단조 증가 값을 기준으로 이벤트 중복 적용을 방지한다.
+> `version`은 Todo별로 저장할 때마다 1씩 증가하는 순서 번호다(시각이 아니다). 클라이언트는 Todo별로 마지막으로 적용한 `version`보다 작거나 같은 이벤트를 버려 중복·역순 적용을 막는다.
 
 ### 4.1 SSE 구독
 
@@ -534,6 +534,7 @@ Member Access JWT 전용.
 - `status!=idle`이면 `state`는 non-null
 - 저장 후 같은 `userId`의 SSE 연결에 `timer-state` 이벤트를 브로드캐스트한다.
 - `status=idle` 요청도 `200`으로 정상 처리되며, 이 경우 서버는 `state=null`로 저장하고 `version`만 갱신한다.
+- 같은 Todo의 동시 저장은 원자적 upsert로 처리하며, 정상적으로 커밋된 요청마다 서로 다른 순차 `version`을 부여한다. 최종 상태는 DB 쓰기 순서 기준 LWW를 따른다. 저장 도중 Todo가 삭제되면 404, DB 잠금 충돌(deadlock 등)은 409로 응답한다.
 
 **SingleTimerState 구조**
 
@@ -556,17 +557,18 @@ Member Access JWT 전용.
     "cycleCount": 1,
     "sessions": []
   },
-  "version": 1772454032001
+  "version": 12
 }
 ```
 
-- `version`: `max(System.currentTimeMillis(), lastVersion + 1)`
+- `version`: 같은 Todo의 직전 값 + 1. 처음 저장하면 1이다. 같은 Todo에 동시에 들어온 요청도 DB가 순서대로 처리해 서로 다른 값을 받는다. 이 방식 이전에 저장된 행은 당시의 시간 기반 값(epoch 밀리초)에서 이어서 증가한다.
 
 **Errors**
 
 - `400 BAD_REQUEST` idle/state 조합 불일치
 - `401` 미인증 또는 게스트 토큰으로 요청한 경우 (멤버 전용 엔드포인트)
-- `404 NOT_FOUND` 해당 Todo 없음 또는 타 사용자 소유
+- `404 NOT_FOUND` 해당 Todo 없음 또는 타 사용자 소유 (저장 도중 Todo가 삭제된 경우 포함)
+- `409 CONFLICT` DB 잠금 충돌(deadlock 등). 잠시 후 다시 시도한다
 
 ---
 
@@ -591,13 +593,13 @@ Member Access JWT 전용.
       "cycleCount": 1,
       "sessions": []
     },
-    "version": 1772454032001
+    "version": 12
   }
 ]
 ```
 
 - idle 상태(`state_json = null`)는 제외된다.
-- 24시간이 지난 stale row는 정리 대상이며 응답에서도 제외된다.
+- 마지막 갱신 후 24시간이 지난 상태는 응답에서 제외된다. 행은 삭제하지 않으며, 이후 같은 Todo에 저장하면 version이 이어서 증가하고 다시 응답에 포함된다.
 - 다른 리스트 endpoint와 달리 배열을 직접 반환한다. 타이머 상태는 SSE 수신 후 즉시 병합하는 런타임 스냅샷이므로 `ListResponse` 래핑 없이 최소한의 구조로 전달한다.
 
 ---
@@ -894,7 +896,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 | `AUTHENTICATION_FAILED`    | 401  | JWT, Refresh Token, SSE subscribe 토큰 검증 실패 (`AuthenticationFailedException`) |
 | `NOT_FOUND`                | 404  | 리소스 없음 또는 타 사용자 소유                                                           |
 | `METHOD_NOT_ALLOWED`       | 405  | 경로는 존재하지만 HTTP 메서드가 미지원                                                      |
-| `CONFLICT`                 | 409  | 데드락 retry 소진 등 일시적 충돌                                                        |
+| `CONFLICT`                 | 409  | 데드락 등 DB 잠금 획득 실패로 인한 일시적 충돌                                               |
 | `IDEMPOTENCY_CONFLICT`     | 409  | 동일 idempotency key 재사용 + payload 불일치 (세션 `sessionFocusSeconds` mismatch 등)   |
 | `AI_QUOTA_EXCEEDED`        | 429  | Gemini API quota 초과. `AI 서비스가 일시적으로 사용량이 초과되었습니다`                            |
 | `AI_SERVICE_UNAVAILABLE`   | 503  | Gemini API 503. `AI 서비스가 일시적으로 사용 불가 상태입니다. 잠시 후 다시 시도해 주세요`                 |
@@ -906,7 +908,7 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 참고:
 
-- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 retry 소진) 에만 사용된다. `IDEMPOTENCY_CONFLICT` 는 별도 code 로 구분.
+- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 등 DB 잠금 획득 실패) 에만 사용된다. 서버는 재시도하지 않는다. `IDEMPOTENCY_CONFLICT` 는 별도 code 로 구분.
 - `GET /api/timer/sse` 는 SecurityFilter 가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member 가
   `401 AUTHENTICATION_FAILED` 로 내려온다 (이전 버전에서는 400 이었고, Phase 2에서 semantic 정합 교체).
 - `UNAUTHORIZED`, `FORBIDDEN` 은 Spring Security 가 만드는 HTTP 상태이며, `ApiError.error.code` 를 항상 의미하지는 않는다. 서비스 레이어에서 던지는 도메인

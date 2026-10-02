@@ -79,7 +79,7 @@ CREATE TABLE timer_states
     user_id    VARCHAR(36)  NOT NULL,
     state_json TEXT         NULL,
     version    BIGINT       NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     CONSTRAINT fk_timer_states_todo
@@ -93,22 +93,26 @@ CREATE INDEX idx_timer_states_user ON timer_states (user_id, updated_at DESC);
 | `todo_id` PK            | Todo와 1:1 관계, 별도 합성 ID 불필요                                |
 | `user_id`               | broadcast 대상 조회 + 인덱스 키                                   |
 | `state_json`            | `NULL`이면 idle, JSON이면 활성 상태                               |
-| `version`               | 이벤트 최신성 판단 기준값, 변경 시마다 단조 증가                              |
-| `updated_at`            | `ON UPDATE`로 상태 변경마다 자동 갱신, `idx_timer_states_user` 정렬 기준 |
+| `version`               | 이벤트 최신성 판단 기준값. 저장할 때마다 DB가 Todo별로 1씩 증가                 |
+| `updated_at`            | 애플리케이션이 바인딩한 저장 시각. 24시간 복원 기준, `idx_timer_states_user` 정렬 기준 |
 | `idx_timer_states_user` | `user_id, updated_at DESC`. 사용자별 최근 상태 조회 커버              |
 
-### 4.2 `version` 단조 증가 방식
+### 4.2 `version`: Todo별 순차 증가
 
-상태마다 단조 증가하는 정수 `version`을 부여하고, 클라이언트는 마지막으로 적용한 version보다 작거나 같은 이벤트를 무시한다.
+상태를 저장할 때마다 DB가 같은 Todo의 직전 `version`에 1을 더한다(새 행은 1). 클라이언트는 마지막으로 적용한 version보다 작거나 같은 이벤트를 무시한다.
 
-```text
-long newVersion = Math.max(System.currentTimeMillis(), lastVersion + 1);
+```sql
+INSERT INTO timer_states (todo_id, user_id, state_json, version, created_at, updated_at)
+VALUES (:todoId, :userId, :stateJson, 1, :now, :now) AS incoming
+ON DUPLICATE KEY UPDATE
+    state_json = incoming.state_json,
+    version    = timer_states.version + 1,
+    updated_at = incoming.updated_at
 ```
 
-`max(now, lastVersion + 1)`은 두 가지 위험을 동시에 방지한다.
+최초 저장과 갱신이 한 문장이고, 같은 Todo의 동시 쓰기는 행 잠금으로 직렬화된다. 그래서 커밋 순서와 version 순서가 항상 같다. 저장한 트랜잭션 안에서 확정된 version을 다시 읽어 API 응답과 SSE 이벤트에 똑같이 쓴다.
 
-- `System.currentTimeMillis()`만 쓰면: NTP 보정 등으로 시계가 뒤로 가면 단조성이 깨진다
-- `lastVersion + 1`만 쓰면: 버전 값만으로 발생 시각을 가늠할 수 없어 디버깅이 불편해진다
+처음에는 애플리케이션이 `max(System.currentTimeMillis(), lastVersion + 1)`을 계산했다. 하지만 `lastVersion`을 락 없이 읽은 값으로 계산해서, 동시 갱신에서 같은 version이 나오거나 나중에 커밋된 쓰기가 더 작은 version을 받는 일이 MySQL 통합 테스트에서 재현됐다. 전환 과정은 [타이머 상태 저장의 동시성 제어](timer-deadlock.md#6-후속-검증과-최종-해결)에 정리했다.
 
 클라이언트는 `todoId`별로 마지막으로 적용한 version을 Map에 보관한다.
 
@@ -129,8 +133,7 @@ v=101: idle      state_json = NULL    (행 유지)
 v=102: running   state_json = "{...}"
 ```
 
-이유는 **version 연속성**이다. 행을 삭제하면 이전 version 기억(`lastVersion`)이 사라져, 새 행의 version은 `max(현재 시각, 1)` 즉 현재 시각만으로 정해진다 — 시계가 정상이면 문제없지만, 하필 NTP 보정으로 시계가 뒤로 가는 드문 순간과 겹치면 새 version이
-v=101보다 낮아질 수 있다. `NULL`로 유지하면 같은 row의 version이 이어지므로 이 위험이 아예 없다.
+이유는 **version 연속성**이다. version은 같은 행의 직전 값에 1을 더하므로, 행을 지우면 다시 만들어진 행이 1부터 시작한다. 그러면 이전 version을 기억하는 열린 탭이 새로고침할 때까지 새 이벤트를 버린다. 같은 이유로 "24시간 넘게 갱신이 없는 상태는 복원하지 않는다"는 정책도 행을 지우지 않고 조회 조건(`updated_at >= 지금 - 24시간`)으로만 적용한다. 행은 Todo가 삭제될 때만 함께 삭제된다.
 
 ### 4.4 SseEmitterRegistry: 연결 관리와 broadcast
 
@@ -208,15 +211,14 @@ new EventSource(`/api/timer/sse?token=${encodeURIComponent(token)}`)
 
 ## 5. 검증
 
-### 5.1 단위 테스트
+### 5.1 테스트
 
-구현의 핵심 설계 결정마다 단위 테스트를 작성해 정합성을 확인했다.
+구현의 핵심 설계 결정마다 테스트를 작성해 정합성을 확인했다. 동시성은 H2나 mock으로 재현되지 않아 실제 MySQL 8.0(Testcontainers)에서 검증한다.
 
 | 검증 대상              | 테스트                      | 확인 내용                                                         |
 |--------------------|--------------------------|---------------------------------------------------------------|
-| version 단조 증가      | `TimerServiceTest`       | 기존 row가 있을 때 `newVersion ≥ lastVersion + 1` 보장                |
-| 동시 first insert 충돌 | `TimerServiceTest`       | `DataIntegrityViolationException` 발생 시 winner version 위에서 재계산 |
-| soft delete        | `TimerServiceTest`       | idle 시 `stateJson = null` 설정, 활성 조회 시 idle row 제외             |
+| 저장 동시성·version 연속 | `TimerStateConcurrencyIT` 외 (MySQL) | 같은 Todo 동시 저장 모두 성공, version 중복·역전 없음. 상세는 [timer-deadlock 6절](timer-deadlock.md#6-후속-검증과-최종-해결) |
+| soft delete·24시간 복원 | `TimerStateWriteContractIT`, `TimerStateTimeIT` | idle은 `NULL`로 행 유지, 24시간 경계는 `>=`로 포함                  |
 | broadcast 실패 격리    | `SseEmitterRegistryTest` | 전송 실패 시 예외를 호출자에게 전파하지 않음                                     |
 | 다중 연결 broadcast    | `SseEmitterRegistryTest` | 같은 userId의 모든 emitter에 이벤트 전달                                 |
 | SSE 인증: member 허용  | `TimerControllerTest`    | 유효한 member 토큰이면 `SseEmitterRegistry.register()` 호출            |
@@ -242,10 +244,10 @@ dev 환경에 k6 baseline 부하를 걸어 163,205건 요청에서 에러율 0%�
 |-----------------------|------------------|----------------|--------------------|
 | **SSE + REST**        | 단순 인프라, 내장 지원    | REST 병행 필요     | 단방향 push로 충분       |
 | **MySQL 단일 정본**       | 정본 단일화           | 초기 로딩 시 서버 의존  | snapshot fetch로 보완 |
-| **단조 증가 version**     | 역전을 정수 하나로 해결    | replay 없음      | LWW 구조에 충분         |
+| **순차 version (DB 원자적 증가)** | 커밋 순서 = version 순서 | MySQL 전용 네이티브 SQL | LWW 구조에 충분 |
 | **state_json = NULL** | version 연속성 유지   | idle row 잔존    | 연속성 우선             |
 | **25초 heartbeat**     | 중간망 단절과 죽은 연결 감지 | 주기적 트래픽        | 타임아웃만으로 중간망 통제 불가  |
-| **fire-and-forget**   | 실패 격리            | 일부 SSE 누락 가능   | 재접속 snapshot으로 복구  |
+| **fire-and-forget**   | 실패 격리            | 일부 SSE 누락 가능   | 앱을 다시 열 때 snapshot으로 복구(재접속 복구는 후속) |
 | **self-echo**         | 서버 로직 단순화        | 발신자도 자기 이벤트 수신 | version 비교로 처리     |
 | **query param 토큰**    | 기존 토큰 재사용        | URL 노출 위험      | 짧은 TTL + HTTPS로 수용 |
 
@@ -254,7 +256,7 @@ dev 환경에 k6 baseline 부하를 걸어 163,205건 요청에서 에러율 0%�
 ### 단방향 push만으로 동기화 요구사항을 충족했다
 
 타이머 동기화에 양방향 채널은 필요하지 않았다. 서버 -> 클라이언트 단방향 push만으로 요구사항을 충족했고, SSE + REST 조합으로 별도 인프라 없이 구현할 수 있었다. 이벤트 역전 문제는 단조 증가
-`version`을 적용해 클라이언트가 자신이 마지막으로 적용한 version보다 작은 이벤트를 무시하는 것으로 해결했다.
+`version`을 적용해 클라이언트가 자신이 마지막으로 적용한 version보다 작거나 같은 이벤트를 무시하는 것으로 해결했다.
 
 ### SSE는 코드 구현만으로 끝나지 않았다
 

@@ -2,9 +2,17 @@
 
 ## 요약
 
+**1차: 서로 다른 Todo 간 deadlock**
+
 - 문제: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 발생. first insert 시 gap lock과 insert intention lock 충돌
 - 해결: `PESSIMISTIC_WRITE` 제거 + first insert 충돌을 catch-retry로 복구
 - 결과: 요청 46% 증가(112K -> 163K)에도 timer PUT 실패 0건, `http_req_failed` 0.00%, p95 64.62 -> 45.58ms(29%↓)
+
+**2차: 같은 Todo 동시 요청 ([6절](#6-후속-검증과-최종-해결))**
+
+- 문제: k6가 다루지 않은 같은 Todo 동시 요청에서 catch-retry가 동작하지 않아 최초 저장 4건 중 3건이 실패했고, 동시 갱신에서는 version 중복·역전이 생겼다
+- 해결: `INSERT … ON DUPLICATE KEY UPDATE` 원자적 upsert + DB가 올리는 순차 version
+- 결과: 동시 최초 저장 30/120 → 120/120 성공, version 중복·역전 0건, 기존 deadlock 재발 0건
 
 ## 1. 문제 배경
 
@@ -149,6 +157,8 @@ RECORD LOCKS space id 10 page no 4 index PRIMARY
 gap lock을 유발한 `@Lock`을 제거하고, 남는 first insert 경합은 유일성 제약 조건 충돌을 catch-retry로 복구하는 방향을 선택했다. 같은 프로젝트의
 `TodoService.scheduleReview`가 이미 유사한 패턴을 쓰고 있어 코드 일관성도 유지할 수 있었다.
 
+> 이 판단(upsert는 과잉, catch-retry면 충분)은 후속 검증에서 뒤집혔고, 결국 upsert로 바꿨다([6절](#6-후속-검증과-최종-해결)).
+
 ## 4. 해결
 
 ### 1) `@Lock(PESSIMISTIC_WRITE)` 제거
@@ -215,6 +225,8 @@ Thread A가 winner row version 기준으로 nextVersion 재계산
 → 단조 증가 유지
 ```
 
+> 후속 검증 결과, 이 catch-retry는 실제 MySQL에서 한 번도 복구하지 못했다([6절](#6-후속-검증과-최종-해결)).
+
 ## 5. 검증
 
 수정 후 2026년 3월 28일 dev 환경에서 fresh token 기준으로 smoke와 baseline을 다시 실행했다.
@@ -232,7 +244,52 @@ Thread A가 winner row version 기준으로 nextVersion 재계산
 수정 후 테스트는 수정 전보다 전체 요청 수가 약 46% 많았음에도 timer PUT 실패가 69건에서 0건으로 감소했다.
 따라서 단순히 부하가 낮아져 실패가 줄어든 것이 아니라, first insert deadlock 경로가 제거된 것으로 판단했다.
 
-## 6. 회고
+## 6. 후속 검증과 최종 해결
+
+### 같은 Todo에 동시 요청이 오면?
+
+k6는 반복마다 새 Todo를 만들어 쓰기 때문에, 같은 Todo에 동시에 쓰는 경우는 검증하지 못했다. 그래서 실제 MySQL(Testcontainers)에서 같은 Todo에 요청 4개를 동시에 보내는 테스트를 30번 돌렸고, 두 가지 문제가 발생했다.
+
+| 문제        | 결과                        | 원인                                                                                     |
+|-----------|---------------------------|----------------------------------------------------------------------------------------|
+| 최초 저장     | 120건 중 90건 실패(500)        | 실패한 트랜잭션 안에서 복구하려 해 구조적으로 성공할 수 없었다 |
+| 기존 행 갱신   | version 중복 30/30라운드, 역전 발생 | 잠금 없이 읽은 이전 version으로 `max(now, lastVersion + 1)`을 계산했다                                |
+
+두 번째 문제는 락 제거가 만든 회귀였다. 과거 잠금 코드로 같은 테스트를 돌리면 0건이었다. 락이 기존 행의 읽기, 계산, 쓰기를 한 줄로 세워 주고 있었던 것이다.
+
+### 원자적 upsert로 전환
+
+두 문제의 근본 원인은 같았다. 행이 있는지와 다음 version을 잠금 없이 판단한 뒤 그대로 썼다. 그래서 판단과 쓰기를 한 번에 처리하고자 했다.
+
+```sql
+INSERT INTO timer_states (todo_id, user_id, state_json, version, created_at, updated_at)
+VALUES (:todoId, :userId, :stateJson, 1, :now, :now) AS incoming
+ON DUPLICATE KEY UPDATE
+    state_json = incoming.state_json,
+    version    = timer_states.version + 1,
+    updated_at = incoming.updated_at
+```
+
+- version은 DB가 계산한다. 같은 Todo의 동시 쓰기는 행 잠금으로 한 줄로 서므로 겹치거나 뒤집히지 않는다
+- 저장한 version을 같은 트랜잭션에서 다시 읽어 응답과 SSE 이벤트에 쓴다
+- 기존에는 조회할 때 24시간 지난 행을 삭제했다. 순차 version에서 행을 지우면 version이 1부터 다시 시작하므로, 삭제하지 않고 복원 목록에서만 뺀다
+- 저장 중 Todo가 삭제되면 생기는 FK 오류만 404로 바꾼다
+
+부모 Todo 행을 먼저 잠그는 방법도 실측했다. 두 문제는 똑같이 해결됐지만, "타이머를 쓰는 모든 경로가 Todo 잠금을 먼저 잡는다"는 규칙이 지켜져야 했다. 24시간 지난 행을 지우던 조회 경로는 Todo 잠금 없이 행을 지워서, 동시 저장의 절반이 실패했다.
+
+upsert는 한 문장 안에서 생성과 갱신을 진행하므로, 다른 쓰기 경로에 규칙을 강제하지 않아도 되기에 upsert를 선택했다.
+
+### 검증
+
+| 시나리오 (실제 MySQL, 30라운드, 3회 연속) | 수정 전         | 수정 후       |
+|-------------------------------|--------------|------------|
+| 같은 Todo 동시 최초 저장             | 30/120 성공    | 120/120 성공 |
+| 기존 행 동시 갱신                   | version 중복·역전 | 위반 0       |
+| 과거 deadlock 경로               | -            | 재발 0건      |
+
+이 시나리오들은 회귀 테스트로 코드에 남겼다.
+
+## 7. 회고
 
 ### 전역 threshold 통과가 endpoint 정상성을 보장하지 않는다.
 
@@ -244,9 +301,14 @@ Thread A가 winner row version 기준으로 nextVersion 재계산
 row가 존재하면 SELECT FOR UPDATE는 record lock으로 정상적으로 동작하지만, row가 없으면 InnoDB가 gap lock을 잡을 수 있다. ORM의 락 어노테이션만 보고 판단하지 말고, 실제 DB
 lock graph까지 확인해서 확실하게 원인 파악을 해야 한다.
 
-### 오버 엔지니어링보다는 프로젝트 패턴에 맞는 최소 수정이 더 낫다
+### deadlock이 사라진 것과 동시성이 보장된 것은 다르다
 
-native upsert는 기술적으로 가장 견고한 선택일 수 있다. 하지만 현재 프로젝트에는 native SQL과 트랜잭션 경계 복잡도를 추가할 만큼의 이득이 비용 대비 크지 않았다. 원인을 만든
-`@Lock`을 제거하고, 남은 first insert 충돌만 기존 catch-retry 패턴으로 처리하는 방법이 더 좋은 방법이었다.
+1차 해결은 유의미했다. 원인 가설(없는 행에 대한 `FOR UPDATE`의 gap lock 충돌)대로 락을 지우자 관측하던 deadlock이 사라졌고 동일한 부하테스트도 문제 없이 통과했다. 문제는 검증한 범위와 해결했다고 믿은 범위가 다소 차이가 있었다는 점이다.
+
+- k6는 반복마다 새 Todo를 썼다. 서로 다른 Todo의 동시 저장만 검증했고, 같은 Todo에 몰리는 요청은 다루지 않았다
+- catch-retry는 mock 단위 테스트로만 확인했다. mock은 예외를 던질 수는 있어도 스냅샷, 영속성 컨텍스트, rollback-only 같은 실제 트랜잭션 동작은 재현하지 못한다
+- 지운 락은 deadlock의 원인이면서 동시에 기존 행의 갱신을 한 줄로 세워 주던 보호 장치였다
+
+실패 0건은 "그 시나리오에서 관측되지 않았다"는 뜻이지 "모든 동시 저장이 안전하다"는 결론은 아니였다. 버그를 일으킨 코드를 지울 때는 그 코드가 무엇을 일으켰는지뿐 아니라 무엇을 막아 주고 있었는지도 확인해야 한다.
 
 이후 다중 인스턴스 확장은 [Redis Pub/Sub으로 SSE 수평 확장하기](redis-sse-pubsub.md)에 정리했다.

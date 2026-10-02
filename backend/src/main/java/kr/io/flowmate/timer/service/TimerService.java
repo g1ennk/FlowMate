@@ -8,7 +8,7 @@ import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -20,7 +20,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
-@Slf4j
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -28,6 +27,7 @@ public class TimerService {
 
     private static final String IDLE_STATUS = "idle";
     private static final long STALE_TTL_HOURS = 24;
+    static final String TODO_FOREIGN_KEY = "fk_timer_states_todo";
 
     private final TimerStateRepository timerStateRepository;
     private final TodoRepository todoRepository;
@@ -39,50 +39,48 @@ public class TimerService {
         todoRepository.findByIdAndUserId(todoId, userId)
                 .orElseThrow(() -> new TodoNotFoundException(todoId));
 
-        TimerState timerState = timerStateRepository
-                .findByUserIdAndTodoId(userId, todoId)
-                .orElseGet(() -> TimerState.create(todoId, userId));
-
         boolean isIdle = IDLE_STATUS.equals(request.getStatus());
         String stateJson = isIdle ? null : serializeState(request.getState());
-        long newVersion = nextVersion(timerState.getVersion());
-        timerState.update(stateJson, newVersion);
+        // TIMESTAMP(3)에 그대로 들어가도록 밀리초로 맞춘다. MySQL은 밀리초 미만을 반올림한다
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
 
+        // 최초 저장과 갱신을 한 문장으로 처리하고 version은 DB가 +1 한다.
+        // 이 경로에서는 TimerState 엔티티를 로드하지 않는다. 로드하면 upsert 결과와 1차 캐시가 어긋난다.
         try {
-            timerStateRepository.saveAndFlush(timerState);
+            timerStateRepository.upsert(todoId, userId, stateJson, now);
         } catch (DataIntegrityViolationException e) {
-            // 동시 first insert 로 PK 충돌 발생. winner 가 이미 더 큰 version 을 저장했을 수 있으므로
-            // 재조회한 row 의 version 위에서 newVersion 을 다시 계산해야 단조 증가가 보장된다.
-            log.warn("timer state PK 충돌, 재조회 후 업데이트. todoId={}", todoId);
-            timerState = timerStateRepository.findByUserIdAndTodoId(userId, todoId)
-                    .orElseThrow(() -> e);
-            newVersion = nextVersion(timerState.getVersion());
-            timerState.update(stateJson, newVersion);
-            timerStateRepository.saveAndFlush(timerState);
+            // 소유권 확인 뒤 Todo가 삭제된 경합이다. 같은 트랜잭션에서 복구하지 않고 404로 끝낸다
+            if (isTodoForeignKeyViolation(e)) {
+                throw new TodoNotFoundException(todoId);
+            }
+            throw e;
         }
+        long version = timerStateRepository.findVersionByTodoId(todoId);
 
-        applicationEventPublisher.publishEvent(
-                TimerStateChangedEvent.of(userId, todoId, newVersion, stateJson)
-        );
+        applicationEventPublisher.publishEvent(TimerStateChangedEvent.of(userId, todoId, version, stateJson));
 
         Object responseState = isIdle ? null : request.getState();
-        return new TimerStateResponse(todoId, responseState, newVersion);
+        return new TimerStateResponse(todoId, responseState, version);
     }
 
-    @Transactional
     public List<TimerStateResponse> getActiveStates(String userId) {
+        // 24시간 넘게 갱신이 없는 활성 상태는 복원하지 않는다. 행은 지우지 않는다(version 연속성)
         Instant threshold = Instant.now().minus(STALE_TTL_HOURS, ChronoUnit.HOURS);
-        timerStateRepository.deleteStaleByUserId(userId, threshold);
-
-        return timerStateRepository.findAllByUserIdOrderByUpdatedAtDesc(userId).stream()
-                // idle row(state_json = null) 는 soft delete 상태이므로 활성 응답에서 제외
-                .filter(state -> state.getStateJson() != null)
+        return timerStateRepository.findActiveSince(userId, threshold).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
-    private long nextVersion(long lastVersion) {
-        return Math.max(System.currentTimeMillis(), lastVersion + 1);
+    /**
+     * upsert에서 난 무결성 오류가 "소유권 확인 뒤 Todo가 삭제된 경합"인지 판별한다.
+     * Todo FK 위반(Hibernate가 MySQL 1451·1452를 FOREIGN_KEY로 분류, INSERT에서는 1452만 가능)일 때만 true다.
+     * 다른 무결성 오류는 삼키지 않는다.
+     * 패키지 전용인 이유: 결정적 재현 IT가 실제 MySQL 예외에 이 로직을 그대로 적용해 검증한다.
+     */
+    static boolean isTodoForeignKeyViolation(DataIntegrityViolationException e) {
+        return e.getCause() instanceof ConstraintViolationException violation
+                && violation.getKind() == ConstraintViolationException.ConstraintKind.FOREIGN_KEY
+                && TODO_FOREIGN_KEY.equalsIgnoreCase(violation.getConstraintName());
     }
 
     private String serializeState(Object state) {

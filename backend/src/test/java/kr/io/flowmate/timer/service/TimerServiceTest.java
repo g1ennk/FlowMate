@@ -8,6 +8,8 @@ import kr.io.flowmate.timer.repository.TimerStateRepository;
 import kr.io.flowmate.todo.domain.Todo;
 import kr.io.flowmate.todo.exception.TodoNotFoundException;
 import kr.io.flowmate.todo.repository.TodoRepository;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +21,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import tools.jackson.databind.ObjectMapper;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -26,9 +29,18 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hibernate.exception.ConstraintViolationException.ConstraintKind.FOREIGN_KEY;
+import static org.hibernate.exception.ConstraintViolationException.ConstraintKind.UNIQUE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TimerService")
@@ -36,6 +48,7 @@ class TimerServiceTest {
 
     private static final String USER_ID = "user-1";
     private static final String TODO_ID = "todo-1";
+    private static final String RUNNING_JSON = "{\"status\":\"running\"}";
 
     @Mock
     private TimerStateRepository timerStateRepository;
@@ -50,160 +63,143 @@ class TimerServiceTest {
     private TimerService timerService;
 
     @Test
-    @DisplayName("upsertState: running — stateJson 직렬화 + version=System.currentTimeMillis 범위 + domain event 발행")
-    void upsertState_running_serializesAndBroadcasts() throws Exception {
-        when(todoRepository.findByIdAndUserId(TODO_ID, USER_ID)).thenReturn(Optional.of(mock(Todo.class)));
-        when(timerStateRepository.findByUserIdAndTodoId(USER_ID, TODO_ID)).thenReturn(Optional.empty());
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"status\":\"running\"}");
-
+    @DisplayName("upsertState: running — 직렬화한 JSON과 밀리초로 맞춘 시각으로 upsert하고, DB가 확정한 version을 응답과 이벤트에 쓴다")
+    void upsertState_running_upsertsAndUsesConfirmedVersion() throws Exception {
+        givenOwnedTodo();
+        when(objectMapper.writeValueAsString(any())).thenReturn(RUNNING_JSON);
+        when(timerStateRepository.findVersionByTodoId(TODO_ID)).thenReturn(42L);
         TimerStatePushRequest request = runningRequest();
-        long before = System.currentTimeMillis();
+        Instant before = Instant.now().truncatedTo(ChronoUnit.MILLIS);
 
         TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, request);
 
-        long after = System.currentTimeMillis();
+        Instant after = Instant.now();
+        ArgumentCaptor<Instant> now = ArgumentCaptor.forClass(Instant.class);
+        verify(timerStateRepository).upsert(eq(TODO_ID), eq(USER_ID), eq(RUNNING_JSON), now.capture());
+        assertThat(now.getValue()).isBetween(before, after);
+        assertThat(now.getValue().getNano() % 1_000_000).isZero();
 
-        // response 검증
-        assertThat(response.todoId()).isEqualTo(TODO_ID);
-        assertThat(response.state()).isEqualTo(request.getState());
-        assertThat(response.version()).isBetween(before, after);
-
-        // DB 저장
-        verify(timerStateRepository, times(1)).saveAndFlush(any(TimerState.class));
-
-        // 도메인 이벤트 발행
+        assertThat(response).isEqualTo(new TimerStateResponse(TODO_ID, request.getState(), 42L));
         TimerStateChangedEvent event = capturePublishedEvent();
         assertThat(event.userId()).isEqualTo(USER_ID);
         assertThat(event.todoId()).isEqualTo(TODO_ID);
-        assertThat(event.version()).isEqualTo(response.version());
-        assertThat(event.state()).isEqualTo("{\"status\":\"running\"}");
+        assertThat(event.version()).isEqualTo(42L);
+        assertThat(event.state()).isEqualTo(RUNNING_JSON);
     }
 
     @Test
-    @DisplayName("upsertState: idle — stateJson null(soft delete) + state 직렬화 스킵 + response.state=null")
-    void upsertState_idle_setsStateJsonNull() throws Exception {
-        when(todoRepository.findByIdAndUserId(TODO_ID, USER_ID)).thenReturn(Optional.of(mock(Todo.class)));
-        when(timerStateRepository.findByUserIdAndTodoId(USER_ID, TODO_ID)).thenReturn(Optional.empty());
-
+    @DisplayName("upsertState: idle — 직렬화 없이 null 상태로 upsert하고 응답 state는 null")
+    void upsertState_idle_upsertsNullState() throws Exception {
+        givenOwnedTodo();
+        when(timerStateRepository.findVersionByTodoId(TODO_ID)).thenReturn(7L);
         TimerStatePushRequest request = new TimerStatePushRequest();
         request.setStatus("idle");
         request.setState(null);
 
         TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, request);
 
-        // response 검증
+        verify(timerStateRepository).upsert(eq(TODO_ID), eq(USER_ID), isNull(), any(Instant.class));
+        verify(objectMapper, never()).writeValueAsString(any());
         assertThat(response.state()).isNull();
-
-        // idle 은 직렬화 스킵
-        verify(objectMapper, never()).writeValueAsString(eq(request.getState()));
-
-        // DB 저장 — stateJson null (soft delete)
-        ArgumentCaptor<TimerState> captor = ArgumentCaptor.forClass(TimerState.class);
-        verify(timerStateRepository).saveAndFlush(captor.capture());
-        assertThat(captor.getValue().getStateJson()).isNull();
-
-        // 도메인 이벤트 발행
+        assertThat(response.version()).isEqualTo(7L);
         TimerStateChangedEvent event = capturePublishedEvent();
-        assertThat(event.version()).isEqualTo(response.version());
+        assertThat(event.version()).isEqualTo(7L);
         assertThat(event.state()).isNull();
     }
 
     @Test
-    @DisplayName("upsertState: 기존 row 있으면 newVersion 이 lastVersion+1 이상으로 단조 증가")
-    void upsertState_existingRow_monotonicVersion() throws Exception {
-        TimerState existing = TimerState.create(TODO_ID, USER_ID);
-        existing.update("{\"status\":\"running\"}", 10_000_000_000_000L); // 매우 큰 lastVersion
-
-        when(todoRepository.findByIdAndUserId(TODO_ID, USER_ID)).thenReturn(Optional.of(mock(Todo.class)));
-        when(timerStateRepository.findByUserIdAndTodoId(USER_ID, TODO_ID)).thenReturn(Optional.of(existing));
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"status\":\"running\"}");
-
-        TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, runningRequest());
-
-        // lastVersion 이 current millis 보다 클 때도 최소 lastVersion+1 이 보장된다
-        assertThat(response.version()).isGreaterThan(10_000_000_000_000L);
-    }
-
-    @Test
-    @DisplayName("upsertState: todo 가 현재 user 소유가 아니면 TodoNotFoundException")
+    @DisplayName("upsertState: todo 가 현재 user 소유가 아니면 TodoNotFoundException, 저장·이벤트 없음")
     void upsertState_todoNotOwned_throwsNotFound() {
         when(todoRepository.findByIdAndUserId(TODO_ID, USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> timerService.upsertState(USER_ID, TODO_ID, runningRequest()))
                 .isInstanceOf(TodoNotFoundException.class);
 
-        verify(timerStateRepository, never()).saveAndFlush(any(TimerState.class));
-        verify(applicationEventPublisher, never()).publishEvent(any(TimerStateChangedEvent.class));
+        verifyNoInteractions(timerStateRepository, applicationEventPublisher);
     }
 
     @Test
-    @DisplayName("upsertState: 동시 first insert 로 DIV 발생 시 winner version 위에서 newVersion 재계산 + 재저장")
-    void upsertState_concurrentInsertConflict_retriesWithWinnerVersion() throws Exception {
-        // race winner 가 이미 1_700_000_000_000L 로 저장한 상태
-        long winnerVersion = 1_700_000_000_000L;
-        TimerState winnerRow = TimerState.create(TODO_ID, USER_ID);
-        winnerRow.update("{\"status\":\"running\"}", winnerVersion);
+    @DisplayName("upsertState: 저장 중 Todo가 삭제돼 Todo FK 위반이 나면 TodoNotFoundException, version 조회·이벤트 없음")
+    void upsertState_todoDeletedDuringUpsert_throwsNotFoundWithoutEvent() throws Exception {
+        givenOwnedTodo();
+        when(objectMapper.writeValueAsString(any())).thenReturn(RUNNING_JSON);
+        doThrow(integrityViolation(FOREIGN_KEY, TimerService.TODO_FOREIGN_KEY))
+                .when(timerStateRepository).upsert(eq(TODO_ID), eq(USER_ID), eq(RUNNING_JSON), any(Instant.class));
 
-        when(todoRepository.findByIdAndUserId(TODO_ID, USER_ID)).thenReturn(Optional.of(mock(Todo.class)));
-        when(timerStateRepository.findByUserIdAndTodoId(USER_ID, TODO_ID))
-                .thenReturn(Optional.empty())     // 첫 조회: row 없음 (create 경로로 진입)
-                .thenReturn(Optional.of(winnerRow)); // DIV 후 재조회: winner row 존재
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"status\":\"running\"}");
-        when(timerStateRepository.saveAndFlush(any(TimerState.class)))
-                .thenThrow(new DataIntegrityViolationException("duplicate key"))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        assertThatThrownBy(() -> timerService.upsertState(USER_ID, TODO_ID, runningRequest()))
+                .isInstanceOf(TodoNotFoundException.class);
 
-        TimerStateResponse response = timerService.upsertState(USER_ID, TODO_ID, runningRequest());
-
-        // 재계산된 newVersion 이 winner version 보다 반드시 커야 단조 증가 invariant 가 유지된다
-        assertThat(response.version()).isGreaterThan(winnerVersion);
-        verify(timerStateRepository, times(2)).saveAndFlush(any(TimerState.class));
-        verify(timerStateRepository, times(2)).findByUserIdAndTodoId(USER_ID, TODO_ID);
-
-        // 도메인 이벤트에도 재계산된 version 사용
-        TimerStateChangedEvent event = capturePublishedEvent();
-        assertThat(event.version()).isEqualTo(response.version());
+        verify(timerStateRepository, never()).findVersionByTodoId(any());
+        verifyNoInteractions(applicationEventPublisher);
     }
 
     @Test
-    @DisplayName("getActiveStates: stale row 벌크 DELETE 후 state_json!=null 인 active 만 응답")
-    void getActiveStates_deletesStaleAndReturnsActiveOnly() throws Exception {
-        TimerState active = TimerState.create("todo-active", USER_ID);
-        active.update("{\"status\":\"running\"}", 123L);
-        TimerState idle = TimerState.create("todo-idle", USER_ID);
-        idle.update(null, 50L); // soft delete row
+    @DisplayName("upsertState: Todo FK 위반이 아닌 무결성 오류는 원본 예외를 그대로 던진다")
+    void upsertState_otherIntegrityViolation_propagatesOriginal() throws Exception {
+        givenOwnedTodo();
+        when(objectMapper.writeValueAsString(any())).thenReturn(RUNNING_JSON);
+        DataIntegrityViolationException duplicate = integrityViolation(UNIQUE, "PRIMARY");
+        doThrow(duplicate)
+                .when(timerStateRepository).upsert(eq(TODO_ID), eq(USER_ID), eq(RUNNING_JSON), any(Instant.class));
 
-        when(timerStateRepository.findAllByUserIdOrderByUpdatedAtDesc(USER_ID)).thenReturn(List.of(active, idle));
-        when(objectMapper.readValue(eq("{\"status\":\"running\"}"), eq(Object.class)))
-                .thenReturn("deserialized-state");
+        assertThatThrownBy(() -> timerService.upsertState(USER_ID, TODO_ID, runningRequest()))
+                .isSameAs(duplicate);
+
+        verifyNoInteractions(applicationEventPublisher);
+    }
+
+    @Test
+    @DisplayName("isTodoForeignKeyViolation: FK 위반이고 제약 이름이 Todo FK일 때만 true")
+    void isTodoForeignKeyViolation_matchesOnlyTodoForeignKey() {
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                integrityViolation(FOREIGN_KEY, TimerService.TODO_FOREIGN_KEY))).isTrue();
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                integrityViolation(FOREIGN_KEY, "fk_other_parent"))).isFalse();
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                integrityViolation(UNIQUE, TimerService.TODO_FOREIGN_KEY))).isFalse();
+        assertThat(TimerService.isTodoForeignKeyViolation(
+                new DataIntegrityViolationException("no cause"))).isFalse();
+    }
+
+    @Test
+    @DisplayName("getActiveStates: 호출 시점 − 24시간 이후 갱신된 활성 상태만 조회하고 행은 지우지 않는다")
+    void getActiveStates_returnsRowsUpdatedWithinLast24Hours() throws Exception {
+        TimerState active = mock(TimerState.class);
+        when(active.getTodoId()).thenReturn("todo-active");
+        when(active.getStateJson()).thenReturn(RUNNING_JSON);
+        when(active.getVersion()).thenReturn(123L);
+        when(timerStateRepository.findActiveSince(eq(USER_ID), any(Instant.class))).thenReturn(List.of(active));
+        when(objectMapper.readValue(RUNNING_JSON, Object.class)).thenReturn("deserialized-state");
+        Instant before = Instant.now().minus(24, ChronoUnit.HOURS);
 
         List<TimerStateResponse> result = timerService.getActiveStates(USER_ID);
 
-        // TTL cleanup 은 threshold 기준 단일 DELETE 로 호출된다
-        ArgumentCaptor<Instant> thresholdCaptor = ArgumentCaptor.forClass(Instant.class);
-        verify(timerStateRepository).deleteStaleByUserId(eq(USER_ID), thresholdCaptor.capture());
-        assertThat(thresholdCaptor.getValue()).isBefore(Instant.now().minus(23, ChronoUnit.HOURS));
-
-        // soft delete(state_json=null) 는 active 응답에서 제외
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).todoId()).isEqualTo("todo-active");
-        assertThat(result.get(0).version()).isEqualTo(123L);
+        Instant after = Instant.now().minus(24, ChronoUnit.HOURS);
+        ArgumentCaptor<Instant> threshold = ArgumentCaptor.forClass(Instant.class);
+        verify(timerStateRepository).findActiveSince(eq(USER_ID), threshold.capture());
+        assertThat(threshold.getValue()).isBetween(before, after);
+        verifyNoMoreInteractions(timerStateRepository);
+        assertThat(result).containsExactly(new TimerStateResponse("todo-active", "deserialized-state", 123L));
     }
 
     @Test
-    @DisplayName("getActiveStates: row 없으면 빈 list 반환 + TTL DELETE 는 여전히 호출")
-    void getActiveStates_noRows_returnsEmptyButStillRunsCleanup() {
-        when(timerStateRepository.findAllByUserIdOrderByUpdatedAtDesc(USER_ID)).thenReturn(List.of());
+    @DisplayName("getActiveStates: 활성 상태가 없으면 빈 목록")
+    void getActiveStates_noRows_returnsEmpty() {
+        when(timerStateRepository.findActiveSince(eq(USER_ID), any(Instant.class))).thenReturn(List.of());
 
         List<TimerStateResponse> result = timerService.getActiveStates(USER_ID);
 
         assertThat(result).isEmpty();
-        verify(timerStateRepository).deleteStaleByUserId(eq(USER_ID), any(Instant.class));
+        verify(timerStateRepository).findActiveSince(eq(USER_ID), any(Instant.class));
+        verifyNoMoreInteractions(timerStateRepository);
+    }
+
+    private void givenOwnedTodo() {
+        when(todoRepository.findByIdAndUserId(TODO_ID, USER_ID)).thenReturn(Optional.of(mock(Todo.class)));
     }
 
     private TimerStateChangedEvent capturePublishedEvent() {
-        ArgumentCaptor<TimerStateChangedEvent> captor =
-                ArgumentCaptor.forClass(TimerStateChangedEvent.class);
+        ArgumentCaptor<TimerStateChangedEvent> captor = ArgumentCaptor.forClass(TimerStateChangedEvent.class);
         verify(applicationEventPublisher).publishEvent(captor.capture());
         return captor.getValue();
     }
@@ -213,5 +209,12 @@ class TimerServiceTest {
         request.setStatus("running");
         request.setState(new Object());
         return request;
+    }
+
+    private static DataIntegrityViolationException integrityViolation(ConstraintKind kind, String constraintName) {
+        SQLException sql = new SQLException("constraint violation", "23000");
+        ConstraintViolationException hibernate =
+                new ConstraintViolationException("could not execute statement", sql, kind, constraintName);
+        return new DataIntegrityViolationException("could not execute statement", hibernate);
     }
 }
