@@ -25,4 +25,26 @@ public interface TimerStateRepository extends JpaRepository<TimerState, String> 
     @Modifying(clearAutomatically = true)
     @Query("delete from TimerState t where t.userId = :userId and t.updatedAt < :threshold")
     int deleteStaleByUserId(String userId, Instant threshold);
+
+    /**
+     * 같은 Todo의 최초 저장과 갱신을 한 문장으로 처리한다.
+     * version은 새 행이면 1, 기존 행이면 DB가 +1 한다. 같은 Todo의 동시 쓰기는 InnoDB 행 X락으로 직렬화된다.
+     * 시각은 호출자가 바인딩한다. 이 SQL에서 NOW()·CURRENT_TIMESTAMP를 쓰지 않는다.
+     * 쓰기 경로는 TimerState 엔티티를 로드하지 않으므로 flush/clear 강제 옵션을 쓰지 않는다.
+     * 반환값(INSERT 1, UPDATE 2)은 CLIENT_FOUND_ROWS 설정에 따라 의미가 달라지므로 쓰지 않는다.
+     */
+    @Modifying
+    @Query(value = """
+            INSERT INTO timer_states (todo_id, user_id, state_json, version, created_at, updated_at)
+            VALUES (:todoId, :userId, :stateJson, 1, :now, :now) AS incoming
+            ON DUPLICATE KEY UPDATE
+                state_json = incoming.state_json,
+                version    = timer_states.version + 1,
+                updated_at = incoming.updated_at
+            """, nativeQuery = true)
+    int upsert(String todoId, String userId, String stateJson, Instant now);
+
+    // upsert 직후 같은 트랜잭션에서 확정 version을 읽는다. 값만 읽으므로 1차 캐시를 거치지 않는다
+    @Query("select t.version from TimerState t where t.todoId = :todoId")
+    long findVersionByTodoId(String todoId);
 }
