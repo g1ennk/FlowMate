@@ -132,6 +132,12 @@ RECORD LOCKS space id 10 page no 4 index PRIMARY
 
 두 트랜잭션 모두 `PRIMARY` 인덱스의 gap lock을 보유한 채 insert intention lock을 기다리고 있었다.
 
+### 서로 다른 Todo끼리도 충돌했다
+
+k6 시나리오는 반복마다 새 Todo를 만들어 같은 Todo에 요청이 겹치지 않았는데도 deadlock이 났다. 그래서 dev 서버에 회원 한 명의 서로 다른 `todo_id` 16개로 첫 저장을 동시에 보냈고, 200이 5건, 500이 11건이었다. `SHOW ENGINE INNODB STATUS`도 같은 `PRIMARY` 인덱스의 gap lock deadlock을 보였다.
+
+gap lock은 키 하나가 아니라 그 키가 들어갈 빈 구간을 잠근다. `todo_id`가 UUID라 새 키가 들어갈 자리는 무작위고, 서로 다른 Todo라도 같은 구간에 떨어지면 같은 구간을 잠근다. 테이블에 행이 적을수록 구간이 적고 넓어서 동시에 들어온 첫 저장끼리 더 자주 겹친다. 부하가 아니라 구조 문제였다.
+
 ### 원인 정리
 
 정리하면 원인은 다음과 같다.

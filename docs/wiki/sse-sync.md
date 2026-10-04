@@ -225,16 +225,9 @@ new EventSource(`/api/timer/sse?token=${encodeURIComponent(token)}`)
 | SSE 인증: guest 차단   | `TimerControllerTest`    | `role ≠ member`이면 401                                         |
 | SSE 인증: 무효 토큰      | `TimerControllerTest`    | 서명과 만료 검증 실패 시 401                                            |
 
-### 5.2 k6 부하 테스트
+### 5.2 부하 검증
 
-dev 환경에 k6 baseline 부하를 걸어 163,205건 요청에서 에러율 0%를 확인했다.
-
-| 측정 항목  | 결과        |
-|--------|-----------|
-| 총 요청 수 | 163,205   |
-| 에러율    | **0.00%** |
-| p95    | 45.58ms   |
-| p99    | 150.14ms  |
+SSE 전파의 부하 검증은 [Redis Pub/Sub으로 SSE 수평 확장하기](redis-sse-pubsub.md)에서 했다(로컬 동시 연결 200, 이벤트 30,000건 유실 0%). dev k6 baseline은 타이머 데드락 확인용이라 SSE 근거로 쓰지 않는다.
 
 ## 6. 트레이드오프 요약
 
