@@ -94,14 +94,12 @@ FlowMate는 Todo와 집중 세션을 한 흐름으로 기록하고, 캘린더와
 
 ## 5. 주요 트러블슈팅
 
-### 1) [타이머 상태 저장의 동시성 제어: InnoDB Deadlock 분석과 해결](docs/wiki/timer-deadlock.md)
+### 1) [타이머 상태 저장의 동시성 제어: gap lock deadlock에서 원자적 upsert까지](docs/wiki/timer-deadlock.md)
 
-- **1차 문제**: k6 12VU 부하 테스트에서 timer PUT에 deadlock 69건 발생. first insert 시 gap lock·insert intention lock 충돌
-- **1차 해결**: `PESSIMISTIC_WRITE`를 제거해 gap lock deadlock 경로를 없애고, first insert 충돌에는 catch-retry 도입(이후 실제 MySQL 동시성 테스트에서 동작하지 않음을 확인)
-- **1차 결과**: 요청 46% 증가(112K -> 163K)에도 **PUT 실패 0건**, 에러율 0.00%, p95 64.62 -> 45.58ms(29%↓)
-- **2차 문제**: 1차의 catch-retry가 동작하지 않아 동시 최초 저장 4건 중 3건 실패, 락 제거로 version 중복과 역전 발생
-- **2차 해결**: 원자적 upsert(`INSERT … ON DUPLICATE KEY UPDATE`) + DB가 올리는 순차 version
-- **2차 결과**: 동시 최초 저장 **30/120 → 120/120 성공**, version 중복과 역전 0건
+- **[문제]** 부하테스트에서 타이머를 **최초 동시 저장할 때**, 비관적 락으로 같은 빈 구간을 잠근(**gap lock**) 요청끼리 서로의 저장을 막아 deadlock 69건 발생
+- **[1차 해결]** 비관적 락을 제거해 gap lock을 없애고, 최초 동시 저장 시 **중복 저장 충돌로 실패하면** 다시 읽어 갱신하는 **catch-retry**로 복구 시도
+- **[2차 해결]** 최초 저장은 재시도로도 실패하고, 동시 갱신은 락 제거로 **SSE에서 최신 상태를 가려내는 version**이 겹쳐, **둘 다 DB 원자적 연산 upsert로 처리**
+- **[결과]** 1차는 deadlock **69 → 0건**, 2차는 같은 Todo에 4건씩 30번 최초 동시 저장 **30/120 → 120/120 성공**, version 겹침과 역전 0건(MySQL 통합 테스트)
 
 ### 2) [SSE 연결 유지 실패 해결: Workbox 충돌과 Nginx idle timeout](docs/wiki/sse-timeout.md)
 
