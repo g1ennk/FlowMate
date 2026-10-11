@@ -107,11 +107,11 @@ FlowMate는 Todo와 집중 세션을 한 흐름으로 기록하고, 캘린더와
 - **해결**: Workbox에서 SSE 경로 제외 + Nginx SSE 전용 location 분리 + 25초 heartbeat + Spring async timeout 정렬
 - **결과**: SSE 1시간 이상 안정 유지, nginx 504와 `AsyncRequestTimeoutException` **모두 0건**
 
-### 3) [폐기된 Refresh Token 재사용 시 활성 RT 즉시 무효화: revoke-all 트랜잭션 분리](docs/wiki/auth-reuse-detection-rollback.md)
+### 3) [폐기된 Refresh Token 재사용 시 롤백되던 전체 로그아웃: revoke-all 트랜잭션 분리](docs/wiki/auth-reuse-detection-rollback.md)
 
-- **문제**: 폐기된 RT 재사용 요청은 401로 차단됐지만, 같은 트랜잭션에서 실행한 **revoke-all이 예외와 함께 롤백**되어 DB에 반영되지 않음
-- **해결**: revoke-all을 별도 Bean의 **`REQUIRES_NEW` 트랜잭션**으로 분리해 실패 응답과 무관하게 먼저 커밋하고, **복합 인덱스**로 조회 성능까지 개선
-- **결과**: 폐기된 RT 재사용 시 활성 RT 전체가 즉시 무효화되고, 로그아웃 전환까지 검증, 조회 행 100,000건 → 1,000건까지 최적화
+- **[문제]** 폐기 토큰 재사용(탈취 신호) 시 **전체 로그아웃**이 인증 실패와 같은 트랜잭션이라 롤백됨
+- **[해결]** 전체 로그아웃만 **REQUIRES_NEW**로 먼저 커밋해 통합 테스트로 검증
+- **[결과]** prod 재현에서 폐기 토큰 재사용 시 누적된 **활성 Refresh Token 14개 → 0개**로 전체 기기 로그아웃 확인
 
 ## 6. 프로젝트 구조
 
