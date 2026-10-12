@@ -10,6 +10,7 @@ import { useSseTimerSync } from '../features/timer/useSseTimerSync'
 import { useTimerTicker } from '../features/timer/useTimerTicker'
 import { useTimerSyncEffect } from '../features/timer/useTimerSyncEffect'
 import { useTimerStore } from '../features/timer/timerStore'
+import { useAppUpdate } from '../features/pwa/useAppUpdate'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
 import { useAuthStore } from '../store/authStore'
 import BackendStatusGate from './BackendStatusGate'
@@ -20,6 +21,7 @@ const mockEnabled =
 export function AppProviders({ children }: PropsWithChildren) {
   const [mockReady, setMockReady] = useState(!mockEnabled)
   useTimerTicker()
+  useAppUpdate()
 
   // 앱 초기화 시 인증 상태 복원 (mock 모드면 MSW 준비 후 실행).
   // 과거에는 backendStatus==='available'을 기다렸지만, 그 경우 health→refresh가

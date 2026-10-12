@@ -1,9 +1,13 @@
-import { Suspense } from 'react'
+import { Suspense, useCallback, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts'
+import { usePullToRefresh } from '../lib/usePullToRefresh'
+import { checkAndApplyUpdate } from '../features/pwa/useAppUpdate'
 import { KeyboardShortcutsHelp } from '../ui/KeyboardShortcutsHelp'
 import { OfflineBanner } from '../ui/OfflineBanner'
+import { PullToRefreshIndicator } from '../ui/PullToRefreshIndicator'
 import { EditIcon, ListBulletIcon, MoonIcon, SettingsIcon, SunIcon } from '../ui/Icons'
 
 const tabs = [
@@ -34,11 +38,20 @@ function AppLayout() {
   const resolved = useThemeStore((s) => s.resolved)
   const setTheme = useThemeStore((s) => s.setTheme)
   const { helpOpen, setHelpOpen } = useKeyboardShortcuts()
+  const queryClient = useQueryClient()
+  const mainRef = useRef<HTMLElement>(null)
+  const refresh = useCallback(
+    () => Promise.all([queryClient.invalidateQueries(), checkAndApplyUpdate()]),
+    [queryClient],
+  )
+  const { pullDistance, isRefreshing } = usePullToRefresh(mainRef, refresh)
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface-base">
       <OfflineBanner />
+      <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
       <main
+        ref={mainRef}
         className="flex-1 overflow-y-auto"
         style={{ paddingBottom: 'calc(var(--bottom-nav-height) + var(--safe-bottom))' }}
       >

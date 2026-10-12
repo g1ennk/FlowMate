@@ -204,12 +204,15 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+  /* Safari 기본 당겨서 새로고침(전체 reload) 대신 usePullToRefresh를 쓴다 */
+  overscroll-behavior-y: none;
 }
 
 body {
   margin: 0;
   padding: 0;
   min-height: 100dvh;
+  overscroll-behavior-y: none;
   background: var(--color-surface-base);
   color: var(--color-text-primary);
   line-height: 1.5;

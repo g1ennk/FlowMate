@@ -65,6 +65,21 @@ describe('useBackendWatcher', () => {
     expect(checkHealth).toHaveBeenCalledTimes(3)
   })
 
+  it('앱 복귀(visible) 시 즉시 헬스체크를 재호출한다', async () => {
+    const { checkHealth } = await import('../../api/health')
+    vi.mocked(checkHealth).mockResolvedValue(true)
+
+    renderHook(() => useBackendWatcher())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(checkHealth).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(checkHealth).toHaveBeenCalledTimes(2)
+  })
+
   it('unmount 시 interval을 정리한다', async () => {
     const { checkHealth } = await import('../../api/health')
     vi.mocked(checkHealth).mockResolvedValue(true)
