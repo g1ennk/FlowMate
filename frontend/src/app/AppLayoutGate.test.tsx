@@ -30,6 +30,8 @@ function renderGate() {
 describe('AppLayoutGate', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    // 앱 셸의 ScrollRestoration이 호출한다 (jsdom 미구현)
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
     useAuthStore.setState(initialAuthStore, true)
     setOnboardingSeen(true)
   })

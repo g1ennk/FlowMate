@@ -7,19 +7,17 @@ const FAILURE_THRESHOLD = 2
 
 interface SystemStore {
   status: BackendStatus
-  /** 이 세션에서 한 번이라도 서버에 연결된 적이 있는지 */
-  hasConnected: boolean
+  /** 연속 실패 횟수. 성공하면 0으로 돌아간다 */
   failures: number
   recordHealth: (ok: boolean) => void
 }
 
 export const useSystemStore = create<SystemStore>((set) => ({
   status: 'unknown',
-  hasConnected: false,
   failures: 0,
   recordHealth: (ok) =>
     set((state) => {
-      if (ok) return { status: 'available', hasConnected: true, failures: 0 }
+      if (ok) return { status: 'available', failures: 0 }
       const failures = state.failures + 1
       return {
         failures,

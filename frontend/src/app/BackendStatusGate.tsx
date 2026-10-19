@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react'
+import { useState, type PropsWithChildren } from 'react'
 import { useSystemStore } from '../store/systemStore'
 import { useBackendWatcher } from '../features/system/useBackendWatcher'
 import ServiceUnavailable from '../features/system/ServiceUnavailable'
@@ -9,19 +9,21 @@ import AppSplash from './AppSplash'
 function BackendStatusGate({ children }: PropsWithChildren) {
   useBackendWatcher()
   const status = useSystemStore((s) => s.status)
-  const hasConnected = useSystemStore((s) => s.hasConnected)
   const online = useOnlineStatus()
+  // 앱을 한 번 보여준 뒤에는 라우터를 다시 내리지 않는다 (입력 중인 글과 시트를 지킨다)
+  const [appShown, setAppShown] = useState(false)
 
-  if (status === 'unknown') return <AppSplash />
-
-  // 오프라인은 앱 안의 OfflineBanner가 안내한다
-  const disconnected = status === 'unavailable' && online
-  // 처음부터 서버가 없을 때만 전체 화면. 쓰던 중이면 라우터를 유지해 입력 중인 내용을 지킨다
-  if (disconnected && !hasConnected) return <ServiceUnavailable />
+  if (!appShown) {
+    // 오프라인이면 앱 안의 OfflineBanner가 안내한다
+    if (online && status === 'unknown') return <AppSplash />
+    // 처음 진입부터 서버가 없을 때만 전체 화면
+    if (online && status === 'unavailable') return <ServiceUnavailable />
+    setAppShown(true)
+  }
 
   return (
     <>
-      {disconnected ? <ServerDisconnectedBanner /> : null}
+      {online && status === 'unavailable' ? <ServerDisconnectedBanner /> : null}
       {children}
     </>
   )

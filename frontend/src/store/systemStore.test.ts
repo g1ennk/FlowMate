@@ -8,15 +8,13 @@ describe('systemStore', () => {
     useSystemStore.setState(initialState, true)
   })
 
-  it('초기 상태는 unknown이고 아직 연결된 적이 없다', () => {
+  it('초기 상태는 unknown이다', () => {
     expect(useSystemStore.getState().status).toBe('unknown')
-    expect(useSystemStore.getState().hasConnected).toBe(false)
   })
 
-  it('헬스체크 성공을 기록하면 available이 되고 연결된 적이 있다고 기억한다', () => {
+  it('헬스체크 성공을 기록하면 available이 된다', () => {
     useSystemStore.getState().recordHealth(true)
     expect(useSystemStore.getState().status).toBe('available')
-    expect(useSystemStore.getState().hasConnected).toBe(true)
   })
 
   it('헬스체크 실패 1회로는 상태를 바꾸지 않는다', () => {
