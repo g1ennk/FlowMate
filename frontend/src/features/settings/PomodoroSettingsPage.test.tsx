@@ -584,13 +584,14 @@ describe('PomodoroSettingsPage', () => {
     expect(putCount).toBe(0)
   })
 
-  it('tells that a running timer picks up session and automation changes from its next start', async () => {
+  it('tells once that setting changes apply to newly started timers', async () => {
     signInAsMember()
     useSlowSettingsServer()
 
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
-    expect(await screen.findAllByText(/진행 중인 타이머는 다음 시작부터 적용돼요/)).toHaveLength(2)
+    expect(await screen.findAllByText(/새로 시작하는 타이머부터 적용돼요/)).toHaveLength(1)
+    expect(screen.queryByText(/진행 중인 타이머는 다음 시작부터/)).not.toBeInTheDocument()
   })
 
   it('shows the session rows in plain words', async () => {

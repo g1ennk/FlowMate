@@ -561,7 +561,7 @@ function PomodoroSettingsPage() {
       <section>
         <SectionHeader
           title="뽀모도로 세션"
-          description="집중 시간, 휴식 시간, 긴 휴식까지 몇 번 집중할지 정해요. 진행 중인 타이머는 다음 시작부터 적용돼요."
+          description="집중 시간, 휴식 시간, 긴 휴식까지 몇 번 집중할지 정해요. 새로 시작하는 타이머부터 적용돼요."
           actionLabel="기본값 복원"
           onActionClick={handleResetSessionDefaults}
           actionDisabled={!canEdit || updateSettings.isPending || isSessionDefault}
@@ -591,7 +591,7 @@ function PomodoroSettingsPage() {
       <section>
         <SectionHeader
           title="자동화"
-          description="Flow와 휴식이 끝나면 다음을 자동으로 시작할지 정해요. 진행 중인 타이머는 다음 시작부터 적용돼요."
+          description="Flow와 휴식이 끝나면 다음을 자동으로 시작할지 정해요."
           actionLabel="기본값 복원"
           onActionClick={handleResetAutomationDefaults}
           actionDisabled={!canEdit || updateSettings.isPending || isAutomationDefault}
