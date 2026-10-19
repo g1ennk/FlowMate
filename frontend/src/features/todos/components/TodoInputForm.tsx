@@ -15,7 +15,7 @@ type TodoInputFormProps = {
   sectionId: number
   nextActiveOrder: number
   onCreate: (title: string, miniDay: number, dayOrder: number) => Promise<void>
-  // submitted: 방금 할 일을 추가했다면 섹션을 접지 않도록 알려 준다
+  // submitted: 이번에 열린 동안 할 일을 추가했다면 섹션을 접지 않도록 알려 준다
   onClose: (submitted: boolean) => void
 }
 
@@ -28,6 +28,8 @@ export function TodoInputForm({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   // 저장 응답 전에 연달아 추가해도 입력한 순서대로 쌓이도록 이 입력창에서 쓴 마지막 순서를 기억한다.
   const lastOrderRef = useRef(-1)
+  // Enter로 추가한 직후 바깥을 눌러도 섹션이 접히지 않도록, 이번에 열린 동안 추가한 적이 있는지 기억한다.
+  const hasSubmittedRef = useRef(false)
 
   const { register, reset, getValues, setValue } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
@@ -62,6 +64,7 @@ export function TodoInputForm({
 
     const order = Math.max(nextActiveOrder, lastOrderRef.current + 1)
     lastOrderRef.current = order
+    hasSubmittedRef.current = true
     onCreate(title, sectionId, order).catch((err) => {
       toast.error('할 일을 추가하지 못했어요. 다시 시도해 주세요', { id: 'todo-create-failed' })
       console.error(err)
@@ -113,7 +116,8 @@ export function TodoInputForm({
             setCharCount(e.target.value.length)
           }}
           onBlur={() => {
-            onClose(submitTitle())
+            const submitted = submitTitle()
+            onClose(submitted || hasSubmittedRef.current)
           }}
           className={`w-full bg-transparent ${userTextInputClass} text-text-primary outline-none placeholder:text-text-tertiary resize-none overflow-hidden min-h-[20px]`}
           rows={1}

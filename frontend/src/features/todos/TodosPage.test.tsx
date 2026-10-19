@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { toast, Toaster } from 'react-hot-toast'
-import { Route, Routes, useLocation } from 'react-router-dom'
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '../../lib/queryKeys'
 import { storageKeys } from '../../lib/storageKeys'
@@ -687,7 +687,14 @@ describe('TodosPage delete undo', () => {
 
 function LocationProbe() {
   const location = useLocation()
-  return <output data-testid="location">{location.pathname + location.search}</output>
+  const navigate = useNavigate()
+  return (
+    <>
+      <output data-testid="location">{location.pathname + location.search}</output>
+      {/* 하단 탭이나 단축키처럼 날짜 없이 /todos로 이동한다 */}
+      <button type="button" onClick={() => navigate('/todos')}>할 일 탭으로 이동</button>
+    </>
+  )
 }
 
 describe('TodosPage ordering, editing and date flow', () => {
@@ -852,6 +859,19 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(screen.getByText('나가면서 추가')).toBeInTheDocument()
   })
 
+  it('keeps an empty section open when leaving the input right after adding with Enter', async () => {
+    await renderPage()
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '엔터로 추가' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.blur(input)
+    await wait(700)
+
+    expectSectionExpanded('미분류')
+    expect(screen.getByText('엔터로 추가')).toBeInTheDocument()
+  })
+
   it('brings the title back with an error when adding fails and the input is still empty', async () => {
     await renderPage()
     server.use(
@@ -1012,7 +1032,7 @@ describe('TodosPage ordering, editing and date flow', () => {
   })
 
   it('follows the new day when the app comes back to the foreground', async () => {
-    await renderPage({ route: `/todos?date=${selectedDateKey}`, now: new Date(2026, 0, 9, 21, 0, 0) })
+    await renderPage({ route: '/todos', now: new Date(2026, 0, 9, 21, 0, 0) })
     expect(screen.getByText('1월 9일')).toBeInTheDocument()
 
     vi.setSystemTime(new Date(2026, 0, 10, 8, 0, 0))
