@@ -189,7 +189,7 @@ describe('PomodoroSettingsPage', () => {
 
     expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
 
-    const breakRow = screen.getByRole('button', { name: /휴식 시간.*5, 15분/ })
+    const breakRow = screen.getByRole('button', { name: /휴식 시간.*짧은 5분, 긴 15분/ })
     await waitFor(() => expect(breakRow).not.toBeDisabled())
 
     await user.click(breakRow)
@@ -199,7 +199,7 @@ describe('PomodoroSettingsPage', () => {
       expect(readStoredSettings()?.pomodoroSession.longBreakMin).toBe(60)
     })
 
-    expect(screen.getByRole('button', { name: /휴식 시간.*5, 60분/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /휴식 시간.*짧은 5분, 긴 60분/ })).toBeInTheDocument()
   })
 
   it('keeps the screen and the server equal when the same switch is tapped twice quickly', async () => {
@@ -375,14 +375,14 @@ describe('PomodoroSettingsPage', () => {
 
     await user.click(flowRow)
     await user.click(await screen.findByRole('button', { name: '30분' }))
-    await user.click(screen.getByRole('button', { name: /주기/ }))
-    await user.click(await screen.findByRole('button', { name: '6 세션' }))
+    await user.click(screen.getByRole('button', { name: /긴 휴식까지/ }))
+    await user.click(await screen.findByRole('button', { name: '6회' }))
 
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
     expect(screen.getByRole('button', { name: /Flow 시간.*30분/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /주기.*6 세션/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /긴 휴식까지.*6회/ })).toBeInTheDocument()
     expect(serverState.pomodoroSession).toMatchObject({ flowMin: 30, cycleEvery: 6 })
   })
 
@@ -399,7 +399,7 @@ describe('PomodoroSettingsPage', () => {
     expect(await screen.findByText('설정을 불러오지 못했어요')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Flow 시간/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /휴식 시간/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /주기/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /긴 휴식까지/ })).toBeDisabled()
     expect(screen.getByRole('switch', { name: /휴식 시간 자동 시작/ })).toBeDisabled()
     expect(screen.getByRole('switch', { name: /세션 자동 시작/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /오전/ })).toBeDisabled()
@@ -429,7 +429,7 @@ describe('PomodoroSettingsPage', () => {
     expect(await screen.findByText('설정')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Flow 시간/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /휴식 시간/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /주기/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /긴 휴식까지/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /오전/ })).toBeDisabled()
   })
 
@@ -591,6 +591,35 @@ describe('PomodoroSettingsPage', () => {
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
     expect(await screen.findAllByText(/진행 중인 타이머는 다음 시작부터 적용돼요/)).toHaveLength(2)
+  })
+
+  it('shows the session rows in plain words', async () => {
+    signInAsMember()
+    useSlowSettingsServer()
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    expect(await screen.findByRole('button', { name: /휴식 시간.*짧은 5분, 긴 15분/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /긴 휴식까지.*4회/ })).toBeInTheDocument()
+    expect(screen.getByText(/겹치면 위 구간이 우선이에요/)).toBeInTheDocument()
+  })
+
+  it('asks to reset mini days with the same time notation as the screen', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    serverState.miniDays = {
+      ...defaultMiniDaysSettings,
+      day1: { label: '아침', start: '07:00', end: '12:00' },
+    }
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    await screen.findByRole('button', { name: /아침/ })
+    const resetButtons = screen.getAllByRole('button', { name: '기본값 복원' })
+    await user.click(resetButtons[resetButtons.length - 1])
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('오전 6:00, 오후 12:00, 오후 6:00'))
   })
 
   it('lets the user pick system, light or dark theme in one row', async () => {

@@ -284,8 +284,8 @@ function PomodoroSettingsPage() {
     commitSettings({ [field]: !values[field] })
   }
 
-  const breakValueLabel = `${values.breakMin}, ${values.longBreakMin}분`
-  const cycleLabel = `${values.cycleEvery} 세션`
+  const breakValueLabel = `짧은 ${values.breakMin}분, 긴 ${values.longBreakMin}분`
+  const cycleLabel = `${values.cycleEvery}회`
   const formatDisplayTime = (value: string) => {
     const trimmed = value.trim()
     if (!trimmed) return '--:--'
@@ -443,7 +443,7 @@ function PomodoroSettingsPage() {
 
   const handleResetSessionDefaults = () => {
     if (isSessionDefault) {
-      toast('이미 기본값입니다', { id: 'session-reset-noop' })
+      toast('이미 기본값이에요', { id: 'session-reset-noop' })
       return
     }
     if (!window.confirm('뽀모도로 세션 설정을 기본값으로 복원할까요?')) return
@@ -457,7 +457,7 @@ function PomodoroSettingsPage() {
 
   const handleResetAutomationDefaults = () => {
     if (isAutomationDefault) {
-      toast('이미 기본값입니다', { id: 'automation-reset-noop' })
+      toast('이미 기본값이에요', { id: 'automation-reset-noop' })
       return
     }
     if (!window.confirm('자동화 설정을 기본값으로 복원할까요?')) return
@@ -469,10 +469,13 @@ function PomodoroSettingsPage() {
 
   const handleResetMiniDaysDefaults = () => {
     if (isMiniDaysDefault) {
-      toast('이미 기본값입니다', { id: 'mini-days-reset-noop' })
+      toast('이미 기본값이에요', { id: 'mini-days-reset-noop' })
       return
     }
-    if (!window.confirm('미니 데이 전체 설정을 기본값(06:00 / 12:00 / 18:00 시작)으로 복원할까요?')) return
+    const defaultStarts = [defaultMiniDaysSettings.day1, defaultMiniDaysSettings.day2, defaultMiniDaysSettings.day3]
+      .map((range) => formatDisplayTime(range.start))
+      .join(', ')
+    if (!window.confirm(`미니 데이를 기본값(${defaultStarts} 시작)으로 복원할까요?`)) return
     const resetPayload: MiniDaysSettings = {
       day1: { ...defaultMiniDaysSettings.day1 },
       day2: { ...defaultMiniDaysSettings.day2 },
@@ -577,7 +580,7 @@ function PomodoroSettingsPage() {
             disabled={!canEdit}
           />
           <SettingsRow
-            label="주기"
+            label="긴 휴식까지"
             value={cycleLabel}
             onClick={() => setActiveSheet('cycle')}
             disabled={!canEdit}
@@ -639,7 +642,7 @@ function PomodoroSettingsPage() {
           ))}
         </div>
         <p className="mt-2 text-xs text-text-secondary">
-          미분류는 고정이며, 시간 구간은 연속일 필요가 없습니다.
+          미분류는 항상 있어요. 구간은 이어지지 않아도 되고, 겹치면 위 구간이 우선이에요.
         </p>
       </section>
 
@@ -747,12 +750,12 @@ function PomodoroSettingsPage() {
       <BottomSheet
         isOpen={activeSheet === 'cycle'}
         onClose={() => setActiveSheet(null)}
-        title="주기"
+        title="긴 휴식까지"
       >
         {CYCLE_PRESETS.map((preset) => (
           <BottomSheetItem
             key={preset}
-            label={`${preset} 세션`}
+            label={`${preset}회`}
             rightIcon={values.cycleEvery === preset ? (
               <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
