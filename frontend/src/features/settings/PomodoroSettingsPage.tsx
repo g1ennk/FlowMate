@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/authStore'
+import { type Theme, useThemeStore } from '../../store/themeStore'
 import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
 import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
+import { InlineSegmentToggle } from '../../ui/InlineSegmentToggle'
 import { Switch } from '../../ui/Switch'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
 import { buildPomodoroSave, useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
@@ -24,6 +26,11 @@ const PERIOD_OPTIONS = [
   { value: 'am', label: '오전' },
   { value: 'pm', label: '오후' },
 ] as const
+const THEME_OPTIONS: Array<{ label: string; value: Theme }> = [
+  { label: '시스템', value: 'system' },
+  { label: '라이트', value: 'light' },
+  { label: '다크', value: 'dark' },
+]
 const WHEEL_SCROLL_END_COMMIT_DELAY_MS = 120
 const WHEEL_LIVE_SELECT_BIAS = 0.35
 const WHEEL_ITEM_HEIGHT = 40
@@ -226,6 +233,8 @@ function PomodoroSettingsPage() {
   const updateMiniDays = useUpdateMiniDaysSettings()
   const logout = useAuthStore((s) => s.logout)
   const authState = useAuthStore((s) => s.state)
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
@@ -632,6 +641,22 @@ function PomodoroSettingsPage() {
         <p className="mt-2 text-xs text-text-secondary">
           미분류는 고정이며, 시간 구간은 연속일 필요가 없습니다.
         </p>
+      </section>
+
+      <section>
+        <SectionHeader title="화면" />
+        <div className="rounded-2xl bg-surface-card p-1 shadow-sm">
+          <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl px-4 py-2.5">
+            <span className="text-sm font-medium text-text-primary">화면 테마</span>
+            <InlineSegmentToggle
+              tone="surface"
+              ariaLabel="화면 테마"
+              options={THEME_OPTIONS}
+              value={theme}
+              onChange={(value) => setTheme(value as Theme)}
+            />
+          </div>
+        </div>
       </section>
 
       {authState?.type === 'member' && (

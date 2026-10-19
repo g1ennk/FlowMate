@@ -8,6 +8,7 @@ import { defaultMiniDaysSettings } from '../../lib/miniDays'
 import { storageKeys } from '../../lib/storageKeys'
 import { server } from '../../mocks/server'
 import { useAuthStore } from '../../store/authStore'
+import { useThemeStore } from '../../store/themeStore'
 import { renderApp } from '../../test/renderApp'
 import PomodoroSettingsPage from './PomodoroSettingsPage'
 
@@ -581,5 +582,26 @@ describe('PomodoroSettingsPage', () => {
     expect(screen.getByRole('heading', { name: '미니 데이 설정' })).toBeInTheDocument()
     expect(screen.getByText('종료는 시작보다 늦어야 해요')).toBeInTheDocument()
     expect(putCount).toBe(0)
+  })
+
+  it('lets the user pick system, light or dark theme in one row', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    useSlowSettingsServer()
+    useThemeStore.getState().setTheme('system')
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    expect(await screen.findByText('화면 테마')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '시스템', pressed: true })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '다크' }))
+    expect(useThemeStore.getState().theme).toBe('dark')
+    expect(document.documentElement).toHaveClass('dark')
+    expect(screen.getByRole('button', { name: '다크', pressed: true })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '시스템' }))
+    expect(useThemeStore.getState().theme).toBe('system')
+    expect(document.documentElement).not.toHaveClass('dark')
   })
 })

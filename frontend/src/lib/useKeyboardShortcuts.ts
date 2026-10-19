@@ -12,7 +12,7 @@ export const SHORTCUTS: ShortcutEntry[] = [
   { key: '1', label: '1', description: '계획 탭으로 이동' },
   { key: '2', label: '2', description: '회고 탭으로 이동' },
   { key: '3', label: '3', description: '설정 탭으로 이동' },
-  { key: 'd', label: 'D', description: '다크 모드 토글' },
+  { key: 'd', label: 'D', description: '라이트/다크 테마 전환' },
   { key: '?', label: '?', description: '단축키 도움말 열기/닫기' },
 ]
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { storageKeys } from '../lib/storageKeys'
 
-type Theme = 'light' | 'dark' | 'system'
+export type Theme = 'light' | 'dark' | 'system'
 
 interface ThemeStore {
   theme: Theme

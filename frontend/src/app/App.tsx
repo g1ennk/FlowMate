@@ -1,14 +1,13 @@
 import { Suspense, useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { NavLink, Outlet } from 'react-router-dom'
-import { useThemeStore } from '../store/themeStore'
 import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts'
 import { usePullToRefresh } from '../lib/usePullToRefresh'
 import { checkAndApplyUpdate } from '../features/pwa/useAppUpdate'
 import { KeyboardShortcutsHelp } from '../ui/KeyboardShortcutsHelp'
 import { OfflineBanner } from '../ui/OfflineBanner'
 import { PullToRefreshIndicator } from '../ui/PullToRefreshIndicator'
-import { EditIcon, ListBulletIcon, MoonIcon, SettingsIcon, SunIcon } from '../ui/Icons'
+import { EditIcon, ListBulletIcon, SettingsIcon } from '../ui/Icons'
 
 const tabs = [
   {
@@ -35,8 +34,6 @@ const tabs = [
 ]
 
 function AppLayout() {
-  const resolved = useThemeStore((s) => s.resolved)
-  const setTheme = useThemeStore((s) => s.setTheme)
   const { helpOpen, setHelpOpen } = useKeyboardShortcuts()
   const queryClient = useQueryClient()
   const mainRef = useRef<HTMLElement>(null)
@@ -67,19 +64,6 @@ function AppLayout() {
           </Suspense>
         </div>
       </main>
-
-      <button
-        type="button"
-        onClick={() => setTheme(resolved === 'dark' ? 'light' : 'dark')}
-        className="fixed z-50 flex h-10 w-10 items-center justify-center rounded-full bg-surface-card text-text-secondary shadow-md transition-colors hover:bg-hover-strong"
-        style={{
-          right: 'max(1rem, var(--safe-right, 0px))',
-          bottom: 'calc(var(--bottom-nav-height) + var(--safe-bottom) + 1rem)',
-        }}
-        aria-label={resolved === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-      >
-        {resolved === 'dark' ? <SunIcon className="h-4.5 w-4.5" /> : <MoonIcon className="h-4.5 w-4.5" />}
-      </button>
 
       <nav
         className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-border-default bg-surface-card px-card"
