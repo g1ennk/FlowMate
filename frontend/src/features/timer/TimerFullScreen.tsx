@@ -19,6 +19,7 @@ import { TimerMusicControls } from './TimerMusicControls'
 import { getSoundPhase } from './soundPhase'
 import { useTimerMusicSession } from './useTimerMusicSession'
 import { useTimer, useTimerStore } from './timerStore'
+import { useTimerDisplayStore } from './timerDisplayStore'
 import { formatCountdown, formatMs, formatStopwatch } from './timerFormat'
 import {
   getSessionsTotalFocusMs,
@@ -49,8 +50,12 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [isCompleting, setIsCompleting] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
   const [showBreakSelection, setShowBreakSelection] = useState(false)
-  const [showTotalTime, setShowTotalTime] = useState(false) // 디폴트: 현재 세션(false) vs 전체 누적(true)
-  const [showBreakTotal, setShowBreakTotal] = useState(false) // 추가 휴식(false) vs 총 휴식(true)
+  // 표시 기준 토글은 브라우저 탭 제목(ActiveTimerTitle)도 따르므로 전역 스토어에 둔다
+  const showTotalTime = useTimerDisplayStore((s) => s.showTotalFocus) // 디폴트: 현재 세션(false) vs 전체 누적(true)
+  const setShowTotalTime = useTimerDisplayStore((s) => s.setShowTotalFocus)
+  const showBreakTotal = useTimerDisplayStore((s) => s.showTotalBreak) // 추가 휴식(false) vs 총 휴식(true)
+  const setShowBreakTotal = useTimerDisplayStore((s) => s.setShowTotalBreak)
+  const resetDisplay = useTimerDisplayStore((s) => s.resetDisplay)
   // 1초마다 re-render 트리거 (값은 사용하지 않음 — remainingMs는 Date.now() 인라인으로 계산).
   // nowMs를 state로 두고 endAt-nowMs로 계산하면, idle→running 전환 첫 paint에서 stale nowMs가
   // 사용되어 카운트다운이 "endAt - mount시각" 만큼 초과된 값(예: 90:09)을 잠깐 표시한다.
@@ -96,12 +101,18 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     onUnmounted: () => setMounted(false),
     onSelectedModeChange: setSelectedMode,
     onResetDisplayState: () => {
-      setShowTotalTime(false)
-      setShowBreakTotal(false)
+      resetDisplay()
       setShowBreakSelection(false)
     },
     syncTimerMode: (mode) => updateTodo.mutate({ id: todoId, patch: { timerMode: mode } }),
   })
+
+  // 닫히거나 페이지를 떠나면 표시 기준을 기본값으로 되돌린다.
+  // 닫힌 동안에는 아래 단계 전환 복귀가 동작하지 않으므로, 탭 제목이 이전 선택에 머물지 않게 한다.
+  useEffect(() => {
+    if (!isOpen) return
+    return () => resetDisplay()
+  }, [isOpen, resetDisplay])
 
   // 휴식에서 집중으로 전환될 때 현재 세션 탭으로 복귀
   const prevFlexiblePhaseRef = useRef<string | null>(null)
@@ -125,7 +136,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     
     // 이전 phase 업데이트
     prevFlexiblePhaseRef.current = currentPhase ?? null
-  }, [timer?.flexiblePhase, timer?.mode, timer?.breakCompleted])
+  }, [timer?.flexiblePhase, timer?.mode, timer?.breakCompleted, setShowTotalTime, setShowBreakTotal])
 
   useEffect(() => {
     if (!isOpen || !timer?.endAt) return
@@ -759,8 +770,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   pomodoroInitKeyRef.current = null
 
                   // 리셋 후에도 풀스크린 유지 + 초기 진입 상태로 재초기화
-                  setShowTotalTime(false)
-                  setShowBreakTotal(false)
+                  resetDisplay()
                   setShowBreakSelection(false)
 
                   if (effectiveMode === 'stopwatch') {

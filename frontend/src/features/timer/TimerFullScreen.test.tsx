@@ -6,6 +6,7 @@ import { queryKeys } from '../../lib/queryKeys'
 import { renderApp } from '../../test/renderApp'
 import { FADE_PHASE_END_MS, setSoundEngineForTest, type SoundEngine } from './soundEngine'
 import { useSoundscapeStore } from './soundscapeStore'
+import { useTimerDisplayStore } from './timerDisplayStore'
 import { TimerFullScreen } from './TimerFullScreen'
 
 const mocked = vi.hoisted(() => {
@@ -145,6 +146,7 @@ describe('TimerFullScreen', () => {
     mocked.toastSuccess.mockClear()
     mocked.toastError.mockClear()
 
+    useTimerDisplayStore.getState().resetDisplay()
     useSoundscapeStore.getState().stopSession()
     useSoundscapeStore.setState({ phase: 'stopped' })
     localStorage.removeItem('flowmate/ui/sound-prefs')
@@ -484,6 +486,18 @@ describe('TimerFullScreen', () => {
       expect(playSpy).toHaveBeenCalled()
       expect(useSoundscapeStore.getState().phase).toBe('focus')
     })
+  })
+
+  it('resets the shared display toggle when closing so the tab title returns to the current session', async () => {
+    const user = userEvent.setup()
+    Object.assign(mocked.timerState, { status: 'running', flexiblePhase: 'focus' })
+
+    const view = renderApp(renderTimer())
+    await user.click(await screen.findByRole('button', { name: '전체 누적' }))
+    expect(useTimerDisplayStore.getState().showTotalFocus).toBe(true)
+
+    view.rerender(renderTimer({ isOpen: false, todoId: '' }))
+    expect(useTimerDisplayStore.getState().showTotalFocus).toBe(false)
   })
 
   it('renders and controls the timer when the sound engine fails', async () => {
