@@ -946,3 +946,40 @@ describe('useTimerStore pomodoro 기록 정확도', () => {
     expect(timer.sessions[0].sessionFocusSeconds).toBe(120)
   })
 })
+
+describe('useTimerStore 일반 타이머 휴식 끝내기', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-19T09:00:00.000Z'))
+    useTimerStore.getState().clearAll()
+  })
+
+  afterEach(() => {
+    useTimerStore.getState().clearAll()
+    vi.useRealTimers()
+  })
+
+  it('자동 Flow 시작이 꺼져 있어도 직접 휴식을 끝내면 바로 Flow가 시작된다', () => {
+    setTimer(createPomodoroTimer({
+      mode: 'stopwatch',
+      phase: 'flow',
+      status: 'running',
+      cycleCount: 0,
+      settingsSnapshot: { ...settings, autoStartSession: false },
+      flexiblePhase: 'break_free',
+      focusElapsedMs: 20 * 60_000,
+      initialFocusMs: 20 * 60_000,
+      breakStartedAt: Date.now() - 5 * 60_000,
+      breakSessionPendingUpdate: true,
+      sessions: [{ sessionFocusSeconds: 1200, breakSeconds: 0, clientSessionId: EXISTING_SESSION_ID }],
+    }))
+
+    useTimerStore.getState().resumeFocus(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.flexiblePhase).toBe('focus')
+    expect(timer.status).toBe('running')
+    expect(timer.focusStartedAt).toBe(Date.now())
+    expect(timer.sessions[0].breakSeconds).toBe(300)
+  })
+})

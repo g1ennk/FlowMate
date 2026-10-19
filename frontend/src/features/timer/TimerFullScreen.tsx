@@ -224,7 +224,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           timer?.flexiblePhase === 'focus' || !timer?.flexiblePhase ? (
             // 집중 모드
           <>
-              <WaitingNotice timer={timer} isBreak={false} />
             {/* 집중 라벨 */}
               <p className="mb-4 text-center text-base font-semibold text-accent">
               Flow
