@@ -61,8 +61,9 @@ export function ReviewTextarea({
   const handleSaveRef = useRef<() => void>(() => {})
   const isSaving = upsert.isPending || remove.isPending
   const isDirty = draft !== content
-  // 불러오는 중이거나 실패한 상태에서 편집을 시작하면 빈 글로 기존 회고를 덮어쓸 수 있다.
-  const canEnterEdit = !isEditing && review.isSuccess
+  // 처음 불러오는 중이거나 실패한 상태에서 편집을 시작하면 빈 글로 기존 회고를 덮어쓸 수 있다.
+  // 이미 받은 회고가 있으면 백그라운드 재조회가 실패해도 그대로 보여주고 편집을 허용한다.
+  const canEnterEdit = !isEditing && (review.isSuccess || review.isRefetchError)
 
   const {
     aiReport, isAiLoading, canRegenerate, regenerateError,
@@ -96,6 +97,8 @@ export function ReviewTextarea({
   }, [content])
 
   const enterEdit = useCallback(() => {
+    // 새 글을 쓴 뒤 삭제 되돌리기가 그 글을 덮어쓰지 않도록 닫는다.
+    toast.dismiss('review-delete-success')
     setDraft(content)
     setIsEditing(true)
   }, [content])
@@ -176,7 +179,7 @@ export function ReviewTextarea({
                 )}
               />
             ),
-            { id: 'review-delete-success', duration: 4000 },
+            { id: 'review-delete-success', duration: 5000 },
           )
         },
         onError: () => {
@@ -361,7 +364,7 @@ export function ReviewTextarea({
             <p className={`${userTextDisplayClass} text-text-secondary`}>
               회고를 불러오는 중...
             </p>
-          ) : review.isError ? (
+          ) : review.isLoadingError ? (
             <div className="space-y-2">
               <p className={`${userTextDisplayClass} text-text-secondary`}>
                 회고를 불러오지 못했어요

@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { Toaster, toast } from 'react-hot-toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../mocks/server'
-import { renderApp } from '../../../test/renderApp'
+import { createTestQueryClient, renderApp } from '../../../test/renderApp'
 import type { AiReport } from '../../../api/aiReport'
 import type { Review } from '../../../api/types'
 import { formatReportAsKpt } from '../kptParser'
@@ -72,25 +72,28 @@ type Calls = { puts: string[]; deletes: string[] }
 
 function mockReviewApi(initial: Review | null): Calls {
   const calls: Calls = { puts: [], deletes: [] }
+  let current = initial
   server.use(
     http.get('/api/reviews/:periodStart', () =>
-      initial ? HttpResponse.json(initial) : new HttpResponse(null, { status: 204 }),
+      current ? HttpResponse.json(current) : new HttpResponse(null, { status: 204 }),
     ),
     http.get('/api/reviews', () => HttpResponse.json({ items: [] })),
     http.put('/api/reviews', async ({ request }) => {
       const body = (await request.json()) as { content: string }
       calls.puts.push(body.content)
-      return HttpResponse.json(makeReview(body.content))
+      current = makeReview(body.content)
+      return HttpResponse.json(current)
     }),
     http.delete('/api/reviews/:id', ({ params }) => {
       calls.deletes.push(params.id as string)
+      current = null
       return new HttpResponse(null, { status: 204 })
     }),
   )
   return calls
 }
 
-function renderTextarea() {
+function renderTextarea(queryClient = createTestQueryClient()) {
   return renderApp(
     <>
       <ReviewTextarea
@@ -103,6 +106,7 @@ function renderTextarea() {
       />
       <Toaster />
     </>,
+    { queryClient },
   )
 }
 
@@ -216,6 +220,21 @@ describe('ReviewTextarea', () => {
       await waitFor(() => expect(calls.puts).toEqual(['지울 회고']))
       expect(await screen.findByText('지울 회고')).toBeInTheDocument()
     })
+
+    it('삭제 후 새 글을 쓰러 들어가면 되돌리기 토스트를 닫는다', async () => {
+      mockReviewApi(makeReview('지울 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      await openEditor(user, '지울 회고')
+      await user.click(screen.getByRole('button', { name: '삭제' }))
+      await screen.findByRole('button', { name: '되돌리기' })
+
+      const dismissSpy = vi.spyOn(toast, 'dismiss')
+      await openEditor(user, '회고를 작성해보세요.')
+
+      expect(dismissSpy).toHaveBeenCalledWith('review-delete-success')
+    })
   })
 
   describe('불러오기 상태', () => {
@@ -251,6 +270,31 @@ describe('ReviewTextarea', () => {
       fail = false
       await user.click(screen.getByRole('button', { name: '다시 시도' }))
       expect(await screen.findByText('서버 회고')).toBeInTheDocument()
+    })
+
+    it('이미 보이는 회고는 백그라운드 재조회가 실패해도 그대로 보이고 편집할 수 있다', async () => {
+      let fail = false
+      server.use(
+        http.get('/api/reviews/:periodStart', () =>
+          fail
+            ? HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })
+            : HttpResponse.json(makeReview('보이는 회고')),
+        ),
+        http.get('/api/reviews', () => HttpResponse.json({ items: [] })),
+      )
+      const queryClient = createTestQueryClient()
+      const user = userEvent.setup()
+      renderTextarea(queryClient)
+      await screen.findByText('보이는 회고')
+
+      fail = true
+      await act(async () => {
+        await queryClient.refetchQueries()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+
+      expect(screen.queryByText('회고를 불러오지 못했어요')).not.toBeInTheDocument()
+      expect(await openEditor(user, '보이는 회고')).toHaveValue('보이는 회고')
     })
   })
 })
