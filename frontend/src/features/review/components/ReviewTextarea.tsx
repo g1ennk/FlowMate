@@ -10,6 +10,7 @@ import { storageKeys } from '../../../lib/storageKeys'
 import { useAiReportSheet } from '../hooks/useAiReportSheet'
 import { formatReportAsKpt } from '../kptParser'
 import { KptText } from './KptText'
+import { UndoToast } from '../../../ui/UndoToast'
 
 // AiReportSheet는 react-markdown 스택을 끌고 들어와서 무겁다. 사용자가 시트를 처음 열기
 // 전까지는 별도 청크로 분리해두고, 한 번 열린 뒤에는 닫힘 애니메이션 보존을 위해 마운트 유지.
@@ -140,18 +141,41 @@ export function ReviewTextarea({
   }, [exitEdit, isDirty, isEditing, isSheetOpenRef, sheetClosedAtRef])
 
   const executeDelete = () => {
-    if (!review.data?.id) {
+    const deleted = review.data
+    if (!deleted?.id) {
       setDraft('')
       setIsEditing(false)
       return
     }
     remove.mutate(
-      { id: review.data.id, type: periodType, periodStart },
+      { id: deleted.id, type: periodType, periodStart },
       {
         onSuccess: () => {
-          toast.success('회고를 삭제했어요', { id: 'review-delete-success' })
           setDraft('')
           setIsEditing(false)
+          // 지운 내용을 기억해 두었다가 되돌리면 같은 기간으로 다시 저장한다.
+          toast(
+            (t) => (
+              <UndoToast
+                t={t}
+                message="회고를 삭제했어요"
+                onUndo={() => upsert.mutate(
+                  {
+                    type: deleted.type,
+                    periodStart: deleted.periodStart,
+                    periodEnd: deleted.periodEnd,
+                    content: deleted.content,
+                  },
+                  {
+                    onError: () => {
+                      toast.error('회고를 되돌리지 못했어요', { id: 'review-restore-failed' })
+                    },
+                  },
+                )}
+              />
+            ),
+            { id: 'review-delete-success', duration: 4000 },
+          )
         },
         onError: () => {
           toast.error('회고 삭제에 실패했어요', { id: 'review-delete-failed' })
@@ -161,9 +185,10 @@ export function ReviewTextarea({
   }
 
   const handleSave = () => {
-    const trimmed = draft.trim()
-    if (!trimmed) {
-      executeDelete()
+    // 내용을 모두 지운 채 저장하거나 바깥을 눌러도 삭제하지 않는다.
+    // 삭제는 삭제 버튼(되돌리기 가능)으로만 한다.
+    if (!draft.trim()) {
+      exitEdit(true)
       return
     }
 

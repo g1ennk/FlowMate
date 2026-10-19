@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { Toaster, toast } from 'react-hot-toast'
@@ -170,6 +170,51 @@ describe('ReviewTextarea', () => {
 
       expect(await screen.findByRole('button', { name: '덮어쓰기' })).toBeInTheDocument()
       expect(calls.puts).toEqual([])
+    })
+  })
+
+  describe('빈 내용과 삭제', () => {
+    it('내용을 모두 지우고 저장해도 회고를 삭제하지 않고 원래 글을 유지한다', async () => {
+      const calls = mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.clear(textarea)
+      await user.click(screen.getByRole('button', { name: '저장' }))
+
+      expect(await screen.findByText('기존 회고')).toBeInTheDocument()
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+      expect(calls.deletes).toEqual([])
+      expect(calls.puts).toEqual([])
+    })
+
+    it('내용을 모두 지운 채 바깥을 눌러도 회고를 삭제하지 않는다', async () => {
+      const calls = mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.clear(textarea)
+      fireEvent.pointerDown(document.body)
+
+      expect(await screen.findByText('기존 회고')).toBeInTheDocument()
+      expect(calls.deletes).toEqual([])
+    })
+
+    it('삭제 버튼은 되돌리기 토스트를 띄우고, 되돌리면 지운 회고를 다시 저장한다', async () => {
+      const calls = mockReviewApi(makeReview('지울 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      await openEditor(user, '지울 회고')
+      await user.click(screen.getByRole('button', { name: '삭제' }))
+
+      await waitFor(() => expect(calls.deletes).toHaveLength(1))
+      await user.click(await screen.findByRole('button', { name: '되돌리기' }))
+
+      await waitFor(() => expect(calls.puts).toEqual(['지울 회고']))
+      expect(await screen.findByText('지울 회고')).toBeInTheDocument()
     })
   })
 })
