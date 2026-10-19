@@ -514,6 +514,152 @@
           "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 1 }
         }
       }
+    },
+    {
+      "type": "row",
+      "title": "📨 SSE 전달 — 변경이 기기까지 닿나",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+      "collapsed": false,
+      "id": 104
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Publish",
+      "description": "커밋 후 Redis 발행. failure 동안의 변경은 다른 기기에 실시간으로 가지 않고 재접속 때 복구된다. success는 Redis가 받았다는 뜻이지 기기 도달이 아니다.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 58 },
+      "id": 16,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (result) (rate(flowmate_sse_publish_total{environment=\"$env\"}[5m]))",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "failure" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Fan-out per Connection",
+      "description": "연결 하나에 timer-state를 보낸 결과. 끊긴 연결을 정리할 때 failure가 조금 생기는 것은 정상이다. failure 비율이 계속 높으면 연결 정리나 네트워크를 의심한다.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 58 },
+      "id": 17,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (result) (rate(flowmate_sse_fanout_total{environment=\"$env\"}[5m]))",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "failure" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Dispatch Queue",
+      "description": "fan-out 대기 큐(200칸). remaining이 0에 가까우면 포화 직전이고, 그 뒤부터 가장 오래된 전송을 버린다.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 66 },
+      "id": 18,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(flowmate_sse_dispatch_queue_size{environment=\"$env\"})",
+          "legendFormat": "queued"
+        },
+        {
+          "refId": "B",
+          "expr": "min(flowmate_sse_dispatch_queue_remaining{environment=\"$env\"})",
+          "legendFormat": "remaining"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Dropped Dispatch (1h)",
+      "description": "큐와 스레드가 모두 차서 버린 전송 수. 0이 아니면 executor 정책 변경(#28 Phase C)을 판단할 근거가 된다.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 66 },
+      "id": 19,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(flowmate_sse_dispatch_dropped_total{environment=\"$env\"}[1h])) OR vector(0)"
+        }
+      ],
+      "options": {
+        "graphMode": "area",
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "SSE Connections & Subscriber",
+      "description": "서버가 들고 있는 SSE 연결 수와 Redis 구독 상태(1=구독 중). 구독 중 끊김은 Lettuce가 다시 구독해 여기 안 보일 수 있으니 Redis Publish failure와 같이 본다.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 66 },
+      "id": 20,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(flowmate_sse_connections{environment=\"$env\"})",
+          "legendFormat": "connections"
+        },
+        {
+          "refId": "B",
+          "expr": "min(flowmate_sse_subscriber_listening{environment=\"$env\"})",
+          "legendFormat": "subscriber listening"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(increase(flowmate_sse_subscriber_failures_total{environment=\"$env\"}[5m]))",
+          "legendFormat": "subscribe failures (5m)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" }
+        }
+      }
     }
   ]
 }
