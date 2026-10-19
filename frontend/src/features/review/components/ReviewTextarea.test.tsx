@@ -9,6 +9,7 @@ import type { AiReport } from '../../../api/aiReport'
 import type { Review } from '../../../api/types'
 import { formatReportAsKpt } from '../kptParser'
 import { storageKeys } from '../../../lib/storageKeys'
+import { useAuthStore } from '../../../store/authStore'
 import { ReviewTextarea } from './ReviewTextarea'
 
 const REPORT: AiReport = {
@@ -220,6 +221,73 @@ describe('ReviewTextarea', () => {
 
   describe('작성 중인 글 보관', () => {
     const draftKey = storageKeys.reviewDraft('daily', '2026-10-19')
+    const initialAuthStore = useAuthStore.getState()
+
+    function signInAs(state: NonNullable<ReturnType<typeof useAuthStore.getState>['state']>) {
+      useAuthStore.setState({ initialized: true, state })
+    }
+    const GUEST = { type: 'guest', token: 'guest-token-a' } as const
+    const MEMBER = {
+      type: 'member',
+      accessToken: 'member-token',
+      user: { id: 'user-1', email: null, nickname: 'Glenn' },
+    } as const
+
+    beforeEach(() => signInAs(GUEST))
+    afterEach(() => useAuthStore.setState(initialAuthStore, true))
+
+    it('다른 사용자로 바뀌면 이전 사용자가 쓰던 글을 불러오지 않는다', async () => {
+      const calls = mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      const { unmount } = renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 게스트가 쓴 글')
+      unmount()
+      expect(localStorage.getItem(draftKey)).not.toBeNull()
+
+      signInAs(MEMBER)
+      renderTextarea()
+      expect(await openEditor(user, '기존 회고')).toHaveValue('기존 회고')
+      await user.click(document.body)
+
+      expect(calls.puts).toEqual([])
+      expect(localStorage.getItem(draftKey)).toBeNull()
+    })
+
+    it('보관한 뒤 서버 글이 바뀌었으면 오래된 글로 덮어쓰지 않는다', async () => {
+      const calls = mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      const { unmount } = renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 오래된 수정')
+      unmount()
+
+      mockReviewApi(makeReview('다른 기기에서 고친 회고'))
+      renderTextarea()
+      expect(await openEditor(user, '다른 기기에서 고친 회고')).toHaveValue('다른 기기에서 고친 회고')
+      expect(screen.queryByText('이전에 쓰던 글을 불러왔어요')).not.toBeInTheDocument()
+      expect(calls.puts).toEqual([])
+      expect(localStorage.getItem(draftKey)).toBeNull()
+    })
+
+    it('편집 밖에서 이대로 저장해도 보관한 글이 있으면 덮어쓰기 확인을 받는다', async () => {
+      const calls = mockReviewApi(null)
+      const user = userEvent.setup()
+      const { unmount } = renderTextarea()
+
+      const textarea = await openEditor(user, '회고를 작성해보세요.')
+      await user.type(textarea, '보관된 글')
+      unmount()
+
+      renderTextarea()
+      await user.click(await screen.findByRole('button', { name: 'AI 레포트로 시작' }))
+      await user.click(await screen.findByRole('button', { name: '이대로 저장' }))
+
+      expect(await screen.findByRole('button', { name: '덮어쓰기' })).toBeInTheDocument()
+      expect(calls.puts).toEqual([])
+    })
 
     it('화면을 떠났다가 다시 편집하면 쓰던 글을 불러온다', async () => {
       mockReviewApi(makeReview('기존 회고'))
@@ -245,7 +313,7 @@ describe('ReviewTextarea', () => {
       vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
       fireEvent(document, new Event('visibilitychange'))
 
-      expect(localStorage.getItem(draftKey)).toBe('기존 회고 쓰던 중')
+      expect(JSON.parse(localStorage.getItem(draftKey) ?? '{}').text).toBe('기존 회고 쓰던 중')
     })
 
     it('저장에 성공하면 보관한 글을 지운다', async () => {
@@ -255,6 +323,7 @@ describe('ReviewTextarea', () => {
 
       const textarea = await openEditor(user, '기존 회고')
       await user.type(textarea, ' 추가')
+      await waitFor(() => expect(localStorage.getItem(draftKey)).not.toBeNull())
       await user.click(screen.getByRole('button', { name: '저장' }))
       await waitFor(() => expect(calls.puts).toEqual(['기존 회고 추가']))
       unmount()
@@ -280,7 +349,7 @@ describe('ReviewTextarea', () => {
       failSave()
 
       expect(await screen.findByText('회고 저장에 실패했어요')).toBeInTheDocument()
-      expect(localStorage.getItem(draftKey)).toBe('기존 회고 추가')
+      expect(JSON.parse(localStorage.getItem(draftKey) ?? '{}').text).toBe('기존 회고 추가')
     })
   })
 

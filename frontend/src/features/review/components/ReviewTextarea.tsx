@@ -106,8 +106,9 @@ export function ReviewTextarea({
   const enterEdit = useCallback(() => {
     // 새 글을 쓴 뒤 삭제 되돌리기가 그 글을 덮어쓰지 않도록 닫는다.
     toast.dismiss('review-delete-success')
-    const saved = readReviewDraft(periodType, periodStart)
-    if (saved !== null && saved !== content) {
+    // 다른 사용자가 썼거나 그사이 서버 글이 바뀐 보관 글은 버린다.
+    const saved = readReviewDraft(periodType, periodStart, content)
+    if (saved !== null) {
       setDraft(saved)
       toast('이전에 쓰던 글을 불러왔어요', { id: 'review-draft-restored' })
     } else {
@@ -311,7 +312,7 @@ export function ReviewTextarea({
     const kpt = formatReportAsKpt(aiReport)
     const question = aiReport.referenceQuestion
     const reportText = question ? `${kpt}\n\n> ${question}\n` : kpt
-    const base = (isEditing ? draft : readReviewDraft(periodType, periodStart) ?? content).trimEnd()
+    const base = (isEditing ? draft : readReviewDraft(periodType, periodStart, content) ?? content).trimEnd()
     closeSheet()
     setDraft(base ? `${base}\n\n${reportText}` : reportText)
     setIsEditing(true)
@@ -462,7 +463,12 @@ export function ReviewTextarea({
             report={aiReport}
             isCached={canRegenerate}
             isRegenerating={isAiLoading}
-            hasExistingContent={!!review.data?.id || (isEditing && draft.trim() !== '')}
+            hasExistingContent={
+              !!review.data?.id
+              || (isEditing
+                ? draft.trim() !== ''
+                : readReviewDraft(periodType, periodStart, content) !== null)
+            }
             onStartWithAi={handleStartWithAi}
             onSaveAsIs={handleSaveAsIs}
             onRegenerate={handleRegenerate}

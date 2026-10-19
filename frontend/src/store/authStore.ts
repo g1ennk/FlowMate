@@ -3,6 +3,7 @@ import { buildApiUrl } from '../api/baseUrl'
 import { clearAuthMode, getAuthMode, setAuthMode } from '../lib/auth'
 import { storageKeys } from '../lib/storageKeys'
 import type { AuthState } from '../types/auth'
+import { clearAllReviewDrafts } from '../features/review/reviewDraft'
 
 interface AuthStore {
   state: AuthState | null
@@ -88,6 +89,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   /** 로그아웃 */
   logout: async () => {
+    clearAllReviewDrafts()
     try {
       await fetch(buildApiUrl('/auth/logout'), { method: 'POST', credentials: 'include' })
     } catch {
