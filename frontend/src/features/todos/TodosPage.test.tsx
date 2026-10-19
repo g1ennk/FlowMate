@@ -812,4 +812,82 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(visibleTodoTitles()).toEqual(['할 일 A', '할 일 B', '할 일 C', '끝낸 일'])
   })
 
+  it('clears the input right away so the next todo can be typed while saving', async () => {
+    await renderPage()
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '  첫째  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(input.value).toBe('')
+
+    fireEvent.change(input, { target: { value: '둘째' } })
+    await wait(700)
+
+    // 첫 할 일이 목록에 나타나도 같은 입력창이 유지되어야 한다.
+    expect(screen.getByPlaceholderText('할 일을 입력하세요')).toHaveValue('둘째')
+    expect(screen.getByText('첫째')).toBeInTheDocument()
+    expect(readStoredTodos().map((todo) => todo.title)).toEqual(['첫째'])
+  })
+
+  it('keeps an empty section open when a todo is added by leaving the input', async () => {
+    await renderPage()
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '나가면서 추가' } })
+    fireEvent.blur(input)
+    await wait(700)
+
+    expectSectionExpanded('미분류')
+    expect(screen.getByText('나가면서 추가')).toBeInTheDocument()
+  })
+
+  it('brings the title back with an error when adding fails and the input is still empty', async () => {
+    await renderPage()
+    server.use(
+      http.post('/api/todos', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '첫째' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await wait(700)
+
+    expect(input.value).toBe('첫째')
+    expect(screen.getByText('할 일을 추가하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+  })
+
+  it('keeps what was typed next when adding the previous todo fails', async () => {
+    await renderPage()
+    server.use(
+      http.post('/api/todos', async () => {
+        await delay(200)
+        return HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })
+      }),
+    )
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '첫째' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.change(input, { target: { value: '둘째' } })
+    await wait(700)
+
+    expect(input.value).toBe('둘째')
+  })
+
+  it('ignores Enter while a Korean IME is still composing', async () => {
+    await renderPage()
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '한글' } })
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    await wait(700)
+
+    expect(input.value).toBe('한글')
+    expect(readStoredTodos()).toEqual([])
+  })
+
 })

@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { toast } from 'react-hot-toast'
 import { z } from 'zod'
+import { isImeComposing } from '../../../lib/keyboard'
 import { userTextInputClass } from '../../../lib/userTextStyles'
 
 const createSchema = z.object({
@@ -14,7 +15,8 @@ type TodoInputFormProps = {
   sectionId: number
   nextActiveOrder: number
   onCreate: (title: string, miniDay: number, dayOrder: number) => Promise<void>
-  onClose: () => void
+  // submitted: 방금 할 일을 추가했다면 섹션을 접지 않도록 알려 준다
+  onClose: (submitted: boolean) => void
 }
 
 export function TodoInputForm({
@@ -24,9 +26,10 @@ export function TodoInputForm({
   onClose,
 }: TodoInputFormProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const isSubmittingRef = useRef(false)
+  // 저장 응답 전에 연달아 추가해도 입력한 순서대로 쌓이도록 이 입력창에서 쓴 마지막 순서를 기억한다.
+  const lastOrderRef = useRef(-1)
 
-  const { register, reset, getValues } = useForm<CreateForm>({
+  const { register, reset, getValues, setValue } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
     defaultValues: { title: '' },
   })
@@ -49,6 +52,28 @@ export function TodoInputForm({
     }, 0)
   }
 
+  // 제목을 바로 가져가고 입력창을 비워 다음 할 일을 이어서 칠 수 있게 한다.
+  const submitTitle = () => {
+    const title = (getValues('title') ?? '').trim()
+    reset()
+    setCharCount(0)
+    resizeTodoInput(inputRef.current)
+    if (!title) return false
+
+    const order = Math.max(nextActiveOrder, lastOrderRef.current + 1)
+    lastOrderRef.current = order
+    onCreate(title, sectionId, order).catch((err) => {
+      toast.error('할 일을 추가하지 못했어요. 다시 시도해 주세요', { id: 'todo-create-failed' })
+      console.error(err)
+      // 그사이 다음 할 일을 치고 있었다면 그 글자를 덮지 않는다.
+      if (!inputRef.current || getValues('title')) return
+      setValue('title', title)
+      setCharCount(title.length)
+      resizeTodoInput(inputRef.current)
+    })
+    return true
+  }
+
   return (
     <div className="rounded-xl p-2">
       <div className="flex items-start gap-card-item rounded-lg px-2 py-1 -mx-2 -my-1">
@@ -64,10 +89,10 @@ export function TodoInputForm({
           }}
           placeholder="할 일을 입력하세요"
           autoFocus
-          onKeyDown={async (e) => {
+          onKeyDown={(e) => {
             if (e.key === 'Escape') {
               reset()
-              onClose()
+              onClose(false)
               if (inputRef.current) {
                 inputRef.current.style.height = 'auto'
               }
@@ -75,24 +100,10 @@ export function TodoInputForm({
             }
 
             if (e.key === 'Enter' && !e.shiftKey) {
+              if (isImeComposing(e)) return
               e.preventDefault()
-              if (isSubmittingRef.current) return
-
-              const title = getValues('title')
-              if (title?.trim()) {
-                isSubmittingRef.current = true
-                try {
-                  await onCreate(title, sectionId, nextActiveOrder)
-                  reset()
-                  setCharCount(0)
-                  focusTodoInputSoon()
-                } catch (err) {
-                  toast.error('추가 실패', { id: 'todo-create-failed' })
-                  console.error(err)
-                } finally {
-                  isSubmittingRef.current = false
-                }
-              }
+              submitTitle()
+              focusTodoInputSoon()
             }
           }}
           maxLength={MAX_LENGTH}
@@ -101,26 +112,8 @@ export function TodoInputForm({
             resizeTodoInput(e.target)
             setCharCount(e.target.value.length)
           }}
-          onBlur={async () => {
-            if (isSubmittingRef.current) return
-            const title = getValues('title')
-            if (title?.trim()) {
-              isSubmittingRef.current = true
-              try {
-                await onCreate(title, sectionId, nextActiveOrder)
-                reset()
-                setCharCount(0)
-              } catch (err) {
-                toast.error('추가 실패', { id: 'todo-create-failed' })
-                console.error(err)
-              } finally {
-                isSubmittingRef.current = false
-              }
-            } else {
-              reset()
-              setCharCount(0)
-            }
-            onClose()
+          onBlur={() => {
+            onClose(submitTitle())
           }}
           className={`w-full bg-transparent ${userTextInputClass} text-text-primary outline-none placeholder:text-text-tertiary resize-none overflow-hidden min-h-[20px]`}
           rows={1}

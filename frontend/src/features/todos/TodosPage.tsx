@@ -192,9 +192,10 @@ function TodosPage() {
     setInputDay(sectionId)
   }
 
-  const closeInputForSection = (sectionId: number) => {
+  const closeInputForSection = (sectionId: number, submitted: boolean) => {
     setInputDay(null)
-    if (!sectionHasTodos(groupedTodos, sectionId)) {
+    // 방금 추가한 할 일은 아직 목록에 없으니, 추가했다면 섹션을 접지 않는다.
+    if (!submitted && !sectionHasTodos(groupedTodos, sectionId)) {
       setOpenSections((prev) => ({ ...prev, [sectionId]: false }))
     }
   }
@@ -361,8 +362,6 @@ function TodosPage() {
                 const shouldShowInput = inputDay === section.id
                 const isEmptySection = totalCount === 0
                 const shouldShowGuide = isCurrentTimeSection || section.id === 0
-                const inputAtTop = shouldShowInput && activeTodos.length === 0
-                const inputBetween = shouldShowInput && activeTodos.length > 0
                 const hasRangeMeta = section.range.trim().length > 0
                 const hasFlowMeta = dayFocus > 0
                 const showRangeOnMobile = hasRangeMeta && (!isSectionOpen || !hasFlowMeta)
@@ -472,14 +471,6 @@ function TodosPage() {
                                 items={sortableIds}
                                 strategy={verticalListSortingStrategy}
                               >
-                                {inputAtTop && (
-                                  <TodoInputForm
-                                    sectionId={section.id}
-                                    nextActiveOrder={nextActiveOrder}
-                                    onCreate={actions.handleCreate}
-                                    onClose={() => closeInputForSection(section.id)}
-                                  />
-                                )}
                                 {previewActiveInsertIndex === 0 && activeTodos.length === 0 && (
                                   <CrossSectionPreviewSlot />
                                 )}
@@ -492,12 +483,13 @@ function TodosPage() {
                                 {previewActiveInsertIndex === activeTodos.length && activeTodos.length > 0 && (
                                   <CrossSectionPreviewSlot />
                                 )}
-                                {inputBetween && (
+                                {/* 입력창은 한 자리에만 둔다. 첫 할 일이 생겨 위치가 바뀌면 다시 마운트되어 치던 글자를 잃는다 */}
+                                {shouldShowInput && (
                                   <TodoInputForm
                                     sectionId={section.id}
                                     nextActiveOrder={nextActiveOrder}
                                     onCreate={actions.handleCreate}
-                                    onClose={() => closeInputForSection(section.id)}
+                                    onClose={(submitted) => closeInputForSection(section.id, submitted)}
                                   />
                                 )}
                                 {doneTodos.map((todo) =>
