@@ -40,6 +40,8 @@ const REVIEW_PLACEHOLDERS: Record<PeriodType, string> = {
   monthly: '이번 달 성장한 점과 다음 달 방향은?',
 }
 
+// 이 거리보다 많이 움직였으면 탭이 아니라 스크롤이나 드래그로 본다.
+const TAP_SLOP_PX = 10
 
 export function ReviewTextarea({
   title,
@@ -126,22 +128,40 @@ export function ReviewTextarea({
     autoResize()
   }, [isEditing, autoResize])
 
+  // 바깥을 "탭"했을 때만 저장하고 편집을 끝낸다. 스크롤하려고 누른 경우는 손가락이
+  // 움직이거나(pointerup 거리) 브라우저가 제스처를 가져가므로(pointercancel) 무시한다.
+  // click 대신 pointerup을 쓰는 이유: 바깥 버튼(기간 이동 등)의 click보다 먼저 저장해야 한다.
   useEffect(() => {
     if (!isEditing) return
+    let tapStart: { x: number; y: number } | null = null
     const handlePointerDown = (event: PointerEvent) => {
+      tapStart = null
       if (isSheetOpenRef.current || Date.now() - sheetClosedAtRef.current < 300) return
       const node = containerRef.current
-      if (!node) return
-      if (node.contains(event.target as Node)) return
+      if (!node || node.contains(event.target as Node)) return
+      tapStart = { x: event.clientX, y: event.clientY }
+    }
+    const handlePointerUp = (event: PointerEvent) => {
+      const start = tapStart
+      tapStart = null
+      if (!start) return
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX) return
       if (isDirty) {
         handleSaveRef.current()
         return
       }
       exitEdit(true)
     }
+    const handlePointerCancel = () => {
+      tapStart = null
+    }
     document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('pointerup', handlePointerUp)
+    document.addEventListener('pointercancel', handlePointerCancel)
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.removeEventListener('pointercancel', handlePointerCancel)
     }
   }, [exitEdit, isDirty, isEditing, isSheetOpenRef, sheetClosedAtRef])
 

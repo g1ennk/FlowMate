@@ -115,6 +115,11 @@ async function openEditor(user: ReturnType<typeof userEvent.setup>, visibleText:
   return screen.findByRole('textbox')
 }
 
+// jsdom에는 PointerEvent가 없어 좌표를 실을 수 있는 MouseEvent로 보낸다.
+function pointer(type: string, clientY: number) {
+  fireEvent(document.body, new MouseEvent(type, { bubbles: true, clientX: 10, clientY }))
+}
+
 async function openAiSheet(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'AI 레포트' }))
   await screen.findByRole('button', { name: '참고해서 쓰기' })
@@ -177,6 +182,40 @@ describe('ReviewTextarea', () => {
     })
   })
 
+  describe('바깥 터치', () => {
+    it('바깥을 누른 채 스크롤하면 편집을 끝내지 않는다', async () => {
+      const calls = mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 추가')
+      // 터치 스크롤: 브라우저가 제스처를 가져가면 pointerup 대신 pointercancel이 온다.
+      pointer('pointerdown', 300)
+      pointer('pointercancel', 100)
+      // 마우스로 끌어서 움직인 경우
+      pointer('pointerdown', 300)
+      pointer('pointerup', 100)
+
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(screen.getByRole('textbox')).toHaveValue('기존 회고 추가')
+      expect(calls.puts).toEqual([])
+    })
+
+    it('바깥을 탭하면 저장하고 편집을 끝낸다', async () => {
+      const calls = mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 추가')
+      await user.click(document.body)
+
+      await waitFor(() => expect(calls.puts).toEqual(['기존 회고 추가']))
+      await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument())
+    })
+  })
+
   describe('빈 내용과 삭제', () => {
     it('내용을 모두 지우고 저장해도 회고를 삭제하지 않고 원래 글을 유지한다', async () => {
       const calls = mockReviewApi(makeReview('기존 회고'))
@@ -200,7 +239,7 @@ describe('ReviewTextarea', () => {
 
       const textarea = await openEditor(user, '기존 회고')
       await user.clear(textarea)
-      fireEvent.pointerDown(document.body)
+      await user.click(document.body)
 
       expect(await screen.findByText('기존 회고')).toBeInTheDocument()
       expect(calls.deletes).toEqual([])
