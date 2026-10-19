@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, useCallback, type Dispatch, type SetStateAction } from 'react'
+import { Fragment, useMemo, useState, useCallback, type Dispatch, type SetStateAction } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DndContext } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -57,12 +57,9 @@ function TodosPage() {
   const now = useNow()
   const todayDateKey = formatDateKey(now)
   const todayDate = useMemo(() => parseDateParam(todayDateKey) ?? new Date(), [todayDateKey])
-  // 오늘을 보고 있으면 null로 두어, 앱을 켜 둔 채 날짜가 바뀌어도 새 오늘을 따라간다.
-  const [pickedDate, setPickedDate] = useState<Date | null>(() => {
-    const parsed = parseDateParam(dateParam)
-    return parsed && formatDateKey(parsed) !== todayDateKey ? parsed : null
-  })
-  const selectedDate = pickedDate ?? todayDate
+  // 주소의 날짜만 기준으로 삼는다. 날짜가 없으면(오늘을 골랐거나 탭으로 들어오면) 오늘이고,
+  // 앱을 켜 둔 채 날짜가 바뀌어도 새 오늘을 따라간다.
+  const selectedDate = useMemo(() => parseDateParam(dateParam) ?? todayDate, [dateParam, todayDate])
   const [calendarViewMode, setCalendarViewMode] = useState<TodosCalendarViewMode>(() =>
     readStoredTodosCalendarViewMode(),
   )
@@ -86,23 +83,13 @@ function TodosPage() {
   const handleSelectedDateChange = useCallback((nextDate: Date) => {
     const nextDateKey = formatDateKey(nextDate)
     const isToday = nextDateKey === formatDateKey(new Date())
-    setPickedDate(isToday ? null : nextDate)
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       if (isToday) next.delete('date')
       else next.set('date', nextDateKey)
       return next
-    }, { replace: true })
+    }, { replace: true, preventScrollReset: true })
   }, [setSearchParams])
-
-  useEffect(() => {
-    if (pickedDate !== null || dateParam === null) return
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.delete('date')
-      return next
-    }, { replace: true })
-  }, [pickedDate, dateParam, setSearchParams])
 
   const daySections = useMemo(() => {
     const formatRange = (start: string, end: string) => {
@@ -138,7 +125,7 @@ function TodosPage() {
   const [selectModeDateKey, setSelectModeDateKey] = useState(selectedDateKey)
   if (selectModeDateKey !== selectedDateKey) {
     setSelectModeDateKey(selectedDateKey)
-    batch.exitSelectMode()
+    if (batch.selectMode) batch.exitSelectMode()
   }
   const todosCoach = useCoachMark('todos-intro')
   const [inputDay, setInputDay] = useState<number | null>(null)
@@ -166,18 +153,31 @@ function TodosPage() {
     () => buildGroupedTodos(todosForSelectedDate, daySections),
     [daySections, todosForSelectedDate],
   )
+  // 열림 상태의 기준 시간대는 날짜가 바뀔 때만 다시 잡는다. 같은 날 시간대 경계를 넘으면
+  // 보던 섹션은 그대로 두고 새 시간대 섹션만 연다.
+  const [openBase, setOpenBase] = useState({ dateKey: selectedDateKey, defaultOpenId })
+  const baseDefaultOpenId = openBase.dateKey === selectedDateKey ? openBase.defaultOpenId : defaultOpenId
   const initialOpenSections = useMemo(
     () =>
       buildInitialOpenSections({
         selectedDateKey,
         todayDateKey,
-        defaultOpenId,
+        defaultOpenId: baseDefaultOpenId,
         daySections,
         groupedTodos,
       }),
-    [daySections, defaultOpenId, groupedTodos, selectedDateKey, todayDateKey],
+    [baseDefaultOpenId, daySections, groupedTodos, selectedDateKey, todayDateKey],
   )
   const [openSectionsByDate, setOpenSectionsByDate] = useState<Record<string, Record<number, boolean>>>({})
+  if (openBase.dateKey !== selectedDateKey || openBase.defaultOpenId !== defaultOpenId) {
+    if (openBase.dateKey === selectedDateKey && isSelectedDateToday && defaultOpenId !== 0) {
+      setOpenSectionsByDate((prev) => ({
+        ...prev,
+        [selectedDateKey]: { ...(prev[selectedDateKey] ?? initialOpenSections), [defaultOpenId]: true },
+      }))
+    }
+    setOpenBase({ dateKey: selectedDateKey, defaultOpenId })
+  }
   const openSections = openSectionsByDate[selectedDateKey] ?? initialOpenSections
   const setOpenSections = useCallback<Dispatch<SetStateAction<Record<number, boolean>>>>((value) => {
     setOpenSectionsByDate((prev) => {

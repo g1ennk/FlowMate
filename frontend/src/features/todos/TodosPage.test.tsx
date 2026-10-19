@@ -1044,6 +1044,34 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/todos$/)
   })
 
+  it('keeps the section the user was looking at open when the time section changes', async () => {
+    await renderPage({
+      route: '/todos',
+      now: new Date(2026, 0, 9, 11, 59, 30),
+      items: [
+        buildTodo({ title: '오전 할 일', miniDay: 1 }),
+        buildTodo({ title: '오후 할 일', miniDay: 2 }),
+      ],
+    })
+    expectSectionExpanded('오전')
+    expectSectionCollapsed('오후')
+
+    await wait(60_000)
+
+    expectSectionExpanded('오전')
+    expectSectionExpanded('오후')
+    expect(screen.getByText('오전 할 일')).toBeInTheDocument()
+  })
+
+  it('shows today when the todos tab is opened without a date', async () => {
+    await renderPage({ route: '/todos?date=2026-01-08', now: new Date(2026, 0, 9, 9, 0, 0) })
+    expect(screen.getByText('1월 8일')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '할 일 탭으로 이동' }))
+
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+  })
+
   it('moves the current time badge when the time section changes', async () => {
     await renderPage({ route: '/todos', now: new Date(2026, 0, 9, 11, 59, 30) })
     expect(screen.getByText('현재 시간대').parentElement).toHaveTextContent('오전')
