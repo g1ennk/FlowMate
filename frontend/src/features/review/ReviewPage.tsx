@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { formatDateKey } from '../../lib/time'
 import { useTodos } from '../todos/hooks'
 import { useTimerStore } from '../timer/timerStore'
+import type { SingleTimerState } from '../timer/timerStore'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
 import { useMiniDaysSettings } from '../settings/hooks'
 import { StatsSummary } from './components/StatsSummary'
@@ -37,14 +38,31 @@ const DIARY_TITLES: Record<ReturnType<typeof getReviewRouteState>['period'], str
   monthly: '월간 회고',
 }
 
+function selectRunningTodoKey(timers: Record<string, SingleTimerState>): string {
+  return Object.keys(timers)
+    .filter((id) => timers[id].status === 'running')
+    .sort()
+    .join(',')
+}
+
 export function ReviewPage() {
   const { data, isLoading } = useTodos()
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
-  const timers = useTimerStore((state) => state.timers)
+  // 타이머는 250ms마다 갱신되지만 회고에는 "지금 실행 중인 할 일"만 필요하다.
+  // 문자열로 구독해 실행 여부가 바뀔 때만 다시 그린다.
+  const runningKey = useTimerStore((state) => selectRunningTodoKey(state.timers))
+  const runningIds = useMemo(
+    () => new Set(runningKey ? runningKey.split(',') : []),
+    [runningKey],
+  )
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedTask, setSelectedTask] = useState<null | TaskItem>(null)
 
-  const { period, dateKey, baseDate } = getReviewRouteState(searchParams)
+  // baseDate가 렌더마다 새 Date가 되지 않도록 URL이 바뀔 때만 다시 만든다.
+  const { period, dateKey, baseDate } = useMemo(
+    () => getReviewRouteState(searchParams),
+    [searchParams],
+  )
   useReviewScrollMemory(`home:${period}:${dateKey}`)
 
   const didInitRef = useRef(false)
@@ -58,12 +76,10 @@ export function ReviewPage() {
     }
   }, [dateKey, period, searchParams, setSearchParams])
 
-  const stats = buildPeriodStats(
-    data?.items ?? [],
-    timers,
-    period,
-    baseDate,
-    miniDaysSettings,
+  const todos = data?.items
+  const stats = useMemo(
+    () => buildPeriodStats(todos ?? [], runningIds, period, baseDate, miniDaysSettings),
+    [todos, runningIds, period, baseDate, miniDaysSettings],
   )
 
   const reviewRange = getPeriodRange(period, baseDate)
@@ -76,7 +92,10 @@ export function ReviewPage() {
   const monthRange = getPeriodRange('monthly', baseDate)
   const { data: monthlyReviews } = useReviewList('daily', monthRange.startKey, monthRange.endKey)
   const monthlyReviewCount = monthlyReviews?.items?.length ?? 0
-  const tasksByDate = buildTasksByDate(data?.items ?? [], timers, reviewRange)
+  const tasksByDate = useMemo(
+    () => buildTasksByDate(todos ?? [], runningIds, getPeriodRange(period, baseDate)),
+    [todos, runningIds, period, baseDate],
+  )
   const dailyTasks = period === 'daily' ? tasksByDate[reviewRange.startKey] ?? [] : []
   const weeklyGroups =
     period === 'weekly' ? buildDailyGroups(tasksByDate, reviewRange) : []
