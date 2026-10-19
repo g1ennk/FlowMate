@@ -113,7 +113,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
     }
 
-    // Gemini API 503 — 한국어 메시지 그대로
+    // Gemini 5xx, timeout, 연결 실패 — 한국어 메시지 그대로
     @ExceptionHandler(AiServiceUnavailableException.class)
     public ResponseEntity<ApiError> handleAiUnavailable(AiServiceUnavailableException ex) {
         log.warn("AI service unavailable: {}", ex.getMessage());
