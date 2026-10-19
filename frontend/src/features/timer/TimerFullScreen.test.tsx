@@ -585,6 +585,58 @@ describe('TimerFullScreen', () => {
     expect(mocked.timerStoreActions.skipToNext).not.toHaveBeenCalled()
   })
 
+  it('disables the pomodoro break button while the next flow is waiting', async () => {
+    Object.assign(mocked.timerState, {
+      mode: 'pomodoro',
+      phase: 'flow',
+      status: 'waiting',
+      endAt: null,
+      remainingMs: mocked.settings.flowMin * 60_000,
+      flexiblePhase: null,
+    })
+
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="pomodoro"
+        isDone={false}
+      />,
+    )
+
+    expect(await screen.findByRole('button', { name: '휴식' })).toBeDisabled()
+  })
+
+  it('keeps the pomodoro break button enabled while the flow is paused', async () => {
+    Object.assign(mocked.timerState, {
+      mode: 'pomodoro',
+      phase: 'flow',
+      status: 'paused',
+      endAt: null,
+      remainingMs: 10 * 60_000,
+      flexiblePhase: null,
+    })
+
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="pomodoro"
+        isDone={false}
+      />,
+    )
+
+    expect(await screen.findByRole('button', { name: '휴식' })).toBeEnabled()
+  })
+
   it('keeps the pomodoro break button enabled while the flow is running', async () => {
     const user = userEvent.setup()
 
