@@ -6,6 +6,7 @@ import {
   StopIcon,
   MoreVerticalIcon,
 } from '../../../ui/Icons'
+import { isImeComposing } from '../../../lib/keyboard'
 import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
 import { linkifyText } from '../linkifyText'
 import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDisplay'
@@ -165,6 +166,7 @@ export function TodoItem({
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
+                if (isImeComposing(e)) return
                 e.preventDefault()
                 onSaveEdit()
               }

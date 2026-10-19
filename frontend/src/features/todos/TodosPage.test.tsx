@@ -760,6 +760,16 @@ describe('TodosPage ordering, editing and date flow', () => {
     return screen.getByPlaceholderText('할 일을 입력하세요') as HTMLTextAreaElement
   }
 
+  function startEditing(title: string) {
+    fireEvent.click(screen.getByText(title))
+    fireEvent.click(screen.getByRole('button', { name: '수정하기' }))
+    return screen.getByDisplayValue(title) as HTMLTextAreaElement
+  }
+
+  function countRequests(fetchSpy: { mock: { calls: unknown[][] } }, method: string) {
+    return fetchSpy.mock.calls.filter((call) => (call[1] as RequestInit | undefined)?.method === method).length
+  }
+
   it('adds a new todo at the end even when server dayOrders are sparse', async () => {
     await renderPage({
       items: [
@@ -888,6 +898,82 @@ describe('TodosPage ordering, editing and date flow', () => {
 
     expect(input.value).toBe('한글')
     expect(readStoredTodos()).toEqual([])
+  })
+
+  it('leaves editing with the original title when the title is cleared', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '   ' } })
+    fireEvent.blur(textarea)
+    await wait(700)
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(0)
+  })
+
+  it('does not save or announce an edit when the title did not change', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await wait(700)
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(0)
+    expect(screen.queryByText('수정됨')).not.toBeInTheDocument()
+  })
+
+  it('saves an edit once even when Enter is followed by blur', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '고친 할 일' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    fireEvent.blur(textarea)
+    await wait(700)
+
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(1)
+    expect(screen.getByText('고친 할 일')).toBeInTheDocument()
+    expect(readStoredTodos()[0]).toMatchObject({ title: '고친 할 일' })
+  })
+
+  it('ignores Enter while composing when editing a title', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '할 일 A 고침' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: true })
+    await wait(700)
+
+    expect(screen.getByDisplayValue('할 일 A 고침')).toBeInTheDocument()
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(0)
+  })
+
+  it('shows an error when saving an edited title fails', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    server.use(
+      http.patch('/api/todos/:id', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '고친 할 일' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await wait(700)
+
+    expect(screen.getByText('수정하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
   })
 
 })
