@@ -33,7 +33,7 @@ import { CoachMark } from '../../ui/CoachMark'
 import { ReviewSkeleton } from '../../ui/Skeleton'
 
 const DIARY_TITLES: Record<ReturnType<typeof getReviewRouteState>['period'], string> = {
-  daily: '오늘 회고',
+  daily: '하루 회고',
   weekly: '주간 회고',
   monthly: '월간 회고',
 }
@@ -46,7 +46,7 @@ function selectRunningTodoKey(timers: Record<string, SingleTimerState>): string 
 }
 
 export function ReviewPage() {
-  const { data, isLoading } = useTodos()
+  const { data, isLoading, isError, isFetching, refetch } = useTodos()
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
   // 타이머는 250ms마다 갱신되지만 회고에는 "지금 실행 중인 할 일"만 필요하다.
   // 문자열로 구독해 실행 여부가 바뀔 때만 다시 그린다.
@@ -108,8 +108,9 @@ export function ReviewPage() {
     { id: 3, label: miniDaysSettings.day3.label },
   ]
 
+  // 탭을 바꿔도 보고 있던 날짜를 기준으로 그 주와 그 달을 보여 준다.
   const handlePeriodChange = (nextPeriod: typeof period) => {
-    setSearchParams({ period: nextPeriod, date: formatDateKey(new Date()) })
+    setSearchParams({ period: nextPeriod, date: dateKey })
   }
 
   const handlePrev = () => {
@@ -137,6 +138,10 @@ export function ReviewPage() {
     monthly: { badge: '이번 달', jump: '이번 달로 이동' },
   }
   const currentJumpLabel = PERIOD_LABELS[period].jump
+  const isToday = dateKey === todayKey
+  const diaryTitle = period === 'daily' && isToday ? '오늘 회고' : DIARY_TITLES[period]
+  // 할 일을 불러오지 못했는데 보여 줄 데이터도 없으면 0건처럼 보이지 않게 실패를 알린다.
+  const isTodosLoadError = isError && !data
 
   const reviewCoach = useCoachMark('review-intro')
 
@@ -170,28 +175,47 @@ export function ReviewPage() {
         reviewCount={monthlyReviewCount}
       />
 
-      <div className="mt-section">
-        <StatsSummary
-          totalFocusSeconds={stats.totalFocusSeconds}
-          totalFlows={stats.totalFlows}
-          completedCount={stats.completedCount}
-          comparison={stats.comparison}
-          hasReview={!!currentReview?.content}
-          onScrollToReview={() =>
-            document.getElementById('review-card')?.scrollIntoView({ behavior: 'smooth' })
-          }
-        />
-      </div>
+      {isTodosLoadError ? (
+        <div
+          role="alert"
+          className="mt-section flex items-center justify-between gap-card-item rounded-2xl bg-state-error-subtle px-4 py-3"
+        >
+          <p className="text-sm font-medium text-state-error">기록을 불러오지 못했어요</p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle disabled:cursor-not-allowed disabled:text-text-disabled"
+          >
+            다시 시도
+          </button>
+        </div>
+      ) : (
+        <div className="mt-section">
+          <StatsSummary
+            totalFocusSeconds={stats.totalFocusSeconds}
+            totalFlows={stats.totalFlows}
+            completedCount={stats.completedCount}
+            comparison={stats.comparison}
+            isCurrentPeriod={isCurrentPeriod}
+            hasReview={!!currentReview?.content}
+            onScrollToReview={() =>
+              document.getElementById('review-card')?.scrollIntoView({ behavior: 'smooth' })
+            }
+          />
+        </div>
+      )}
 
-      {period === 'daily' && (
+      {!isTodosLoadError && period === 'daily' && (
         <DailyTaskList
           tasks={dailyTasks}
+          isToday={isToday}
           miniDayLabels={miniDayLabels}
           onSelectTask={setSelectedTask}
         />
       )}
 
-      {period === 'weekly' && (
+      {!isTodosLoadError && period === 'weekly' && (
         <TimelineList
           key={`timeline-weekly-${reviewRange.startKey}`}
           title="타임라인"
@@ -203,7 +227,7 @@ export function ReviewPage() {
         />
       )}
 
-      {period === 'monthly' && (
+      {!isTodosLoadError && period === 'monthly' && (
         <TimelineList
           key={`timeline-monthly-${reviewRange.startKey}`}
           title="타임라인"
@@ -228,7 +252,7 @@ export function ReviewPage() {
       <div id="review-card">
         <ReviewTextarea
           key={`review-${period}-${reviewRange.startKey}`}
-          title={DIARY_TITLES[period]}
+          title={diaryTitle}
           periodType={period}
           periodStart={reviewRange.startKey}
           periodEnd={reviewRange.endKey}
