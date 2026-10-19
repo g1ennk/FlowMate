@@ -27,9 +27,36 @@ function runThemeBootScript({ saved, prefersDark }: { saved: string | null; pref
   return document.documentElement.classList.contains('dark')
 }
 
+// index.html의 theme-color meta를 실제 문서 head에 옮겨 둔다.
+function mountThemeColorMetas() {
+  const doc = new DOMParser().parseFromString(indexHtml, 'text/html')
+  doc.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    document.head.appendChild(document.importNode(meta, true))
+  })
+}
+
+function themeColors() {
+  return Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')).map(
+    (meta) => meta.content,
+  )
+}
+
 describe('index.html theme boot script', () => {
   afterEach(() => {
     document.documentElement.classList.remove('dark')
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.remove())
+  })
+
+  it('paints the browser bar with the saved theme, not the system one', () => {
+    mountThemeColorMetas()
+    runThemeBootScript({ saved: 'dark', prefersDark: false })
+    expect(themeColors()).toEqual(['#1e1e1e', '#1e1e1e'])
+  })
+
+  it('leaves the browser bar to the system when the theme follows the system', () => {
+    mountThemeColorMetas()
+    runThemeBootScript({ saved: null, prefersDark: true })
+    expect(themeColors()).toEqual(['#fafafa', '#1e1e1e'])
   })
 
   it('applies a saved dark theme before the app loads', () => {

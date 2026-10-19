@@ -21,6 +21,11 @@
         if (savedTheme === 'dark' || (savedTheme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
           document.documentElement.classList.add('dark')
         }
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
+            meta.content = savedTheme === 'dark' ? '#1e1e1e' : '#fafafa'
+          })
+        }
       } catch (e) {}
     </script>
     <meta name="description" content="할 일 관리와 뽀모도로 타이머를 결합한 생산성 앱" />
