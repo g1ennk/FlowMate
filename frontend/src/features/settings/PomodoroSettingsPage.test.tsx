@@ -561,6 +561,31 @@ describe('PomodoroSettingsPage', () => {
     await waitFor(() => expect(serverState.miniDays.day1.label).toBe('아침'))
   })
 
+  it('saves an open mini day edit when the user leaves the settings screen', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    server.use(
+      http.put('/api/settings/mini-days', async ({ request }) => {
+        const body = (await request.json()) as Settings['miniDays']
+        serverState.miniDays = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    const view = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const morningRow = await screen.findByRole('button', { name: /오전/ })
+    await waitFor(() => expect(morningRow).not.toBeDisabled())
+
+    await user.click(morningRow)
+    const labelInput = await screen.findByPlaceholderText('미니 데이 1')
+    await user.clear(labelInput)
+    await user.type(labelInput, '아침')
+    view.unmount()
+
+    await waitFor(() => expect(serverState.miniDays.day1.label).toBe('아침'))
+  })
+
   it('discards an invalid mini day edit when the sheet is closed and says it was not saved', async () => {
     const user = userEvent.setup()
     signInAsMember()

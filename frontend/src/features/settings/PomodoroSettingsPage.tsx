@@ -373,7 +373,19 @@ function PomodoroSettingsPage() {
     setActiveMiniDay(null)
   }
 
-  const formatTime = (hours: number, minutes: number) => {
+  // 시트를 연 채 화면을 떠나도(탭 이동 등) 유효한 변경은 저장한다.
+  const unsavedMiniDaysRef = useRef<MiniDaysSettings | null>(null)
+  const saveMiniDaysRef = useRef(updateMiniDays.mutate)
+  useEffect(() => {
+    unsavedMiniDaysRef.current =
+      activeMiniDay && isMiniDayDirty && !activeMiniDayError ? candidateMiniDays : null
+    saveMiniDaysRef.current = updateMiniDays.mutate
+  })
+  useEffect(() => () => {
+    if (unsavedMiniDaysRef.current) saveMiniDaysRef.current(unsavedMiniDaysRef.current)
+  }, [])
+
+  const formatTime =(hours: number, minutes: number) => {
     const hh = String(hours).padStart(2, '0')
     const mm = String(minutes).padStart(2, '0')
     return `${hh}:${mm}`
