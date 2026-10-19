@@ -4,12 +4,14 @@ import { TimelineTaskItem } from './TimelineTaskItem'
 
 type DailyTaskListProps = {
   tasks: TaskItem[]
+  isToday?: boolean
   miniDayLabels: Array<{ id: number; label: string }>
   onSelectTask?: (task: TaskItem) => void
 }
 
 export function DailyTaskList({
   tasks,
+  isToday = true,
   miniDayLabels,
   onSelectTask,
 }: DailyTaskListProps) {
@@ -23,11 +25,15 @@ export function DailyTaskList({
 
   return (
     <section className="rounded-2xl bg-surface-card p-card shadow-sm">
-      <h3 className="mb-card-item text-sm font-semibold text-text-primary">오늘의 할 일</h3>
+      <h3 className="mb-card-item text-sm font-semibold text-text-primary">
+        {isToday ? '오늘의 할 일' : '할 일'}
+      </h3>
       <div className="space-y-list md:max-h-72 md:overflow-y-auto md:pr-1">
         {!hasTasks && (
           <div className="space-y-list py-list text-center">
-            <p className="text-sm text-text-tertiary">오늘 할 일을 추가하고 완료하면 여기에 나타나요.</p>
+            <p className="text-sm text-text-tertiary">
+              {isToday ? '오늘 할 일을 추가하고 완료하면 여기에 나타나요.' : '이날은 할 일이 없어요.'}
+            </p>
             <Link
               to="/todos"
               className="inline-block rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-text-inverse transition-colors hover:bg-accent-hover"

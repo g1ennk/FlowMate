@@ -141,6 +141,32 @@ describe('authStore refresh coordination', () => {
     expect(getAuthMode()).toBe('guest')
   })
 
+  it('로그아웃하면 기기에 보관한 회고 글을 모두 지운다', async () => {
+    useAuthStore.setState({
+      state: {
+        type: 'member',
+        accessToken: 'member-token',
+        user: { id: 'user-1', email: null, nickname: 'Glenn' },
+      },
+      initialized: true,
+    })
+    window.localStorage.setItem(storageKeys.reviewDraft('daily', '2026-10-19'), '{}')
+    window.localStorage.setItem(storageKeys.reviewDraft('weekly', '2026-10-13'), '{}')
+    window.localStorage.setItem(storageKeys.theme, 'dark')
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/guest/token')) {
+        return jsonResponse({ guestToken: 'guest-token-after-logout' })
+      }
+      return new Response(null, { status: 204 })
+    })
+
+    await useAuthStore.getState().logout()
+
+    expect(window.localStorage.getItem(storageKeys.reviewDraft('daily', '2026-10-19'))).toBeNull()
+    expect(window.localStorage.getItem(storageKeys.reviewDraft('weekly', '2026-10-13'))).toBeNull()
+    expect(window.localStorage.getItem(storageKeys.theme)).toBe('dark')
+  })
+
   it('does not let a stale member refresh failure clear a newer guest session', async () => {
     setAuthMode('member')
     useAuthStore.setState({
