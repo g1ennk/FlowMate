@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderApp } from '../test/renderApp'
@@ -175,6 +175,43 @@ describe('BackendStatusGate', () => {
       useSystemStore.setState({ status: 'available' })
     })
     expect(root.style.getPropertyValue('--top-banner-offset')).toBe('')
+  })
+
+  it('배너 높이가 바뀌면(문구 줄바꿈 등) 토스트 위치용 높이를 다시 알린다', () => {
+    let notifyResize: () => void = () => {}
+    const disconnect = vi.fn()
+    // 테스트 setup의 ResizeObserver는 재정의할 수 없어 값만 바꿔 끼우고 끝나면 되돌린다
+    const originalResizeObserver = window.ResizeObserver
+    window.ResizeObserver = class {
+      constructor(callback: () => void) {
+        notifyResize = callback
+      }
+      observe() {}
+      unobserve() {}
+      disconnect = disconnect
+    } as unknown as typeof ResizeObserver
+    onTestFinished(() => {
+      window.ResizeObserver = originalResizeObserver
+    })
+    useSystemStore.setState({ status: 'available' })
+    renderApp(
+      <BackendStatusGate>
+        <div>children</div>
+      </BackendStatusGate>,
+    )
+    act(() => {
+      useSystemStore.setState({ status: 'unavailable' })
+    })
+
+    const banner = screen.getByRole('button', { name: disconnectedBannerText })
+    Object.defineProperty(banner, 'offsetHeight', { configurable: true, value: 52 })
+    act(() => notifyResize())
+    expect(document.documentElement.style.getPropertyValue('--top-banner-offset')).toBe('52px')
+
+    act(() => {
+      useSystemStore.setState({ status: 'available' })
+    })
+    expect(disconnect).toHaveBeenCalled()
   })
 
   it('useBackendWatcher 훅을 호출한다', async () => {

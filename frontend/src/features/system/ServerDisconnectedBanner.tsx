@@ -9,10 +9,15 @@ function ServerDisconnectedBanner() {
   const [checking, setChecking] = useState(false)
 
   // 토스트가 배너에 가리지 않도록 배너 높이를 알린다 (AppProviders의 Toaster가 사용)
+  // 회전이나 글자 크기 변경으로 줄바꿈이 바뀌면 높이도 바뀌므로 다시 잰다.
   useLayoutEffect(() => {
     const root = document.documentElement
-    root.style.setProperty(OFFSET_VAR, `${ref.current?.offsetHeight ?? 0}px`)
+    const measure = () => root.style.setProperty(OFFSET_VAR, `${ref.current?.offsetHeight ?? 0}px`)
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (ref.current) observer?.observe(ref.current)
     return () => {
+      observer?.disconnect()
       root.style.removeProperty(OFFSET_VAR)
     }
   }, [])
