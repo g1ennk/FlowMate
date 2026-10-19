@@ -1,27 +1,21 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { useMusicStore } from './musicStore'
+import type { SoundPhase } from './soundPhase'
+import { useSoundscapeStore } from './soundscapeStore'
 
 type UseTimerMusicSessionArgs = {
-  isFlowActive: boolean
+  soundPhase: SoundPhase
   isOpen: boolean
   todoId: string
 }
 
 export function useTimerMusicSession({
-  isFlowActive,
+  soundPhase,
   isOpen,
   todoId,
 }: UseTimerMusicSessionArgs) {
-  const musicVolume = useMusicStore((state) => state.volume)
-  const musicEnabled = useMusicStore((state) => state.enabled)
-  const playIfAllowed = useMusicStore((state) => state.playIfAllowed)
-  const pauseForFlowExit = useMusicStore((state) => state.pauseForFlowExit)
-  const stopSession = useMusicStore((state) => state.stopSession)
-  const setVolume = useMusicStore((state) => state.setVolume)
-  const setEnabled = useMusicStore((state) => state.setEnabled)
+  const setPhase = useSoundscapeStore((state) => state.setPhase)
+  const stopSession = useSoundscapeStore((state) => state.stopSession)
 
-  const prevIsFlowActiveRef = useRef(false)
-  const prevMusicEnabledRef = useRef(musicEnabled)
   const prevTodoIdRef = useRef(todoId)
   const prevIsOpenRef = useRef(isOpen)
 
@@ -30,25 +24,8 @@ export function useTimerMusicSession({
   }, [stopSession])
 
   useEffect(() => {
-    const wasFlowActive = prevIsFlowActiveRef.current
-    const wasEnabled = prevMusicEnabledRef.current
-    prevIsFlowActiveRef.current = isFlowActive
-    prevMusicEnabledRef.current = musicEnabled
-
-    if (isFlowActive && !wasFlowActive) {
-      playIfAllowed()
-      return
-    }
-
-    if (!isFlowActive && wasFlowActive) {
-      pauseForFlowExit()
-      return
-    }
-
-    if (isFlowActive && musicEnabled && !wasEnabled) {
-      playIfAllowed()
-    }
-  }, [isFlowActive, musicEnabled, pauseForFlowExit, playIfAllowed])
+    setPhase(soundPhase)
+  }, [setPhase, soundPhase])
 
   useEffect(() => {
     if (prevTodoIdRef.current !== todoId) {
@@ -71,11 +48,5 @@ export function useTimerMusicSession({
     }
   }, [stopSession])
 
-  return {
-    musicEnabled,
-    musicVolume,
-    endMusicSession,
-    setMusicEnabled: setEnabled,
-    setMusicVolume: setVolume,
-  }
+  return { endMusicSession }
 }

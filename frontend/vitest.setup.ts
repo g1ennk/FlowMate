@@ -10,6 +10,11 @@ const loadMediaMock = vi.fn()
 class MockAudioContext {
   currentTime = 0
   destination = {}
+  state: AudioContextState = 'running'
+  resume = vi.fn(async () => {
+    this.state = 'running'
+  })
+  createMediaElementSource = vi.fn(() => ({ connect: vi.fn() }))
 
   createOscillator() {
     return {
@@ -27,8 +32,11 @@ class MockAudioContext {
     return {
       connect: vi.fn(),
       gain: {
+        value: 1,
         setValueAtTime: vi.fn(),
         exponentialRampToValueAtTime: vi.fn(),
+        cancelScheduledValues: vi.fn(),
+        linearRampToValueAtTime: vi.fn(),
       },
     }
   }
@@ -113,6 +121,7 @@ if (!('ResizeObserver' in window)) {
 
 if (!('AudioContext' in globalThis)) {
   Object.defineProperty(globalThis, 'AudioContext', {
+    configurable: true,
     writable: true,
     value: MockAudioContext,
   })
@@ -120,6 +129,7 @@ if (!('AudioContext' in globalThis)) {
 
 if (!('AudioContext' in window)) {
   Object.defineProperty(window, 'AudioContext', {
+    configurable: true,
     writable: true,
     value: MockAudioContext,
   })

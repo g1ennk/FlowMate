@@ -25,7 +25,9 @@ export const storageKeys = {
   guestReviewCount: `${STORAGE_PREFIX}/ui/guest-review-count`,
   // OAuth 복귀 경로 (sessionStorage)
   oauthReturnTo: `${STORAGE_PREFIX}/auth/oauth-return-to`,
-  // 음악
+  // 사운드 (분위기, 밸런스, 전체 볼륨)
+  soundPrefs: `${STORAGE_PREFIX}/ui/sound-prefs`,
+  // 음악 (레거시, soundPrefs 마이그레이션 읽기용)
   musicVolume: `${STORAGE_PREFIX}:music:volume`,
   legacyMusicKeys: [`${STORAGE_PREFIX}:music:trackIndex`, `${STORAGE_PREFIX}:music:enabled`] as readonly string[],
 }

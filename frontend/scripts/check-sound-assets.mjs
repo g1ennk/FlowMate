@@ -1,94 +1,89 @@
-import { access, readFile, readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MAX_TRACKS = 3
-const MAX_BYTES = 15 * 1024 * 1024
+const MB = 1024 * 1024
+const MAX_TOTAL_BYTES = 60 * MB
+const MAX_FILE_BYTES = { music: 5 * MB, ambient: 3 * MB }
+const LICENSES = ['CC0', 'generated']
+const CREDIT_FIELDS = ['file', 'title', 'author', 'sourceUrl', 'license']
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, '..')
 const sourceSoundsDir = path.join(projectRoot, 'public', 'sounds')
 const distSoundsDir = path.join(projectRoot, 'dist', 'sounds')
-const manifestPath = path.join(sourceSoundsDir, 'asset-manifest.json')
+const creditsPath = path.join(projectRoot, 'src', 'features', 'timer', 'soundCredits.json')
 
 function formatMb(bytes) {
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  return `${(bytes / MB).toFixed(2)} MB`
 }
 
-async function listMp3Files(dir) {
-  const entries = await readdir(dir, { withFileTypes: true })
-  return entries
+// public/sounds 기준 상대 경로(`/` 구분)와 크기를 재귀로 모은다
+async function listMp3Files(root) {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true })
+  const files = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith('.mp3'))
-    .map((entry) => entry.name)
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'))
     .sort()
+  return Promise.all(files.map(async (file) => ({ file, bytes: (await stat(path.join(root, file))).size })))
 }
 
-async function getTotalBytes(dir, files) {
-  const sizes = await Promise.all(files.map((file) => stat(path.join(dir, file)).then((item) => item.size)))
-  return sizes.reduce((sum, size) => sum + size, 0)
-}
-
-async function ensureDirExists(dir) {
+async function dirExists(dir) {
   try {
-    await access(dir)
-    return true
+    return (await stat(dir)).isDirectory()
   } catch {
     return false
   }
 }
 
+function sumBytes(files) {
+  return files.reduce((sum, item) => sum + item.bytes, 0)
+}
+
 async function main() {
-  const [sourceFiles, manifestRaw] = await Promise.all([
-    listMp3Files(sourceSoundsDir),
-    readFile(manifestPath, 'utf8'),
-  ])
-  const manifest = JSON.parse(manifestRaw)
+  const errors = []
+  const sources = await listMp3Files(sourceSoundsDir)
+  const credits = JSON.parse(await readFile(creditsPath, 'utf8'))
+  if (!Array.isArray(credits)) throw new Error('soundCredits.json must be an array.')
 
-  if (!Array.isArray(manifest) || manifest.some((entry) => typeof entry !== 'string')) {
-    throw new Error('asset-manifest.json must be an array of filenames.')
-  }
-
-  if (sourceFiles.length > MAX_TRACKS) {
-    throw new Error(`Too many bundled music tracks: ${sourceFiles.length}. Maximum is ${MAX_TRACKS}.`)
-  }
-
-  if (new Set(manifest).size !== manifest.length) {
-    throw new Error('asset-manifest.json must not contain duplicate filenames.')
-  }
-
-  const missingManifestFiles = sourceFiles.filter(
-    (filename) => !manifest.includes(filename),
-  )
-  if (missingManifestFiles.length > 0) {
-    throw new Error(`Missing manifest entries for: ${missingManifestFiles.join(', ')}`)
-  }
-
-  const unexpectedManifestFiles = manifest.filter((filename) => !sourceFiles.includes(filename))
-  if (unexpectedManifestFiles.length > 0) {
-    throw new Error(`Manifest includes missing files: ${unexpectedManifestFiles.join(', ')}`)
-  }
-
-  const sourceBytes = await getTotalBytes(sourceSoundsDir, sourceFiles)
-  if (sourceBytes > MAX_BYTES) {
-    throw new Error(`Source sound assets exceed limit: ${formatMb(sourceBytes)} > ${formatMb(MAX_BYTES)}`)
-  }
-
-  const distExists = await ensureDirExists(distSoundsDir)
-  if (distExists) {
-    const distFiles = await listMp3Files(distSoundsDir)
-    const distBytes = await getTotalBytes(distSoundsDir, distFiles)
-
-    if (distFiles.length !== sourceFiles.length) {
-      throw new Error(`Built sound assets (${distFiles.length}) do not match source assets (${sourceFiles.length}).`)
+  credits.forEach((credit, index) => {
+    for (const field of CREDIT_FIELDS) {
+      if (typeof credit?.[field] !== 'string' || credit[field].trim() === '') {
+        errors.push(`Credit #${index} has empty field: ${field}`)
+      }
     }
+    if (credit?.license && !LICENSES.includes(credit.license)) {
+      errors.push(`Credit for ${credit.file} has invalid license: ${credit.license}`)
+    }
+  })
 
-    if (distBytes > MAX_BYTES) {
-      throw new Error(`Built sound assets exceed limit: ${formatMb(distBytes)} > ${formatMb(MAX_BYTES)}`)
+  const sourceSet = new Set(sources.map((item) => item.file))
+  const creditSet = new Set(credits.map((credit) => credit?.file))
+  for (const file of sourceSet) if (!creditSet.has(file)) errors.push(`Missing credit: ${file}`)
+  for (const file of creditSet) if (!sourceSet.has(file)) errors.push(`Credit for missing file: ${file}`)
+
+  for (const { file, bytes } of sources) {
+    const limit = MAX_FILE_BYTES[file.split('/')[0]]
+    if (limit === undefined) errors.push(`Sound outside music/ or ambient/: ${file}`)
+    else if (bytes > limit) errors.push(`Too large: ${file} ${formatMb(bytes)} > ${formatMb(limit)}`)
+  }
+
+  const sourceBytes = sumBytes(sources)
+  if (sourceBytes > MAX_TOTAL_BYTES) {
+    errors.push(`Sound assets exceed limit: ${formatMb(sourceBytes)} > ${formatMb(MAX_TOTAL_BYTES)}`)
+  }
+
+  if (await dirExists(distSoundsDir)) {
+    const built = await listMp3Files(distSoundsDir)
+    if (built.length !== sources.length || sumBytes(built) !== sourceBytes) {
+      errors.push(
+        `Built sounds (${built.length} files, ${formatMb(sumBytes(built))}) do not match source (${sources.length} files, ${formatMb(sourceBytes)})`,
+      )
     }
   }
 
-  console.log(`[check-sounds] ${sourceFiles.length} tracks, ${formatMb(sourceBytes)} total`)
+  if (errors.length > 0) throw new Error(`\n  ${errors.join('\n  ')}`)
+  console.log(`[check-sounds] ${sources.length} files, ${formatMb(sourceBytes)} total`)
 }
 
 main().catch((error) => {

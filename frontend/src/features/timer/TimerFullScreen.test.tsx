@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TodoList } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
 import { renderApp } from '../../test/renderApp'
-import { DEFAULT_MUSIC_TRACK_INDEX, MUSIC_LABEL } from './musicTracks'
-import { DEFAULT_MUSIC_VOLUME, useMusicStore } from './musicStore'
+import { FADE_PHASE_END_MS, setSoundEngineForTest, type SoundEngine } from './soundEngine'
+import { useSoundscapeStore } from './soundscapeStore'
 import { TimerFullScreen } from './TimerFullScreen'
 
 const mocked = vi.hoisted(() => {
@@ -145,13 +145,9 @@ describe('TimerFullScreen', () => {
     mocked.toastSuccess.mockClear()
     mocked.toastError.mockClear()
 
-    useMusicStore.getState().stopSession()
-    useMusicStore.setState({
-      enabled: false,
-      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
-      isPlaying: false,
-      volume: DEFAULT_MUSIC_VOLUME,
-    })
+    useSoundscapeStore.getState().stopSession()
+    useSoundscapeStore.setState({ phase: 'stopped' })
+    localStorage.removeItem('flowmate/ui/sound-prefs')
   })
 
   it('resumes a paused timer and keeps fullscreen open when the timer is reset', async () => {
@@ -187,10 +183,9 @@ describe('TimerFullScreen', () => {
     )
     expect(onClose).not.toHaveBeenCalled()
     expect(await screen.findByText('타이머 테스트')).toBeInTheDocument()
-    expect(useMusicStore.getState()).toMatchObject({
+    expect(useSoundscapeStore.getState()).toMatchObject({
       enabled: false,
-      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
-      isPlaying: false,
+      currentTrackId: null,
     })
   })
 
@@ -247,10 +242,9 @@ describe('TimerFullScreen', () => {
       expect(onClose).toHaveBeenCalled()
     })
 
-    expect(useMusicStore.getState()).toMatchObject({
+    expect(useSoundscapeStore.getState()).toMatchObject({
       enabled: false,
-      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
-      isPlaying: false,
+      currentTrackId: null,
     })
   })
 
@@ -354,72 +348,65 @@ describe('TimerFullScreen', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('plays on focus toggle, pauses on break, and resumes when focus returns', async () => {
+  const renderTimer = (props: { isOpen?: boolean; todoId?: string } = {}) => (
+    <TimerFullScreen
+      isOpen={props.isOpen ?? true}
+      onClose={vi.fn()}
+      todoId={props.todoId ?? 'todo-1'}
+      todoTitle="타이머 테스트"
+      sessionFocusSeconds={1500}
+      sessionCount={3}
+      initialMode="stopwatch"
+      isDone={false}
+    />
+  )
+
+  it('plays on focus toggle, fades out on break, and resumes when focus returns', async () => {
     const user = userEvent.setup()
-    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
-    const pauseSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'pause')
+    const engine: SoundEngine = {
+      resume: vi.fn(),
+      setMasterVolume: vi.fn(),
+      play: vi.fn<SoundEngine['play']>().mockResolvedValue('ok'),
+      setVolume: vi.fn(),
+      fadeOutAndPause: vi.fn<SoundEngine['fadeOutAndPause']>().mockResolvedValue(undefined),
+      stop: vi.fn(),
+      onEnded: vi.fn(() => () => {}),
+      onError: vi.fn(() => () => {}),
+    }
+    setSoundEngineForTest(engine)
+    try {
+      Object.assign(mocked.timerState, {
+        status: 'running',
+        flexiblePhase: 'focus',
+      })
 
-    Object.assign(mocked.timerState, {
-      status: 'running',
-      flexiblePhase: 'focus',
-    })
+      const view = renderApp(renderTimer())
 
-    const view = renderApp(
-      <TimerFullScreen
-        isOpen
-        onClose={vi.fn()}
-        todoId="todo-1"
-        todoTitle="타이머 테스트"
-        sessionFocusSeconds={1500}
-        sessionCount={3}
-        initialMode="stopwatch"
-        isDone={false}
-      />,
-    )
+      await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+      await waitFor(() => expect(engine.play).toHaveBeenCalledWith('music', expect.any(String), 1))
+      const playedInFocus = vi.mocked(engine.play).mock.calls.length
 
-    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
-    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1))
+      Object.assign(mocked.timerState, {
+        status: 'running',
+        flexiblePhase: 'break_suggested',
+      })
+      view.rerender(renderTimer())
 
-    Object.assign(mocked.timerState, {
-      status: 'running',
-      flexiblePhase: 'break_suggested',
-    })
-    view.rerender(
-      <TimerFullScreen
-        isOpen
-        onClose={vi.fn()}
-        todoId="todo-1"
-        todoTitle="타이머 테스트"
-        sessionFocusSeconds={1500}
-        sessionCount={3}
-        initialMode="stopwatch"
-        isDone={false}
-      />,
-    )
+      await waitFor(() => expect(engine.fadeOutAndPause).toHaveBeenCalledWith('music', FADE_PHASE_END_MS))
 
-    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+      Object.assign(mocked.timerState, {
+        status: 'running',
+        flexiblePhase: 'focus',
+      })
+      view.rerender(renderTimer())
 
-    Object.assign(mocked.timerState, {
-      status: 'running',
-      flexiblePhase: 'focus',
-    })
-    view.rerender(
-      <TimerFullScreen
-        isOpen
-        onClose={vi.fn()}
-        todoId="todo-1"
-        todoTitle="타이머 테스트"
-        sessionFocusSeconds={1500}
-        sessionCount={3}
-        initialMode="stopwatch"
-        isDone={false}
-      />,
-    )
-
-    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(vi.mocked(engine.play).mock.calls.length).toBeGreaterThan(playedInFocus))
+    } finally {
+      setSoundEngineForTest(null)
+    }
   })
 
-  it('shows a single Lo-fi label instead of exposing per-track controls', async () => {
+  it('shows the preset label instead of exposing per-track controls', async () => {
     renderApp(
       <TimerFullScreen
         isOpen
@@ -433,55 +420,75 @@ describe('TimerFullScreen', () => {
       />,
     )
 
-    expect(await screen.findByText(MUSIC_LABEL)).toBeInTheDocument()
+    expect(await screen.findByText('비 오는 카페')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /트랙 선택:/ })).not.toBeInTheDocument()
     expect(screen.queryByText('Focus Study')).not.toBeInTheDocument()
   })
 
-  it('cycles through bundled tracks automatically while focus music stays enabled', async () => {
+
+  it('starts sound when enabled during a running focus phase', async () => {
     const user = userEvent.setup()
-    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+    Object.assign(mocked.timerState, { status: 'running', flexiblePhase: 'focus' })
 
-    Object.assign(mocked.timerState, {
-      status: 'running',
-      flexiblePhase: 'focus',
-    })
-
-    renderApp(
-      <TimerFullScreen
-        isOpen
-        onClose={vi.fn()}
-        todoId="todo-1"
-        todoTitle="타이머 테스트"
-        sessionFocusSeconds={1500}
-        sessionCount={3}
-        initialMode="stopwatch"
-        isDone={false}
-      />,
-    )
+    renderApp(renderTimer())
 
     await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
-    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(useSoundscapeStore.getState()).toMatchObject({ enabled: true, phase: 'focus' }),
+    )
+  })
 
-    const audio = playSpy.mock.contexts[0] as HTMLAudioElement
+  it('moves sound to break phase when the timer enters a break', async () => {
+    Object.assign(mocked.timerState, { status: 'running', flexiblePhase: 'focus' })
 
-    audio.dispatchEvent(new Event('ended'))
+    const view = renderApp(renderTimer())
+    await waitFor(() => expect(useSoundscapeStore.getState().phase).toBe('focus'))
+
+    Object.assign(mocked.timerState, { flexiblePhase: 'break_suggested' })
+    view.rerender(renderTimer())
+
+    await waitFor(() => expect(useSoundscapeStore.getState().phase).toBe('break'))
+  })
+
+  it('plays after closing and reopening a running focus timer', async () => {
+    const user = userEvent.setup()
+    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+    Object.assign(mocked.timerState, { status: 'running', flexiblePhase: 'focus' })
+
+    const view = renderApp(renderTimer())
+    await waitFor(() => expect(useSoundscapeStore.getState().phase).toBe('focus'))
+
+    view.rerender(renderTimer({ isOpen: false, todoId: '' }))
+    view.rerender(renderTimer({ isOpen: true, todoId: 'todo-1' }))
+
+    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
     await waitFor(() => {
-      expect(playSpy).toHaveBeenCalledTimes(2)
-      expect(useMusicStore.getState().currentTrackIndex).toBe(1)
+      expect(playSpy).toHaveBeenCalled()
+      expect(useSoundscapeStore.getState().phase).toBe('focus')
     })
+  })
 
-    audio.dispatchEvent(new Event('ended'))
-    await waitFor(() => {
-      expect(playSpy).toHaveBeenCalledTimes(3)
-      expect(useMusicStore.getState().currentTrackIndex).toBe(2)
-    })
+  it('renders and controls the timer when the sound engine fails', async () => {
+    const user = userEvent.setup()
+    const failing = new Proxy({}, {
+      get: () => () => {
+        throw new Error('engine down')
+      },
+    }) as SoundEngine
+    setSoundEngineForTest(failing)
+    try {
+      Object.assign(mocked.timerState, { status: 'running', flexiblePhase: 'focus' })
 
-    audio.dispatchEvent(new Event('ended'))
-    await waitFor(() => {
-      expect(playSpy).toHaveBeenCalledTimes(4)
-      expect(useMusicStore.getState().currentTrackIndex).toBe(DEFAULT_MUSIC_TRACK_INDEX)
-    })
+      renderApp(renderTimer())
+
+      await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+      await user.click(await screen.findByRole('button', { name: '일시정지' }))
+
+      expect(mocked.timerStoreActions.pause).toHaveBeenCalled()
+      expect(screen.getByText('타이머 테스트')).toBeInTheDocument()
+    } finally {
+      setSoundEngineForTest(null)
+    }
   })
 
   it('resets the music session when closing fullscreen', async () => {
@@ -511,10 +518,9 @@ describe('TimerFullScreen', () => {
     await user.click(screen.getByRole('button', { name: '타이머 닫기' }))
 
     expect(onClose).toHaveBeenCalled()
-    expect(useMusicStore.getState()).toMatchObject({
+    expect(useSoundscapeStore.getState()).toMatchObject({
       enabled: false,
-      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
-      isPlaying: false,
+      currentTrackId: null,
     })
   })
 
@@ -543,10 +549,9 @@ describe('TimerFullScreen', () => {
 
     view.unmount()
 
-    expect(useMusicStore.getState()).toMatchObject({
+    expect(useSoundscapeStore.getState()).toMatchObject({
       enabled: false,
-      currentTrackIndex: DEFAULT_MUSIC_TRACK_INDEX,
-      isPlaying: false,
+      currentTrackId: null,
     })
   })
 })

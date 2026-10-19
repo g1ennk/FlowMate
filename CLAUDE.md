@@ -80,7 +80,7 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 - **타이머 상태**: Zustand `timerStore` (로컬) + SSE 수신 → `applyRemoteState()` 충돌 해결 + version 비교
 - **인증 흐름**: `authStore.init()` → 게스트/멤버 복원 → `http.ts` 자동 토큰 주입, 401 시 singleton Promise로 중복 refresh 방지, 실패 시 게스트
   다운그레이드
-- **음악**: `musicStore` — HTMLAudioElement 관리, 볼륨 localStorage 저장, 포커스 페이즈 자동 재생
+- **사운드**: `soundscapeStore` (분위기 3개 + 음악/환경음 밸런스(5단계), 집중 중에만 재생, 설정 localStorage 저장) + `soundEngine` (Web Audio 게인 기반 채널 재생)
 
 ### SSE 동기화 아키텍처
 

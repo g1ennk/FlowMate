@@ -15,6 +15,7 @@ type BottomSheetProps = {
   showHeaderDivider?: boolean
   closeButtonAriaLabel?: string
   headerAction?: ReactNode
+  zIndex?: number
 }
 
 const DRAG_CLOSE_THRESHOLD_PX = 96
@@ -33,6 +34,7 @@ export function BottomSheet({
   showHeaderDivider = true,
   closeButtonAriaLabel = 'Close',
   headerAction,
+  zIndex = 9999,
 }: BottomSheetProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragOffsetY, setDragOffsetY] = useState(0)
@@ -120,7 +122,7 @@ export function BottomSheet({
     <div
       ref={containerRef}
       className={`fixed inset-0 ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
-      style={{ zIndex: 9999 }}
+      style={{ zIndex }}
       aria-hidden={!isOpen}
     >
       {/* 배경 */}

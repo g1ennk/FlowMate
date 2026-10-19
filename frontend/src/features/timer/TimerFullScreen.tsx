@@ -15,6 +15,7 @@ import {
 } from '../../ui/Icons'
 import { InlineSegmentToggle } from '../../ui/InlineSegmentToggle'
 import { TimerMusicControls } from './TimerMusicControls'
+import { getSoundPhase } from './soundPhase'
 import { useTimerMusicSession } from './useTimerMusicSession'
 import { useTimer, useTimerStore } from './timerStore'
 import { formatCountdown, formatMs, formatStopwatch } from './timerFormat'
@@ -68,22 +69,12 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const resumeFocus = useTimerStore((s) => s.resumeFocus)
   const calculateBreakSuggestion = useTimerStore((s) => s.calculateBreakSuggestion)
 
-  // Flow 상태에 따른 음악 자동 재생/정지
+  // 타이머 단계에 따른 사운드 재생/정지
   // effectiveMode = selectedMode ?? timer?.mode (early return 전에 계산 필요)
   const _resolvedMode = selectedMode ?? timer?.mode
-  const isFlowActive =
-    timer?.status === 'running' && (
-      (_resolvedMode === 'stopwatch' && timer.flexiblePhase === 'focus') ||
-      (_resolvedMode === 'pomodoro' && timer.phase === 'flow')
-    )
-  const {
-    musicEnabled,
-    musicVolume,
-    endMusicSession,
-    setMusicEnabled,
-    setMusicVolume,
-  } = useTimerMusicSession({
-    isFlowActive,
+  const soundPhase = getSoundPhase(timer, _resolvedMode)
+  const { endMusicSession } = useTimerMusicSession({
+    soundPhase,
     isOpen,
     todoId,
   })
@@ -626,12 +617,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         )}
 
         {mounted && (
-          <TimerMusicControls
-            musicEnabled={musicEnabled}
-            musicVolume={musicVolume}
-            onToggleEnabled={() => setMusicEnabled(!musicEnabled)}
-            onChangeVolume={setMusicVolume}
-          />
+          <TimerMusicControls />
         )}
         </div>
       </div>
