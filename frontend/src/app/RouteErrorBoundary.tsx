@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useRouteError } from 'react-router-dom'
+import { useLocation, useNavigate, useRouteError } from 'react-router-dom'
 
 const RELOAD_KEY = 'flowmate:chunk-reload-count'
 const MAX_RELOADS = 2
@@ -26,6 +26,8 @@ function reloadWithCounter(): void {
 
 export default function RouteErrorBoundary() {
   const error = useRouteError()
+  const location = useLocation()
+  const navigate = useNavigate()
   const isChunkError = isChunkLoadError(error)
   const canAutoReload = isChunkError && getReloadCount() < MAX_RELOADS
   const reloadTriggered = useRef(false)
@@ -48,7 +50,7 @@ export default function RouteErrorBoundary() {
 
   if (isChunkError) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center">
+      <div className="flex min-h-[60dvh] flex-col items-center justify-center px-6 text-center">
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-sunken">
           <svg
             className="h-8 w-8 text-accent"
@@ -83,7 +85,7 @@ export default function RouteErrorBoundary() {
   console.error('[RouteErrorBoundary]', error)
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center">
+    <div className="flex min-h-[60dvh] flex-col items-center justify-center px-6 text-center">
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-sunken">
         <svg
           className="h-8 w-8 text-text-tertiary"
@@ -106,8 +108,17 @@ export default function RouteErrorBoundary() {
         잠시 후 다시 시도해주세요
       </p>
       <button
-        onClick={() => window.location.assign('/')}
+        type="button"
+        // 같은 주소로 다시 이동하면 에러 경계가 초기화되어 화면을 다시 그린다
+        onClick={() => navigate(location, { replace: true, state: location.state })}
         className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
+      >
+        다시 시도
+      </button>
+      <button
+        type="button"
+        onClick={() => window.location.assign('/')}
+        className="mt-3 px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
       >
         홈으로 돌아가기
       </button>
