@@ -179,8 +179,39 @@ describe('LoginPage', () => {
     })
   })
 
+  it('marks the browser as a guest user when continuing as a guest', async () => {
+    const user = userEvent.setup()
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /게스트로 둘러보기/ }))
+
+    await screen.findByText('todos page')
+    expect(window.localStorage.getItem(storageKeys.guestStarted)).toBe('1')
+  })
+
+  it('does not ask a logged-out member (guest session without the guest-started flag)', async () => {
+    const user = userEvent.setup()
+    mockWindowLocation()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ state: 'oauth-state', authorizeUrl: 'https://kakao.example/authorize' }),
+      }),
+    )
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
+
+    await waitFor(() => expect(window.fetch).toHaveBeenCalled())
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+
   it('asks for confirmation before a guest who used the app moves to Kakao login', async () => {
     const user = userEvent.setup()
+    window.localStorage.setItem(storageKeys.guestStarted, '1')
     vi.mocked(window.confirm).mockReturnValue(false)
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)

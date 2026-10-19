@@ -51,6 +51,30 @@ export function clearSessionExpired() {
   }
 }
 
+export function markGuestStarted() {
+  try {
+    localStorage.setItem(storageKeys.guestStarted, '1')
+  } catch {
+    // localStorage 접근 실패는 무시한다.
+  }
+}
+
+export function hasGuestStarted() {
+  try {
+    return localStorage.getItem(storageKeys.guestStarted) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function clearGuestStarted() {
+  try {
+    localStorage.removeItem(storageKeys.guestStarted)
+  } catch {
+    // localStorage 접근 실패는 무시한다.
+  }
+}
+
 /** JWT payload의 exp(ms). 서명 검증은 서버 몫이고, 여기서는 갱신 시점 판단에만 쓴다. */
 export function getTokenExpiresAt(token: string): number | null {
   try {

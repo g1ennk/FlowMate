@@ -132,6 +132,26 @@ describe('http 401 refresh singleton', () => {
     expect(calls[1][1]?.headers).toHaveProperty('Authorization', 'Bearer renewed-guest-token')
   })
 
+  it('does not retry a guest request with a member token after login happened in between', async () => {
+    const { http, getState } = await loadHttp()
+
+    let loggedIn = false
+    getState.mockImplementation(() =>
+      loggedIn
+        ? { state: { type: 'member' }, getToken: () => 'member-token', refresh: vi.fn() }
+        : { state: { type: 'guest' }, getToken: () => 'guest-token', refresh: vi.fn() },
+    )
+
+    const fetchMock = vi.fn(async () => {
+      loggedIn = true
+      return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })
+    })
+    globalThis.fetch = fetchMock
+
+    await expect(http('POST', '/todos')).rejects.toMatchObject({ status: 401 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('throws when member session ends after refresh failure', async () => {
     const { http, getState } = await loadHttp()
 

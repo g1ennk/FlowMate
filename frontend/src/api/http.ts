@@ -79,9 +79,9 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
         })
     }
     await refreshPromise
-    // 회원 세션이 만료되어 refresh 실패 → 로그인 유도 상태로 전환된 경우
-    // 비회원 토큰으로 재시도하면 다른 주체에 데이터가 쓰일 수 있으므로 에러를 던진다
-    if (typeAtSend === 'member' && useAuthStore.getState().state?.type !== 'member') {
+    // 요청을 보낸 뒤 신원 종류가 바뀌었으면(회원 세션 만료, 그 사이 로그인 등)
+    // 다른 주체의 토큰으로 재시도하면 데이터가 엉뚱한 곳에 쓰일 수 있으므로 에러를 던진다
+    if (useAuthStore.getState().state?.type !== typeAtSend) {
       throw await parseError(response)
     }
     const retryToken = useAuthStore.getState().getToken()

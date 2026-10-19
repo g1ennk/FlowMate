@@ -4,8 +4,8 @@ import toast from 'react-hot-toast'
 import { buildApiUrl } from '../../api/baseUrl'
 import AppSplash from '../../app/AppSplash'
 import { useAuthStore } from '../../store/authStore'
-import { clearSessionExpired, hasSessionExpired } from '../../lib/auth'
-import { getOnboardingSeen, setOnboardingSeen } from '../../lib/onboarding'
+import { hasGuestStarted, hasSessionExpired, markGuestStarted } from '../../lib/auth'
+import { setOnboardingSeen } from '../../lib/onboarding'
 
 const GUEST_NOTICE = '게스트 기록은 이 브라우저에서만 볼 수 있어요'
 
@@ -128,7 +128,7 @@ function LoginPage() {
       if (authState?.type !== 'guest') {
         await startGuest()
       }
-      clearSessionExpired()
+      markGuestStarted()
       setOnboardingSeen(true)
       navigate('/todos', { replace: true })
       if (!localStorage.getItem('flowmate/ui/guest-notice-seen')) {
@@ -143,10 +143,11 @@ function LoginPage() {
 
   const handleKakaoLogin = async () => {
     if (kakaoPending) return
-    // 게스트로 앱을 써 본 사람에게만 확인한다 (처음 들어온 사람은 옮길 기록이 없다)
+    // "게스트로 둘러보기"를 직접 고른 사람에게만 확인한다
+    // (처음 들어온 사람, 로그아웃해서 게스트가 된 회원은 옮길 게스트 기록이 없다)
     if (
       authState?.type === 'guest' &&
-      getOnboardingSeen() &&
+      hasGuestStarted() &&
       !window.confirm('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요. 카카오로 계속할까요?')
     ) {
       return

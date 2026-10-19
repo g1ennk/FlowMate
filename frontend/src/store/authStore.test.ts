@@ -269,8 +269,33 @@ describe('authStore guest renewal and session expiry', () => {
     window.localStorage.clear()
   })
 
-  it('renews a guest token that expires within 30 days on init, keeping the same identity', async () => {
+  it('renews a guest token close to expiry in the background without delaying init', async () => {
     const oldToken = fakeGuestJwt(10 * DAY_MS)
+    window.localStorage.setItem(storageKeys.guestToken, oldToken)
+
+    let resolveRenew!: (response: Response) => void
+    globalThis.fetch = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRenew = resolve
+        }),
+    )
+
+    await useAuthStore.getState().init()
+
+    expect(useAuthStore.getState()).toMatchObject({
+      initialized: true,
+      state: { type: 'guest', token: oldToken },
+    })
+
+    resolveRenew(jsonResponse({ guestToken: 'renewed-token' }))
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().state).toEqual({ type: 'guest', token: 'renewed-token' })
+    })
+  })
+
+  it('renews an already expired guest token before finishing init, keeping the same identity', async () => {
+    const oldToken = fakeGuestJwt(-DAY_MS)
     window.localStorage.setItem(storageKeys.guestToken, oldToken)
     setAuthMode('guest')
 
@@ -359,7 +384,7 @@ describe('authStore guest renewal and session expiry', () => {
     })
     globalThis.fetch = fetchMock
 
-    await expect(useAuthStore.getState().refresh()).rejects.toThrow()
+    await expect(useAuthStore.getState().refresh()).rejects.toMatchObject({ status: 502 })
 
     expect(useAuthStore.getState().state).toEqual({ type: 'guest', token: 'old-token' })
     expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toEqual(
@@ -378,7 +403,7 @@ describe('authStore guest renewal and session expiry', () => {
 
     globalThis.fetch = vi.fn(async () => new Response('bad gateway', { status: 502 }))
 
-    await expect(useAuthStore.getState().refresh()).rejects.toThrow()
+    await expect(useAuthStore.getState().refresh()).rejects.toMatchObject({ status: 502 })
 
     expect(useAuthStore.getState().state).toEqual(member)
     expect(getAuthMode()).toBe('member')
@@ -429,5 +454,37 @@ describe('authStore guest renewal and session expiry', () => {
     await useAuthStore.getState().login('kakao', 'code', 'state')
 
     expect(hasSessionExpired()).toBe(false)
+    expect(window.localStorage.getItem(storageKeys.guestStarted)).toBeNull()
+  })
+
+  it('clears the session-expired hint whenever a guest session starts', async () => {
+    markSessionExpired()
+    globalThis.fetch = vi.fn(async () => jsonResponse({ guestToken: 'guest-token' }))
+
+    await useAuthStore.getState().startGuest()
+
+    expect(hasSessionExpired()).toBe(false)
+  })
+
+  it('does not treat the guest session created by logout as a guest who used the app', async () => {
+    window.localStorage.setItem(storageKeys.guestStarted, '1')
+    setAuthMode('member')
+    useAuthStore.setState({
+      state: {
+        type: 'member',
+        accessToken: 'member-token',
+        user: { id: 'user-1', email: null, nickname: 'Glenn' },
+      },
+      initialized: true,
+    })
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/auth/logout')
+        ? new Response(null, { status: 204 })
+        : jsonResponse({ guestToken: 'guest-after-logout' }),
+    )
+
+    await useAuthStore.getState().logout()
+
+    expect(window.localStorage.getItem(storageKeys.guestStarted)).toBeNull()
   })
 })

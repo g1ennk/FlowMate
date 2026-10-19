@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { buildApiUrl } from '../api/baseUrl'
+import type { ApiError } from '../api/http'
 import {
   clearAuthMode,
+  clearGuestStarted,
   clearSessionExpired,
   getAuthMode,
   getTokenExpiresAt,
@@ -28,6 +30,11 @@ let memberRefreshPromise: Promise<void> | null = null
 
 /** 게스트 토큰 남은 기간이 이보다 짧으면 앱 시작 시 미리 재발급한다. */
 const GUEST_RENEW_BEFORE_MS = 30 * 24 * 60 * 60 * 1000
+
+/** 서버 오류를 http.ts와 같은 ApiError 형태로 던져 일반 오류 처리 경로를 타게 한다. */
+function toApiError(res: Response): ApiError {
+  return { status: res.status, message: res.statusText }
+}
 
 function shouldRenewGuestToken(token: string) {
   const expiresAt = getTokenExpiresAt(token)
@@ -65,11 +72,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       setAuthMode('guest')
       set({ state: { type: 'guest', token: guestToken } })
       if (shouldRenewGuestToken(guestToken)) {
-        try {
-          await get().renewGuest()
-        } catch {
-          // 재발급 실패는 무시한다. 토큰이 만료돼 401이 나면 http 인터셉터가 다시 시도한다.
-        }
+        // 재발급 실패는 무시한다. 토큰이 만료돼 401이 나면 http 인터셉터가 다시 시도한다.
+        const renewal = get().renewGuest().catch(() => false)
+        // 아직 유효한 토큰이면 기다리지 않고 백그라운드로 재발급한다
+        const expiresAt = getTokenExpiresAt(guestToken)
+        if (expiresAt !== null && expiresAt <= Date.now()) await renewal
       }
       set({ initialized: true })
       return
@@ -96,6 +103,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (!res.ok) throw new Error('게스트 토큰 발급 실패')
     const data = await res.json()
     localStorage.setItem(storageKeys.guestToken, data.guestToken)
+    clearSessionExpired()
     setAuthMode('guest')
     set({ state: { type: 'guest', token: data.guestToken } })
   },
@@ -112,7 +120,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ guestToken: current.token }),
     })
-    if (res.status >= 500) throw new Error('게스트 토큰 재발급 실패')
+    if (res.status >= 500) throw toApiError(res)
     if (!res.ok) return false
     const data = await res.json()
     // 재발급 도중 로그인 등으로 신원이 바뀌었으면 덮어쓰지 않는다
@@ -136,6 +144,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // accessToken, user 모두 메모리(state)에만 저장
     localStorage.removeItem(storageKeys.guestToken)
     clearSessionExpired()
+    clearGuestStarted()
     setAuthMode('member')
     set({ state: { type: 'member', accessToken: data.accessToken, user: data.user } })
   },
@@ -147,6 +156,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch {
       // 로그아웃 API 실패해도 로컬 상태 초기화 진행
     }
+    // 로그아웃으로 생긴 게스트는 "게스트로 직접 시작한 사람"이 아니다
+    clearGuestStarted()
 
     // 새 게스트 토큰 발급
     try {
@@ -180,7 +191,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           if (isStaleRefresh()) return
           // 401/403만 세션 만료로 본다. 배포 중 502 같은 서버 오류는 회원 상태를 유지한 채 실패시킨다.
           if (res.status !== 401 && res.status !== 403) {
-            throw new Error(`세션 갱신 실패 (${res.status})`)
+            throw toApiError(res)
           }
           // Refresh Token 만료/폐기 → 자동 서버 logout 없이 로컬 회원 세션만 종료한다.
           // stale /auth/refresh 자체는 여전히 BE reuse detection을 발동시킬 수 있지만,
