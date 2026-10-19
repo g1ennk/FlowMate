@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Navigate, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { buildApiUrl } from '../../api/baseUrl'
-import type { TodoList } from '../../api/types'
+import { todoApi } from '../../api/todos'
 import AppSplash from '../../app/AppSplash'
 import { useAuthStore } from '../../store/authStore'
 import { getAuthMode, hasGuestStarted, hasSessionExpired, markGuestStarted } from '../../lib/auth'
@@ -153,20 +153,30 @@ function LoginPage() {
     }
   }
 
+  // 게스트에게 옮겨지지 않을 할 일이 있는지 본다. 캐시가 없으면 불러오고, 확인하지 못하면 있다고 본다.
+  const hasGuestTodos = async () => {
+    try {
+      const list = await queryClient.ensureQueryData({ queryKey: queryKeys.todos(), queryFn: () => todoApi.list() })
+      return list.items.length > 0
+    } catch {
+      return true
+    }
+  }
+
   const handleKakaoLogin = async () => {
     if (kakaoPending) return
+    setKakaoPending(true)
     // 옮겨지지 않을 게스트 기록이 있을 수 있는 사람에게만 확인한다.
     // "게스트로 둘러보기"를 직접 골랐거나, 표시가 생기기 전부터 써서 할 일이 남아 있는 게스트다.
     // (처음 들어온 사람, 로그아웃해서 게스트가 된 회원은 옮길 게스트 기록이 없다)
-    const hasGuestTodos = (queryClient.getQueryData<TodoList>(queryKeys.todos())?.items.length ?? 0) > 0
+    const shouldConfirm = authState?.type === 'guest' && (hasGuestStarted() || (await hasGuestTodos()))
     if (
-      authState?.type === 'guest' &&
-      (hasGuestStarted() || hasGuestTodos) &&
+      shouldConfirm &&
       !window.confirm('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요. 카카오로 계속할까요?')
     ) {
+      setKakaoPending(false)
       return
     }
-    setKakaoPending(true)
     try {
       const res = await fetch(buildApiUrl('/auth/kakao/authorize-url'))
       if (!res.ok) throw new Error('인증 URL 발급 실패')
