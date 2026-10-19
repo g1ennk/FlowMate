@@ -778,9 +778,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const breakDuration = breakType.isLong ? longBreakMin : breakMin
         
         // Flow 완료 시 sessions에 추가 (실제 경과 시간 계산)
+        // 백그라운드 복귀로 endAt을 한참 넘겨 완료돼도 계획 시간까지만 기록한다
         const plannedMs = flowMin * MINUTE
-        const actualElapsedMs = getPomodoroElapsedMs(timer, plannedMs)
-        const flowMs = Math.max(0, actualElapsedMs)
+        const flowMs = Math.min(getPomodoroElapsedMs(timer, plannedMs), plannedMs)
         const flowSeconds = Math.round(flowMs / 1000)
         const completedSession: PendingPomodoroSession = {
           sessionFocusSeconds: flowSeconds,
@@ -806,9 +806,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         )
       } else {
         // Break → Flow 자동 전환
-        // Break 완료 시 실제 경과 시간을 기준으로 마지막 세션의 breakSeconds 업데이트
+        // Break 완료 시 실제 경과 시간을 기준으로 마지막 세션의 breakSeconds 업데이트 (계획 시간 상한)
         const plannedBreakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
-        const elapsedBreakMs = getPomodoroElapsedMs(timer, plannedBreakMs)
+        const elapsedBreakMs = Math.min(getPomodoroElapsedMs(timer, plannedBreakMs), plannedBreakMs)
         const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -cycleCount : 0
 

@@ -816,3 +816,58 @@ describe('useTimerStore reset — stopwatch in-progress focus accumulation 보�
     expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]).toBeUndefined()
   })
 })
+
+describe('useTimerStore pomodoro 기록 정확도', () => {
+  const MINUTE = 60_000
+  const pomodoroSettings = {
+    flowMin: 25,
+    breakMin: 5,
+    longBreakMin: 15,
+    cycleEvery: 4,
+    autoStartBreak: false,
+    autoStartSession: false,
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-06T09:00:00.000Z'))
+    useTimerStore.getState().clearAll()
+  })
+
+  afterEach(() => {
+    useTimerStore.getState().clearAll()
+    vi.useRealTimers()
+  })
+
+  it('백그라운드에서 Flow endAt을 한참 넘긴 뒤 복귀해도 계획 시간까지만 기록한다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+    useTimerStore.getState().resume(TODO_ID)
+
+    vi.setSystemTime(Date.now() + 25 * MINUTE + 60 * MINUTE)
+    useTimerStore.getState().syncWithNow()
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.sessions.at(-1)?.sessionFocusSeconds).toBe(1500)
+    expect(
+      useTimerStore.getState().pendingAutoSessions[TODO_ID]?.map((s) => s.sessionFocusSeconds),
+    ).toEqual([1500])
+  })
+
+  it('백그라운드에서 휴식 endAt을 한참 넘긴 뒤 복귀해도 계획 시간까지만 기록한다', () => {
+    setTimer(
+      createPomodoroTimer({
+        settingsSnapshot: pomodoroSettings,
+        phase: 'short',
+        endAt: Date.now() - 60 * MINUTE,
+      }),
+    )
+
+    useTimerStore.getState().tick()
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('flow')
+    expect(timer.sessions[0].breakSeconds).toBe(300)
+    expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]?.[0].breakSeconds).toBe(300)
+  })
+})
