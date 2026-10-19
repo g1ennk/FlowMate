@@ -88,6 +88,7 @@ vi.mock('./useNoteModal', () => ({
     setNoteText: vi.fn(),
     noteEditMode: false,
     noteTodo: null,
+    isNoteSaving: false,
     handleOpenNote: vi.fn(),
     handleEditNote: vi.fn(),
     handleSaveNote: vi.fn(),

@@ -239,6 +239,7 @@ export function useTodoActions(selectedDateKey: string) {
     setNoteText: noteModal.setNoteText,
     noteEditMode: noteModal.noteEditMode,
     noteTodo: noteModal.noteTodo,
+    isNoteSaving: noteModal.isNoteSaving,
 
     // 타이머 상태
     timerTodo: timerOpen.timerTodo,

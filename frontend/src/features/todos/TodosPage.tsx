@@ -548,6 +548,7 @@ function TodosPage() {
         noteEditMode={actions.noteEditMode}
         noteTodo={actions.noteTodo}
         noteText={actions.noteText}
+        isSaving={actions.isNoteSaving}
         onNoteTextChange={actions.setNoteText}
         onDeleteNote={actions.handleDeleteNote}
         onSaveNote={actions.handleSaveNote}

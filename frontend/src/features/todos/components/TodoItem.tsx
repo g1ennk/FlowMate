@@ -1,11 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   CheckIcon,
+  ChevronRightIcon,
   ClockIcon,
   StopIcon,
   MoreVerticalIcon,
 } from '../../../ui/Icons'
 import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
+import { linkifyText } from '../linkifyText'
 import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDisplay'
 import { useTimerStore } from '../../timer/timerStore'
 import { getTimerInfo } from '../../timer/useTimerInfo'
@@ -54,6 +56,18 @@ export function TodoItem({
   onSelect,
 }: TodoItemProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const noteRef = useRef<HTMLParagraphElement>(null)
+  const [isNoteOpen, setIsNoteOpen] = useState(false)
+  const [isNoteClamped, setIsNoteClamped] = useState(false)
+  // 메모가 지워지면 다음에 쓰는 메모는 접힌 상태로 시작한다 (렌더 중 prop 변화에 맞춰 state 조정)
+  const [hadNote, setHadNote] = useState(!!note)
+  if (hadNote !== !!note) {
+    setHadNote(!!note)
+    if (!note) {
+      setIsNoteOpen(false)
+      setIsNoteClamped(false)
+    }
+  }
 
   // 이 todo의 타이머만 구독 → 타이머가 tick해도 이 컴포넌트만 리렌더링
   const timer = useTimerStore((s) => s.timers[todoId])
@@ -87,6 +101,26 @@ export function TodoItem({
       textarea.setSelectionRange(textarea.value.length, textarea.value.length)
     }
   }, [isEditing])
+
+  // 메모: 접힌 상태에서 한 줄을 넘칠 때만 펼치기 버튼을 보인다. 펼친 동안은 마지막 측정값 유지.
+  // 제목 편집 중에는 메모 블록이 언마운트되므로 isEditing이 바뀌면 다시 측정한다
+  useLayoutEffect(() => {
+    const el = noteRef.current
+    if (!el || isNoteOpen) return
+    let cancelled = false
+    const measure = () => {
+      if (!cancelled) setIsNoteClamped(el.scrollHeight > el.clientHeight + 1)
+    }
+    measure()
+    // 웹폰트가 늦게 적용되면 줄바꿈이 바뀌어도 박스 크기는 그대로라 ResizeObserver가 못 잡는다
+    void document.fonts?.ready.then(measure)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(el)
+    return () => {
+      cancelled = true
+      observer?.disconnect()
+    }
+  }, [note, isNoteOpen, isEditing])
 
   const totalFocusSeconds = getTodoDisplayTimeSeconds({
     isDone,
@@ -245,10 +279,33 @@ export function TodoItem({
       {note && (
         <div className="ml-6 mt-2">
           <div
-            className="cursor-pointer rounded-lg bg-state-warning-subtle border border-[var(--color-warning)] px-2 py-1"
+            className="flex cursor-pointer items-start gap-1 rounded-lg bg-state-warning-subtle border border-[var(--color-warning)] px-2 py-1"
             onClick={onOpenNote}
           >
-            <p className={`${userTextDisplayClass} text-text-secondary`}>{note}</p>
+            <p
+              ref={noteRef}
+              className={`min-w-0 flex-1 ${userTextDisplayClass} text-text-secondary ${isNoteOpen ? '' : 'line-clamp-1'}`}
+            >
+              {linkifyText(note)}
+            </p>
+            {isNoteClamped && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsNoteOpen((prev) => !prev)
+                }}
+                aria-label={isNoteOpen ? '메모 접기' : '메모 펼치기'}
+                aria-expanded={isNoteOpen}
+                // 높이를 메모 한 줄(1lh)+상하 패딩으로 맞춰 아이콘이 첫 줄 가운데에 오게 한다.
+                // 음수 마진으로 보이는 위치는 그대로 두고 터치 영역만 가로 약 40px로 넓힌다
+                className="-my-1.5 -ml-3 -mr-2 flex h-[calc(1lh+0.75rem)] shrink-0 cursor-pointer items-center justify-center py-1.5 pl-4 pr-2 text-sm leading-relaxed text-text-secondary transition-colors hover:text-text-primary"
+              >
+                <ChevronRightIcon
+                  className={`h-4 w-4 transition-transform ${isNoteOpen ? '-rotate-90' : 'rotate-90'}`}
+                />
+              </button>
+            )}
           </div>
         </div>
       )}
