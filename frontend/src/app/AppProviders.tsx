@@ -59,8 +59,9 @@ export function AppProviders({ children }: PropsWithChildren) {
       <BackendStatusGate>{children}</BackendStatusGate>
       <Toaster
         position="top-center"
+        // BottomSheet·TimerFullScreen(9999), SoundSheet(10000) 포털보다 위에 보이도록 한다.
         containerStyle={{
-          zIndex: 9999,
+          zIndex: 10001,
           marginTop: 'calc(var(--safe-top) + 8px)',
         }}
         toastOptions={{
@@ -70,9 +71,11 @@ export function AppProviders({ children }: PropsWithChildren) {
             color: '#fff',
             borderRadius: '12px',
             padding: '12px 16px',
-            whiteSpace: 'nowrap',
-            maxWidth: 'none',
-            width: 'auto',
+            // 좁은 화면에서도 잘리지 않게 화면 폭 안에서 줄바꿈한다.
+            maxWidth: 'min(420px, calc(100vw - 32px))',
+            // 한국어는 어절 단위로 줄바꿈하고, 긴 URL처럼 한 덩어리가 넘칠 때만 중간에서 끊는다.
+            wordBreak: 'keep-all',
+            overflowWrap: 'anywhere',
           },
         }}
       />

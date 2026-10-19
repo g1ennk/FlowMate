@@ -10,6 +10,7 @@ import { storageKeys } from '../../../lib/storageKeys'
 import { useAiReportSheet } from '../hooks/useAiReportSheet'
 import { formatReportAsKpt } from '../kptParser'
 import { KptText } from './KptText'
+import { UndoToast } from '../../../ui/UndoToast'
 
 // AiReportSheet는 react-markdown 스택을 끌고 들어와서 무겁다. 사용자가 시트를 처음 열기
 // 전까지는 별도 청크로 분리해두고, 한 번 열린 뒤에는 닫힘 애니메이션 보존을 위해 마운트 유지.
@@ -60,6 +61,9 @@ export function ReviewTextarea({
   const handleSaveRef = useRef<() => void>(() => {})
   const isSaving = upsert.isPending || remove.isPending
   const isDirty = draft !== content
+  // 처음 불러오는 중이거나 실패한 상태에서 편집을 시작하면 빈 글로 기존 회고를 덮어쓸 수 있다.
+  // 이미 받은 회고가 있으면 백그라운드 재조회가 실패해도 그대로 보여주고 편집을 허용한다.
+  const canEnterEdit = !isEditing && (review.isSuccess || review.isRefetchError)
 
   const {
     aiReport, isAiLoading, canRegenerate, regenerateError,
@@ -93,6 +97,8 @@ export function ReviewTextarea({
   }, [content])
 
   const enterEdit = useCallback(() => {
+    // 새 글을 쓴 뒤 삭제 되돌리기가 그 글을 덮어쓰지 않도록 닫는다.
+    toast.dismiss('review-delete-success')
     setDraft(content)
     setIsEditing(true)
   }, [content])
@@ -140,18 +146,41 @@ export function ReviewTextarea({
   }, [exitEdit, isDirty, isEditing, isSheetOpenRef, sheetClosedAtRef])
 
   const executeDelete = () => {
-    if (!review.data?.id) {
+    const deleted = review.data
+    if (!deleted?.id) {
       setDraft('')
       setIsEditing(false)
       return
     }
     remove.mutate(
-      { id: review.data.id, type: periodType, periodStart },
+      { id: deleted.id, type: periodType, periodStart },
       {
         onSuccess: () => {
-          toast.success('회고를 삭제했어요', { id: 'review-delete-success' })
           setDraft('')
           setIsEditing(false)
+          // 지운 내용을 기억해 두었다가 되돌리면 같은 기간으로 다시 저장한다.
+          toast(
+            (t) => (
+              <UndoToast
+                t={t}
+                message="회고를 삭제했어요"
+                onUndo={() => upsert.mutate(
+                  {
+                    type: deleted.type,
+                    periodStart: deleted.periodStart,
+                    periodEnd: deleted.periodEnd,
+                    content: deleted.content,
+                  },
+                  {
+                    onError: () => {
+                      toast.error('회고를 되돌리지 못했어요', { id: 'review-restore-failed' })
+                    },
+                  },
+                )}
+              />
+            ),
+            { id: 'review-delete-success', duration: 5000 },
+          )
         },
         onError: () => {
           toast.error('회고 삭제에 실패했어요', { id: 'review-delete-failed' })
@@ -161,9 +190,10 @@ export function ReviewTextarea({
   }
 
   const handleSave = () => {
-    const trimmed = draft.trim()
-    if (!trimmed) {
-      executeDelete()
+    // 내용을 모두 지운 채 저장하거나 바깥을 눌러도 삭제하지 않는다.
+    // 삭제는 삭제 버튼(되돌리기 가능)으로만 한다.
+    if (!draft.trim()) {
+      exitEdit(true)
       return
     }
 
@@ -217,12 +247,38 @@ export function ReviewTextarea({
     handleSaveRef.current = handleSave
   })
 
-  const saveReportContent = (text: string, afterSave: () => void) => {
+  // 참고해서 쓰기: 서버에 저장하지 않고 편집 중인 글 아래에 덧붙이기만 한다.
+  // 저장은 사용자가 다듬은 뒤 직접 누른다.
+  const handleStartWithAi = () => {
+    if (!aiReport) return
+    const kpt = formatReportAsKpt(aiReport)
+    const question = aiReport.referenceQuestion
+    const reportText = question ? `${kpt}\n\n> ${question}\n` : kpt
+    const base = (isEditing ? draft : content).trimEnd()
+    closeSheet()
+    setDraft(base ? `${base}\n\n${reportText}` : reportText)
+    setIsEditing(true)
+    requestAnimationFrame(() => {
+      const node = textareaRef.current
+      if (!node) return
+      autoResize()
+      const len = node.value.length
+      node.setSelectionRange(len, len)
+      node.focus()
+    })
+  }
+
+  // 이대로 저장: 덮어쓰기 확인은 AiReportSheet가 받는다(hasExistingContent).
+  const handleSaveAsIs = () => {
+    if (!aiReport) return
+    const text = formatReportAsKpt(aiReport)
+    closeSheet()
     upsert.mutate(
       { type: periodType, periodStart, periodEnd, content: text },
       {
         onSuccess: () => {
-          afterSave()
+          setIsEditing(false)
+          toast.success('회고를 저장했어요', { id: 'review-save-success' })
         },
         onError: () => {
           toast.error('회고 저장에 실패했어요', { id: 'review-save-failed' })
@@ -231,48 +287,17 @@ export function ReviewTextarea({
     )
   }
 
-  const handleStartWithAi = () => {
-    if (!aiReport) return
-    const kpt = formatReportAsKpt(aiReport)
-    const question = aiReport.referenceQuestion
-    const text = question ? `${kpt}\n\n> ${question}` : kpt
-    closeSheet()
-    saveReportContent(text, () => {
-      setDraft(text + (question ? '\n' : ''))
-      setIsEditing(true)
-      toast.success('회고를 저장했어요. 한 줄 더 써보세요', { id: 'review-save-success' })
-      requestAnimationFrame(() => {
-        const node = textareaRef.current
-        if (!node) return
-        autoResize()
-        const len = node.value.length
-        node.setSelectionRange(len, len)
-        node.focus()
-      })
-    })
-  }
-
-  const handleSaveAsIs = () => {
-    if (!aiReport) return
-    const text = formatReportAsKpt(aiReport)
-    closeSheet()
-    saveReportContent(text, () => {
-      setIsEditing(false)
-      toast.success('회고를 저장했어요', { id: 'review-save-success' })
-    })
-  }
-
   return (
     <section
       ref={containerRef}
       className={`rounded-2xl border border-border-default bg-surface-card p-card shadow-sm ${
-        isEditing ? '' : 'cursor-pointer'
+        canEnterEdit ? 'cursor-pointer' : ''
       }`}
-      onClick={!isEditing ? enterEdit : undefined}
-      role={!isEditing ? 'button' : undefined}
-      tabIndex={!isEditing ? 0 : undefined}
+      onClick={canEnterEdit ? enterEdit : undefined}
+      role={canEnterEdit ? 'button' : undefined}
+      tabIndex={canEnterEdit ? 0 : undefined}
       onKeyDown={
-        !isEditing
+        canEnterEdit
           ? (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault()
@@ -335,10 +360,24 @@ export function ReviewTextarea({
         />
       ) : (
         <div className="mt-3 rounded-xl p-3 text-left">
-          {review.isLoading ? (
+          {review.isPending ? (
             <p className={`${userTextDisplayClass} text-text-secondary`}>
               회고를 불러오는 중...
             </p>
+          ) : review.isLoadingError ? (
+            <div className="space-y-2">
+              <p className={`${userTextDisplayClass} text-text-secondary`}>
+                회고를 불러오지 못했어요
+              </p>
+              <button
+                type="button"
+                onClick={() => { void review.refetch() }}
+                disabled={review.isFetching}
+                className="text-xs font-semibold text-accent hover:text-accent-text disabled:opacity-60"
+              >
+                {review.isFetching ? '불러오는 중...' : '다시 시도'}
+              </button>
+            </div>
           ) : content ? (
             <KptText content={content} />
           ) : (
@@ -369,7 +408,7 @@ export function ReviewTextarea({
             report={aiReport}
             isCached={canRegenerate}
             isRegenerating={isAiLoading}
-            hasExistingReview={!!review.data?.id}
+            hasExistingContent={!!review.data?.id || (isEditing && draft.trim() !== '')}
             onStartWithAi={handleStartWithAi}
             onSaveAsIs={handleSaveAsIs}
             onRegenerate={handleRegenerate}
