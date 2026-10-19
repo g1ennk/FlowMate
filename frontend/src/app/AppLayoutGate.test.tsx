@@ -83,6 +83,16 @@ describe('AppLayoutGate', () => {
     expect(init).toHaveBeenCalledTimes(1)
   })
 
+  it('회원 복원 실패 화면에서 로그인 화면으로 나갈 수 있다', async () => {
+    localStorage.setItem(storageKeys.authMode, 'member')
+    useAuthStore.setState({ initialized: true, state: null, init: vi.fn(async () => {}) })
+
+    renderGate()
+
+    await userEvent.click(screen.getByRole('button', { name: '로그인 화면으로' }))
+    expect(screen.getByText('login page')).toBeInTheDocument()
+  })
+
   it('회원 세션이 만료됐으면 로그인 화면으로 보낸다', () => {
     // 401/403이면 authStore가 회원 힌트를 지우고 만료 표시를 남긴다
     markSessionExpired()

@@ -342,6 +342,25 @@ describe('LoginPage', () => {
     expect(container).not.toBeEmptyDOMElement()
   })
 
+  it('asks before starting as a guest when member sign-in could not be restored', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem(storageKeys.authMode, 'member')
+    useAuthStore.setState({ state: null })
+    vi.mocked(window.confirm).mockReturnValue(false)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /게스트로 둘러보기/ }))
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('회원 기록은 보이지 않아요'),
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.queryByText('todos page')).not.toBeInTheDocument()
+  })
+
   it('explains an expired session and keeps the guest option secondary', () => {
     window.localStorage.setItem(storageKeys.sessionExpired, '1')
     useAuthStore.setState({ state: null })

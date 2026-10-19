@@ -6,7 +6,7 @@ import { buildApiUrl } from '../../api/baseUrl'
 import type { TodoList } from '../../api/types'
 import AppSplash from '../../app/AppSplash'
 import { useAuthStore } from '../../store/authStore'
-import { hasGuestStarted, hasSessionExpired, markGuestStarted } from '../../lib/auth'
+import { getAuthMode, hasGuestStarted, hasSessionExpired, markGuestStarted } from '../../lib/auth'
 import { setOnboardingSeen } from '../../lib/onboarding'
 import { queryKeys } from '../../lib/queryKeys'
 
@@ -128,6 +128,14 @@ function LoginPage() {
   }
 
   const handleGuestStart = async () => {
+    // 회원 복원에 실패해 들어온 사람이 게스트로 시작하면 회원 힌트가 덮여 조용히 게스트가 된다
+    if (
+      !authState &&
+      getAuthMode() === 'member' &&
+      !window.confirm('로그인하지 않고 게스트로 시작하면 회원 기록은 보이지 않아요. 게스트로 시작할까요?')
+    ) {
+      return
+    }
     try {
       if (authState?.type !== 'guest') {
         await startGuest()
