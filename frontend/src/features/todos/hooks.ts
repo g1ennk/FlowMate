@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { todoApi } from '../../api/todos'
@@ -12,7 +13,7 @@ import {
   type TodoReorderRequest,
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
-import { finishDelete, withoutPendingDeletes } from './pendingDeletes'
+import { finishDelete, usePendingDeleteStore } from './pendingDeletes'
 
 type UseTodosOptions = {
   enabled?: boolean
@@ -20,10 +21,17 @@ type UseTodosOptions = {
 
 export function useTodos(options: UseTodosOptions = {}) {
   const { enabled = true } = options
+  // 캐시는 서버값 그대로 두고, 삭제 되돌리기 유예 중인 할 일만 화면에서 숨긴다.
+  const hiddenIds = usePendingDeleteStore((s) => s.hiddenIds)
+  const select = useCallback(
+    (data: TodoList) =>
+      hiddenIds.size === 0 ? data : { items: data.items.filter((t) => !hiddenIds.has(t.id)) },
+    [hiddenIds],
+  )
   return useQuery({
     queryKey: queryKeys.todos(),
-    // 되돌리기 유예 중인 할 일은 refetch 로 다시 받아도 보이지 않게 한다.
-    queryFn: async () => withoutPendingDeletes(await todoApi.list()),
+    queryFn: () => todoApi.list(),
+    select,
     enabled,
   })
 }
@@ -112,6 +120,13 @@ export function useDeleteTodo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => todoApi.remove(id),
+    // 숨김을 풀기 전에 캐시에서 빼 두어야 refetch 전까지 다시 보이지 않는다.
+    onSuccess: (_data, id) => {
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+        if (!old) return old
+        return { items: old.items.filter((t) => t.id !== id) }
+      })
+    },
     onError: () => {
       toast.error('삭제하지 못했어요. 다시 시도해 주세요', { id: 'todo-delete-failed' })
     },

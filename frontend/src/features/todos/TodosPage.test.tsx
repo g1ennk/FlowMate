@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { toast, Toaster } from 'react-hot-toast'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +9,7 @@ import { server } from '../../mocks/server'
 import { useAuthStore } from '../../store/authStore'
 import { renderApp } from '../../test/renderApp'
 import { initialSingleTimerState, useTimerStore } from '../timer/timerStore'
+import { resetPendingDeletes } from './pendingDeletes'
 import TodosPage from './TodosPage'
 
 const selectedDateKey = '2026-01-09'
@@ -118,6 +119,7 @@ describe('TodosPage', () => {
   })
 
   afterEach(() => {
+    resetPendingDeletes()
     vi.useRealTimers()
     window.localStorage.clear()
     useAuthStore.setState(initialAuthStore, true)
@@ -455,8 +457,7 @@ describe('TodosPage delete undo', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    // 앞선 테스트가 페이지를 떠나며 확정한 DELETE 와 id 가 겹치지 않게 한다.
-    todoIdSequence = 1000
+    todoIdSequence = 0
     window.localStorage.clear()
     useAuthStore.setState(initialAuthStore, true)
     setGuestAuth()
@@ -465,6 +466,7 @@ describe('TodosPage delete undo', () => {
   })
 
   afterEach(() => {
+    resetPendingDeletes()
     act(() => {
       toast.remove()
     })
@@ -600,9 +602,29 @@ describe('TodosPage delete undo', () => {
     fireEvent.click(screen.getByRole('button', { name: '되돌리기' }))
     await wait(6000)
 
-    expect(useTimerStore.getState().timers[todoId]).toBeDefined()
+    // 삭제 때문에 멈춘 타이머는 되돌리면 다시 흐른다.
+    expect(useTimerStore.getState().timers[todoId]?.status).toBe('running')
     expect(useTimerStore.getState().pendingAutoSessions[todoId]).toHaveLength(1)
   })
+
+  it('keeps a pending deleted todo hidden when another optimistic update rolls back', async () => {
+    await renderWithTodos(['할 일 A', '할 일 B'])
+    server.use(
+      http.patch('/api/todos/:id', async () => {
+        await delay(200)
+        return HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })
+      }),
+    )
+
+    // A 완료 PATCH 의 롤백 스냅샷에 B 가 들어간 뒤 B 를 지운다.
+    fireEvent.click(screen.getByRole('button', { name: '할 일 A 완료' }))
+    await wait(10)
+    deleteOne('할 일 B')
+    await wait(250)
+
+    expect(screen.queryByText('할 일 B')).not.toBeInTheDocument()
+  })
+
 
   it('clears the timer and unsynced sessions once the delete is committed', async () => {
     const { items } = await renderWithTodos(['할 일 A'])

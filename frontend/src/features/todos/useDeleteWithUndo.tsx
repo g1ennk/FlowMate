@@ -1,26 +1,22 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { UndoToast } from '../../ui/UndoToast'
-import { queryKeys } from '../../lib/queryKeys'
-import type { TodoList } from '../../api/types'
 import { useDeleteTodo } from './hooks'
 import { useTimerStore } from '../timer/timerStore'
-import {
-  cancelDelete,
-  flushDeletes,
-  scheduleDelete,
-  withoutPendingDeletes,
-} from './pendingDeletes'
+import { cancelDelete, flushDeletes, scheduleDelete } from './pendingDeletes'
 
 const UNDO_MS = 5000
-let deleteSeq = 0
+
+// 대기 중인 삭제를 바로 확정한다. 더는 되돌릴 수 없으니 토스트도 닫는다.
+function flushAndDismiss() {
+  for (const key of flushDeletes()) toast.dismiss(key)
+}
 
 // 할 일을 화면에서 바로 숨기고, 5초 안에 되돌리지 않으면 서버에서 삭제한다.
 export function useDeleteWithUndo() {
-  const queryClient = useQueryClient()
   const deleteTodo = useDeleteTodo()
   const pause = useTimerStore((s) => s.pause)
+  const resume = useTimerStore((s) => s.resume)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
   const clearPendingAutoSessions = useTimerStore((s) => s.clearPendingAutoSessions)
@@ -28,25 +24,17 @@ export function useDeleteWithUndo() {
   const deleteTodoRef = useRef(deleteTodo.mutateAsync)
   useEffect(() => { deleteTodoRef.current = deleteTodo.mutateAsync })
 
-  // 페이지를 떠나면 대기 중인 삭제를 바로 확정하고, 더는 되돌릴 수 없으니 토스트도 닫는다.
-  useEffect(() => {
-    return () => {
-      for (const key of flushDeletes()) toast.dismiss(key)
-    }
-  }, [])
+  // 페이지를 떠나면 바로 확정한다.
+  useEffect(() => flushAndDismiss, [])
 
   return useCallback((ids: string[], message: string) => {
     if (ids.length === 0) return
 
-    const currentData = queryClient.getQueryData<TodoList>(queryKeys.todos())
-    const deletedTodos = currentData?.items.filter((t) => ids.includes(t.id)) ?? []
-
     // 되돌릴 수 있도록 타이머는 멈추기만 하고, 정리는 실제로 삭제된 뒤에 한다.
-    for (const id of ids) {
-      if (getTimer(id)?.status === 'running') pause(id)
-    }
+    const pausedIds = ids.filter((id) => getTimer(id)?.status === 'running')
+    pausedIds.forEach(pause)
 
-    const commit = (commitIds: string[]) => {
+    const key = scheduleDelete(ids, (commitIds) => {
       for (const id of commitIds) {
         deleteTodoRef.current(id)
           .then(() => {
@@ -57,16 +45,7 @@ export function useDeleteWithUndo() {
           // 실패 알림과 숨김 해제는 useDeleteTodo 가 맡는다.
           .catch(() => {})
       }
-    }
-
-    deleteSeq += 1
-    const key = `delete-${deleteSeq}`
-    scheduleDelete(key, ids, deletedTodos, commit, UNDO_MS)
-
-    queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
-      if (!old) return old
-      return withoutPendingDeletes(old)
-    })
+    }, UNDO_MS)
 
     toast(
       (t) => (
@@ -74,21 +53,15 @@ export function useDeleteWithUndo() {
           t={t}
           message={message}
           onUndo={() => {
-            const restored = cancelDelete(key)
-            if (!restored) {
+            if (!cancelDelete(key)) {
               toast.error('이미 삭제돼서 되돌릴 수 없어요', { id: 'delete-undo-too-late' })
               return
             }
-            queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
-              if (!old) return { items: restored }
-              // refetch 로 이미 들어와 있는 항목은 다시 넣지 않는다.
-              const shownIds = new Set(old.items.map((t) => t.id))
-              return { items: [...old.items, ...restored.filter((t) => !shownIds.has(t.id))] }
-            })
+            pausedIds.forEach(resume)
           }}
         />
       ),
       { id: key, duration: UNDO_MS },
     )
-  }, [queryClient, pause, reset, getTimer, clearPendingAutoSessions])
+  }, [pause, resume, reset, getTimer, clearPendingAutoSessions])
 }

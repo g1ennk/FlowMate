@@ -617,7 +617,7 @@ export const useTimerStore = create<TimerStore>((set, get) => {
 
       // 타이머만 제거하고 pendingAutoSessions 는 유지한다.
       // commitPendingFocus 로 enqueue 된 누적 focus 가 background sync 로 처리되도록 보존.
-      // todo 자체를 삭제하는 경로(handleDelete/batchDelete)는 별도로 큐를 정리한다.
+      // todo 자체를 삭제하는 경로(useDeleteWithUndo)는 DELETE 성공 뒤 별도로 큐를 정리한다.
       const timers = { ...get().timers }
       delete timers[todoId]
 
