@@ -584,6 +584,15 @@ describe('PomodoroSettingsPage', () => {
     expect(putCount).toBe(0)
   })
 
+  it('tells that a running timer picks up session and automation changes from its next start', async () => {
+    signInAsMember()
+    useSlowSettingsServer()
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    expect(await screen.findAllByText(/진행 중인 타이머는 다음 시작부터 적용돼요/)).toHaveLength(2)
+  })
+
   it('lets the user pick system, light or dark theme in one row', async () => {
     const user = userEvent.setup()
     signInAsMember()

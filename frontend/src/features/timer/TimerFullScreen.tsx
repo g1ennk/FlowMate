@@ -533,7 +533,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 const hasStarted = timer?.status === 'running' || (timer?.status === 'paused' && elapsedMs > 0)
                 const shouldShowCurrentDot = timer?.phase === 'flow' && hasStarted
                 const totalDots = Math.max(
-                  settings?.cycleEvery ?? 4,
+                  timer?.settingsSnapshot?.cycleEvery ?? settings?.cycleEvery ?? 4,
                   completedDotCount + (shouldShowCurrentDot ? 1 : 0),
                 )
 
