@@ -141,6 +141,22 @@ describe('LoginPage', () => {
     expect(screen.getByText('todos page')).toBeInTheDocument()
   })
 
+  it('marks onboarding as seen when redirecting a member so the layout does not bounce back to login', () => {
+    window.localStorage.removeItem(storageKeys.onboardingSeen)
+    useAuthStore.setState({
+      state: {
+        type: 'member',
+        accessToken: 'member-token',
+        user: { id: 'user-1', email: null, nickname: 'Glenn' },
+      },
+    })
+
+    renderLoginPage()
+
+    expect(screen.getByText('todos page')).toBeInTheDocument()
+    expect(window.localStorage.getItem(storageKeys.onboardingSeen)).toBe('true')
+  })
+
   it('navigates to todos when continuing as a guest', async () => {
     const user = userEvent.setup()
 

@@ -124,6 +124,8 @@ function LoginPage() {
   if (!initialized) return <AppSplash />
 
   if (authState?.type === 'member') {
+    // 온보딩 키가 지워진 회원도 레이아웃 게이트가 다시 /login으로 돌려보내지 않게 한다.
+    setOnboardingSeen(true)
     return <Navigate to="/todos" replace />
   }
 
