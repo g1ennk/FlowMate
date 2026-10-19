@@ -25,7 +25,6 @@ import {
 } from './reviewUtils'
 import { useReview, useReviewList } from './hooks'
 import { getReviewRouteState } from './reviewRouteParams'
-import { useReviewScrollMemory } from './useReviewScrollMemory'
 import type { TaskItem } from './reviewTypes'
 import { useCoachMark } from '../../lib/useCoachMark'
 import { CoachMark } from '../../ui/CoachMark'
@@ -45,7 +44,6 @@ export function ReviewPage() {
   const [selectedTask, setSelectedTask] = useState<null | TaskItem>(null)
 
   const { period, dateKey, baseDate } = getReviewRouteState(searchParams)
-  useReviewScrollMemory(`home:${period}:${dateKey}`)
 
   const didInitRef = useRef(false)
   useEffect(() => {
@@ -54,7 +52,7 @@ export function ReviewPage() {
     const rawPeriod = searchParams.get('period')
     const rawDate = searchParams.get('date')
     if (rawPeriod !== period || rawDate !== dateKey) {
-      setSearchParams({ period, date: dateKey }, { replace: true })
+      setSearchParams({ period, date: dateKey }, { replace: true, preventScrollReset: true })
     }
   }, [dateKey, period, searchParams, setSearchParams])
 
@@ -90,17 +88,17 @@ export function ReviewPage() {
   ]
 
   const handlePeriodChange = (nextPeriod: typeof period) => {
-    setSearchParams({ period: nextPeriod, date: formatDateKey(new Date()) })
+    setSearchParams({ period: nextPeriod, date: formatDateKey(new Date()) }, { preventScrollReset: true })
   }
 
   const handlePrev = () => {
     const nextDate = shiftBaseDate(period, baseDate, -1)
-    setSearchParams({ period, date: formatDateKey(nextDate) })
+    setSearchParams({ period, date: formatDateKey(nextDate) }, { preventScrollReset: true })
   }
 
   const handleNext = () => {
     const nextDate = shiftBaseDate(period, baseDate, 1)
-    setSearchParams({ period, date: formatDateKey(nextDate) })
+    setSearchParams({ period, date: formatDateKey(nextDate) }, { preventScrollReset: true })
   }
 
   const isCurrentPeriod =
@@ -109,7 +107,7 @@ export function ReviewPage() {
     (period === 'monthly' && reviewRange.startKey === currentMonthStartKey)
 
   const handleJumpToCurrent = () => {
-    setSearchParams({ period, date: todayKey })
+    setSearchParams({ period, date: todayKey }, { preventScrollReset: true })
   }
 
   const PERIOD_LABELS: Record<typeof period, { badge: string; jump: string }> = {
@@ -202,7 +200,7 @@ export function ReviewPage() {
         previousPeriodStart={getPreviousPeriodStart(period, baseDate)}
         onNavigateToPrevious={() => {
           const prevDate = shiftBaseDate(period, baseDate, -1)
-          setSearchParams({ period, date: formatDateKey(prevDate) })
+          setSearchParams({ period, date: formatDateKey(prevDate) }, { preventScrollReset: true })
         }}
       />
 
