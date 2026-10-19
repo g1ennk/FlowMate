@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { toast, Toaster } from 'react-hot-toast'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '../../lib/queryKeys'
 import { storageKeys } from '../../lib/storageKeys'
@@ -683,4 +683,133 @@ describe('TodosPage delete undo', () => {
     expect(screen.getByText('삭제하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
     expect(screen.getByText('할 일 A')).toBeInTheDocument()
   })
+})
+
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="location">{location.pathname + location.search}</output>
+}
+
+describe('TodosPage ordering, editing and date flow', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    todoIdSequence = 0
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
+    setGuestAuth()
+    useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    render(<Toaster />)
+  })
+
+  afterEach(() => {
+    resetPendingDeletes()
+    act(() => {
+      toast.remove()
+    })
+    vi.useRealTimers()
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
+    useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    vi.restoreAllMocks()
+  })
+
+  async function wait(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms)
+    })
+  }
+
+  async function renderPage({
+    route = `/todos?date=${selectedDateKey}`,
+    items = [],
+    now = new Date(2026, 0, 9, 2, 0, 0),
+  }: {
+    route?: string
+    items?: Array<Record<string, unknown>>
+    now?: Date
+  } = {}) {
+    vi.setSystemTime(now)
+    seedTodos(items)
+    const result = renderApp(
+      <Routes>
+        <Route
+          path="/todos"
+          element={
+            <>
+              <TodosPage />
+              <LocationProbe />
+            </>
+          }
+        />
+      </Routes>,
+      { route },
+    )
+    await wait(700)
+    return result
+  }
+
+  function visibleTodoTitles() {
+    return screen
+      .getAllByRole('button', { name: / 완료( 취소)?$/ })
+      .map((button) => (button.getAttribute('aria-label') ?? '').replace(/ 완료( 취소)?$/, ''))
+  }
+
+  function openUncategorizedInput() {
+    fireEvent.click(screen.getByLabelText('미분류 할 일 추가'))
+    return screen.getByPlaceholderText('할 일을 입력하세요') as HTMLTextAreaElement
+  }
+
+  it('adds a new todo at the end even when server dayOrders are sparse', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '할 일 A', dayOrder: 5 }),
+        buildTodo({ title: '할 일 B', dayOrder: 7 }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '새 할 일' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await wait(700)
+
+    expect(visibleTodoTitles()).toEqual(['할 일 A', '할 일 B', '새 할 일'])
+  })
+
+  it('moves an uncompleted todo to the end of the active list', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '할 일 A', dayOrder: 5 }),
+        buildTodo({ title: '할 일 B', dayOrder: 7 }),
+        buildTodo({ title: '끝낸 일', dayOrder: 0, isDone: true }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    fireEvent.click(screen.getByRole('button', { name: '끝낸 일 완료 취소' }))
+    await wait(700)
+
+    expect(visibleTodoTitles()).toEqual(['할 일 A', '할 일 B', '끝낸 일'])
+  })
+
+  it('puts a todo back where it was when completing is undone', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '할 일 A', dayOrder: 0 }),
+        buildTodo({ title: '할 일 B', dayOrder: 1 }),
+        buildTodo({ title: '할 일 C', dayOrder: 2 }),
+        buildTodo({ title: '끝낸 일', dayOrder: 3, isDone: true }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    fireEvent.click(screen.getByRole('button', { name: '할 일 A 완료' }))
+    await wait(700)
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }))
+    await wait(700)
+
+    expect(visibleTodoTitles()).toEqual(['할 일 A', '할 일 B', '할 일 C', '끝낸 일'])
+  })
+
 })

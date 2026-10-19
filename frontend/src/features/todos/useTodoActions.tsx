@@ -44,7 +44,12 @@ export function useTodoActions(selectedDateKey: string) {
     })
   }
 
-  const handleToggleDone = async (id: string, next: boolean, nextOrder?: number) => {
+  const handleToggleDone = async (
+    id: string,
+    next: boolean,
+    nextOrder?: number,
+    previousOrder?: number,
+  ) => {
     if (next) {
       const timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
@@ -102,7 +107,16 @@ export function useTodoActions(selectedDateKey: string) {
         <UndoToast
           t={t}
           message={next ? '완료!' : '완료 취소'}
-          onUndo={() => updateTodo.mutate({ id, patch: { isDone: !next } })}
+          onUndo={() =>
+            updateTodo.mutate({
+              id,
+              // 토글 전 순서도 되돌려야 원래 자리로 돌아간다.
+              patch: {
+                isDone: !next,
+                ...(previousOrder === undefined ? {} : { dayOrder: previousOrder }),
+              },
+            })
+          }
         />
       ),
       { id: `toggle-${id}`, duration: 3000 },

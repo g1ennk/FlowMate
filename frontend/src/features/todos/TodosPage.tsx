@@ -241,6 +241,7 @@ function TodosPage() {
             todo.id,
             !todo.isDone,
             !todo.isDone ? nextDoneOrder : nextActiveOrder,
+            todo.dayOrder,
           )
         }
         onEdit={() => actions.handleEdit(todo.id, todo.title)}
