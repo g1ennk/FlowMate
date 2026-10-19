@@ -1,12 +1,66 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { delay, http, HttpResponse } from 'msw'
+import { toast } from 'react-hot-toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AutomationSettings, PomodoroSessionSettings, Settings } from '../../api/types'
+import { defaultMiniDaysSettings } from '../../lib/miniDays'
 import { storageKeys } from '../../lib/storageKeys'
+import { server } from '../../mocks/server'
 import { useAuthStore } from '../../store/authStore'
 import { renderApp } from '../../test/renderApp'
 import PomodoroSettingsPage from './PomodoroSettingsPage'
 
 const initialAuthStore = useAuthStore.getState()
+
+function signInAsMember() {
+  useAuthStore.setState({
+    initialized: true,
+    state: {
+      type: 'member',
+      accessToken: 'member-token',
+      user: {
+        id: 'user-1',
+        email: null,
+        nickname: 'Glenn',
+      },
+    },
+  })
+}
+
+// 저장 요청이 느린 서버. 요청이 도착한 순서대로 서버 값을 통째로 덮어쓴다(전체 덮어쓰기 PUT).
+function useSlowSettingsServer() {
+  const serverState: Settings = {
+    pomodoroSession: { flowMin: 25, breakMin: 5, longBreakMin: 15, cycleEvery: 4 },
+    automation: { autoStartBreak: false, autoStartSession: false },
+    miniDays: defaultMiniDaysSettings,
+  }
+  const putCount = { value: 0 }
+
+  server.use(
+    http.get('/api/settings', () => HttpResponse.json(serverState)),
+    http.put('/api/settings/automation', async ({ request }) => {
+      putCount.value += 1
+      const body = (await request.json()) as AutomationSettings
+      serverState.automation = body
+      await delay(150)
+      return HttpResponse.json(body)
+    }),
+    http.put('/api/settings/pomodoro-session', async ({ request }) => {
+      putCount.value += 1
+      const body = (await request.json()) as PomodoroSessionSettings
+      serverState.pomodoroSession = body
+      await delay(150)
+      return HttpResponse.json(body)
+    }),
+  )
+
+  return { serverState, putCount }
+}
+
+function isSwitchOn(name: RegExp) {
+  return screen.getByRole('switch', { name }).getAttribute('aria-checked') === 'true'
+}
 
 function readStoredSettings() {
   const raw = window.localStorage.getItem(storageKeys.settings('local'))
@@ -101,7 +155,10 @@ describe('PomodoroSettingsPage', () => {
 
     expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Flow 시간.*25분/ }))
+    const flowRow = screen.getByRole('button', { name: /Flow 시간.*25분/ })
+    await waitFor(() => expect(flowRow).not.toBeDisabled())
+
+    await user.click(flowRow)
     await user.click(await screen.findByRole('button', { name: '120분' }))
 
     await waitFor(() => {
@@ -131,7 +188,10 @@ describe('PomodoroSettingsPage', () => {
 
     expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /휴식 시간.*5, 15분/ }))
+    const breakRow = screen.getByRole('button', { name: /휴식 시간.*5, 15분/ })
+    await waitFor(() => expect(breakRow).not.toBeDisabled())
+
+    await user.click(breakRow)
     await user.click(await screen.findByRole('button', { name: '60분' }))
 
     await waitFor(() => {
@@ -139,5 +199,281 @@ describe('PomodoroSettingsPage', () => {
     })
 
     expect(screen.getByRole('button', { name: /휴식 시간.*5, 60분/ })).toBeInTheDocument()
+  })
+
+  it('keeps the screen and the server equal when the same switch is tapped twice quickly', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+    await user.click(breakSwitch)
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(false)
+    expect(serverState.automation.autoStartBreak).toBe(false)
+  })
+
+  it('does not undo the first switch when a second switch is tapped quickly', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/세션 자동 시작/)).toBe(true)
+    expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
+  })
+
+  it('sends saves one at a time so a slower earlier save cannot land last', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    let requestCount = 0
+    server.use(
+      // 첫 요청만 느리고, 서버는 요청 처리가 끝날 때 값을 쓴다.
+      http.put('/api/settings/automation', async ({ request }) => {
+        requestCount += 1
+        const body = (await request.json()) as AutomationSettings
+        await delay(requestCount === 1 ? 300 : 30)
+        serverState.automation = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/세션 자동 시작/)).toBe(true)
+    expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
+  })
+
+  it('keeps both switch changes when a refetch lands while saves are queued', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    server.use(
+      // 서버는 요청 처리가 끝날 때 값을 쓴다. 그 전에 온 GET은 이전 값을 돌려준다.
+      http.put('/api/settings/automation', async ({ request }) => {
+        const body = (await request.json()) as AutomationSettings
+        await delay(200)
+        serverState.automation = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+    // 당겨서 새로고침이나 포커스 refetch가 첫 저장이 끝나기 전에 끼어든다.
+    await queryClient.invalidateQueries()
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/세션 자동 시작/)).toBe(true)
+  })
+
+  it('shows the last saved values when every queued save and the refetch fail', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    useSlowSettingsServer()
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    server.use(
+      http.put('/api/settings/automation', async () => {
+        await delay(50)
+        return HttpResponse.json({ message: 'boom' }, { status: 500 })
+      }),
+      http.get('/api/settings', () => HttpResponse.json({ message: 'boom' }, { status: 500 })),
+    )
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(false)
+    expect(isSwitchOn(/세션 자동 시작/)).toBe(false)
+  })
+
+  it('notifies once by the final result when an earlier save fails and a later one succeeds', async () => {
+    const user = userEvent.setup()
+    const toastError = vi.spyOn(toast, 'error')
+    const toastSuccess = vi.spyOn(toast, 'success')
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    let requestCount = 0
+    server.use(
+      http.put('/api/settings/automation', async ({ request }) => {
+        requestCount += 1
+        const body = (await request.json()) as AutomationSettings
+        await delay(50)
+        if (requestCount === 1) return HttpResponse.json({ message: 'boom' }, { status: 500 })
+        serverState.automation = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    // 뒤 저장이 같은 묶음(자동화)의 전체 값을 보내므로 앞 변경도 함께 저장된다.
+    expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
+    expect(toastError).not.toHaveBeenCalled()
+    expect(toastSuccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not undo the first sheet choice when a second sheet choice follows quickly', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const flowRow = await screen.findByRole('button', { name: /Flow 시간.*25분/ })
+    await waitFor(() => expect(flowRow).not.toBeDisabled())
+
+    await user.click(flowRow)
+    await user.click(await screen.findByRole('button', { name: '30분' }))
+    await user.click(screen.getByRole('button', { name: /주기/ }))
+    await user.click(await screen.findByRole('button', { name: '6 세션' }))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(screen.getByRole('button', { name: /Flow 시간.*30분/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /주기.*6 세션/ })).toBeInTheDocument()
+    expect(serverState.pomodoroSession).toMatchObject({ flowMin: 30, cycleEvery: 6 })
+  })
+
+  it('shows a load error with a retry button and blocks editing when settings fail to load', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { putCount } = useSlowSettingsServer()
+    server.use(
+      http.get('/api/settings', () => HttpResponse.json({ message: 'boom' }, { status: 500 }), { once: true }),
+    )
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    expect(await screen.findByText('설정을 불러오지 못했어요')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Flow 시간/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /휴식 시간/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /주기/ })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: /휴식 시간 자동 시작/ })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: /세션 자동 시작/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /오전/ })).toBeDisabled()
+
+    await user.click(screen.getByRole('switch', { name: /휴식 시간 자동 시작/ }))
+    expect(putCount.value).toBe(0)
+
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Flow 시간/ })).not.toBeDisabled()
+    })
+    expect(screen.queryByText('설정을 불러오지 못했어요')).not.toBeInTheDocument()
+  })
+
+  it('blocks editing while settings are still loading', async () => {
+    signInAsMember()
+    server.use(
+      http.get('/api/settings', async () => {
+        await delay('infinite')
+        return HttpResponse.json({})
+      }),
+    )
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    expect(await screen.findByText('설정')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Flow 시간/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /휴식 시간/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /주기/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /오전/ })).toBeDisabled()
+  })
+
+  it('rolls back the switch and shows an error toast when saving fails', async () => {
+    const user = userEvent.setup()
+    const toastError = vi.spyOn(toast, 'error')
+    signInAsMember()
+    useSlowSettingsServer()
+    server.use(
+      http.put('/api/settings/automation', async () => {
+        await delay(50)
+        return HttpResponse.json({ message: 'boom' }, { status: 500 })
+      }),
+    )
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('설정을 저장하지 못했어요'))
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(false)
+  })
+
+  it('shows an error toast when saving a mini day fails', async () => {
+    const user = userEvent.setup()
+    const toastError = vi.spyOn(toast, 'error')
+    signInAsMember()
+    useSlowSettingsServer()
+    server.use(
+      http.put('/api/settings/mini-days', () => HttpResponse.json({ message: 'boom' }, { status: 500 })),
+    )
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const morningRow = await screen.findByRole('button', { name: /오전/ })
+    await waitFor(() => expect(morningRow).not.toBeDisabled())
+
+    await user.click(morningRow)
+    const labelInput = await screen.findByPlaceholderText('미니 데이 1')
+    await user.clear(labelInput)
+    await user.type(labelInput, '아침')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('미니 데이를 저장하지 못했어요'))
   })
 })
