@@ -250,7 +250,7 @@ export function TodoItem({
           {shouldShowTimerButton && (
             <button
               onClick={onOpenTimer}
-              aria-label={`${title} 타이머 열기`}
+              aria-label={shouldShowTimerTime ? `${title} 타이머 열기, ${focusTimeDisplay}` : `${title} 타이머 열기`}
               className={`mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors ${
                 isDone ? 'cursor-default' : 'hover:bg-hover cursor-pointer'
               }`}

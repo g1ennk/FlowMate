@@ -135,10 +135,16 @@ describe('TodoItem 접근성과 표시', () => {
     renderTodoItem({ sessionCount: 1, sessionFocusSeconds: 600, onOpenMenu, onOpenTimer })
 
     fireEvent.click(screen.getByRole('button', { name: 'ps: 1, 2번 유형 더보기' }))
-    fireEvent.click(screen.getByRole('button', { name: 'ps: 1, 2번 유형 타이머 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ps: 1, 2번 유형 타이머 열기, 10:00' }))
 
     expect(onOpenMenu).toHaveBeenCalledTimes(1)
     expect(onOpenTimer).toHaveBeenCalledTimes(1)
+  })
+
+  it('누적 시간이 없으면 타이머 버튼 이름에 시간을 붙이지 않는다', () => {
+    renderTodoItem({ sessionCount: 1, sessionFocusSeconds: 0 })
+
+    expect(screen.getByRole('button', { name: 'ps: 1, 2번 유형 타이머 열기' })).toBeInTheDocument()
   })
 
   it('긴 영어 단어를 글자 중간에서 끊지 않는다', () => {
