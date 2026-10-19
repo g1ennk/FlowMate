@@ -78,8 +78,8 @@ export function ReviewPage() {
 
   const todos = data?.items
   const stats = useMemo(
-    () => buildPeriodStats(todos ?? [], runningIds, period, baseDate, miniDaysSettings),
-    [todos, runningIds, period, baseDate, miniDaysSettings],
+    () => buildPeriodStats(todos ?? [], runningIds, period, baseDate),
+    [todos, runningIds, period, baseDate],
   )
 
   const reviewRange = getPeriodRange(period, baseDate)

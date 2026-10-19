@@ -1,14 +1,5 @@
 export type PeriodType = 'daily' | 'weekly' | 'monthly'
 
-export type DistributionBucket = {
-  label: string
-  seconds: number
-  isPeak?: boolean
-  bucketId?: number
-  startKey?: string
-  endKey?: string
-}
-
 export type TaskItem = {
   id: string
   title: string
@@ -19,15 +10,6 @@ export type TaskItem = {
   flowCount: number
   miniDay?: number
 }
-
-export type MiniDayGroup = {
-  id: number
-  label: string
-  completed: TaskItem[]
-  incomplete: TaskItem[]
-}
-
-export type HighlightTask = TaskItem
 
 export type PeriodComparison = {
   focusDelta: number
@@ -51,13 +33,8 @@ export type PeriodRange = {
 }
 
 export type PeriodStats = {
-  range: PeriodRange
   totalFocusSeconds: number
   totalFlows: number
   completedCount: number
-  highlight: HighlightTask | null
-  completedTodos: TaskItem[]
-  incompleteTodos: TaskItem[]
-  distribution: DistributionBucket[]
-  comparison?: PeriodComparison
+  comparison: PeriodComparison
 }
