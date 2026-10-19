@@ -71,7 +71,7 @@ export function ReviewTextarea({
   const canEnterEdit = !isEditing && (review.isSuccess || review.isRefetchError)
 
   const {
-    aiReport, isAiLoading, canRegenerate, aiError,
+    aiReport, isAiLoading, isWaitingOther, canRegenerate, aiError,
     isSheetOpen, isPreview, isThinData, isMember,
     isSheetOpenRef, sheetClosedAtRef,
     closeSheet, requestAiReport, retryAiReport, handleRegenerate,
@@ -464,6 +464,7 @@ export function ReviewTextarea({
             report={aiReport}
             isCached={canRegenerate}
             isRegenerating={isAiLoading}
+            isWaitingOther={isWaitingOther}
             hasExistingContent={
               !!review.data?.id
               || (isEditing

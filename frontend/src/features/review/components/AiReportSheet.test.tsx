@@ -56,6 +56,25 @@ describe('AiReportSheet', () => {
     expect(screen.queryByRole('button', { name: '참고해서 쓰기' })).not.toBeInTheDocument()
   })
 
+  it('다른 곳에서 만드는 레포트를 기다리는 동안 생성 중 안내를 보여 준다', () => {
+    render(
+      <AiReportSheet
+        isOpen
+        onClose={vi.fn()}
+        report={null}
+        isCached={false}
+        isRegenerating
+        isWaitingOther
+        hasExistingContent={false}
+        onStartWithAi={vi.fn()}
+        onSaveAsIs={vi.fn()}
+        onRegenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('이미 만드는 중이에요. 끝나면 바로 보여 드릴게요')).toBeInTheDocument()
+  })
+
   it('처음 생성에 실패하면 시트 안에 오류와 다시 시도를 보여 준다', async () => {
     const onRetry = vi.fn()
     render(

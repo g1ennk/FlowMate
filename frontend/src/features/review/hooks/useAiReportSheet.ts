@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import type { ApiError } from '../../../api/http'
 import { useAuthStore } from '../../../store/authStore'
 import { useAiReportFlow } from './useAiReport'
 import type { PeriodType } from '../reviewTypes'
@@ -7,9 +8,21 @@ import type { PeriodType } from '../reviewTypes'
 type AiError = { message: string; retryable: boolean }
 
 function toAiError(err: unknown): AiError {
-  const status = typeof err === 'object' && err !== null && 'status' in err
-    ? (err as { status: number }).status : undefined
-  if (status === 429 || status === 503 || status === 504) {
+  const { status, code, message } = typeof err === 'object' && err !== null
+    ? err as Partial<ApiError> : {}
+  // 다른 곳에서 만들던 레포트를 기다리다 시간이 다 된 경우
+  if (status === 409 && code === 'REPORT_GENERATION_IN_PROGRESS') {
+    return { message: '아직 만드는 중이에요. 잠시 후 다시 확인해 주세요', retryable: true }
+  }
+  // FlowMate 자체 제한. 서버가 남은 시간을 문구에 담아 준다. 바로 다시 눌러도 같으므로 다시 시도를 내주지 않는다.
+  if (status === 429 && code === 'REPORT_RATE_LIMITED') {
+    return { message: message || '요청이 많아요. 잠시 후 다시 시도해 주세요', retryable: false }
+  }
+  // Gemini 쪽 사용량 초과
+  if (status === 429) {
+    return { message: 'AI 사용량이 많아요. 잠시 후 다시 시도해 주세요', retryable: true }
+  }
+  if (status === 503 || status === 504) {
     return { message: '잠시 후 다시 시도해 주세요', retryable: true }
   }
   // 할 일이 없어서 실패한 것은 다시 시도해도 같으므로 다시 시도를 내주지 않는다.
@@ -35,6 +48,7 @@ export function useAiReportSheet(
   const {
     report: aiReport,
     isLoading: isAiLoading,
+    isWaitingOther,
     fetchOrGenerate,
     regenerate,
     canRegenerate,
@@ -97,6 +111,7 @@ export function useAiReportSheet(
   return {
     aiReport,
     isAiLoading,
+    isWaitingOther,
     canRegenerate,
     aiError: aiError?.message ?? null,
     isSheetOpen,
