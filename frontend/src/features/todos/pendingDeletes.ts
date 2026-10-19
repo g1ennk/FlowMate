@@ -19,17 +19,19 @@ function setHidden(ids: string[], hidden: boolean) {
   })
 }
 
+type Commit = (ids: string[], keepalive: boolean) => void
+
 type PendingGroup = {
   ids: string[]
   timer: ReturnType<typeof setTimeout>
-  commit: (ids: string[]) => void
+  commit: Commit
 }
 
 // 아직 DELETE 를 보내지 않은 삭제 묶음. key 는 되돌리기 토스트 id 로도 쓴다.
 const groups = new Map<string, PendingGroup>()
 let groupSeq = 0
 
-export function scheduleDelete(ids: string[], commit: (ids: string[]) => void, delayMs: number) {
+export function scheduleDelete(ids: string[], commit: Commit, delayMs: number) {
   groupSeq += 1
   const key = `delete-${groupSeq}`
   setHidden(ids, true)
@@ -37,12 +39,12 @@ export function scheduleDelete(ids: string[], commit: (ids: string[]) => void, d
   return key
 }
 
-function commitGroup(key: string) {
+function commitGroup(key: string, keepalive = false) {
   const group = groups.get(key)
   if (!group) return
   clearTimeout(group.timer)
   groups.delete(key)
-  group.commit(group.ids)
+  group.commit(group.ids, keepalive)
 }
 
 // 유예 중이면 삭제를 취소하고 true. 이미 DELETE 를 보냈으면 false.
@@ -56,9 +58,10 @@ export function cancelDelete(key: string) {
 }
 
 // 유예 중인 삭제를 모두 바로 확정하고, 확정한 묶음의 key 를 돌려준다.
-export function flushDeletes() {
+// keepalive 는 페이지가 내려가도 DELETE 가 끝까지 전송되게 할 때(백그라운드 전환)만 켠다.
+export function flushDeletes(keepalive = false) {
   const keys = Array.from(groups.keys())
-  keys.forEach(commitGroup)
+  for (const key of keys) commitGroup(key, keepalive)
   return keys
 }
 

@@ -8,8 +8,8 @@ import { cancelDelete, flushDeletes, scheduleDelete } from './pendingDeletes'
 const UNDO_MS = 5000
 
 // 대기 중인 삭제를 바로 확정한다. 더는 되돌릴 수 없으니 토스트도 닫는다.
-function flushAndDismiss() {
-  for (const key of flushDeletes()) toast.dismiss(key)
+function flushAndDismiss(keepalive = false) {
+  for (const key of flushDeletes(keepalive)) toast.dismiss(key)
 }
 
 // 할 일을 화면에서 바로 숨기고, 5초 안에 되돌리지 않으면 서버에서 삭제한다.
@@ -27,7 +27,7 @@ export function useDeleteWithUndo() {
   // 페이지를 떠나거나 앱이 백그라운드로 가면(업데이트 reload, 앱 전환, 종료) 바로 확정한다.
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') flushAndDismiss()
+      if (document.visibilityState === 'hidden') flushAndDismiss(true)
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
@@ -43,9 +43,9 @@ export function useDeleteWithUndo() {
     const pausedIds = ids.filter((id) => getTimer(id)?.status === 'running')
     pausedIds.forEach(pause)
 
-    const key = scheduleDelete(ids, (commitIds) => {
+    const key = scheduleDelete(ids, (commitIds, keepalive) => {
       for (const id of commitIds) {
-        deleteTodoRef.current(id)
+        deleteTodoRef.current({ id, keepalive })
           .then(() => {
             reset(id)
             // 삭제된 todo 의 미동기화 큐는 비운다 (POST /sessions 가 404 만 일으키므로).

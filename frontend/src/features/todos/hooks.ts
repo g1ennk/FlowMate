@@ -119,9 +119,11 @@ export function useUpdateTodo() {
 export function useDeleteTodo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => todoApi.remove(id),
+    // keepalive 는 앱이 백그라운드로 가며 확정하는 삭제에만 켠다.
+    mutationFn: ({ id, keepalive }: { id: string; keepalive?: boolean }) =>
+      todoApi.remove(id, keepalive ? { keepalive: true } : undefined),
     // 숨김을 풀기 전에 캐시에서 빼 두어야 refetch 전까지 다시 보이지 않는다.
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, { id }) => {
       qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
         if (!old) return old
         return { items: old.items.filter((t) => t.id !== id) }
@@ -130,7 +132,7 @@ export function useDeleteTodo() {
     onError: () => {
       toast.error('삭제하지 못했어요. 다시 시도해 주세요', { id: 'todo-delete-failed' })
     },
-    onSettled: (_data, _error, id) => {
+    onSettled: (_data, _error, { id }) => {
       // 응답을 받았으니 숨김을 풀고 서버값으로 맞춘다. 실패했다면 목록에 다시 보인다.
       finishDelete(id)
       return qc.invalidateQueries({ queryKey: queryKeys.todos() })

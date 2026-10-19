@@ -474,6 +474,7 @@ describe('TodosPage delete undo', () => {
     window.localStorage.clear()
     useAuthStore.setState(initialAuthStore, true)
     useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    vi.restoreAllMocks()
   })
 
   async function renderWithTodos(titles: string[]) {
@@ -511,6 +512,7 @@ describe('TodosPage delete undo', () => {
 
   it('deletes every batch on the server when two batches are deleted within 5 seconds', async () => {
     await renderWithTodos(['할 일 A', '할 일 B', '할 일 C'])
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
     batchDelete(['할 일 A', '할 일 B'])
     await wait(2000)
@@ -518,6 +520,10 @@ describe('TodosPage delete undo', () => {
     await wait(6000)
 
     expect(storedTitles()).toEqual([])
+    // keepalive 는 백그라운드 확정에만 쓴다 (교차 출처 preflight 와 겹치면 거부하는 브라우저가 있다).
+    const deleteCalls = fetchSpy.mock.calls.filter(([, init]) => init?.method === 'DELETE')
+    expect(deleteCalls).toHaveLength(3)
+    expect(deleteCalls.every(([, init]) => !init?.keepalive)).toBe(true)
   })
 
   it('undoes only the latest batch while the earlier batch is still deleted', async () => {
