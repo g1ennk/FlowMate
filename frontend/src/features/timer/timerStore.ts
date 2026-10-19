@@ -1085,17 +1085,15 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         })
       }
       
-      // 자동화 설정 확인
-      const autoStartSession = timer.settingsSnapshot?.autoStartSession ?? false
-      
-      // 집중 재개 (새 세션 시작 = 0부터 카운트업)
+      // 사용자가 직접 휴식을 끝낸 것이므로 autoStartSession과 무관하게 바로 Flow를 시작한다
+      // (뽀모도로의 수동 휴식 건너뛰기가 항상 바로 시작하는 것과 같다)
       const now = Date.now()
-      const focusStartedAt = autoStartSession ? now : null
-      
-      // autoStartSession이 true이고 running 상태면, 즉시 focusElapsedMs를 약간 증가시켜서
+      const focusStartedAt = now
+
+      // running 상태면 즉시 focusElapsedMs를 약간 증가시켜서
       // 프로그레스바가 바로 표시되도록 함 (tick 함수가 실행되기 전까지의 딜레이 방지)
       // MIN_FLOW_MS가 1분(60000ms)이므로, 프로그레스바가 보이도록 최소 100ms 정도는 설정
-      const initialFocusElapsed = autoStartSession && timer.status === 'running' ? 100 : 0
+      const initialFocusElapsed = timer.status === 'running' ? 100 : 0
       
       // 새 세션 시작
       // startBreak에서 이미 initialFocusMs를 newFocusElapsed로 설정했으므로,
@@ -1110,11 +1108,11 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         breakStartedAt: null,
         focusElapsedMs: newInitialFocusMs,  // 새 세션 시작 (누적값 기준으로 시작점 설정)
         initialFocusMs: newInitialFocusMs,  // 새 세션의 시작점
-        focusStartedAt,  // autoStartSession이 true면 즉시 시작, false면 대기
+        focusStartedAt,
         breakTargetMs: null,
         breakCompleted: false,
         breakSessionPendingUpdate: false,
-        status: autoStartSession ? 'running' : 'waiting',  // autoStartSession에 따라 상태 결정
+        status: 'running',
         sessions: newSessions,
       })
     },

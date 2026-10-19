@@ -63,6 +63,34 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/auth/guest/renew: 기존 게스트 토큰을 받아 200 + 재발급 guestToken JSON")
+    void guestRenew_returns200() throws Exception {
+        when(authService.renewGuestToken("old-guest-token")).thenReturn(new GuestTokenResponse(GUEST_TOKEN));
+
+        mockMvc.perform(post("/api/auth/guest/renew")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"guestToken": "old-guest-token"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.guestToken").value(GUEST_TOKEN));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/guest/renew: guestToken 누락 시 400 VALIDATION_ERROR")
+    void guestRenew_returns400_whenTokenBlank() throws Exception {
+        mockMvc.perform(post("/api/auth/guest/renew")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"guestToken": ""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
     @DisplayName("GET /api/auth/{provider}/authorize-url: 200 + authorizeUrl + state JSON")
     void authorizeUrl_returns200() throws Exception {
         when(authService.getAuthorizeUrl(eq(PROVIDER)))

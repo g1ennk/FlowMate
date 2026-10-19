@@ -1,9 +1,6 @@
-import type { MiniDaysSettings, Todo } from '../../api/types'
-import type { SingleTimerState } from '../timer/timerTypes'
+import type { Todo } from '../../api/types'
 import { formatDateKey } from '../../lib/time'
 import type {
-  DistributionBucket,
-  PeriodComparison,
   PeriodRange,
   PeriodStats,
   PeriodType,
@@ -11,7 +8,6 @@ import type {
   TimelineGroupData,
 } from './reviewTypes'
 
-const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
 const WEEKDAY_SHORT_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 
 const toStartOfDay = (date: Date) =>
@@ -125,22 +121,6 @@ export function formatPeriodLabel(type: PeriodType, baseDate: Date): string {
   })
 }
 
-function getEffectiveFocusSeconds(
-  todo: Todo,
-  _timers: Record<string, SingleTimerState>,
-): number {
-  void _timers
-  return todo.sessionFocusSeconds
-}
-
-function getEffectiveFlowCount(
-  todo: Todo,
-  _timers: Record<string, SingleTimerState>,
-): number {
-  void _timers
-  return todo.sessionCount
-}
-
 function getTodoMiniDay(todo: Todo): number {
   return typeof todo.miniDay === 'number' ? todo.miniDay : 0
 }
@@ -165,12 +145,9 @@ function isDateKeyInRange(value: string, startKey: string, endKey: string): bool
   return value >= startKey && value <= endKey
 }
 
-function getEffectiveIsDone(
-  todo: Todo,
-  timers: Record<string, SingleTimerState>,
-): boolean {
-  const timer = timers[todo.id]
-  if (timer?.status === 'running') return false
+// 타이머가 돌고 있는 할 일은 아직 끝나지 않은 것으로 본다.
+function getEffectiveIsDone(todo: Todo, runningIds: ReadonlySet<string>): boolean {
+  if (runningIds.has(todo.id)) return false
   return todo.isDone
 }
 
@@ -192,86 +169,9 @@ function buildTaskItem(
   }
 }
 
-function buildDistribution(
-  type: PeriodType,
-  todos: Todo[],
-  range: PeriodRange,
-  miniDaysSettings: MiniDaysSettings,
-  focusById: Map<string, number>,
-): DistributionBucket[] {
-  if (type === 'daily') {
-    const buckets = [
-      { id: 0, label: '미분류' },
-      { id: 1, label: miniDaysSettings.day1.label },
-      { id: 2, label: miniDaysSettings.day2.label },
-      { id: 3, label: miniDaysSettings.day3.label },
-    ]
-
-    return buckets.map((bucket) => {
-      const seconds = todos.reduce((sum, todo) => {
-        if (getTodoMiniDay(todo) !== bucket.id) return sum
-        return sum + (focusById.get(todo.id) ?? 0)
-      }, 0)
-
-      return { label: bucket.label, seconds, bucketId: bucket.id }
-    })
-  }
-
-  if (type === 'weekly') {
-    const start = range.start
-    return WEEKDAY_LABELS.map((label, index) => {
-      const day = addDays(start, index)
-      const dayKey = formatDateKey(day)
-      const seconds = todos.reduce((sum, todo) => {
-        if (todo.date !== dayKey) return sum
-        return sum + (focusById.get(todo.id) ?? 0)
-      }, 0)
-      return { label, seconds, startKey: dayKey, endKey: dayKey }
-    })
-  }
-
-  if (type === 'monthly') {
-    const monthStart = range.start
-    const monthEnd = range.end
-    const weekBuckets: Array<{ label: string; startKey: string; endKey: string }> = []
-    let cursor = startOfWeek(monthStart)
-    let index = 1
-
-    while (cursor <= monthEnd) {
-      const weekStart = cursor
-      const weekEnd = addDays(cursor, 6)
-      weekBuckets.push({
-        label: `${index}주`,
-        startKey: formatDateKey(weekStart),
-        endKey: formatDateKey(weekEnd),
-      })
-      cursor = addDays(cursor, 7)
-      index += 1
-    }
-
-    return weekBuckets.map((bucket) => {
-      const seconds = todos.reduce((sum, todo) => {
-        if (!isDateKeyInRange(todo.date, bucket.startKey, bucket.endKey)) return sum
-        return sum + (focusById.get(todo.id) ?? 0)
-      }, 0)
-      return { label: bucket.label, seconds, startKey: bucket.startKey, endKey: bucket.endKey }
-    })
-  }
-
-  return []
-}
-
-function withPeak(items: DistributionBucket[]) {
-  const max = Math.max(0, ...items.map((item) => item.seconds))
-  return items.map((item) => ({
-    ...item,
-    isPeak: max > 0 && item.seconds === max,
-  }))
-}
-
 function buildTotals(
   todos: Todo[],
-  timers: Record<string, SingleTimerState>,
+  runningIds: ReadonlySet<string>,
   range: PeriodRange,
 ) {
   const periodTodos = todos.filter((todo) =>
@@ -280,125 +180,42 @@ function buildTotals(
 
   return periodTodos.reduce(
     (acc, todo) => {
-      acc.totalFocusSeconds += getEffectiveFocusSeconds(todo, timers)
-      acc.totalFlows += getEffectiveFlowCount(todo, timers)
-      if (getEffectiveIsDone(todo, timers)) acc.completedCount += 1
+      acc.totalFocusSeconds += todo.sessionFocusSeconds
+      acc.totalFlows += todo.sessionCount
+      if (getEffectiveIsDone(todo, runningIds)) acc.completedCount += 1
       return acc
     },
     { totalFocusSeconds: 0, totalFlows: 0, completedCount: 0 },
   )
 }
 
-function buildComparison(
-  todos: Todo[],
-  timers: Record<string, SingleTimerState>,
-  type: PeriodType,
-  baseDate: Date,
-): PeriodComparison {
-  const previousDate = shiftBaseDate(type, baseDate, -1)
-  const previousRange = getPeriodRange(type, previousDate)
-  const previousTotals = buildTotals(todos, timers, previousRange)
-  const currentRange = getPeriodRange(type, baseDate)
-  const currentTotals = buildTotals(todos, timers, currentRange)
-
-  return {
-    focusDelta: currentTotals.totalFocusSeconds - previousTotals.totalFocusSeconds,
-    flowDelta: currentTotals.totalFlows - previousTotals.totalFlows,
-    completedDelta: currentTotals.completedCount - previousTotals.completedCount,
-  }
-}
-
+// 기간 합계와 직전 기간 대비 증감. 통계는 todo.date 기준으로 묶는다.
 export function buildPeriodStats(
   todos: Todo[],
-  timers: Record<string, SingleTimerState>,
+  runningIds: ReadonlySet<string>,
   type: PeriodType,
   baseDate: Date,
-  miniDaysSettings: MiniDaysSettings,
 ): PeriodStats {
-  const range = getPeriodRange(type, baseDate)
-  const periodTodos = todos.filter((todo) =>
-    isDateKeyInRange(todo.date, range.startKey, range.endKey),
+  const current = buildTotals(todos, runningIds, getPeriodRange(type, baseDate))
+  const previous = buildTotals(
+    todos,
+    runningIds,
+    getPeriodRange(type, shiftBaseDate(type, baseDate, -1)),
   )
-
-  const focusById = new Map<string, number>()
-  const flowById = new Map<string, number>()
-
-  periodTodos.forEach((todo) => {
-    const focusSeconds = getEffectiveFocusSeconds(todo, timers)
-    const flowCount = getEffectiveFlowCount(todo, timers)
-    focusById.set(todo.id, focusSeconds)
-    flowById.set(todo.id, flowCount)
-  })
-
-  const orderedTodos = sortTodosByOrder(periodTodos)
-  const taskItems = orderedTodos.map((todo) =>
-    buildTaskItem(
-      todo,
-      focusById.get(todo.id) ?? 0,
-      flowById.get(todo.id) ?? 0,
-      getEffectiveIsDone(todo, timers),
-    ),
-  )
-
-  const totalFocusSeconds = taskItems.reduce(
-    (sum, item) => sum + item.focusSeconds,
-    0,
-  )
-  const totalFlows = taskItems.reduce((sum, item) => sum + item.flowCount, 0)
-  const completedCount = periodTodos.filter((todo) => getEffectiveIsDone(todo, timers)).length
-
-  const highlight = taskItems.reduce<TaskItem | null>((best, item) => {
-    if (!best || item.focusSeconds > best.focusSeconds) return item
-    return best
-  }, null)
-
-  const highlightTask =
-    highlight && highlight.focusSeconds >= 60 ? highlight : null
-
-  const completedTodos = orderedTodos
-    .filter((todo) => getEffectiveIsDone(todo, timers))
-    .map((todo) =>
-      buildTaskItem(
-        todo,
-        focusById.get(todo.id) ?? 0,
-        flowById.get(todo.id) ?? 0,
-        true,
-      ),
-    )
-
-  const incompleteTodos = orderedTodos
-    .filter((todo) => !getEffectiveIsDone(todo, timers))
-    .map((todo) =>
-      buildTaskItem(
-        todo,
-        focusById.get(todo.id) ?? 0,
-        flowById.get(todo.id) ?? 0,
-        false,
-      ),
-    )
-
-  const distribution = withPeak(
-    buildDistribution(type, periodTodos, range, miniDaysSettings, focusById),
-  )
-
-  const comparison = buildComparison(todos, timers, type, baseDate)
 
   return {
-    range,
-    totalFocusSeconds,
-    totalFlows,
-    completedCount,
-    highlight: highlightTask,
-    completedTodos,
-    incompleteTodos,
-    distribution,
-    comparison,
+    ...current,
+    comparison: {
+      focusDelta: current.totalFocusSeconds - previous.totalFocusSeconds,
+      flowDelta: current.totalFlows - previous.totalFlows,
+      completedDelta: current.completedCount - previous.completedCount,
+    },
   }
 }
 
 export function buildTasksByDate(
   todos: Todo[],
-  timers: Record<string, SingleTimerState>,
+  runningIds: ReadonlySet<string>,
   range: PeriodRange,
 ): Record<string, TaskItem[]> {
   const periodTodos = todos.filter((todo) =>
@@ -408,13 +225,13 @@ export function buildTasksByDate(
   const result: Record<string, TaskItem[]> = {}
 
   orderedTodos.forEach((todo) => {
-    const focusSeconds = getEffectiveFocusSeconds(todo, timers)
-    const flowCount = getEffectiveFlowCount(todo, timers)
+    const focusSeconds = todo.sessionFocusSeconds
+    const flowCount = todo.sessionCount
     const item = buildTaskItem(
       todo,
       focusSeconds,
       flowCount,
-      getEffectiveIsDone(todo, timers),
+      getEffectiveIsDone(todo, runningIds),
     )
     if (!result[item.date]) result[item.date] = []
     result[item.date].push(item)

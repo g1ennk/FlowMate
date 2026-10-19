@@ -59,6 +59,28 @@ public class AuthService {
     }
 
     /**
+     * 게스트 JWT 재발급 - 같은 clientId 로 새 토큰을 발급해 게스트 기록을 이어 쓴다.
+     * 만료된 토큰도 서명이 유효하면 받아 주되, 만료 후 게스트 TTL 만큼 지난 토큰은 거부한다
+     * (오래전에 유출된 토큰이 무기한 되살아나지 않도록).
+     */
+    public GuestTokenResponse renewGuestToken(String guestToken) {
+        Claims claims;
+        try {
+            claims = jwtProvider.parseTokenAllowingExpired(guestToken);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new AuthenticationFailedException("유효하지 않은 게스트 토큰입니다.");
+        }
+        if (!"guest".equals(claims.get("role", String.class)) || claims.getExpiration() == null) {
+            throw new AuthenticationFailedException("유효하지 않은 게스트 토큰입니다.");
+        }
+        Instant renewableUntil = claims.getExpiration().toInstant().plusSeconds(jwtProps.getGuestTtl());
+        if (Instant.now().isAfter(renewableUntil)) {
+            throw new AuthenticationFailedException("재발급 기간이 지난 게스트 토큰입니다.");
+        }
+        return new GuestTokenResponse(jwtProvider.generateGuestToken(claims.getSubject()));
+    }
+
+    /**
      * 소셜 로그인 URL + state 발급
      */
     public AuthorizeUrlResponse getAuthorizeUrl(String providerName) {

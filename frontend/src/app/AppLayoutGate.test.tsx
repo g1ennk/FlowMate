@@ -1,9 +1,10 @@
-import { screen } from '@testing-library/react'
-import { Route, Routes } from 'react-router-dom'
+import { render, screen } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { storageKeys } from '../lib/storageKeys'
 import { useAuthStore } from '../store/authStore'
-import { renderApp } from '../test/renderApp'
+import { createTestQueryClient } from '../test/renderApp'
 import AppLayoutGate from './AppLayoutGate'
 
 const initialAuthStore = useAuthStore.getState()
@@ -12,19 +13,25 @@ function setOnboardingSeen(value: boolean) {
   window.localStorage.setItem(storageKeys.onboardingSeen, String(value))
 }
 
+// 앱 셸의 ScrollRestoration은 data router에서만 동작하므로 실제와 같은 방식으로 띄운다
 function renderGate() {
-  return renderApp(
-    <Routes>
-      <Route path="/" element={<AppLayoutGate />} />
-      <Route path="/boarding" element={<div>boarding page</div>} />
-      <Route path="/login" element={<div>login page</div>} />
-    </Routes>,
+  const router = createMemoryRouter([
+    { path: '/', element: <AppLayoutGate /> },
+    { path: '/boarding', element: <div>boarding page</div> },
+    { path: '/login', element: <div>login page</div> },
+  ])
+  return render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
   )
 }
 
 describe('AppLayoutGate', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    // 앱 셸의 ScrollRestoration이 호출한다 (jsdom 미구현)
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
     useAuthStore.setState(initialAuthStore, true)
     setOnboardingSeen(true)
   })

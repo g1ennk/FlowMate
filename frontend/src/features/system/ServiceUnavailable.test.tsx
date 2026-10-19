@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { checkHealth } from '../../api/health'
 import { useSystemStore } from '../../store/systemStore'
 import { renderApp } from '../../test/renderApp'
-import { SERVICE_HOURS_LABEL } from '../../lib/serviceHours'
 import ServiceUnavailable from './ServiceUnavailable'
 
 vi.mock('../../api/health', () => ({
@@ -17,14 +16,14 @@ describe('ServiceUnavailable', () => {
     useSystemStore.setState({ status: 'unknown' })
   })
 
-  it('제목 "지금은 운영 시간이 아니에요"를 렌더한다', () => {
+  it('제목 "지금은 서버에 연결할 수 없어요"를 렌더한다', () => {
     renderApp(<ServiceUnavailable />)
-    expect(screen.getByRole('heading', { name: '지금은 운영 시간이 아니에요' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '지금은 서버에 연결할 수 없어요' })).toBeInTheDocument()
   })
 
-  it('본문에 운영 시간 라벨이 포함된다', () => {
+  it('운영 시간 안내를 표시하지 않는다', () => {
     renderApp(<ServiceUnavailable />)
-    expect(screen.getByText(new RegExp(`FlowMate는 KST 기준 ${SERVICE_HOURS_LABEL}에 운영됩니다.`))).toBeInTheDocument()
+    expect(screen.queryByText(/운영/)).not.toBeInTheDocument()
   })
 
   it('"다시 확인"을 누르면 헬스체크 후 상태를 갱신한다', async () => {
