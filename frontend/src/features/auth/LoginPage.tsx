@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Navigate, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { buildApiUrl } from '../../api/baseUrl'
+import type { TodoList } from '../../api/types'
 import AppSplash from '../../app/AppSplash'
 import { useAuthStore } from '../../store/authStore'
 import { hasGuestStarted, hasSessionExpired, markGuestStarted } from '../../lib/auth'
 import { setOnboardingSeen } from '../../lib/onboarding'
+import { queryKeys } from '../../lib/queryKeys'
 
 const GUEST_NOTICE = '게스트 기록은 이 브라우저에서만 볼 수 있어요'
 
@@ -102,6 +105,7 @@ const STEPS = [
 
 function LoginPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const authState = useAuthStore((s) => s.state)
   const initialized = useAuthStore((s) => s.initialized)
   const startGuest = useAuthStore((s) => s.startGuest)
@@ -143,11 +147,13 @@ function LoginPage() {
 
   const handleKakaoLogin = async () => {
     if (kakaoPending) return
-    // "게스트로 둘러보기"를 직접 고른 사람에게만 확인한다
+    // 옮겨지지 않을 게스트 기록이 있을 수 있는 사람에게만 확인한다.
+    // "게스트로 둘러보기"를 직접 골랐거나, 표시가 생기기 전부터 써서 할 일이 남아 있는 게스트다.
     // (처음 들어온 사람, 로그아웃해서 게스트가 된 회원은 옮길 게스트 기록이 없다)
+    const hasGuestTodos = (queryClient.getQueryData<TodoList>(queryKeys.todos())?.items.length ?? 0) > 0
     if (
       authState?.type === 'guest' &&
-      hasGuestStarted() &&
+      (hasGuestStarted() || hasGuestTodos) &&
       !window.confirm('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요. 카카오로 계속할까요?')
     ) {
       return

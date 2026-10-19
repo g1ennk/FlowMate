@@ -2,9 +2,11 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TodoList } from '../../api/types'
+import { queryKeys } from '../../lib/queryKeys'
 import { storageKeys } from '../../lib/storageKeys'
 import { useAuthStore } from '../../store/authStore'
-import { renderApp } from '../../test/renderApp'
+import { createTestQueryClient, renderApp } from '../../test/renderApp'
 import LoginPage from './LoginPage'
 
 const mocked = vi.hoisted(() => ({
@@ -43,15 +45,38 @@ function mockWindowLocation(initialHref = 'http://localhost/login') {
   return () => href
 }
 
-function renderLoginPage() {
+function renderLoginPage(queryClient = createTestQueryClient()) {
   return renderApp(
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/boarding" element={<div>boarding page</div>} />
       <Route path="/todos" element={<div>todos page</div>} />
     </Routes>,
-    { route: '/login' },
+    { route: '/login', queryClient },
   )
+}
+
+function queryClientWithTodos(items: TodoList['items']) {
+  const queryClient = createTestQueryClient()
+  // 앱처럼 할 일 화면을 떠난 뒤에도 목록 캐시가 잠시 남아 있게 한다 (테스트 기본값은 바로 지운다)
+  queryClient.setQueryDefaults(queryKeys.todos(), { gcTime: 5 * 60_000 })
+  queryClient.setQueryData<TodoList>(queryKeys.todos(), { items })
+  return queryClient
+}
+
+const GUEST_TODO: TodoList['items'][number] = {
+  id: '11111111-1111-4111-8111-111111111111',
+  title: '게스트로 쓴 할 일',
+  note: null,
+  date: '2026-10-19',
+  miniDay: 0,
+  dayOrder: 0,
+  isDone: false,
+  sessionCount: 0,
+  sessionFocusSeconds: 0,
+  timerMode: null,
+  createdAt: '2026-10-19T00:00:00Z',
+  updatedAt: '2026-10-19T00:00:00Z',
 }
 
 describe('LoginPage', () => {
@@ -224,6 +249,41 @@ describe('LoginPage', () => {
       expect.stringContaining('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요'),
     )
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('asks a guest who has records even without the guest-started flag (guests from before the flag existed)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(window.confirm).mockReturnValue(false)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderLoginPage(queryClientWithTodos([GUEST_TODO]))
+
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요'),
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not ask a new guest right after logout whose todo list is empty', async () => {
+    const user = userEvent.setup()
+    mockWindowLocation()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ state: 'oauth-state', authorizeUrl: 'https://kakao.example/authorize' }),
+      }),
+    )
+
+    renderLoginPage(queryClientWithTodos([]))
+
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
+
+    await waitFor(() => expect(window.fetch).toHaveBeenCalled())
+    expect(window.confirm).not.toHaveBeenCalled()
   })
 
   it('does not ask a first-time visitor for confirmation', async () => {
