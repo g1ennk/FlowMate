@@ -137,3 +137,30 @@ describe('http 401 refresh singleton', () => {
     })
   })
 })
+
+describe('http 오류 응답', () => {
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('서버 오류 코드를 함께 넘겨 재시도 여부를 가릴 수 있게 한다', async () => {
+    const { http, getState } = await loadHttp()
+    getState.mockReturnValue({
+      state: { type: 'member' },
+      getToken: vi.fn().mockReturnValue('token'),
+      refresh: vi.fn(),
+    })
+
+    globalThis.fetch = vi.fn(async () => new Response(
+      JSON.stringify({ error: { code: 'IDEMPOTENCY_CONFLICT', message: 'mismatch' } }),
+      { status: 409 },
+    ))
+
+    await expect(http('POST', '/todos/1/sessions', { body: {} })).rejects.toMatchObject({
+      status: 409,
+      code: 'IDEMPOTENCY_CONFLICT',
+    })
+  })
+})
