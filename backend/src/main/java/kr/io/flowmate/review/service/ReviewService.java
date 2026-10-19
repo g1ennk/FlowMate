@@ -7,13 +7,15 @@ import kr.io.flowmate.review.dto.response.ReviewResponse;
 import kr.io.flowmate.review.exception.ReviewNotFoundException;
 import kr.io.flowmate.review.repository.ReviewRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
@@ -47,24 +49,17 @@ public class ReviewService {
         validatePeriodRange(periodStart, periodEnd);
 
         String content = request.getContent().trim();
+        // reviews.updated_at은 초 단위 컬럼이라 저장값과 같도록 초로 자른다
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
 
-        Review existing = reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, type, periodStart)
-                .orElse(null);
-        if (existing != null) {
-            existing.update(periodEnd, content);
-            return ReviewResponse.from(existing);
-        }
+        // 조회 후 INSERT 대신 생성과 갱신을 한 문장으로 처리한다. 같은 회고를 동시에 처음 저장해도 충돌하지 않는다
+        reviewRepository.upsert(UUID.randomUUID().toString(), userId, type.name(),
+                periodStart, periodEnd, content, now);
 
-        Review created = Review.create(userId, type, periodStart, periodEnd, content);
-        try {
-            Review saved = reviewRepository.save(created);
-            return ReviewResponse.from(saved);
-        } catch (DataIntegrityViolationException ex) {
-            Review collided = reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, type, periodStart)
-                    .orElseThrow(() -> ex);
-            collided.update(periodEnd, content);
-            return ReviewResponse.from(collided);
-        }
+        // upsert가 이 트랜잭션의 첫 쿼리이고 행 락을 커밋까지 쥐므로, 다시 읽은 행은 방금 확정된 내용이다
+        return reviewRepository.findByUserIdAndTypeAndPeriodStart(userId, type, periodStart)
+                .map(ReviewResponse::from)
+                .orElseThrow(() -> new IllegalStateException("저장한 회고를 찾을 수 없습니다."));
     }
 
     @Transactional
