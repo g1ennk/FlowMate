@@ -235,6 +235,64 @@ class AuthServiceTest {
         assertThat(httpResponse.getHeader("Set-Cookie")).contains("Max-Age=0");
     }
 
+    // ── renewGuestToken ──
+
+    @Test
+    @DisplayName("renewGuestToken: 만료된 게스트 토큰도 서명이 유효하면 같은 clientId로 재발급")
+    void renewGuestToken_expiredButSigned_reissuesSameSubject() {
+        Claims guestClaims = Jwts.claims()
+                .subject("client-1")
+                .add("role", "guest")
+                .expiration(java.util.Date.from(Instant.now().minusSeconds(86400)))
+                .build();
+        when(jwtProvider.parseTokenAllowingExpired("old-guest")).thenReturn(guestClaims);
+        when(jwtProps.getGuestTtl()).thenReturn(7776000L);
+        when(jwtProvider.generateGuestToken("client-1")).thenReturn("renewed-guest");
+
+        assertThat(authService.renewGuestToken("old-guest").guestToken()).isEqualTo("renewed-guest");
+    }
+
+    @Test
+    @DisplayName("renewGuestToken: 만료 후 게스트 TTL보다 오래 지난 토큰은 거부")
+    void renewGuestToken_expiredTooLongAgo_throwsAuthFailed() {
+        Claims guestClaims = Jwts.claims()
+                .subject("client-1")
+                .add("role", "guest")
+                .expiration(java.util.Date.from(Instant.now().minusSeconds(7776000L + 60)))
+                .build();
+        when(jwtProvider.parseTokenAllowingExpired("ancient-guest")).thenReturn(guestClaims);
+        when(jwtProps.getGuestTtl()).thenReturn(7776000L);
+
+        assertThatThrownBy(() -> authService.renewGuestToken("ancient-guest"))
+                .isInstanceOf(AuthenticationFailedException.class);
+        verify(jwtProvider, never()).generateGuestToken(anyString());
+    }
+
+    @Test
+    @DisplayName("renewGuestToken: 게스트가 아닌 토큰(member/state)은 거부")
+    void renewGuestToken_nonGuestRole_throwsAuthFailed() {
+        Claims memberClaims = Jwts.claims()
+                .subject("user-1")
+                .add("role", "member")
+                .expiration(java.util.Date.from(Instant.now().plusSeconds(600)))
+                .build();
+        when(jwtProvider.parseTokenAllowingExpired("member-token")).thenReturn(memberClaims);
+
+        assertThatThrownBy(() -> authService.renewGuestToken("member-token"))
+                .isInstanceOf(AuthenticationFailedException.class);
+        verify(jwtProvider, never()).generateGuestToken(anyString());
+    }
+
+    @Test
+    @DisplayName("renewGuestToken: 서명 오류 등 파싱 실패 시 AuthenticationFailedException")
+    void renewGuestToken_invalidSignature_throwsAuthFailed() {
+        when(jwtProvider.parseTokenAllowingExpired("forged"))
+                .thenThrow(new JwtException("bad signature"));
+
+        assertThatThrownBy(() -> authService.renewGuestToken("forged"))
+                .isInstanceOf(AuthenticationFailedException.class);
+    }
+
     // ── helpers ──
 
     private void stubValidStateAndOAuth() {

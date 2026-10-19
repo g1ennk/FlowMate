@@ -1,8 +1,16 @@
+import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Navigate, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { buildApiUrl } from '../../api/baseUrl'
+import { todoApi } from '../../api/todos'
+import AppSplash from '../../app/AppSplash'
 import { useAuthStore } from '../../store/authStore'
+import { getAuthMode, hasGuestStarted, hasSessionExpired, markGuestStarted } from '../../lib/auth'
 import { setOnboardingSeen } from '../../lib/onboarding'
+import { queryKeys } from '../../lib/queryKeys'
+
+const GUEST_NOTICE = '게스트 기록은 이 브라우저에서만 볼 수 있어요'
 
 /* ── CSS Mini Previews ─────────────────────────────── */
 
@@ -97,26 +105,49 @@ const STEPS = [
 
 function LoginPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const authState = useAuthStore((s) => s.state)
   const initialized = useAuthStore((s) => s.initialized)
   const startGuest = useAuthStore((s) => s.startGuest)
+  const [kakaoPending, setKakaoPending] = useState(false)
+  const [sessionExpired] = useState(hasSessionExpired)
 
-  if (!initialized) return null
+  // 카카오 화면에서 뒤로 가기로 돌아오면(bfcache 복원) 버튼을 다시 누를 수 있게 한다
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setKakaoPending(false)
+    }
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [])
+
+  if (!initialized) return <AppSplash />
 
   if (authState?.type === 'member') {
+    // 온보딩 키가 지워진 회원도 레이아웃 게이트가 다시 /login으로 돌려보내지 않게 한다.
+    setOnboardingSeen(true)
     return <Navigate to="/todos" replace />
   }
 
   const handleGuestStart = async () => {
+    // 회원 복원에 실패해 들어온 사람이 게스트로 시작하면 회원 힌트가 덮여 조용히 게스트가 된다
+    if (
+      !authState &&
+      getAuthMode() === 'member' &&
+      !window.confirm('로그인하지 않고 게스트로 시작하면 회원 기록은 보이지 않아요. 게스트로 시작할까요?')
+    ) {
+      return
+    }
     try {
       if (authState?.type !== 'guest') {
         await startGuest()
       }
+      markGuestStarted()
       setOnboardingSeen(true)
       navigate('/todos', { replace: true })
       if (!localStorage.getItem('flowmate/ui/guest-notice-seen')) {
         localStorage.setItem('flowmate/ui/guest-notice-seen', '1')
-        setTimeout(() => toast('게스트 데이터는 이 기기에만 저장돼요', { id: 'guest-notice', duration: 4000 }), 500)
+        setTimeout(() => toast(GUEST_NOTICE, { id: 'guest-notice', duration: 4000 }), 500)
       }
     } catch (e) {
       console.error('[LoginPage] 게스트 시작 실패', e)
@@ -124,7 +155,30 @@ function LoginPage() {
     }
   }
 
+  // 게스트에게 옮겨지지 않을 할 일이 있는지 본다. 캐시가 없으면 불러오고, 확인하지 못하면 있다고 본다.
+  const hasGuestTodos = async () => {
+    try {
+      const list = await queryClient.ensureQueryData({ queryKey: queryKeys.todos(), queryFn: () => todoApi.list() })
+      return list.items.length > 0
+    } catch {
+      return true
+    }
+  }
+
   const handleKakaoLogin = async () => {
+    if (kakaoPending) return
+    setKakaoPending(true)
+    // 옮겨지지 않을 게스트 기록이 있을 수 있는 사람에게만 확인한다.
+    // "게스트로 둘러보기"를 직접 골랐거나, 표시가 생기기 전부터 써서 할 일이 남아 있는 게스트다.
+    // (처음 들어온 사람, 로그아웃해서 게스트가 된 회원은 옮길 게스트 기록이 없다)
+    const shouldConfirm = authState?.type === 'guest' && (hasGuestStarted() || (await hasGuestTodos()))
+    if (
+      shouldConfirm &&
+      !window.confirm('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요. 카카오로 계속할까요?')
+    ) {
+      setKakaoPending(false)
+      return
+    }
     try {
       const res = await fetch(buildApiUrl('/auth/kakao/authorize-url'))
       if (!res.ok) throw new Error('인증 URL 발급 실패')
@@ -132,10 +186,12 @@ function LoginPage() {
       sessionStorage.setItem('oauth_state', data.state)
       sessionStorage.setItem('oauth_provider', 'kakao')
       setOnboardingSeen(true)
+      // 페이지를 떠나므로 pending은 풀지 않는다
       window.location.href = data.authorizeUrl
     } catch (e) {
       console.error('[LoginPage] 카카오 로그인 시작 실패', e)
       toast.error('카카오 로그인을 시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
+      setKakaoPending(false)
     }
   }
 
@@ -175,10 +231,18 @@ function LoginPage() {
         </div>
 
         <footer className="mt-5 space-y-3">
+          {sessionExpired && (
+            <p role="status" className="rounded-2xl bg-surface-card px-4 py-3 text-center text-sm text-text-primary">
+              로그인이 만료됐어요. 다시 로그인하면 기록이 그대로 있어요
+            </p>
+          )}
+
           <button
             type="button"
             onClick={handleKakaoLogin}
-            className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#FEE500] text-sm font-semibold text-[#3C1E1E] transition-opacity active:opacity-80"
+            disabled={kakaoPending}
+            aria-busy={kakaoPending}
+            className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#FEE500] text-sm font-semibold text-[#3C1E1E] transition-opacity active:opacity-80 disabled:opacity-60"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 3C6.48 3 2 6.36 2 10.5c0 2.63 1.74 4.95 4.38 6.3l-1.12 4.08c-.1.36.3.65.6.44l4.84-3.2c.42.04.85.07 1.3.07 5.52 0 10-3.36 10-7.5S17.52 3 12 3z" />
@@ -189,13 +253,17 @@ function LoginPage() {
           <button
             type="button"
             onClick={handleGuestStart}
-            className="flex h-13 w-full items-center justify-center rounded-2xl border border-border-default bg-surface-card text-sm font-medium text-text-secondary transition-colors hover:bg-hover"
+            className={
+              sessionExpired
+                ? 'flex h-11 w-full items-center justify-center rounded-2xl text-sm text-text-tertiary transition-colors hover:bg-hover'
+                : 'flex h-13 w-full items-center justify-center rounded-2xl border border-border-default bg-surface-card text-sm font-medium text-text-secondary transition-colors hover:bg-hover'
+            }
           >
             게스트로 둘러보기
           </button>
 
           <p className="pt-1 text-center text-xs text-text-tertiary">
-            게스트 데이터는 이 기기에만 저장돼요
+            {GUEST_NOTICE}
           </p>
         </footer>
       </div>

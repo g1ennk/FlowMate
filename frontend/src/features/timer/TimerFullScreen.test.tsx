@@ -406,6 +406,24 @@ describe('TimerFullScreen', () => {
     }
   })
 
+  it('서버 연결 배너가 떠 있으면 헤더를 배너 아래로 내린다', async () => {
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    const header = (await screen.findByRole('button', { name: '타이머 닫기' })).closest('header')
+    expect(header?.style.paddingTop).toContain('--top-banner-offset')
+  })
+
   it('shows the preset label instead of exposing per-track controls', async () => {
     renderApp(
       <TimerFullScreen
@@ -705,5 +723,149 @@ describe('TimerFullScreen', () => {
 
     resolveSession()
     await waitFor(() => expect(mocked.updateTodoMutateAsync).toHaveBeenCalledTimes(1))
+  })
+
+  describe('상태별 버튼 라벨', () => {
+    function renderTimer(initialMode: 'stopwatch' | 'pomodoro') {
+      return renderApp(
+        <TimerFullScreen
+          isOpen
+          onClose={vi.fn()}
+          todoId="todo-1"
+          todoTitle="타이머 테스트"
+          sessionFocusSeconds={0}
+          sessionCount={0}
+          initialMode={initialMode}
+          isDone={false}
+        />,
+      )
+    }
+
+    it('처음 시작하기 전 뽀모도로는 "시작"으로 보인다', async () => {
+      Object.assign(mocked.timerState, {
+        mode: 'pomodoro',
+        phase: 'flow',
+        status: 'idle',
+        remainingMs: mocked.settings.flowMin * 60_000,
+        flexiblePhase: null,
+      })
+
+      renderTimer('pomodoro')
+
+      expect(await screen.findByRole('button', { name: '시작' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '재개' })).not.toBeInTheDocument()
+    })
+
+    it('처음 시작하기 전 일반 타이머는 "시작"으로 보인다', async () => {
+      Object.assign(mocked.timerState, {
+        mode: 'stopwatch',
+        status: 'idle',
+        flexiblePhase: 'focus',
+        focusElapsedMs: 0,
+      })
+
+      renderTimer('stopwatch')
+
+      expect(await screen.findByRole('button', { name: '시작' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '재개' })).not.toBeInTheDocument()
+    })
+
+    it('일시정지한 뽀모도로는 "재개"로 보인다', async () => {
+      Object.assign(mocked.timerState, {
+        mode: 'pomodoro',
+        phase: 'flow',
+        status: 'paused',
+        remainingMs: 10 * 60_000,
+        flexiblePhase: null,
+      })
+
+      renderTimer('pomodoro')
+
+      expect(await screen.findByRole('button', { name: '재개' })).toBeInTheDocument()
+    })
+
+    it('Flow가 끝나고 휴식을 기다릴 때는 "Flow 완료"와 "휴식 시작", "휴식 건너뛰기"를 보여준다', async () => {
+      const user = userEvent.setup()
+      Object.assign(mocked.timerState, {
+        mode: 'pomodoro',
+        phase: 'short',
+        status: 'waiting',
+        endAt: null,
+        remainingMs: mocked.settings.breakMin * 60_000,
+        cycleCount: 1,
+        flexiblePhase: null,
+      })
+
+      renderTimer('pomodoro')
+
+      expect(await screen.findByText('Flow 완료')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '재개' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Flow 시작' })).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: '휴식 시작' }))
+      expect(mocked.timerStoreActions.resume).toHaveBeenCalledWith('todo-1')
+
+      await user.click(screen.getByRole('button', { name: '휴식 건너뛰기' }))
+      expect(mocked.timerStoreActions.skipToNext).toHaveBeenCalledWith('todo-1')
+    })
+
+    it('휴식이 끝나고 다음 Flow를 기다릴 때는 "휴식 완료"와 "Flow 시작"을 보여준다', async () => {
+      Object.assign(mocked.timerState, {
+        mode: 'pomodoro',
+        phase: 'flow',
+        status: 'waiting',
+        endAt: null,
+        remainingMs: mocked.settings.flowMin * 60_000,
+        cycleCount: 1,
+        flexiblePhase: null,
+      })
+
+      renderTimer('pomodoro')
+
+      expect(await screen.findByText('휴식 완료')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Flow 시작' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '재개' })).not.toBeInTheDocument()
+    })
+
+    it('일반 타이머 휴식 중에는 휴식을 끝내는 버튼이 "휴식 끝내기"로 보인다', async () => {
+      const user = userEvent.setup()
+      Object.assign(mocked.timerState, {
+        mode: 'stopwatch',
+        status: 'running',
+        flexiblePhase: 'break_free',
+        breakStartedAt: Date.now(),
+      })
+
+      renderTimer('stopwatch')
+
+      await user.click(await screen.findByRole('button', { name: '휴식 끝내기' }))
+      expect(mocked.timerStoreActions.resumeFocus).toHaveBeenCalledWith('todo-1')
+      expect(screen.queryByRole('button', { name: 'Flow 시작' })).not.toBeInTheDocument()
+    })
+
+    it('휴식으로 가는 버튼과 휴식을 넘기는 버튼은 아이콘이 다르다', async () => {
+      Object.assign(mocked.timerState, {
+        mode: 'pomodoro',
+        phase: 'flow',
+        status: 'running',
+        endAt: Date.now() + 10 * 60_000,
+        flexiblePhase: null,
+      })
+      const { unmount } = renderTimer('pomodoro')
+      const toBreakIcon = (await screen.findByRole('button', { name: '휴식' })).querySelector('svg')?.innerHTML
+
+      unmount()
+      Object.assign(mocked.timerState, {
+        phase: 'short',
+        status: 'running',
+        endAt: Date.now() + 5 * 60_000,
+      })
+      renderTimer('pomodoro')
+      const skipBreakIcon = (await screen.findByRole('button', { name: '휴식 건너뛰기' })).querySelector('svg')?.innerHTML
+
+      expect(toBreakIcon).toBeTruthy()
+      expect(skipBreakIcon).toBeTruthy()
+      expect(toBreakIcon).not.toBe(skipBreakIcon)
+    })
   })
 })

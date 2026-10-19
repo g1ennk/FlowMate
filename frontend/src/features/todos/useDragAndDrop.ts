@@ -188,15 +188,12 @@ export function useDragAndDrop({
     const ids = effectiveContainerItems[containerId] ?? []
     const miniDay = parseContainerId(containerId)
     const items: Todo[] = []
-    ids.forEach((id, index) => {
+    // dayOrder는 서버값을 그대로 둔다. 화면 index로 덮으면 새 할 일·완료 토글 순서가 서버 순서와 어긋난다.
+    ids.forEach((id) => {
       if (id === `input-${miniDay}`) return
       const base = todoById.get(id)
       if (!base) return
-      items.push({
-        ...base,
-        miniDay,
-        dayOrder: index,
-      })
+      items.push({ ...base, miniDay })
     })
     return items
   }, [effectiveContainerItems, todoById])

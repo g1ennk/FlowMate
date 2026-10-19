@@ -6,6 +6,7 @@ type StatsSummaryProps = {
   totalFlows: number
   completedCount: number
   comparison?: PeriodComparison
+  isCurrentPeriod?: boolean
   hasReview?: boolean
   onScrollToReview?: () => void
 }
@@ -28,6 +29,7 @@ export function StatsSummary({
   totalFlows,
   completedCount,
   comparison,
+  isCurrentPeriod = true,
   hasReview,
   onScrollToReview,
 }: StatsSummaryProps) {
@@ -48,7 +50,9 @@ export function StatsSummary({
       <section className="rounded-2xl bg-surface-card p-card shadow-sm">
         <h3 className="mb-2 text-sm font-semibold text-text-primary">집중 기록</h3>
         <p className="py-2 text-center text-sm text-text-tertiary">
-          첫 Flow를 시작하면 집중 시간과 완료 기록이 여기에 표시돼요
+          {isCurrentPeriod
+            ? '첫 Flow를 시작하면 집중 시간과 완료 기록이 여기에 표시돼요'
+            : '이 기간에는 집중 기록이 없어요'}
         </p>
         {scrollButton}
       </section>

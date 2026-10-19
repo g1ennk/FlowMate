@@ -6,6 +6,17 @@ import { useAuthStore } from '../../store/authStore'
 import { renderApp } from '../../test/renderApp'
 import AuthCallback from './AuthCallback'
 
+const mocked = vi.hoisted(() => ({
+  toast: vi.fn(),
+  toastError: vi.fn(),
+}))
+
+vi.mock('react-hot-toast', () => ({
+  default: Object.assign(mocked.toast, {
+    error: mocked.toastError,
+  }),
+}))
+
 const initialAuthStore = useAuthStore.getState()
 
 function renderAuthCallback(route: string) {
@@ -25,6 +36,8 @@ describe('AuthCallback', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     useAuthStore.setState(initialAuthStore, true)
     queryClient.clear()
+    mocked.toast.mockReset()
+    mocked.toastError.mockReset()
   })
 
   afterEach(() => {
@@ -70,5 +83,38 @@ describe('AuthCallback', () => {
     await waitFor(() => {
       expect(login).toHaveBeenCalledWith('kakao', 'oauth-code', 'expected-state')
     })
+  })
+
+  it('tells the user the login was cancelled when Kakao returns access_denied', async () => {
+    const login = vi.fn()
+    window.sessionStorage.setItem('oauth_state', 'expected-state')
+    useAuthStore.setState({ login })
+
+    renderAuthCallback('/auth/callback?error=access_denied&state=expected-state')
+
+    expect(await screen.findByText('login page')).toBeInTheDocument()
+    expect(mocked.toast).toHaveBeenCalledWith('로그인을 취소했어요')
+    expect(login).not.toHaveBeenCalled()
+  })
+
+  it('tells the user to try again when the login exchange fails', async () => {
+    const login = vi.fn().mockRejectedValue(new Error('oauth failed'))
+    window.sessionStorage.setItem('oauth_state', 'expected-state')
+    useAuthStore.setState({ login })
+
+    renderAuthCallback('/auth/callback?code=oauth-code&state=expected-state')
+
+    expect(await screen.findByText('login page')).toBeInTheDocument()
+    expect(mocked.toastError).toHaveBeenCalledWith('로그인하지 못했어요. 다시 시도해 주세요')
+  })
+
+  it('tells the user to try again when the oauth state does not match', async () => {
+    window.sessionStorage.setItem('oauth_state', 'expected-state')
+    useAuthStore.setState({ login: vi.fn() })
+
+    renderAuthCallback('/auth/callback?code=oauth-code&state=wrong-state')
+
+    expect(await screen.findByText('login page')).toBeInTheDocument()
+    expect(mocked.toastError).toHaveBeenCalledWith('로그인하지 못했어요. 다시 시도해 주세요')
   })
 })

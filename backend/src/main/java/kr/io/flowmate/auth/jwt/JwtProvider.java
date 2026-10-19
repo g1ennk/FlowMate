@@ -1,6 +1,7 @@
 package kr.io.flowmate.auth.jwt;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -67,6 +68,18 @@ public class JwtProvider {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    /**
+     * 서명은 검증하되 만료는 허용하는 파싱 - 게스트 토큰 재발급 전용.
+     * 서명이 맞지 않으면 만료 여부와 상관없이 JwtException 이 발생한다.
+     */
+    public Claims parseTokenAllowingExpired(String token) {
+        try {
+            return parseToken(token);
+        } catch (ExpiredJwtException e) {
+            return e.getClaims();
+        }
     }
 
     public boolean validateToken(String token) {

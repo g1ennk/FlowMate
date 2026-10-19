@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import './styles/globals.css'
+// 테마 적용과 OS 테마 변경 감지를 앱 시작 시 등록한다.
+import './store/themeStore'
 import { AppProviders } from './app/AppProviders'
 import { router } from './app/routes'
 

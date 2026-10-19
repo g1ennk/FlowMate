@@ -3,6 +3,7 @@
 /* ── Color Token System ─────────────────────────────── */
 
 :root {
+  color-scheme: light;
   --safe-top: env(safe-area-inset-top);
   --safe-right: env(safe-area-inset-right);
   --safe-bottom: env(safe-area-inset-bottom);
@@ -34,6 +35,9 @@
   --color-border-default: #e5e7eb;
   --color-border-subtle: #f3f4f6;
   --color-border-strong: #d1d5db;
+
+  /* Controls — 꺼진 스위치 트랙. 카드(#fff) 대비 3:1 이상 */
+  --color-control-off: #8a9099;
 
   /* States */
   --color-error: #ef4444;
@@ -79,6 +83,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --color-surface-base: #1e1e1e;
   --color-surface-card: #2b2b2b;
   --color-surface-elevated: #363636;
@@ -100,6 +105,8 @@
   --color-border-default: #3a3a3a;
   --color-border-subtle: #2b2b2b;
   --color-border-strong: #505050;
+
+  --color-control-off: #7a7a7a;
 
   --color-error: #f87171;
   --color-error-subtle: rgba(248, 113, 113, 0.1);
@@ -151,6 +158,7 @@
   --color-border-default: var(--color-border-default);
   --color-border-subtle: var(--color-border-subtle);
   --color-border-strong: var(--color-border-strong);
+  --color-control-off: var(--color-control-off);
 
   --color-state-error: var(--color-error);
   --color-state-error-subtle: var(--color-error-subtle);

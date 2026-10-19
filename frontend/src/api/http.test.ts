@@ -104,6 +104,54 @@ describe('http 401 refresh singleton', () => {
     expect(calls[3][1]?.headers).toHaveProperty('Authorization', 'Bearer new-token')
   })
 
+  it('retries without refreshing when the token was already replaced while the request was in flight', async () => {
+    const { http, getState } = await loadHttp()
+
+    const refreshFn = vi.fn(() => Promise.resolve())
+    let currentToken = 'old-guest-token'
+    getState.mockImplementation(() => ({
+      state: { type: 'guest' },
+      getToken: () => currentToken,
+      refresh: refreshFn,
+    }))
+
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length === 1) {
+        // 요청이 나간 사이 다른 요청이 토큰을 갱신했다
+        currentToken = 'renewed-guest-token'
+        return new Response('{}', { status: 401 })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    globalThis.fetch = fetchMock
+
+    await http('GET', '/late')
+
+    expect(refreshFn).not.toHaveBeenCalled()
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>
+    expect(calls[1][1]?.headers).toHaveProperty('Authorization', 'Bearer renewed-guest-token')
+  })
+
+  it('does not retry a guest request with a member token after login happened in between', async () => {
+    const { http, getState } = await loadHttp()
+
+    let loggedIn = false
+    getState.mockImplementation(() =>
+      loggedIn
+        ? { state: { type: 'member' }, getToken: () => 'member-token', refresh: vi.fn() }
+        : { state: { type: 'guest' }, getToken: () => 'guest-token', refresh: vi.fn() },
+    )
+
+    const fetchMock = vi.fn(async () => {
+      loggedIn = true
+      return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })
+    })
+    globalThis.fetch = fetchMock
+
+    await expect(http('POST', '/todos')).rejects.toMatchObject({ status: 401 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('throws when member session ends after refresh failure', async () => {
     const { http, getState } = await loadHttp()
 
@@ -134,6 +182,33 @@ describe('http 401 refresh singleton', () => {
 
     await expect(http('GET', '/protected')).rejects.toMatchObject({
       status: 401,
+    })
+  })
+})
+
+describe('http 오류 응답', () => {
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('서버 오류 코드를 함께 넘겨 재시도 여부를 가릴 수 있게 한다', async () => {
+    const { http, getState } = await loadHttp()
+    getState.mockReturnValue({
+      state: { type: 'member' },
+      getToken: vi.fn().mockReturnValue('token'),
+      refresh: vi.fn(),
+    })
+
+    globalThis.fetch = vi.fn(async () => new Response(
+      JSON.stringify({ error: { code: 'IDEMPOTENCY_CONFLICT', message: 'mismatch' } }),
+      { status: 409 },
+    ))
+
+    await expect(http('POST', '/todos/1/sessions', { body: {} })).rejects.toMatchObject({
+      status: 409,
+      code: 'IDEMPOTENCY_CONFLICT',
     })
   })
 })

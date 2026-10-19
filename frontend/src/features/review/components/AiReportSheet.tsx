@@ -11,11 +11,12 @@ type AiReportSheetProps = {
   report: AiReport | null
   isCached: boolean
   isRegenerating: boolean
-  regenerateError?: string | null
+  error?: string | null
   hasExistingContent: boolean
   onStartWithAi: () => void
   onSaveAsIs: () => void
   onRegenerate: () => void
+  onRetry?: () => void
   isPreview?: boolean
   isThinData?: boolean
   onLogin?: () => void
@@ -67,7 +68,8 @@ export function AiReportSheet({
   onStartWithAi,
   onSaveAsIs,
   onRegenerate,
-  regenerateError,
+  onRetry,
+  error,
   isPreview,
   isThinData,
   onLogin,
@@ -75,7 +77,8 @@ export function AiReportSheet({
   const [isConfirming, setIsConfirming] = useState(false)
 
   const displayReport = isPreview ? SAMPLE_REPORT : report
-  if (!displayReport) return null
+  // 처음 생성하는 동안에는 시트를 먼저 열고 스켈레톤을 보여 준다.
+  const showSkeleton = isRegenerating || (!displayReport && !error)
 
   // 참고해서 쓰기는 작성 중인 글 아래에 덧붙이기만 하므로 확인 없이 진행하고,
   // 이대로 저장은 기존 회고나 작성 중인 글을 대체하므로 확인을 받는다.
@@ -124,14 +127,17 @@ export function AiReportSheet({
             </p>
           </div>
         )}
-        {regenerateError && (
+        {error && (
           <div className="rounded-lg bg-state-error-subtle px-3 py-2 text-center">
-            <p className="text-xs font-medium text-state-error">{regenerateError}</p>
+            <p className="text-xs font-medium text-state-error">{error}</p>
           </div>
         )}
-        {isRegenerating ? (
-          <KptSkeleton />
-        ) : (
+        {showSkeleton ? (
+          <div className="space-y-3">
+            <p className="text-center text-xs text-text-tertiary">보통 10~20초 걸려요</p>
+            <KptSkeleton />
+          </div>
+        ) : displayReport && (
           <div className="space-y-3">
             {(['keep', 'problem', 'try'] as const).map((key: KptTag) => {
               const style = KPT_STYLES[key]
@@ -159,7 +165,19 @@ export function AiReportSheet({
           </div>
         )}
 
-        {isPreview ? (
+        {!displayReport ? (
+          error && !isRegenerating && onRetry && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="w-full rounded-xl bg-accent py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
+              >
+                다시 시도
+              </button>
+            </div>
+          )
+        ) : isPreview ? (
           <div className="space-y-2 pt-2">
             <button
               type="button"
