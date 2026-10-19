@@ -870,4 +870,25 @@ describe('useTimerStore pomodoro 기록 정확도', () => {
     expect(timer.sessions[0].breakSeconds).toBe(300)
     expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]?.[0].breakSeconds).toBe(300)
   })
+
+  it('남은 시간이 0인 채로 일시정지된 Flow는 재개하면 완료 처리된다', () => {
+    setTimer(
+      createPomodoroTimer({
+        settingsSnapshot: pomodoroSettings,
+        phase: 'flow',
+        status: 'paused',
+        endAt: null,
+        remainingMs: 0,
+        cycleCount: 0,
+        sessions: [],
+      }),
+    )
+
+    useTimerStore.getState().resume(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.cycleCount).toBe(1)
+    expect(timer.sessions[0].sessionFocusSeconds).toBe(1500)
+  })
 })

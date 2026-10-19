@@ -587,23 +587,15 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         return
       }
       
-      // 뽀모도로 타이머: waiting 상태에서 재개
-      if (timer.status === 'waiting' && timer.remainingMs) {
+      // 뽀모도로 타이머: waiting/paused 상태에서 재개
+      // 남은 시간이 0이면 바로 완료 처리해 다음 phase로 넘긴다
+      if ((timer.status === 'waiting' || timer.status === 'paused') && timer.remainingMs != null) {
         updateTimer(todoId, {
           status: 'running',
           endAt: Date.now() + timer.remainingMs,
           remainingMs: null,
         })
-        return
-      }
-      
-      // 뽀모도로 타이머: paused 상태에서 재개
-      if (timer.status === 'paused' && timer.remainingMs) {
-        updateTimer(todoId, {
-          status: 'running',
-          endAt: Date.now() + timer.remainingMs,
-          remainingMs: null,
-        })
+        if (timer.remainingMs <= 0) get().completePhase(todoId)
       }
     },
 
