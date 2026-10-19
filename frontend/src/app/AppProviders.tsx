@@ -73,6 +73,9 @@ export function AppProviders({ children }: PropsWithChildren) {
             padding: '12px 16px',
             // 좁은 화면에서도 잘리지 않게 화면 폭 안에서 줄바꿈한다.
             maxWidth: 'min(420px, calc(100vw - 32px))',
+            // 한국어는 어절 단위로 줄바꿈하고, 긴 URL처럼 한 덩어리가 넘칠 때만 중간에서 끊는다.
+            wordBreak: 'keep-all',
+            overflowWrap: 'anywhere',
           },
         }}
       />
