@@ -1,46 +1,22 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useState, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
-import { UndoToast } from '../../ui/UndoToast'
-import { useCreateSession, useDeleteTodo, useUpdateTodo } from './hooks'
+import { useCreateSession, useUpdateTodo } from './hooks'
+import { useDeleteWithUndo } from './useDeleteWithUndo'
 import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
 import { completeTaskFromTimer } from '../timer/completeHelpers'
 import { normalizeSessionId } from '../../lib/sessionId'
-import { queryKeys } from '../../lib/queryKeys'
-import type { Todo, TodoList } from '../../api/types'
 
 export function useBatchSelect() {
-  const queryClient = useQueryClient()
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const updateTodo = useUpdateTodo()
-  const deleteTodo = useDeleteTodo()
+  const deleteWithUndo = useDeleteWithUndo()
   const createSession = useCreateSession()
   const { data: settings } = usePomodoroSettings()
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const clearPendingAutoSessions = useTimerStore((s) => s.clearPendingAutoSessions)
-
-  const deleteTodoRef = useRef(deleteTodo.mutate)
-  useEffect(() => { deleteTodoRef.current = deleteTodo.mutate })
-
-  const pendingBatchDelete = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingBatchIds = useRef<string[]>([])
-
-  useEffect(() => {
-    return () => {
-      if (pendingBatchDelete.current) {
-        clearTimeout(pendingBatchDelete.current)
-        for (const id of pendingBatchIds.current) {
-          deleteTodoRef.current(id)
-        }
-        pendingBatchDelete.current = null
-        pendingBatchIds.current = []
-      }
-    }
-  }, [])
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -109,54 +85,9 @@ export function useBatchSelect() {
   const batchDelete = useCallback(() => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-
-    const currentData = queryClient.getQueryData<TodoList>(queryKeys.todos())
-    const deletedTodos = currentData?.items.filter((t: Todo) => ids.includes(t.id)) ?? []
-
-    for (const id of ids) {
-      reset(id)
-      // 삭제되는 todo 의 미동기화 큐는 비운다 (POST /sessions 가 404 만 일으키므로).
-      clearPendingAutoSessions(id)
-    }
-    queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
-      if (!old) return old
-      return { items: old.items.filter((t: Todo) => !ids.includes(t.id)) }
-    })
-
-    pendingBatchIds.current = ids
-    pendingBatchDelete.current = setTimeout(() => {
-      pendingBatchDelete.current = null
-      for (const id of pendingBatchIds.current) {
-        deleteTodoRef.current(id)
-      }
-      pendingBatchIds.current = []
-    }, 5000)
-
+    deleteWithUndo(ids, `${ids.length}개 삭제됨`)
     exitSelectMode()
-
-    toast(
-      (t) => (
-        <UndoToast
-          t={t}
-          message={`${ids.length}개 삭제됨`}
-          onUndo={() => {
-            if (pendingBatchDelete.current) {
-              clearTimeout(pendingBatchDelete.current)
-              pendingBatchDelete.current = null
-              pendingBatchIds.current = []
-            }
-            if (deletedTodos.length > 0) {
-              queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
-                if (!old) return { items: deletedTodos }
-                return { items: [...old.items, ...deletedTodos] }
-              })
-            }
-          }}
-        />
-      ),
-      { id: 'batch-delete', duration: 5000 },
-    )
-  }, [selectedIds, queryClient, reset, clearPendingAutoSessions, exitSelectMode])
+  }, [selectedIds, deleteWithUndo, exitSelectMode])
 
   return {
     selectMode,

@@ -1,13 +1,10 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useState, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import { UndoToast } from '../../ui/UndoToast'
-import { queryKeys } from '../../lib/queryKeys'
-import type { Todo, TodoList } from '../../api/types'
+import type { Todo } from '../../api/types'
 import {
   useCreateSession,
   useCreateTodo,
-  useDeleteTodo,
   useUpdateTodo,
 } from './hooks'
 import { useTimerStore } from '../timer/timerStore'
@@ -17,20 +14,18 @@ import { normalizeSessionId } from '../../lib/sessionId'
 import { useNoteModal } from './useNoteModal'
 import { useDatePickerActions } from './useDatePickerActions'
 import { useTimerOpenState } from './useTimerOpenState'
+import { useDeleteWithUndo } from './useDeleteWithUndo'
 
 export function useTodoActions(selectedDateKey: string) {
-  const queryClient = useQueryClient()
   const createSession = useCreateSession()
   const createTodo = useCreateTodo()
   const updateTodo = useUpdateTodo()
-  const deleteTodo = useDeleteTodo()
 
   const { data: settings } = usePomodoroSettings()
 
   const pause = useTimerStore((s) => s.pause)
   const reset = useTimerStore((s) => s.reset)
   const getTimer = useTimerStore((s) => s.getTimer)
-  const clearPendingAutoSessions = useTimerStore((s) => s.clearPendingAutoSessions)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
@@ -114,75 +109,12 @@ export function useTodoActions(selectedDateKey: string) {
     )
   }
 
-  const pendingDeleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const deleteTodoRef = useRef(deleteTodo.mutate)
-  useEffect(() => { deleteTodoRef.current = deleteTodo.mutate })
-
-  // 언마운트 시 pending delete 즉시 실행
-  useEffect(() => {
-    const pendingTimers = pendingDeleteTimers.current
-    return () => {
-      pendingTimers.forEach((timer, id) => {
-        clearTimeout(timer)
-        deleteTodoRef.current(id)
-      })
-      pendingTimers.clear()
-    }
-  }, [])
+  const deleteWithUndo = useDeleteWithUndo()
 
   const handleDelete = useCallback((id: string) => {
-    // 이전 pending delete가 있으면 즉시 확정
-    const existingTimer = pendingDeleteTimers.current.get(id)
-    if (existingTimer) {
-      clearTimeout(existingTimer)
-      pendingDeleteTimers.current.delete(id)
-    }
-
-    reset(id)
-    // 삭제되는 todo 의 미동기화 큐는 비운다 (POST /sessions 가 404 만 일으키므로).
-    clearPendingAutoSessions(id)
     setSelectedTodo(null)
-
-    // 삭제 대상 항목만 저장 (전체 스냅샷 대신)
-    const currentData = queryClient.getQueryData<TodoList>(queryKeys.todos())
-    const deletedTodo = currentData?.items.find((t) => t.id === id)
-
-    // 캐시에서 optimistic 제거
-    queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
-      if (!old) return old
-      return { items: old.items.filter((t) => t.id !== id) }
-    })
-
-    // 5초 후 실제 삭제
-    const timer = setTimeout(() => {
-      pendingDeleteTimers.current.delete(id)
-      deleteTodoRef.current(id)
-    }, 5000)
-    pendingDeleteTimers.current.set(id, timer)
-
-    toast(
-      (t) => (
-        <UndoToast
-          t={t}
-          message="삭제됨"
-          onUndo={() => {
-            const pending = pendingDeleteTimers.current.get(id)
-            if (pending) {
-              clearTimeout(pending)
-              pendingDeleteTimers.current.delete(id)
-            }
-            if (deletedTodo) {
-              queryClient.setQueryData<TodoList>(queryKeys.todos(), (old) => {
-                if (!old) return { items: [deletedTodo] }
-                return { items: [...old.items, deletedTodo] }
-              })
-            }
-          }}
-        />
-      ),
-      { id: `delete-${id}`, duration: 5000 },
-    )
-  }, [queryClient, reset, clearPendingAutoSessions])
+    deleteWithUndo([id], '삭제됨')
+  }, [deleteWithUndo])
 
   const handleEdit = (id: string, currentTitle: string) => {
     setEditingId(id)

@@ -11,6 +11,7 @@ import {
   type TodoReorderRequest,
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
+import { finishDelete, withoutPendingDeletes } from './pendingDeletes'
 
 type UseTodosOptions = {
   enabled?: boolean
@@ -20,7 +21,8 @@ export function useTodos(options: UseTodosOptions = {}) {
   const { enabled = true } = options
   return useQuery({
     queryKey: queryKeys.todos(),
-    queryFn: () => todoApi.list(),
+    // 되돌리기 유예 중인 할 일은 refetch 로 다시 받아도 보이지 않게 한다.
+    queryFn: async () => withoutPendingDeletes(await todoApi.list()),
     enabled,
   })
 }
@@ -109,7 +111,11 @@ export function useDeleteTodo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => todoApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.todos() }),
+    onSettled: (_data, _error, id) => {
+      // 응답을 받았으니 숨김을 풀고 서버값으로 맞춘다. 실패했다면 목록에 다시 보인다.
+      finishDelete(id)
+      return qc.invalidateQueries({ queryKey: queryKeys.todos() })
+    },
   })
 }
 
