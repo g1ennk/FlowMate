@@ -12,7 +12,7 @@ export function UndoToast({ t, message, onUndo }: UndoToastProps) {
     <span className="flex items-center gap-3 text-sm">
       {message}
       <button
-        className="font-semibold text-accent hover:underline"
+        className="shrink-0 whitespace-nowrap font-semibold text-accent hover:underline"
         onClick={() => {
           onUndo()
           toast.dismiss(t.id)
