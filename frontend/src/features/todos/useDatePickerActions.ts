@@ -53,13 +53,18 @@ export function useDatePickerActions() {
     })
 
     closeDatePicker()
-    await updateTodo.mutateAsync({
-      id: todo.id,
-      patch: {
-        date: targetDateKey,
-        dayOrder: nextOrder,
-      },
-    })
+    try {
+      await updateTodo.mutateAsync({
+        id: todo.id,
+        patch: {
+          date: targetDateKey,
+          dayOrder: nextOrder,
+        },
+      })
+    } catch {
+      toast.error('날짜를 바꾸지 못했어요. 다시 시도해 주세요', { id: 'todo-date-move-failed' })
+      return
+    }
     toast.success(successMessage, { id: 'todo-date-moved' })
   }
 
@@ -75,13 +80,18 @@ export function useDatePickerActions() {
     })
 
     closeDatePicker()
-    await createTodo.mutateAsync({
-      title: todo.title,
-      note: todo.note,
-      date: targetDateKey,
-      miniDay: 0,
-      dayOrder: nextOrder,
-    })
+    try {
+      await createTodo.mutateAsync({
+        title: todo.title,
+        note: todo.note,
+        date: targetDateKey,
+        miniDay: 0,
+        dayOrder: nextOrder,
+      })
+    } catch {
+      toast.error('할 일을 추가하지 못했어요. 다시 시도해 주세요', { id: 'todo-create-failed' })
+      return
+    }
     toast.success(successMessage, { id: 'todo-duplicated' })
   }
 

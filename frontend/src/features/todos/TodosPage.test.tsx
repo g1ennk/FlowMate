@@ -995,4 +995,32 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(screen.getByText('할 일 A')).toBeInTheDocument()
   })
 
+  it('shows an error when moving a todo to another day fails', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    server.use(
+      http.patch('/api/todos/:id', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+
+    fireEvent.click(screen.getByText('할 일 A'))
+    fireEvent.click(screen.getByRole('button', { name: '내일 하기' }))
+    await wait(700)
+
+    expect(screen.getByText('날짜를 바꾸지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+  })
+
+  it('shows an error when doing a todo again fails', async () => {
+    await renderPage({ items: [buildTodo({ title: '끝낸 일', isDone: true })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    server.use(
+      http.post('/api/todos', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+
+    fireEvent.click(screen.getByText('끝낸 일'))
+    fireEvent.click(screen.getByRole('button', { name: '내일 또 하기' }))
+    await wait(700)
+
+    expect(screen.getByText('할 일을 추가하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+  })
+
 })
