@@ -42,6 +42,13 @@ export function useKeyboardShortcuts() {
       // 풀스크린 타이머가 열려 있으면 단축키 비활성화
       if (document.querySelector('[data-timer-fullscreen]')) return
 
+      // 한글 입력 상태에서는 e.key가 'ㅇ'이 되므로 물리 키 위치(e.code)로 판정한다
+      if (e.code === 'KeyD') {
+        setTheme(resolved === 'dark' ? 'light' : 'dark')
+        e.preventDefault()
+        return
+      }
+
       switch (e.key) {
         case '1':
         case '2':
@@ -53,11 +60,6 @@ export function useKeyboardShortcuts() {
           e.preventDefault()
           break
         }
-        case 'd':
-        case 'D':
-          setTheme(resolved === 'dark' ? 'light' : 'dark')
-          e.preventDefault()
-          break
         case '?':
           setHelpOpen((prev) => !prev)
           e.preventDefault()
