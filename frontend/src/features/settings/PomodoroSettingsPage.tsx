@@ -30,19 +30,6 @@ const WHEEL_ITEM_HEIGHT = 40
 const WHEEL_VISIBLE_COUNT = 5
 const WHEEL_PADDING = (WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT - WHEEL_ITEM_HEIGHT) / 2
 
-type MiniDaySaveState = { message: string; tone: string }
-
-function getMiniDaySaveState(opts: {
-  isPending: boolean
-  hasError: boolean
-  isDirty: boolean
-}): MiniDaySaveState {
-  if (opts.isPending) return { message: '저장 중입니다...', tone: 'text-accent' }
-  if (opts.hasError) return { message: '오류를 수정한 뒤 상단 저장을 눌러주세요', tone: 'text-state-error' }
-  if (opts.isDirty) return { message: '상단 저장을 누르면 적용됩니다', tone: 'text-text-secondary' }
-  return { message: '변경한 뒤 상단 저장을 누르면 적용됩니다', tone: 'text-text-secondary' }
-}
-
 type SettingsRowProps = {
   label: string
   value: string
@@ -261,7 +248,11 @@ function PomodoroSettingsPage() {
         : undefined,
     [settingsData],
   )
-  const miniDaysBase = settingsData?.miniDays ?? defaultMiniDaysSettings
+  // 저장 중인 미니 데이는 바로 보여주고, 다음 편집도 그 값 위에서 한다(PUT은 세 구간을 통째로 덮어쓴다).
+  const miniDaysBase =
+    (updateMiniDays.isPending ? updateMiniDays.variables : undefined)
+    ?? settingsData?.miniDays
+    ?? defaultMiniDaysSettings
 
   const values = useMemo(
     () => ({
@@ -358,7 +349,17 @@ function PomodoroSettingsPage() {
     setTimeDraftFromValue(next.start, defaultMiniDaysSettings[dayKey].start)
   }
 
+  // 닫을 때 바뀐 값이 있으면 저장한다. 오류가 있으면 닫지 않고 오류 문구를 보여준다.
   const closeMiniDayEditor = () => {
+    if (!activeMiniDay) return
+    if (activeMiniDayError) return
+    if (isMiniDayDirty) {
+      updateMiniDays.mutate(candidateMiniDays, {
+        onSuccess: () => {
+          toast.success('저장됨', { id: 'mini-days-saved' })
+        },
+      })
+    }
     setActiveMiniDay(null)
   }
 
@@ -405,21 +406,6 @@ function PomodoroSettingsPage() {
       return
     }
     updateMiniDayEditorField(miniDayEditField, formatTime(hour24, draft.minute))
-  }
-
-  const handleSaveMiniDay = () => {
-    if (!activeMiniDay) return
-    if (activeMiniDayError) return
-    if (!isMiniDayDirty) {
-      closeMiniDayEditor()
-      return
-    }
-    updateMiniDays.mutate(candidateMiniDays, {
-      onSuccess: () => {
-        toast.success('저장됨', { id: 'mini-days-saved' })
-        closeMiniDayEditor()
-      },
-    })
   }
 
   const handleSelectMiniDayField = (field: 'start' | 'end') => {
@@ -514,13 +500,8 @@ function PomodoroSettingsPage() {
     : '--'
   const previewDuration = hasValidRange ? formatDuration(endMinutes - startMinutes) : '--'
   const activeMiniDayErrorMessage = activeMiniDayError === '시작은 종료보다 빨라야 해요'
-    ? '종료는 시작 이후여야 합니다'
+    ? '종료는 시작보다 늦어야 해요'
     : activeMiniDayError
-  const miniDaySaveState = getMiniDaySaveState({
-    isPending: updateMiniDays.isPending,
-    hasError: !!activeMiniDayErrorMessage,
-    isDirty: isMiniDayDirty,
-  })
   const hourIndex = Math.max(0, HOUR_OPTIONS.indexOf(timeDraft.hour))
   const minuteIndex = Math.max(0, MINUTE_OPTIONS.indexOf(timeDraft.minute))
   const periodIndex = timeDraft.period === 'am' ? 0 : 1
@@ -764,16 +745,6 @@ function PomodoroSettingsPage() {
         title="미니 데이 설정"
         panelClassName="min-h-[50dvh]"
         contentClassName="pb-0 pt-4"
-        headerAction={(
-          <button
-            type="button"
-            onClick={handleSaveMiniDay}
-            disabled={!!activeMiniDayErrorMessage || updateMiniDays.isPending || !isMiniDayDirty}
-            className="rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle hover:text-accent-text disabled:cursor-not-allowed disabled:text-text-disabled disabled:hover:bg-transparent"
-          >
-            저장
-          </button>
-        )}
       >
         <div className="space-y-card pb-6">
           <div
@@ -875,8 +846,10 @@ function PomodoroSettingsPage() {
               <span>{previewDuration}</span>
             </div>
 
-            <p className={`text-center text-xs font-medium ${miniDaySaveState.tone}`}>
-              {miniDaySaveState.message}
+            <p className={`text-center text-xs font-medium ${
+              activeMiniDayErrorMessage ? 'text-state-error' : 'text-text-secondary'
+            }`}>
+              {activeMiniDayErrorMessage ? '오류를 고쳐야 닫을 수 있어요' : '닫으면 자동으로 저장돼요'}
             </p>
           </div>
         </div>

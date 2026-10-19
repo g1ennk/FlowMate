@@ -472,7 +472,7 @@ describe('PomodoroSettingsPage', () => {
     const labelInput = await screen.findByPlaceholderText('미니 데이 1')
     await user.clear(labelInput)
     await user.type(labelInput, '아침')
-    await user.click(screen.getByRole('button', { name: '저장' }))
+    await user.keyboard('{Escape}')
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('미니 데이를 저장하지 못했어요'))
   })
@@ -494,7 +494,7 @@ describe('PomodoroSettingsPage', () => {
     await user.click(within(screen.getByLabelText('분 선택')).getByRole('button', { name: '00' }))
 
     expect(screen.getByRole('button', { name: /종료/ })).toHaveAccessibleName(/자정/)
-    expect(screen.queryByText('종료는 시작 이후여야 합니다')).not.toBeInTheDocument()
+    expect(screen.queryByText('종료는 시작보다 늦어야 해요')).not.toBeInTheDocument()
   })
 
   it('saves midnight as 24:00 when 12 AM is picked for the end', async () => {
@@ -519,9 +519,67 @@ describe('PomodoroSettingsPage', () => {
     await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '12' }))
 
     expect(screen.getByRole('button', { name: /종료/ })).toHaveAccessibleName(/자정/)
-    expect(screen.queryByText('종료는 시작 이후여야 합니다')).not.toBeInTheDocument()
+    expect(screen.queryByText('종료는 시작보다 늦어야 해요')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '저장' }))
+    await user.keyboard('{Escape}')
     await waitFor(() => expect(serverState.miniDays.day2.end).toBe('24:00'))
+  })
+  it('saves mini day changes when the sheet is closed', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    server.use(
+      http.put('/api/settings/mini-days', async ({ request }) => {
+        const body = (await request.json()) as Settings['miniDays']
+        await delay(150)
+        serverState.miniDays = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const morningRow = await screen.findByRole('button', { name: /오전/ })
+    await waitFor(() => expect(morningRow).not.toBeDisabled())
+
+    await user.click(morningRow)
+    expect(screen.queryByRole('button', { name: '저장' })).not.toBeInTheDocument()
+    const labelInput = await screen.findByPlaceholderText('미니 데이 1')
+    await user.clear(labelInput)
+    await user.type(labelInput, '아침')
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '미니 데이 설정' })).not.toBeInTheDocument())
+    // 저장이 끝나기 전에도 목록에는 바뀐 값이 보인다.
+    expect(screen.getByRole('button', { name: /아침/ })).toBeInTheDocument()
+    await waitFor(() => expect(serverState.miniDays.day1.label).toBe('아침'))
+  })
+
+  it('keeps the mini day sheet open with an error when the range is invalid', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    let putCount = 0
+    server.use(
+      http.put('/api/settings/mini-days', async ({ request }) => {
+        putCount += 1
+        const body = (await request.json()) as Settings['miniDays']
+        serverState.miniDays = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const morningRow = await screen.findByRole('button', { name: /오전/ })
+    await waitFor(() => expect(morningRow).not.toBeDisabled())
+
+    await user.click(morningRow)
+    await user.click(await screen.findByRole('button', { name: /종료/ }))
+    await user.click(within(screen.getByLabelText('오전 오후 선택')).getByRole('button', { name: '오전' }))
+    await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '5' }))
+    await user.keyboard('{Escape}')
+
+    expect(screen.getByRole('heading', { name: '미니 데이 설정' })).toBeInTheDocument()
+    expect(screen.getByText('종료는 시작보다 늦어야 해요')).toBeInTheDocument()
+    expect(putCount).toBe(0)
   })
 })
