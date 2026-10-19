@@ -1,10 +1,11 @@
-import { Fragment, useMemo, useState, useCallback, type Dispatch, type SetStateAction } from 'react'
+import { Fragment, useEffect, useMemo, useState, useCallback, type Dispatch, type SetStateAction } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DndContext } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTimerStore, type SingleTimerState } from '../timer/timerStore'
 import { Calendar, type ViewMode } from '../../ui/Calendar'
 import { formatDateKey } from '../../lib/time'
+import { useNow } from '../../lib/useNow'
 import { PlusIcon, ChevronRightIcon, CheckIcon } from '../../ui/Icons'
 import { SortableTodoItem } from './components/SortableTodoItem'
 import { BatchActionBar } from './components/BatchActionBar'
@@ -53,12 +54,19 @@ function TodosPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const dateParam = searchParams.get('date')
 
-  const [selectedDate, setSelectedDate] = useState(() => parseDateParam(dateParam) ?? new Date())
+  const now = useNow()
+  const todayDateKey = formatDateKey(now)
+  const todayDate = useMemo(() => parseDateParam(todayDateKey) ?? new Date(), [todayDateKey])
+  // 오늘을 보고 있으면 null로 두어, 앱을 켜 둔 채 날짜가 바뀌어도 새 오늘을 따라간다.
+  const [pickedDate, setPickedDate] = useState<Date | null>(() => {
+    const parsed = parseDateParam(dateParam)
+    return parsed && formatDateKey(parsed) !== todayDateKey ? parsed : null
+  })
+  const selectedDate = pickedDate ?? todayDate
   const [calendarViewMode, setCalendarViewMode] = useState<TodosCalendarViewMode>(() =>
     readStoredTodosCalendarViewMode(),
   )
   const selectedDateKey = formatDateKey(selectedDate)
-  const todayDateKey = formatDateKey(new Date())
   const isSelectedDateToday = selectedDateKey === todayDateKey
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
   const guideDisplayName = getGuideDisplayName(authState)
@@ -74,14 +82,27 @@ function TodosPage() {
     }
   }, [])
 
+  // 오늘을 고르면 주소에 날짜를 남기지 않아, 다시 열었을 때 지난 날짜에 머무르지 않게 한다.
   const handleSelectedDateChange = useCallback((nextDate: Date) => {
-    setSelectedDate(nextDate)
+    const nextDateKey = formatDateKey(nextDate)
+    const isToday = nextDateKey === formatDateKey(new Date())
+    setPickedDate(isToday ? null : nextDate)
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      next.set('date', formatDateKey(nextDate))
+      if (isToday) next.delete('date')
+      else next.set('date', nextDateKey)
       return next
     }, { replace: true })
   }, [setSearchParams])
+
+  useEffect(() => {
+    if (pickedDate !== null || dateParam === null) return
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('date')
+      return next
+    }, { replace: true })
+  }, [pickedDate, dateParam, setSearchParams])
 
   const daySections = useMemo(() => {
     const formatRange = (start: string, end: string) => {
@@ -121,8 +142,8 @@ function TodosPage() {
   }, [data?.items, selectedDateKey])
 
   const defaultOpenId = useMemo(
-    () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings),
-    [selectedDate, miniDaysSettings],
+    () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings, now),
+    [selectedDate, miniDaysSettings, now],
   )
 
   const markedDates = useMemo(() => {

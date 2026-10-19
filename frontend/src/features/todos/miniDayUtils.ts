@@ -46,8 +46,8 @@ export function getMiniDayFromTime(date: Date, settings: MiniDaysSettings): numb
 export function getDefaultMiniDayForDate(
   selectedDate: Date,
   settings: MiniDaysSettings,
+  now: Date = new Date(),
 ): number {
-  const now = new Date()
   if (!isSameDay(selectedDate, now)) return 0
   return getMiniDayFromTime(now, settings)
 }

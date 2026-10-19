@@ -995,6 +995,61 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(screen.getByText('할 일 A')).toBeInTheDocument()
   })
 
+  it('follows the new day at midnight and adds todos to it', async () => {
+    await renderPage({ route: '/todos', now: new Date(2026, 0, 9, 23, 59, 30) })
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+
+    await wait(60_000)
+    expect(screen.getByText('1월 10일')).toBeInTheDocument()
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '새날 할 일' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await wait(700)
+
+    expect(readStoredTodos()[0]).toMatchObject({ title: '새날 할 일', date: '2026-01-10' })
+  })
+
+  it('follows the new day when the app comes back to the foreground', async () => {
+    await renderPage({ route: `/todos?date=${selectedDateKey}`, now: new Date(2026, 0, 9, 21, 0, 0) })
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+
+    vi.setSystemTime(new Date(2026, 0, 10, 8, 0, 0))
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(screen.getByText('1월 10일')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/todos$/)
+  })
+
+  it('moves the current time badge when the time section changes', async () => {
+    await renderPage({ route: '/todos', now: new Date(2026, 0, 9, 11, 59, 30) })
+    expect(screen.getByText('현재 시간대').parentElement).toHaveTextContent('오전')
+
+    await wait(60_000)
+    expect(screen.getByText('현재 시간대').parentElement).toHaveTextContent('오후')
+  })
+
+  it('stays on a past date the user picked when the day changes', async () => {
+    await renderPage({ route: '/todos?date=2026-01-08', now: new Date(2026, 0, 9, 23, 59, 30) })
+    expect(screen.getByText('1월 8일')).toBeInTheDocument()
+
+    await wait(60_000)
+    expect(screen.getByText('1월 8일')).toBeInTheDocument()
+  })
+
+  it('drops the date from the address when today is picked', async () => {
+    await renderPage({ route: '/todos?date=2026-01-08', now: new Date(2026, 0, 9, 9, 0, 0) })
+    expect(screen.getByTestId('location')).toHaveTextContent('/todos?date=2026-01-08')
+
+    fireEvent.click(screen.getByRole('button', { name: /^오늘 9\b/ }))
+
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/todos$/)
+  })
+
   it('shows an error when moving a todo to another day fails', async () => {
     await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
     fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
