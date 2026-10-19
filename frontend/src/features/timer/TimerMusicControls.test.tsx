@@ -25,7 +25,7 @@ describe('TimerMusicControls', () => {
     useSoundscapeStore.getState().stopSession()
     localStorage.removeItem('flowmate/ui/sound-prefs')
     useSoundscapeStore.getState().applyPreset('rainy-cafe')
-    useSoundscapeStore.setState({ enabled: false, blocked: false, failed: [] })
+    useSoundscapeStore.setState({ enabled: false, blocked: false, failed: [], phase: 'stopped' })
   })
 
   afterEach(() => {
@@ -67,6 +67,29 @@ describe('TimerMusicControls', () => {
     render(<TimerMusicControls />)
     fireEvent.change(screen.getByLabelText('전체 볼륨'), { target: { value: '0.6' } })
     expect(useSoundscapeStore.getState().masterVolume).toBe(0.6)
+  })
+
+  it('shows the master slider while focusing', () => {
+    useSoundscapeStore.setState({ enabled: true, phase: 'focus' })
+    render(<TimerMusicControls />)
+    expect(screen.getByLabelText('전체 볼륨')).toBeInTheDocument()
+    expect(screen.queryByText('집중할 때 다시 재생돼요')).not.toBeInTheDocument()
+  })
+
+  it.each(['break', 'waiting'] as const)('replaces the slider with a resting hint during %s', (phase) => {
+    useSoundscapeStore.setState({ enabled: true, phase })
+    render(<TimerMusicControls />)
+    expect(screen.getByText('집중할 때 다시 재생돼요')).toBeInTheDocument()
+    expect(screen.queryByLabelText('전체 볼륨')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '배경 음악 끄기' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '사운드 선택: 비 오는 카페' })).toBeEnabled()
+  })
+
+  it('keeps the slider without a hint during break when sound is off', () => {
+    useSoundscapeStore.setState({ enabled: false, phase: 'break' })
+    render(<TimerMusicControls />)
+    expect(screen.getByLabelText('전체 볼륨')).toBeDisabled()
+    expect(screen.queryByText('집중할 때 다시 재생돼요')).not.toBeInTheDocument()
   })
 
   it('labels the toggle 눌러서 재생 while blocked and retries instead of disabling', async () => {

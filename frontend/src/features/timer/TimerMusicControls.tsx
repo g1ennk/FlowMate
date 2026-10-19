@@ -12,6 +12,7 @@ export function TimerMusicControls() {
   const blocked = useSoundscapeStore((state) => state.blocked)
   const presetId = useSoundscapeStore((state) => state.presetId)
   const masterVolume = useSoundscapeStore((state) => state.masterVolume)
+  const phase = useSoundscapeStore((state) => state.phase)
   const setEnabled = useSoundscapeStore((state) => state.setEnabled)
   const retryPlayback = useSoundscapeStore((state) => state.retryPlayback)
   const setMasterVolume = useSoundscapeStore((state) => state.setMasterVolume)
@@ -28,6 +29,10 @@ export function TimerMusicControls() {
     setRetried(false)
   }
   const canRetry = needsTap && !retried
+  // 휴식과 대기 중에는 소리를 켜 둬도 조용하다. 고장으로 오해하지 않도록 흐리게 두고 이유를 보여준다
+  // 토글과 분위기는 그대로 눌러서 다음 집중의 소리를 미리 고를 수 있다
+  const resting = enabled && (phase === 'break' || phase === 'waiting')
+  const dimClass = resting ? 'opacity-60' : ''
 
   function handleToggle() {
     if (canRetry) {
@@ -44,7 +49,7 @@ export function TimerMusicControls() {
         type="button"
         onClick={handleToggle}
         aria-label={canRetry ? '눌러서 재생' : enabled ? '배경 음악 끄기' : '배경 음악 켜기'}
-        className="-m-2 shrink-0 p-2 text-white/60 transition-colors hover:text-white/90"
+        className={`-m-2 shrink-0 p-2 text-white/60 transition-colors hover:text-white/90 ${dimClass}`}
       >
         {enabled
           ? <SpeakerWaveIcon className="h-4 w-4" />
@@ -58,7 +63,7 @@ export function TimerMusicControls() {
           setSheetOpen(true)
         }}
         aria-label={`사운드 선택: ${label}`}
-        className="min-w-0 max-w-[5.5rem] truncate text-left text-xs text-white/50 transition-colors hover:text-white/80"
+        className={`min-w-0 max-w-[5.5rem] truncate text-left text-xs text-white/50 transition-colors hover:text-white/80 ${dimClass}`}
       >
         {label}
       </button>
@@ -67,17 +72,21 @@ export function TimerMusicControls() {
           눌러서 재생
         </span>
       )}
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.05}
-        value={masterVolume}
-        onChange={(event) => setMasterVolume(Number(event.target.value))}
-        aria-label="전체 볼륨"
-        disabled={!enabled}
-        className={`-my-1 h-6 w-20 cursor-pointer appearance-none bg-linear-to-r from-white/20 to-white/20 bg-size-[100%_2px] bg-center bg-no-repeat accent-accent disabled:cursor-not-allowed disabled:opacity-40 ${SLIDER_THUMB_CLASS}`}
-      />
+      {resting ? (
+        <span className="shrink-0 text-xs text-white/60">집중할 때 다시 재생돼요</span>
+      ) : (
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={masterVolume}
+          onChange={(event) => setMasterVolume(Number(event.target.value))}
+          aria-label="전체 볼륨"
+          disabled={!enabled}
+          className={`-my-1 h-6 w-20 cursor-pointer appearance-none bg-linear-to-r from-white/20 to-white/20 bg-size-[100%_2px] bg-center bg-no-repeat accent-accent disabled:cursor-not-allowed disabled:opacity-40 ${SLIDER_THUMB_CLASS}`}
+        />
+      )}
       {sheetMounted && <SoundSheet isOpen={sheetOpen} onClose={() => setSheetOpen(false)} />}
     </div>
   )
