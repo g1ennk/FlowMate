@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSystemStore } from '../../store/systemStore'
-import { useBackendWatcher } from './useBackendWatcher'
+import { RETRY_DELAY_MS, useBackendWatcher } from './useBackendWatcher'
 
 vi.mock('../../api/health', () => ({
   checkHealth: vi.fn(),
@@ -40,14 +40,40 @@ describe('useBackendWatcher', () => {
     expect(useSystemStore.getState().status).toBe('available')
   })
 
-  it('헬스체크 실패 시 status를 unavailable로 설정한다', async () => {
+  it('헬스체크 1회 실패로는 unavailable로 바꾸지 않고 짧은 간격으로 다시 확인한다', async () => {
     const { checkHealth } = await import('../../api/health')
     vi.mocked(checkHealth).mockResolvedValue(false)
 
     renderHook(() => useBackendWatcher())
     await vi.advanceTimersByTimeAsync(0)
 
+    expect(checkHealth).toHaveBeenCalledTimes(1)
+    expect(useSystemStore.getState().status).not.toBe('unavailable')
+
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS)
+
+    expect(checkHealth).toHaveBeenCalledTimes(2)
     expect(useSystemStore.getState().status).toBe('unavailable')
+  })
+
+  it('사용 중 폴링이 한 번 실패해도 재확인이 성공하면 available을 유지한다', async () => {
+    const { checkHealth } = await import('../../api/health')
+    vi.mocked(checkHealth)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true)
+
+    renderHook(() => useBackendWatcher())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useSystemStore.getState().status).toBe('available')
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(checkHealth).toHaveBeenCalledTimes(2)
+    expect(useSystemStore.getState().status).toBe('available')
+
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS)
+    expect(checkHealth).toHaveBeenCalledTimes(3)
+    expect(useSystemStore.getState().status).toBe('available')
   })
 
   it('30초마다 헬스체크를 재호출한다', async () => {
@@ -75,6 +101,20 @@ describe('useBackendWatcher', () => {
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
     document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(checkHealth).toHaveBeenCalledTimes(2)
+  })
+
+  it('네트워크가 다시 연결되면 즉시 헬스체크를 재호출한다', async () => {
+    const { checkHealth } = await import('../../api/health')
+    vi.mocked(checkHealth).mockResolvedValue(true)
+
+    renderHook(() => useBackendWatcher())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(checkHealth).toHaveBeenCalledTimes(1)
+
+    window.dispatchEvent(new Event('online'))
     await vi.advanceTimersByTimeAsync(0)
 
     expect(checkHealth).toHaveBeenCalledTimes(2)
