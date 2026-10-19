@@ -224,6 +224,85 @@ describe('useSseTimerSync', () => {
       expect(mocked.getActiveStates).toHaveBeenCalledTimes(1)
       expect(m.useTimerStore.getState().timers['todo-1']?.status).toBe('paused')
     })
+
+    it('재조회는 아직 서버에 못 보낸 로컬 변경을 덮어쓰지 않는다', async () => {
+      const { initialSingleTimerState, DEFAULT_POMODORO_SETTINGS } = m
+      mocked.pushState.mockRejectedValue({ status: 503, message: 'down' })
+      // 서버에는 끊기기 전 running 상태가 남아 있다
+      mocked.getActiveStates.mockResolvedValue([
+        {
+          todoId: 'todo-1',
+          version: 6,
+          state: {
+            ...initialSingleTimerState,
+            mode: 'pomodoro',
+            status: 'running',
+            endAt: NOW + 20 * 60_000,
+            settingsSnapshot: DEFAULT_POMODORO_SETTINGS,
+          },
+        },
+      ])
+      setMember(m, 'user-1', makeJwt(NOW + 30 * 60_000))
+      renderHook(() => m.useSseTimerSync())
+      act(() => FakeEventSource.instances[0].emit('connected'))
+
+      // 오프라인에서 일시정지 → push 3번 실패로 재전송 대기
+      act(() => {
+        m.useTimerStore.setState({
+          timers: {
+            'todo-1': {
+              ...initialSingleTimerState,
+              mode: 'pomodoro',
+              status: 'paused',
+              remainingMs: 20 * 60_000,
+              settingsSnapshot: DEFAULT_POMODORO_SETTINGS,
+            },
+          },
+        })
+      })
+      await act(() => vi.advanceTimersByTimeAsync(3_100))
+      expect(mocked.pushState).toHaveBeenCalledTimes(3)
+
+      act(() => FakeEventSource.instances[0].failClosed())
+      await act(() => vi.advanceTimersByTimeAsync(1_500))
+      await act(async () => {
+        FakeEventSource.instances[1].emit('connected')
+      })
+
+      expect(mocked.getActiveStates).toHaveBeenCalledTimes(1)
+      expect(m.useTimerStore.getState().timers['todo-1']?.status).toBe('paused')
+    })
+
+    it('토큰 갱신을 기다리는 동안 화면 복귀가 와도 연결을 하나만 연다', async () => {
+      const fresh = makeJwt(NOW + 15 * 60_000)
+      setMember(m, 'user-1', makeJwt(NOW - 1_000))
+      let finishRefresh: () => void = () => {}
+      const refresh = vi.fn(() => new Promise<void>((resolve) => {
+        finishRefresh = () => {
+          setMember(m, 'user-1', fresh)
+          resolve()
+        }
+      }))
+      m.useAuthStore.setState({ refresh })
+
+      renderHook(() => m.useSseTimerSync())
+      act(() => FakeEventSource.instances[0].failClosed())
+      await act(() => vi.advanceTimersByTimeAsync(1_500))
+      expect(refresh).toHaveBeenCalledTimes(1)
+
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await act(() => vi.advanceTimersByTimeAsync(15_000))
+      expect(FakeEventSource.instances).toHaveLength(1)
+
+      await act(async () => {
+        finishRefresh()
+      })
+      expect(FakeEventSource.instances).toHaveLength(2)
+      expect(FakeEventSource.instances[1].token).toBe(fresh)
+    })
   })
 
   describe('인증 변경', () => {

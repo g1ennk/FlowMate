@@ -98,6 +98,8 @@ function resyncActiveStates(principal: string | null) {
       if (getPrincipal(useAuthStore.getState()) !== principal) return
       states.forEach(({ todoId, state, version }) => {
         if (!todoId || !state) return
+        // 아직 못 보낸 로컬 변경이 있으면 서버 값으로 덮지 않는다. 재전송 후 echo로 맞춰진다.
+        if (pendingResync.has(todoId) || pushQueues.has(todoId)) return
         useTimerStore.getState().applyRemoteState(todoId, state, version)
       })
     })
@@ -139,6 +141,7 @@ export function useSseTimerSync() {
     let lastEventAt = 0
     let reconnectAttempt = 0
     let reconnectTimer: number | null = null
+    let reconnecting = false
     // 같은 사용자로 한 번 연결된 뒤의 connected는 재연결이다
     let connectedOnce = false
     let disposed = false
@@ -188,20 +191,27 @@ export function useSseTimerSync() {
 
     const reconnect = async () => {
       clearReconnectTimer()
+      // 토큰 갱신을 기다리는 동안 점검이 또 들어와도 만료 토큰으로 연결을 하나 더 열지 않는다
+      if (reconnecting) return
       const authState = useAuthStore.getState().state
       if (authState?.type !== 'member') return
 
-      const now = Date.now()
-      if (!sseRefreshing && shouldRefreshSseToken(authState.accessToken, lastSseRefreshAt, now)) {
-        sseRefreshing = true
-        lastSseRefreshAt = now
-        try {
-          await useAuthStore.getState().refresh()
-        } catch {
-          // 갱신에 실패해도 다시 연결을 시도한다. 회원 세션이 끝났으면 open()이 건너뛴다.
-        } finally {
-          sseRefreshing = false
+      reconnecting = true
+      try {
+        const now = Date.now()
+        if (!sseRefreshing && shouldRefreshSseToken(authState.accessToken, lastSseRefreshAt, now)) {
+          sseRefreshing = true
+          lastSseRefreshAt = now
+          try {
+            await useAuthStore.getState().refresh()
+          } catch {
+            // 갱신에 실패해도 다시 연결을 시도한다. 회원 세션이 끝났으면 open()이 건너뛴다.
+          } finally {
+            sseRefreshing = false
+          }
         }
+      } finally {
+        reconnecting = false
       }
 
       if (!disposed) open()
