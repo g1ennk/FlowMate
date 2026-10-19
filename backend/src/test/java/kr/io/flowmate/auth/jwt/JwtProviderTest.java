@@ -121,4 +121,36 @@ class JwtProviderTest {
         assertThatThrownBy(() -> jwtProvider.parseToken(token))
                 .isInstanceOf(JwtException.class);
     }
+
+    @Test
+    @DisplayName("parseTokenAllowingExpired: 서명이 유효한 만료 토큰이면 claims 반환")
+    void parseTokenAllowingExpired_expiredButSigned_returnsClaims() {
+        JwtProperties props = mock(JwtProperties.class);
+        when(props.getSecret()).thenReturn(TEST_SECRET);
+        when(props.getGuestTtl()).thenReturn(-60L);
+        JwtProvider expiredProvider = new JwtProvider(props);
+        expiredProvider.initKey();
+
+        String token = expiredProvider.generateGuestToken("client-abc");
+
+        Claims claims = jwtProvider.parseTokenAllowingExpired(token);
+        assertThat(claims.getSubject()).isEqualTo("client-abc");
+        assertThat(claims.get("role", String.class)).isEqualTo("guest");
+    }
+
+    @Test
+    @DisplayName("parseTokenAllowingExpired: 다른 키로 서명된 만료 토큰이면 JwtException")
+    void parseTokenAllowingExpired_expiredForged_throwsJwtException() {
+        SecretKey otherKey = Keys.hmacShaKeyFor(
+                HexFormat.of().parseHex("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"));
+        String forgedToken = io.jsonwebtoken.Jwts.builder()
+                .subject("hacker")
+                .claim("role", "guest")
+                .expiration(new java.util.Date(System.currentTimeMillis() - 60_000))
+                .signWith(otherKey)
+                .compact();
+
+        assertThatThrownBy(() -> jwtProvider.parseTokenAllowingExpired(forgedToken))
+                .isInstanceOf(JwtException.class);
+    }
 }

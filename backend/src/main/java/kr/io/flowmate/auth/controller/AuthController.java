@@ -3,6 +3,7 @@ package kr.io.flowmate.auth.controller;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import kr.io.flowmate.auth.dto.request.ExchangeRequest;
+import kr.io.flowmate.auth.dto.request.GuestRenewRequest;
 import kr.io.flowmate.auth.dto.response.AuthorizeUrlResponse;
 import kr.io.flowmate.auth.dto.response.GuestTokenResponse;
 import kr.io.flowmate.auth.dto.response.LoginResponse;
@@ -25,6 +26,14 @@ public class AuthController {
     @PostMapping("/guest/token")
     public ResponseEntity<GuestTokenResponse> guestToken() {
         return ResponseEntity.ok(authService.issueGuestToken());
+    }
+
+    /**
+     * 게스트 JWT 재발급 (만료된 토큰도 서명이 유효하면 같은 clientId 로 재발급)
+     */
+    @PostMapping("/guest/renew")
+    public ResponseEntity<GuestTokenResponse> renewGuestToken(@Valid @RequestBody GuestRenewRequest request) {
+        return ResponseEntity.ok(authService.renewGuestToken(request.guestToken()));
     }
 
     /**
