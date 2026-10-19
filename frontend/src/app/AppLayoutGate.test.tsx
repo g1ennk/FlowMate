@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { markSessionExpired } from '../lib/auth'
 import { storageKeys } from '../lib/storageKeys'
 import { useAuthStore } from '../store/authStore'
 import { createTestQueryClient } from '../test/renderApp'
@@ -60,6 +62,30 @@ describe('AppLayoutGate', () => {
   })
 
   it('redirects to login when auth is initialized without a user session', () => {
+    useAuthStore.setState({ initialized: true, state: null })
+
+    renderGate()
+
+    expect(screen.getByText('login page')).toBeInTheDocument()
+  })
+
+  it('회원 복원이 서버 오류로 실패하면 로그인 화면 대신 다시 시도를 보여 준다', async () => {
+    localStorage.setItem(storageKeys.authMode, 'member')
+    const init = vi.fn(async () => {})
+    useAuthStore.setState({ initialized: true, state: null, init })
+
+    renderGate()
+
+    expect(screen.getByText('로그인 정보를 불러오지 못했어요')).toBeInTheDocument()
+    expect(screen.queryByText('login page')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(init).toHaveBeenCalledTimes(1)
+  })
+
+  it('회원 세션이 만료됐으면 로그인 화면으로 보낸다', () => {
+    // 401/403이면 authStore가 회원 힌트를 지우고 만료 표시를 남긴다
+    markSessionExpired()
     useAuthStore.setState({ initialized: true, state: null })
 
     renderGate()
