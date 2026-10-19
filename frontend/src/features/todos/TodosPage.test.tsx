@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { toast, Toaster } from 'react-hot-toast'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '../../lib/queryKeys'
 import { storageKeys } from '../../lib/storageKeys'
+import { server } from '../../mocks/server'
 import { useAuthStore } from '../../store/authStore'
 import { renderApp } from '../../test/renderApp'
 import { initialSingleTimerState, useTimerStore } from '../timer/timerStore'
@@ -620,5 +622,20 @@ describe('TodosPage delete undo', () => {
     expect(storedTitles()).toEqual([])
     expect(useTimerStore.getState().timers[todoId]).toBeUndefined()
     expect(useTimerStore.getState().pendingAutoSessions[todoId]).toBeUndefined()
+  })
+
+  it('shows an error and brings the todo back when the delete request fails', async () => {
+    await renderWithTodos(['할 일 A'])
+    server.use(
+      http.delete('/api/todos/:id', () =>
+        HttpResponse.json({ error: { message: 'boom' } }, { status: 500 }),
+      ),
+    )
+
+    deleteOne('할 일 A')
+    await wait(6000)
+
+    expect(screen.getByText('삭제하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
   })
 })

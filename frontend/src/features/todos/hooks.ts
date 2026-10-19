@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'react-hot-toast'
 import { todoApi } from '../../api/todos'
 import {
   type Session,
@@ -111,6 +112,9 @@ export function useDeleteTodo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => todoApi.remove(id),
+    onError: () => {
+      toast.error('삭제하지 못했어요. 다시 시도해 주세요', { id: 'todo-delete-failed' })
+    },
     onSettled: (_data, _error, id) => {
       // 응답을 받았으니 숨김을 풀고 서버값으로 맞춘다. 실패했다면 목록에 다시 보인다.
       finishDelete(id)
