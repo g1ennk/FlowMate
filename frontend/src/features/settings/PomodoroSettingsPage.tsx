@@ -232,14 +232,15 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
 }
 
 function PomodoroSettingsPage() {
-  const { data: settingsData, isLoading } = useSettings()
+  const { data: settingsData, isError, isFetching, refetch } = useSettings()
+  // 서버 값을 불러오기 전에 편집하면 나머지 값이 기본값으로 덮어써지므로 막는다.
+  const canEdit = !!settingsData
   const updateSettings = useUpdatePomodoroSettings()
   const updateMiniDays = useUpdateMiniDaysSettings()
   const logout = useAuthStore((s) => s.logout)
   const authState = useAuthStore((s) => s.state)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [overrides, setOverrides] = useState<Partial<PomodoroSettings>>({})
   const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
   const [miniDayEditor, setMiniDayEditor] = useState<MiniDayRange>(defaultMiniDaysSettings.day1)
@@ -272,13 +273,12 @@ function PomodoroSettingsPage() {
       cycleEvery: data?.cycleEvery ?? DEFAULT_POMODORO_SETTINGS.cycleEvery,
       autoStartBreak: data?.autoStartBreak ?? DEFAULT_POMODORO_SETTINGS.autoStartBreak,
       autoStartSession: data?.autoStartSession ?? DEFAULT_POMODORO_SETTINGS.autoStartSession,
-      ...overrides,
     }),
-    [data, overrides],
+    [data],
   )
 
   const commitSettings = (next: Partial<PomodoroSettings>) => {
-    setOverrides((prev) => ({ ...prev, ...next }))
+    if (!canEdit) return
     updateSettings.mutate(next, {
       onSuccess: () => {
         const now = Date.now()
@@ -359,6 +359,7 @@ function PomodoroSettingsPage() {
   })
 
   const openMiniDayEditor = (dayKey: keyof MiniDaysSettings) => {
+    if (!canEdit) return
     const next = miniDaysBase[dayKey]
     setActiveMiniDay(dayKey)
     setMiniDayEditor(next)
@@ -573,29 +574,49 @@ function PomodoroSettingsPage() {
         onDismiss={settingsCoach.dismiss}
       />
 
+      {isError && !settingsData && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-card-item rounded-2xl bg-state-error-subtle px-4 py-3"
+        >
+          <p className="text-sm font-medium text-state-error">설정을 불러오지 못했어요</p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle disabled:cursor-not-allowed disabled:text-text-disabled"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+
       <section>
         <SectionHeader
           title="뽀모도로 세션"
           description="집중 시간, 휴식 시간, 한 주기에 몇 세션을 반복할지 설정해요."
           actionLabel="기본값 복원"
           onActionClick={handleResetSessionDefaults}
-          actionDisabled={isLoading || updateSettings.isPending || isSessionDefault}
+          actionDisabled={!canEdit || updateSettings.isPending || isSessionDefault}
         />
         <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
           <SettingsRow
             label="Flow 시간"
             value={`${values.flowMin}분`}
             onClick={() => setActiveSheet('flow')}
+            disabled={!canEdit}
           />
           <SettingsRow
             label="휴식 시간"
             value={breakValueLabel}
             onClick={() => setActiveSheet('break')}
+            disabled={!canEdit}
           />
           <SettingsRow
             label="주기"
             value={cycleLabel}
             onClick={() => setActiveSheet('cycle')}
+            disabled={!canEdit}
           />
         </div>
       </section>
@@ -606,7 +627,7 @@ function PomodoroSettingsPage() {
           description="세션과 휴식 사이 전환을 자동으로 할지 설정해요."
           actionLabel="기본값 복원"
           onActionClick={handleResetAutomationDefaults}
-          actionDisabled={isLoading || updateSettings.isPending || isAutomationDefault}
+          actionDisabled={!canEdit || updateSettings.isPending || isAutomationDefault}
         />
         <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
           <div className="rounded-xl px-3 py-3">
@@ -615,7 +636,7 @@ function PomodoroSettingsPage() {
               description="Flow 종료 후 자동으로 휴식 시작"
               checked={values.autoStartBreak ?? false}
               onChange={() => handleToggle('autoStartBreak')}
-              disabled={isLoading}
+              disabled={!canEdit}
             />
           </div>
           <div className="rounded-xl px-3 py-3">
@@ -624,7 +645,7 @@ function PomodoroSettingsPage() {
               description="휴식 종료 후 자동으로 Flow 시작"
               checked={values.autoStartSession ?? false}
               onChange={() => handleToggle('autoStartSession')}
-              disabled={isLoading}
+              disabled={!canEdit}
             />
           </div>
         </div>
@@ -649,6 +670,7 @@ function PomodoroSettingsPage() {
               label={title}
               value={range}
               onClick={() => openMiniDayEditor(key)}
+              disabled={!canEdit}
             />
           ))}
         </div>
