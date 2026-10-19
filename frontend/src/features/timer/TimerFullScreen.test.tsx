@@ -612,4 +612,46 @@ describe('TimerFullScreen', () => {
     await user.click(await screen.findByRole('button', { name: '휴식' }))
     expect(mocked.timerStoreActions.skipToNext).toHaveBeenCalledWith('todo-1')
   })
+
+  it('runs completion only once when the confirm button is tapped twice', async () => {
+    const user = userEvent.setup()
+
+    Object.assign(mocked.timerState, {
+      status: 'paused',
+      focusElapsedMs: 120_000,
+      initialFocusMs: 0,
+      sessions: [],
+      flexiblePhase: 'focus',
+    })
+
+    let resolveSession: () => void = () => {}
+    mocked.createSessionMutateAsync.mockImplementation(
+      () => new Promise<void>((resolve) => {
+        resolveSession = resolve
+      }),
+    )
+
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '완료' }))
+    const confirmButton = screen.getByRole('button', { name: '확인' })
+    await user.click(confirmButton)
+    await user.click(confirmButton)
+
+    expect(mocked.createSessionMutateAsync).toHaveBeenCalledTimes(1)
+
+    resolveSession()
+    await waitFor(() => expect(mocked.updateTodoMutateAsync).toHaveBeenCalledTimes(1))
+  })
 })
