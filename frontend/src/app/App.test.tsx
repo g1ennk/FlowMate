@@ -81,3 +81,13 @@ describe('AppLayout 스크롤', () => {
     expect(screen.getByRole('main')).not.toHaveClass('overflow-y-auto')
   })
 })
+
+describe('AppLayout 테마 버튼', () => {
+  it('콘텐츠 위에 테마 버튼을 띄우지 않는다', async () => {
+    renderLayout()
+    await screen.findByText('회고 화면')
+
+    expect(screen.getByRole('link', { name: '설정' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /모드로 전환/ })).not.toBeInTheDocument()
+  })
+})

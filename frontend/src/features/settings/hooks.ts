@@ -176,7 +176,7 @@ export function useUpdateMiniDaysSettings() {
       )
     },
     onError: () => {
-      toast.error('미니 데이를 저장하지 못했어요')
+      toast.error('미니 데이를 저장하지 못했어요. 다시 시도해 주세요')
     },
   })
 }

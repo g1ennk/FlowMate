@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/authStore'
+import { type Theme, useThemeStore } from '../../store/themeStore'
 import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
 import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
+import { InlineSegmentToggle } from '../../ui/InlineSegmentToggle'
 import { Switch } from '../../ui/Switch'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
 import { buildPomodoroSave, useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
-import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
+import { defaultMiniDaysSettings, type MiniDayRange, parseMiniDayTime, validateMiniDaysSettings } from '../../lib/miniDays'
 import { userTextInputClass } from '../../lib/userTextStyles'
 import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
 import { useCoachMark } from '../../lib/useCoachMark'
@@ -24,24 +26,16 @@ const PERIOD_OPTIONS = [
   { value: 'am', label: '오전' },
   { value: 'pm', label: '오후' },
 ] as const
+const THEME_OPTIONS: Array<{ label: string; value: Theme }> = [
+  { label: '시스템', value: 'system' },
+  { label: '라이트', value: 'light' },
+  { label: '다크', value: 'dark' },
+]
 const WHEEL_SCROLL_END_COMMIT_DELAY_MS = 120
 const WHEEL_LIVE_SELECT_BIAS = 0.35
 const WHEEL_ITEM_HEIGHT = 40
 const WHEEL_VISIBLE_COUNT = 5
 const WHEEL_PADDING = (WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT - WHEEL_ITEM_HEIGHT) / 2
-
-type MiniDaySaveState = { message: string; tone: string }
-
-function getMiniDaySaveState(opts: {
-  isPending: boolean
-  hasError: boolean
-  isDirty: boolean
-}): MiniDaySaveState {
-  if (opts.isPending) return { message: '저장 중입니다...', tone: 'text-accent' }
-  if (opts.hasError) return { message: '오류를 수정한 뒤 상단 저장을 눌러주세요', tone: 'text-state-error' }
-  if (opts.isDirty) return { message: '상단 저장을 누르면 적용됩니다', tone: 'text-text-secondary' }
-  return { message: '변경한 뒤 상단 저장을 누르면 적용됩니다', tone: 'text-text-secondary' }
-}
 
 type SettingsRowProps = {
   label: string
@@ -239,6 +233,8 @@ function PomodoroSettingsPage() {
   const updateMiniDays = useUpdateMiniDaysSettings()
   const logout = useAuthStore((s) => s.logout)
   const authState = useAuthStore((s) => s.state)
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
@@ -249,8 +245,7 @@ function PomodoroSettingsPage() {
     period: 'am' | 'pm'
     hour: number
     minute: number
-    is24: boolean
-  }>({ period: 'am', hour: 6, minute: 0, is24: false })
+  }>({ period: 'am', hour: 6, minute: 0 })
   const data = useMemo(
     () =>
       settingsData
@@ -262,7 +257,11 @@ function PomodoroSettingsPage() {
         : undefined,
     [settingsData],
   )
-  const miniDaysBase = settingsData?.miniDays ?? defaultMiniDaysSettings
+  // 저장 중인 미니 데이는 바로 보여주고, 다음 편집도 그 값 위에서 한다(PUT은 세 구간을 통째로 덮어쓴다).
+  const miniDaysBase =
+    (updateMiniDays.isPending ? updateMiniDays.variables : undefined)
+    ?? settingsData?.miniDays
+    ?? defaultMiniDaysSettings
 
   const values = useMemo(
     () => ({
@@ -285,12 +284,12 @@ function PomodoroSettingsPage() {
     commitSettings({ [field]: !values[field] })
   }
 
-  const breakValueLabel = `${values.breakMin}, ${values.longBreakMin}분`
-  const cycleLabel = `${values.cycleEvery} 세션`
+  const breakValueLabel = `짧은 ${values.breakMin}분, 긴 ${values.longBreakMin}분`
+  const cycleLabel = `${values.cycleEvery}회`
   const formatDisplayTime = (value: string) => {
     const trimmed = value.trim()
     if (!trimmed) return '--:--'
-    if (trimmed === '24:00') return '오후 12:00'
+    if (trimmed === '24:00') return '자정'
     const [rawHours, rawMinutes] = trimmed.split(':')
     const hours = Number(rawHours)
     const minutes = Number(rawMinutes)
@@ -359,11 +358,34 @@ function PomodoroSettingsPage() {
     setTimeDraftFromValue(next.start, defaultMiniDaysSettings[dayKey].start)
   }
 
+  // 닫을 때 바뀐 값이 있으면 저장한다. 오류가 있으면 바뀐 내용을 버리고 닫는다.
   const closeMiniDayEditor = () => {
+    if (!activeMiniDay) return
+    if (activeMiniDayError) {
+      toast('저장하지 않았어요', { id: 'mini-days-discarded' })
+    } else if (isMiniDayDirty) {
+      updateMiniDays.mutate(candidateMiniDays, {
+        onSuccess: () => {
+          toast.success('저장됨', { id: 'mini-days-saved' })
+        },
+      })
+    }
     setActiveMiniDay(null)
   }
 
-  const formatTime = (hours: number, minutes: number) => {
+  // 시트를 연 채 화면을 떠나도(탭 이동 등) 유효한 변경은 저장한다.
+  const unsavedMiniDaysRef = useRef<MiniDaysSettings | null>(null)
+  const saveMiniDaysRef = useRef(updateMiniDays.mutate)
+  useEffect(() => {
+    unsavedMiniDaysRef.current =
+      activeMiniDay && isMiniDayDirty && !activeMiniDayError ? candidateMiniDays : null
+    saveMiniDaysRef.current = updateMiniDays.mutate
+  })
+  useEffect(() => () => {
+    if (unsavedMiniDaysRef.current) saveMiniDaysRef.current(unsavedMiniDaysRef.current)
+  }, [])
+
+  const formatTime =(hours: number, minutes: number) => {
     const hh = String(hours).padStart(2, '0')
     const mm = String(minutes).padStart(2, '0')
     return `${hh}:${mm}`
@@ -371,19 +393,20 @@ function PomodoroSettingsPage() {
 
   const parseTimeDraft = (value: string, fallback: string) => {
     const trimmed = value.trim() || fallback || '06:00'
-    if (trimmed === '24:00') return { period: 'pm' as const, hour: 12, minute: 0, is24: true }
+    // 24:00(자정)은 휠에서 "오전 12:00"으로 보여준다.
+    if (trimmed === '24:00') return { period: 'am' as const, hour: 12, minute: 0 }
     const [rawHours, rawMinutes] = trimmed.split(':')
     const hours = Number(rawHours)
     const minutes = Number(rawMinutes)
     if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return { period: 'am' as const, hour: 6, minute: 0, is24: false }
+      return { period: 'am' as const, hour: 6, minute: 0 }
     }
     const safeHours = Math.max(0, Math.min(23, hours))
     const safeMinutes = Math.max(0, Math.min(59, minutes))
     const period: 'am' | 'pm' = safeHours >= 12 ? 'pm' : 'am'
     let hour12 = safeHours % 12
     if (hour12 === 0) hour12 = 12
-    return { period, hour: hour12, minute: safeMinutes, is24: false }
+    return { period, hour: hour12, minute: safeMinutes }
   }
 
   const updateMiniDayEditorField = (field: 'label' | 'start' | 'end', value: string) => {
@@ -398,27 +421,13 @@ function PomodoroSettingsPage() {
   }
 
   const commitTimeDraft = (draft: typeof timeDraft) => {
-    if (draft.is24) {
-      updateMiniDayEditorField(miniDayEditField, '24:00')
-      return
-    }
     const hour24 = draft.period === 'pm' ? (draft.hour % 12) + 12 : draft.hour % 12
-    updateMiniDayEditorField(miniDayEditField, formatTime(hour24, draft.minute))
-  }
-
-  const handleSaveMiniDay = () => {
-    if (!activeMiniDay) return
-    if (activeMiniDayError) return
-    if (!isMiniDayDirty) {
-      closeMiniDayEditor()
+    // 종료의 "오전 12:00"은 그날의 끝(자정)이므로 24:00으로 저장한다.
+    if (miniDayEditField === 'end' && hour24 === 0 && draft.minute === 0) {
+      updateMiniDayEditorField('end', '24:00')
       return
     }
-    updateMiniDays.mutate(candidateMiniDays, {
-      onSuccess: () => {
-        toast.success('저장됨', { id: 'mini-days-saved' })
-        closeMiniDayEditor()
-      },
-    })
+    updateMiniDayEditorField(miniDayEditField, formatTime(hour24, draft.minute))
   }
 
   const handleSelectMiniDayField = (field: 'start' | 'end') => {
@@ -428,34 +437,26 @@ function PomodoroSettingsPage() {
   }
 
   const handleTogglePeriod = (period: 'am' | 'pm') => {
-    const next = { ...timeDraft, period, is24: false }
+    const next = { ...timeDraft, period }
     setTimeDraft(next)
     commitTimeDraft(next)
   }
 
   const handleSelectHour = (hour: number) => {
-    const next = {
-      ...timeDraft,
-      hour,
-      is24: false,
-    }
+    const next = { ...timeDraft, hour }
     setTimeDraft(next)
     commitTimeDraft(next)
   }
 
   const handleSelectMinute = (minute: number) => {
-    const next = {
-      ...timeDraft,
-      minute,
-      is24: false,
-    }
+    const next = { ...timeDraft, minute }
     setTimeDraft(next)
     commitTimeDraft(next)
   }
 
   const handleResetSessionDefaults = () => {
     if (isSessionDefault) {
-      toast('이미 기본값입니다', { id: 'session-reset-noop' })
+      toast('이미 기본값이에요', { id: 'session-reset-noop' })
       return
     }
     if (!window.confirm('뽀모도로 세션 설정을 기본값으로 복원할까요?')) return
@@ -469,7 +470,7 @@ function PomodoroSettingsPage() {
 
   const handleResetAutomationDefaults = () => {
     if (isAutomationDefault) {
-      toast('이미 기본값입니다', { id: 'automation-reset-noop' })
+      toast('이미 기본값이에요', { id: 'automation-reset-noop' })
       return
     }
     if (!window.confirm('자동화 설정을 기본값으로 복원할까요?')) return
@@ -481,10 +482,13 @@ function PomodoroSettingsPage() {
 
   const handleResetMiniDaysDefaults = () => {
     if (isMiniDaysDefault) {
-      toast('이미 기본값입니다', { id: 'mini-days-reset-noop' })
+      toast('이미 기본값이에요', { id: 'mini-days-reset-noop' })
       return
     }
-    if (!window.confirm('미니 데이 전체 설정을 기본값(06:00 / 12:00 / 18:00 시작)으로 복원할까요?')) return
+    const defaultStarts = [defaultMiniDaysSettings.day1, defaultMiniDaysSettings.day2, defaultMiniDaysSettings.day3]
+      .map((range) => formatDisplayTime(range.start))
+      .join(', ')
+    if (!window.confirm(`미니 데이를 기본값(${defaultStarts} 시작)으로 복원할까요?`)) return
     const resetPayload: MiniDaysSettings = {
       day1: { ...defaultMiniDaysSettings.day1 },
       day2: { ...defaultMiniDaysSettings.day2 },
@@ -502,17 +506,6 @@ function PomodoroSettingsPage() {
     })
   }
 
-  const parseTimeMinutes = (value: string, allow24: boolean) => {
-    const trimmed = value.trim()
-    if (!trimmed) return null
-    if (allow24 && trimmed === '24:00') return 24 * 60
-    const [rawHours, rawMinutes] = trimmed.split(':')
-    const hours = Number(rawHours)
-    const minutes = Number(rawMinutes)
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
-    return hours * 60 + minutes
-  }
-
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
     const remainder = minutes % 60
@@ -524,21 +517,16 @@ function PomodoroSettingsPage() {
 
   const startValueLabel = formatDisplayTime(miniDayEditor.start)
   const endValueLabel = formatDisplayTime(miniDayEditor.end)
-  const startMinutes = parseTimeMinutes(miniDayEditor.start, false)
-  const endMinutes = parseTimeMinutes(miniDayEditor.end, true)
+  const startMinutes = parseMiniDayTime(miniDayEditor.start, false)
+  const endMinutes = parseMiniDayTime(miniDayEditor.end, true)
   const hasValidRange = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
   const previewRange = miniDayEditor.start.trim() && miniDayEditor.end.trim()
     ? `${formatDisplayTime(miniDayEditor.start)} ~ ${formatDisplayTime(miniDayEditor.end)}`
     : '--'
   const previewDuration = hasValidRange ? formatDuration(endMinutes - startMinutes) : '--'
   const activeMiniDayErrorMessage = activeMiniDayError === '시작은 종료보다 빨라야 해요'
-    ? '종료는 시작 이후여야 합니다'
+    ? '종료는 시작보다 늦어야 해요'
     : activeMiniDayError
-  const miniDaySaveState = getMiniDaySaveState({
-    isPending: updateMiniDays.isPending,
-    hasError: !!activeMiniDayErrorMessage,
-    isDirty: isMiniDayDirty,
-  })
   const hourIndex = Math.max(0, HOUR_OPTIONS.indexOf(timeDraft.hour))
   const minuteIndex = Math.max(0, MINUTE_OPTIONS.indexOf(timeDraft.minute))
   const periodIndex = timeDraft.period === 'am' ? 0 : 1
@@ -586,7 +574,7 @@ function PomodoroSettingsPage() {
       <section>
         <SectionHeader
           title="뽀모도로 세션"
-          description="집중 시간, 휴식 시간, 한 주기에 몇 세션을 반복할지 설정해요."
+          description="집중 시간, 휴식 시간, 긴 휴식까지 몇 번 집중할지 정해요. 새로 시작하는 타이머부터 적용돼요."
           actionLabel="기본값 복원"
           onActionClick={handleResetSessionDefaults}
           actionDisabled={!canEdit || updateSettings.isPending || isSessionDefault}
@@ -605,7 +593,7 @@ function PomodoroSettingsPage() {
             disabled={!canEdit}
           />
           <SettingsRow
-            label="주기"
+            label="긴 휴식까지"
             value={cycleLabel}
             onClick={() => setActiveSheet('cycle')}
             disabled={!canEdit}
@@ -616,7 +604,7 @@ function PomodoroSettingsPage() {
       <section>
         <SectionHeader
           title="자동화"
-          description="세션과 휴식 사이 전환을 자동으로 할지 설정해요."
+          description="Flow와 휴식이 끝나면 다음을 자동으로 시작할지 정해요."
           actionLabel="기본값 복원"
           onActionClick={handleResetAutomationDefaults}
           actionDisabled={!canEdit || updateSettings.isPending || isAutomationDefault}
@@ -667,8 +655,25 @@ function PomodoroSettingsPage() {
           ))}
         </div>
         <p className="mt-2 text-xs text-text-secondary">
-          미분류는 고정이며, 시간 구간은 연속일 필요가 없습니다.
+          미분류는 항상 있어요. 구간은 이어지지 않아도 되고, 겹치면 위 구간이 우선이에요.
         </p>
+      </section>
+
+      <section>
+        <SectionHeader title="화면" />
+        <div className="rounded-2xl bg-surface-card p-1 shadow-sm">
+          <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl px-4 py-2.5">
+            <span className="text-sm font-medium text-text-primary">화면 테마</span>
+            <InlineSegmentToggle
+              tone="surface"
+              size="md"
+              ariaLabel="화면 테마"
+              options={THEME_OPTIONS}
+              value={theme}
+              onChange={(value) => setTheme(value as Theme)}
+            />
+          </div>
+        </div>
       </section>
 
       {authState?.type === 'member' && (
@@ -759,12 +764,12 @@ function PomodoroSettingsPage() {
       <BottomSheet
         isOpen={activeSheet === 'cycle'}
         onClose={() => setActiveSheet(null)}
-        title="주기"
+        title="긴 휴식까지"
       >
         {CYCLE_PRESETS.map((preset) => (
           <BottomSheetItem
             key={preset}
-            label={`${preset} 세션`}
+            label={`${preset}회`}
             rightIcon={values.cycleEvery === preset ? (
               <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
@@ -782,16 +787,6 @@ function PomodoroSettingsPage() {
         title="미니 데이 설정"
         panelClassName="min-h-[50dvh]"
         contentClassName="pb-0 pt-4"
-        headerAction={(
-          <button
-            type="button"
-            onClick={handleSaveMiniDay}
-            disabled={!!activeMiniDayErrorMessage || updateMiniDays.isPending || !isMiniDayDirty}
-            className="rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle hover:text-accent-text disabled:cursor-not-allowed disabled:text-text-disabled disabled:hover:bg-transparent"
-          >
-            저장
-          </button>
-        )}
       >
         <div className="space-y-card pb-6">
           <div
@@ -893,8 +888,10 @@ function PomodoroSettingsPage() {
               <span>{previewDuration}</span>
             </div>
 
-            <p className={`text-center text-xs font-medium ${miniDaySaveState.tone}`}>
-              {miniDaySaveState.message}
+            <p className={`text-center text-xs font-medium ${
+              activeMiniDayErrorMessage ? 'text-state-error' : 'text-text-secondary'
+            }`}>
+              {activeMiniDayErrorMessage ? '오류를 고치지 않고 닫으면 저장되지 않아요' : '닫으면 자동으로 저장돼요'}
             </p>
           </div>
         </div>
