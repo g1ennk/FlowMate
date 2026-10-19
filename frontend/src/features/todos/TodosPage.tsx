@@ -78,7 +78,7 @@ function TodosPage() {
       const next = new URLSearchParams(prev)
       next.set('date', formatDateKey(nextDate))
       return next
-    }, { replace: true })
+    }, { replace: true, preventScrollReset: true })
   }, [setSearchParams])
 
   const daySections = useMemo(() => {

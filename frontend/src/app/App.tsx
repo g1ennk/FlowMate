@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, ScrollRestoration } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts'
 import { usePullToRefresh } from '../lib/usePullToRefresh'
@@ -52,7 +52,7 @@ function AppLayout() {
       <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
       <main
         ref={mainRef}
-        className="flex-1 overflow-y-auto"
+        className="flex-1"
         style={{ paddingBottom: 'calc(var(--bottom-nav-height) + var(--safe-bottom))' }}
       >
         <div className="mx-auto w-full max-w-lg px-page-x py-page-y">
@@ -109,6 +109,8 @@ function AppLayout() {
       </nav>
 
       <KeyboardShortcutsHelp isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
+      {/* 스크롤 주체는 window다. 탭 이동은 맨 위에서, 뒤로 가기는 이전 위치에서 시작한다 */}
+      <ScrollRestoration />
     </div>
   )
 }
