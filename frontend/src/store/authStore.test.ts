@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAuthMode, setAuthMode } from '../lib/auth'
+import { getAuthMode, hasSessionExpired, markSessionExpired, setAuthMode } from '../lib/auth'
 import { storageKeys } from '../lib/storageKeys'
 import { useAuthStore } from './authStore'
 
@@ -243,5 +243,191 @@ describe('authStore refresh coordination', () => {
     expect(window.localStorage.getItem(storageKeys.guestToken)).toBe('guest-token')
     expect(getAuthMode()).toBe('guest')
     expect(useAuthStore.getState().state).toEqual({ type: 'guest', token: 'guest-token' })
+  })
+})
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function base64Url(value: unknown) {
+  return btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+}
+
+function fakeGuestJwt(expiresInMs: number, sub = 'client-1') {
+  const exp = Math.floor((Date.now() + expiresInMs) / 1000)
+  return `${base64Url({ alg: 'HS256' })}.${base64Url({ sub, role: 'guest', exp })}.signature`
+}
+
+describe('authStore guest renewal and session expiry', () => {
+  beforeEach(() => {
+    useAuthStore.setState(initialAuthStore, true)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    useAuthStore.setState(initialAuthStore, true)
+    window.localStorage.clear()
+  })
+
+  it('renews a guest token that expires within 30 days on init, keeping the same identity', async () => {
+    const oldToken = fakeGuestJwt(10 * DAY_MS)
+    window.localStorage.setItem(storageKeys.guestToken, oldToken)
+    setAuthMode('guest')
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/guest/renew')) {
+        return jsonResponse({ guestToken: 'renewed-token' })
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`)
+    })
+    globalThis.fetch = fetchMock
+
+    await useAuthStore.getState().init()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/auth\/guest\/renew$/),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ guestToken: oldToken }) }),
+    )
+    expect(useAuthStore.getState()).toMatchObject({
+      initialized: true,
+      state: { type: 'guest', token: 'renewed-token' },
+    })
+    expect(window.localStorage.getItem(storageKeys.guestToken)).toBe('renewed-token')
+  })
+
+  it('does not call the server on init when the guest token has plenty of time left', async () => {
+    const token = fakeGuestJwt(60 * DAY_MS)
+    window.localStorage.setItem(storageKeys.guestToken, token)
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock
+
+    await useAuthStore.getState().init()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(useAuthStore.getState().state).toEqual({ type: 'guest', token })
+  })
+
+  it('renews instead of issuing a new guest identity when a guest request gets 401', async () => {
+    const oldToken = fakeGuestJwt(-DAY_MS)
+    useAuthStore.setState({ state: { type: 'guest', token: oldToken }, initialized: true })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/guest/renew')) {
+        return jsonResponse({ guestToken: 'renewed-token' })
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`)
+    })
+    globalThis.fetch = fetchMock
+
+    await useAuthStore.getState().refresh()
+
+    expect(useAuthStore.getState().state).toEqual({ type: 'guest', token: 'renewed-token' })
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/\/auth\/guest\/token$/)]),
+    )
+  })
+
+  it('falls back to a new guest identity only when the server rejects the renewal', async () => {
+    useAuthStore.setState({ state: { type: 'guest', token: 'ancient-token' }, initialized: true })
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/guest/renew')) {
+        return jsonResponse({ error: { message: 'Unauthorized' } }, { status: 401 })
+      }
+      if (String(input).endsWith('/auth/guest/token')) {
+        return jsonResponse({ guestToken: 'brand-new-token' })
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`)
+    })
+
+    await useAuthStore.getState().refresh()
+
+    expect(useAuthStore.getState().state).toEqual({ type: 'guest', token: 'brand-new-token' })
+  })
+
+  it('keeps the guest identity when renewal fails with a server error', async () => {
+    useAuthStore.setState({ state: { type: 'guest', token: 'old-token' }, initialized: true })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/guest/renew')) {
+        return new Response('bad gateway', { status: 502 })
+      }
+      if (String(input).endsWith('/auth/guest/token')) {
+        return jsonResponse({ guestToken: 'brand-new-token' })
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`)
+    })
+    globalThis.fetch = fetchMock
+
+    await expect(useAuthStore.getState().refresh()).rejects.toThrow()
+
+    expect(useAuthStore.getState().state).toEqual({ type: 'guest', token: 'old-token' })
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/\/auth\/guest\/token$/)]),
+    )
+  })
+
+  it('keeps the member session when refresh fails with a server error', async () => {
+    setAuthMode('member')
+    const member = {
+      type: 'member' as const,
+      accessToken: 'expired-token',
+      user: { id: 'user-1', email: null, nickname: 'Glenn' },
+    }
+    useAuthStore.setState({ state: member, initialized: true })
+
+    globalThis.fetch = vi.fn(async () => new Response('bad gateway', { status: 502 }))
+
+    await expect(useAuthStore.getState().refresh()).rejects.toThrow()
+
+    expect(useAuthStore.getState().state).toEqual(member)
+    expect(getAuthMode()).toBe('member')
+    expect(hasSessionExpired()).toBe(false)
+  })
+
+  it('leaves a session-expired hint when refresh is rejected', async () => {
+    setAuthMode('member')
+    useAuthStore.setState({
+      state: {
+        type: 'member',
+        accessToken: 'expired-token',
+        user: { id: 'user-1', email: null, nickname: 'Glenn' },
+      },
+      initialized: true,
+    })
+
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({ error: { message: 'Unauthorized' } }, { status: 401 }),
+    )
+
+    await useAuthStore.getState().refresh()
+
+    expect(useAuthStore.getState().state).toBeNull()
+    expect(hasSessionExpired()).toBe(true)
+  })
+
+  it('does not silently start a new guest on reload after the member session expired', async () => {
+    markSessionExpired()
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock
+
+    await useAuthStore.getState().init()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(useAuthStore.getState()).toMatchObject({ initialized: true, state: null })
+  })
+
+  it('clears the session-expired hint after logging in again', async () => {
+    markSessionExpired()
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        accessToken: 'access-token',
+        user: { id: 'user-1', email: null, nickname: 'Glenn' },
+      }),
+    )
+
+    await useAuthStore.getState().login('kakao', 'code', 'state')
+
+    expect(hasSessionExpired()).toBe(false)
   })
 })

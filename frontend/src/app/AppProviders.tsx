@@ -14,6 +14,7 @@ import { useAppUpdate } from '../features/pwa/useAppUpdate'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
 import { useAuthStore } from '../store/authStore'
 import BackendStatusGate from './BackendStatusGate'
+import { useAuthInitRetry } from './useAuthInitRetry'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
@@ -31,6 +32,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     if (!mockReady) return
     useAuthStore.getState().init()
   }, [mockReady])
+  useAuthInitRetry(mockReady)
 
   useEffect(() => {
     if (!mockEnabled) return

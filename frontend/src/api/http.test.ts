@@ -104,6 +104,34 @@ describe('http 401 refresh singleton', () => {
     expect(calls[3][1]?.headers).toHaveProperty('Authorization', 'Bearer new-token')
   })
 
+  it('retries without refreshing when the token was already replaced while the request was in flight', async () => {
+    const { http, getState } = await loadHttp()
+
+    const refreshFn = vi.fn(() => Promise.resolve())
+    let currentToken = 'old-guest-token'
+    getState.mockImplementation(() => ({
+      state: { type: 'guest' },
+      getToken: () => currentToken,
+      refresh: refreshFn,
+    }))
+
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length === 1) {
+        // 요청이 나간 사이 다른 요청이 토큰을 갱신했다
+        currentToken = 'renewed-guest-token'
+        return new Response('{}', { status: 401 })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    globalThis.fetch = fetchMock
+
+    await http('GET', '/late')
+
+    expect(refreshFn).not.toHaveBeenCalled()
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>
+    expect(calls[1][1]?.headers).toHaveProperty('Authorization', 'Bearer renewed-guest-token')
+  })
+
   it('throws when member session ends after refresh failure', async () => {
     const { http, getState } = await loadHttp()
 

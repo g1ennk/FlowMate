@@ -27,6 +27,42 @@ export function setAuthMode(mode: AuthMode) {
   }
 }
 
+export function markSessionExpired() {
+  try {
+    localStorage.setItem(storageKeys.sessionExpired, '1')
+  } catch {
+    // localStorage 접근 실패는 무시한다.
+  }
+}
+
+export function hasSessionExpired() {
+  try {
+    return localStorage.getItem(storageKeys.sessionExpired) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function clearSessionExpired() {
+  try {
+    localStorage.removeItem(storageKeys.sessionExpired)
+  } catch {
+    // localStorage 접근 실패는 무시한다.
+  }
+}
+
+/** JWT payload의 exp(ms). 서명 검증은 서버 몫이고, 여기서는 갱신 시점 판단에만 쓴다. */
+export function getTokenExpiresAt(token: string): number | null {
+  try {
+    const payload = token.split('.')[1]
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    const exp = (JSON.parse(json) as { exp?: unknown }).exp
+    return typeof exp === 'number' ? exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
 export function clearAuthMode() {
   volatileAuthMode = null
   if (typeof window === 'undefined') return
