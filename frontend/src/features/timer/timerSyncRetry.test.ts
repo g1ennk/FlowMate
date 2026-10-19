@@ -3,9 +3,11 @@ import {
   canRetry,
   clearRetry,
   computeRetryDelayMs,
+  isPermanentSyncError,
   markRetry,
   type RetryState,
 } from './timerSyncRetry'
+import { SessionCreateRequestSchema } from '../../api/types'
 
 describe('computeRetryDelayMs', () => {
   it('attempt 1 returns ~1000ms (base) + jitter (0-299)', () => {
@@ -120,5 +122,20 @@ describe('clearRetry', () => {
     const retries: RetryState = {}
     clearRetry(retries, 'nope')
     expect(Object.keys(retries)).toHaveLength(0)
+  })
+})
+
+describe('isPermanentSyncError', () => {
+  it('클라이언트 요청 검증 오류(ZodError)도 다시 보내도 같은 오류로 본다', () => {
+    const result = SessionCreateRequestSchema.safeParse({
+      sessionFocusSeconds: 50_000,
+      clientSessionId: '11111111-1111-4111-8111-111111111111',
+    })
+    expect(result.success).toBe(false)
+    expect(isPermanentSyncError(result.error)).toBe(true)
+  })
+
+  it('네트워크 오류는 재시도한다', () => {
+    expect(isPermanentSyncError(new TypeError('Failed to fetch'))).toBe(false)
   })
 })
