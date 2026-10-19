@@ -217,49 +217,44 @@ export function ReviewTextarea({
     handleSaveRef.current = handleSave
   })
 
-  const saveReportContent = (text: string, afterSave: () => void) => {
+  // 참고해서 쓰기: 서버에 저장하지 않고 편집 중인 글 아래에 덧붙이기만 한다.
+  // 저장은 사용자가 다듬은 뒤 직접 누른다.
+  const handleStartWithAi = () => {
+    if (!aiReport) return
+    const kpt = formatReportAsKpt(aiReport)
+    const question = aiReport.referenceQuestion
+    const reportText = question ? `${kpt}\n\n> ${question}\n` : kpt
+    const base = (isEditing ? draft : content).trimEnd()
+    closeSheet()
+    setDraft(base ? `${base}\n\n${reportText}` : reportText)
+    setIsEditing(true)
+    requestAnimationFrame(() => {
+      const node = textareaRef.current
+      if (!node) return
+      autoResize()
+      const len = node.value.length
+      node.setSelectionRange(len, len)
+      node.focus()
+    })
+  }
+
+  // 이대로 저장: 덮어쓰기 확인은 AiReportSheet가 받는다(hasExistingContent).
+  const handleSaveAsIs = () => {
+    if (!aiReport) return
+    const text = formatReportAsKpt(aiReport)
+    closeSheet()
     upsert.mutate(
       { type: periodType, periodStart, periodEnd, content: text },
       {
         onSuccess: () => {
-          afterSave()
+          setIsEditing(false)
+          toast.success('회고를 저장했어요', { id: 'review-save-success' })
         },
         onError: () => {
           toast.error('회고 저장에 실패했어요', { id: 'review-save-failed' })
         },
       },
     )
-  }
-
-  const handleStartWithAi = () => {
-    if (!aiReport) return
-    const kpt = formatReportAsKpt(aiReport)
-    const question = aiReport.referenceQuestion
-    const text = question ? `${kpt}\n\n> ${question}` : kpt
-    closeSheet()
-    saveReportContent(text, () => {
-      setDraft(text + (question ? '\n' : ''))
-      setIsEditing(true)
-      toast.success('회고를 저장했어요. 한 줄 더 써보세요', { id: 'review-save-success' })
-      requestAnimationFrame(() => {
-        const node = textareaRef.current
-        if (!node) return
-        autoResize()
-        const len = node.value.length
-        node.setSelectionRange(len, len)
-        node.focus()
-      })
-    })
-  }
-
-  const handleSaveAsIs = () => {
-    if (!aiReport) return
-    const text = formatReportAsKpt(aiReport)
-    closeSheet()
-    saveReportContent(text, () => {
-      setIsEditing(false)
-      toast.success('회고를 저장했어요', { id: 'review-save-success' })
-    })
   }
 
   return (
@@ -369,7 +364,7 @@ export function ReviewTextarea({
             report={aiReport}
             isCached={canRegenerate}
             isRegenerating={isAiLoading}
-            hasExistingReview={!!review.data?.id}
+            hasExistingContent={!!review.data?.id || (isEditing && draft.trim() !== '')}
             onStartWithAi={handleStartWithAi}
             onSaveAsIs={handleSaveAsIs}
             onRegenerate={handleRegenerate}

@@ -12,7 +12,7 @@ type AiReportSheetProps = {
   isCached: boolean
   isRegenerating: boolean
   regenerateError?: string | null
-  hasExistingReview: boolean
+  hasExistingContent: boolean
   onStartWithAi: () => void
   onSaveAsIs: () => void
   onRegenerate: () => void
@@ -63,7 +63,7 @@ export function AiReportSheet({
   report,
   isCached,
   isRegenerating,
-  hasExistingReview,
+  hasExistingContent,
   onStartWithAi,
   onSaveAsIs,
   onRegenerate,
@@ -77,13 +77,15 @@ export function AiReportSheet({
   const displayReport = isPreview ? SAMPLE_REPORT : report
   if (!displayReport) return null
 
-  const handleStartWithAi = () => {
-    if (hasExistingReview && !isConfirming) {
+  // 참고해서 쓰기는 작성 중인 글 아래에 덧붙이기만 하므로 확인 없이 진행하고,
+  // 이대로 저장은 기존 회고나 작성 중인 글을 대체하므로 확인을 받는다.
+  const handleSaveAsIs = () => {
+    if (hasExistingContent && !isConfirming) {
       setIsConfirming(true)
       return
     }
     setIsConfirming(false)
-    onStartWithAi()
+    onSaveAsIs()
   }
 
   const handleCancelConfirm = () => setIsConfirming(false)
@@ -170,7 +172,7 @@ export function AiReportSheet({
         ) : isConfirming ? (
           <div className="space-y-2 pt-2">
             <p className="text-center text-sm text-text-secondary">
-              기존 회고를 대체합니다. 계속할까요?
+              지금 회고를 AI 레포트로 바꿔요. 계속할까요?
             </p>
             <div className="grid grid-cols-2 gap-card-item">
               <button
@@ -182,8 +184,9 @@ export function AiReportSheet({
               </button>
               <button
                 type="button"
-                onClick={handleStartWithAi}
-                className="rounded-xl bg-state-error py-3 text-sm font-medium text-text-inverse transition-colors"
+                onClick={handleSaveAsIs}
+                disabled={isRegenerating}
+                className="rounded-xl bg-state-error py-3 text-sm font-medium text-text-inverse transition-colors disabled:opacity-60"
               >
                 덮어쓰기
               </button>
@@ -193,15 +196,17 @@ export function AiReportSheet({
           <div className="space-y-2 pt-2">
             <button
               type="button"
-              onClick={handleStartWithAi}
-              className="w-full rounded-xl bg-accent py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
+              onClick={onStartWithAi}
+              disabled={isRegenerating}
+              className="w-full rounded-xl bg-accent py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover disabled:opacity-60"
             >
               참고해서 쓰기
             </button>
             <button
               type="button"
-              onClick={onSaveAsIs}
-              className="w-full rounded-xl border border-border-default py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-hover"
+              onClick={handleSaveAsIs}
+              disabled={isRegenerating}
+              className="w-full rounded-xl border border-border-default py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-hover disabled:opacity-60"
             >
               이대로 저장
             </button>
