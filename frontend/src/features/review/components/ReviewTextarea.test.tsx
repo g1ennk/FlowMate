@@ -185,6 +185,39 @@ describe('ReviewTextarea', () => {
     })
   })
 
+  describe('Esc', () => {
+    it('AI 레포트 시트가 열려 있으면 Esc는 시트만 닫고 쓰던 글은 남긴다', async () => {
+      mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 추가')
+      await openAiSheet(user)
+      // 모바일 브라우저처럼 시트가 열려도 포커스가 입력창에 남아 있는 경우
+      act(() => textarea.focus())
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: '참고해서 쓰기' })).not.toBeInTheDocument()
+      })
+      expect(screen.getByRole('textbox')).toHaveValue('기존 회고 추가')
+    })
+
+    it('시트가 없으면 Esc로 편집을 취소한다', async () => {
+      mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 추가')
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument())
+      expect(screen.getByText('기존 회고')).toBeInTheDocument()
+    })
+  })
+
   describe('바깥 터치', () => {
     it('바깥을 누른 채 스크롤하면 편집을 끝내지 않는다', async () => {
       const calls = mockReviewApi(makeReview('기존 회고'))

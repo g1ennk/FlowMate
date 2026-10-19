@@ -405,7 +405,8 @@ export function ReviewTextarea({
               event.preventDefault()
               handleSave()
             }
-            if (event.key === 'Escape') {
+            // 시트가 열려 있으면 Esc는 시트만 닫는다. 포커스가 입력창에 남아 있어도 쓰던 글을 지우지 않는다.
+            if (event.key === 'Escape' && !isSheetOpenRef.current) {
               event.preventDefault()
               exitEdit(true)
             }
