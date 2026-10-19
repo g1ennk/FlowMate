@@ -1,8 +1,13 @@
+import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { buildApiUrl } from '../../api/baseUrl'
+import AppSplash from '../../app/AppSplash'
 import { useAuthStore } from '../../store/authStore'
-import { setOnboardingSeen } from '../../lib/onboarding'
+import { clearSessionExpired, hasSessionExpired } from '../../lib/auth'
+import { getOnboardingSeen, setOnboardingSeen } from '../../lib/onboarding'
+
+const GUEST_NOTICE = '게스트 기록은 이 브라우저에서만 볼 수 있어요'
 
 /* ── CSS Mini Previews ─────────────────────────────── */
 
@@ -100,8 +105,19 @@ function LoginPage() {
   const authState = useAuthStore((s) => s.state)
   const initialized = useAuthStore((s) => s.initialized)
   const startGuest = useAuthStore((s) => s.startGuest)
+  const [kakaoPending, setKakaoPending] = useState(false)
+  const [sessionExpired] = useState(hasSessionExpired)
 
-  if (!initialized) return null
+  // 카카오 화면에서 뒤로 가기로 돌아오면(bfcache 복원) 버튼을 다시 누를 수 있게 한다
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setKakaoPending(false)
+    }
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [])
+
+  if (!initialized) return <AppSplash />
 
   if (authState?.type === 'member') {
     return <Navigate to="/todos" replace />
@@ -112,11 +128,12 @@ function LoginPage() {
       if (authState?.type !== 'guest') {
         await startGuest()
       }
+      clearSessionExpired()
       setOnboardingSeen(true)
       navigate('/todos', { replace: true })
       if (!localStorage.getItem('flowmate/ui/guest-notice-seen')) {
         localStorage.setItem('flowmate/ui/guest-notice-seen', '1')
-        setTimeout(() => toast('게스트 데이터는 이 기기에만 저장돼요', { id: 'guest-notice', duration: 4000 }), 500)
+        setTimeout(() => toast(GUEST_NOTICE, { id: 'guest-notice', duration: 4000 }), 500)
       }
     } catch (e) {
       console.error('[LoginPage] 게스트 시작 실패', e)
@@ -125,6 +142,16 @@ function LoginPage() {
   }
 
   const handleKakaoLogin = async () => {
+    if (kakaoPending) return
+    // 게스트로 앱을 써 본 사람에게만 확인한다 (처음 들어온 사람은 옮길 기록이 없다)
+    if (
+      authState?.type === 'guest' &&
+      getOnboardingSeen() &&
+      !window.confirm('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요. 카카오로 계속할까요?')
+    ) {
+      return
+    }
+    setKakaoPending(true)
     try {
       const res = await fetch(buildApiUrl('/auth/kakao/authorize-url'))
       if (!res.ok) throw new Error('인증 URL 발급 실패')
@@ -132,10 +159,12 @@ function LoginPage() {
       sessionStorage.setItem('oauth_state', data.state)
       sessionStorage.setItem('oauth_provider', 'kakao')
       setOnboardingSeen(true)
+      // 페이지를 떠나므로 pending은 풀지 않는다
       window.location.href = data.authorizeUrl
     } catch (e) {
       console.error('[LoginPage] 카카오 로그인 시작 실패', e)
       toast.error('카카오 로그인을 시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
+      setKakaoPending(false)
     }
   }
 
@@ -175,10 +204,18 @@ function LoginPage() {
         </div>
 
         <footer className="mt-5 space-y-3">
+          {sessionExpired && (
+            <p role="status" className="rounded-2xl bg-surface-card px-4 py-3 text-center text-sm text-text-primary">
+              로그인이 만료됐어요. 다시 로그인하면 기록이 그대로 있어요
+            </p>
+          )}
+
           <button
             type="button"
             onClick={handleKakaoLogin}
-            className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#FEE500] text-sm font-semibold text-[#3C1E1E] transition-opacity active:opacity-80"
+            disabled={kakaoPending}
+            aria-busy={kakaoPending}
+            className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#FEE500] text-sm font-semibold text-[#3C1E1E] transition-opacity active:opacity-80 disabled:opacity-60"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 3C6.48 3 2 6.36 2 10.5c0 2.63 1.74 4.95 4.38 6.3l-1.12 4.08c-.1.36.3.65.6.44l4.84-3.2c.42.04.85.07 1.3.07 5.52 0 10-3.36 10-7.5S17.52 3 12 3z" />
@@ -189,13 +226,17 @@ function LoginPage() {
           <button
             type="button"
             onClick={handleGuestStart}
-            className="flex h-13 w-full items-center justify-center rounded-2xl border border-border-default bg-surface-card text-sm font-medium text-text-secondary transition-colors hover:bg-hover"
+            className={
+              sessionExpired
+                ? 'flex h-11 w-full items-center justify-center rounded-2xl text-sm text-text-tertiary transition-colors hover:bg-hover'
+                : 'flex h-13 w-full items-center justify-center rounded-2xl border border-border-default bg-surface-card text-sm font-medium text-text-secondary transition-colors hover:bg-hover'
+            }
           >
             게스트로 둘러보기
           </button>
 
           <p className="pt-1 text-center text-xs text-text-tertiary">
-            게스트 데이터는 이 기기에만 저장돼요
+            {GUEST_NOTICE}
           </p>
         </footer>
       </div>
