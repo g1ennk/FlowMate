@@ -6,7 +6,9 @@ import kr.io.flowmate.common.web.CurrentUserArgumentResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
 import kr.io.flowmate.report.domain.ReportType;
 import kr.io.flowmate.report.dto.response.ReportResponse;
+import kr.io.flowmate.report.exception.AiServiceQuotaExceededException;
 import kr.io.flowmate.report.exception.AiServiceUnavailableException;
+import kr.io.flowmate.report.exception.ReportRateLimitedException;
 import kr.io.flowmate.report.exception.ReportGenerationInProgressException;
 import kr.io.flowmate.report.service.ReportService;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +33,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -105,6 +108,33 @@ class ReportControllerTest {
                 .content(dailyBody()))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error.code").value("REPORT_GENERATION_IN_PROGRESS"));
+    }
+
+    @Test
+    @DisplayName("POST /api/ai/report/generate — 자체 rate limit → 429 REPORT_RATE_LIMITED + Retry-After")
+    void generate_rateLimited_429() throws Exception {
+        when(reportService.generate(any(), any(), any()))
+            .thenThrow(new ReportRateLimitedException(ReportRateLimitedException.Reason.COOLDOWN, 12));
+
+        mockMvc.perform(post("/api/ai/report/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(dailyBody()))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(header().string("Retry-After", "12"))
+            .andExpect(jsonPath("$.error.code").value("REPORT_RATE_LIMITED"))
+            .andExpect(jsonPath("$.error.message").value("방금 만든 레포트예요. 12초 뒤에 다시 만들 수 있어요"));
+    }
+
+    @Test
+    @DisplayName("POST /api/ai/report/generate — Gemini quota 초과 → 429 AI_QUOTA_EXCEEDED (자체 제한과 code가 다름)")
+    void generate_upstreamQuota_429() throws Exception {
+        when(reportService.generate(any(), any(), any())).thenThrow(new AiServiceQuotaExceededException());
+
+        mockMvc.perform(post("/api/ai/report/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(dailyBody()))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(jsonPath("$.error.code").value("AI_QUOTA_EXCEEDED"));
     }
 
     @Test

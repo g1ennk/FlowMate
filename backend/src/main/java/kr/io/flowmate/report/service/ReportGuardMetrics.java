@@ -12,7 +12,7 @@ final class ReportGuardMetrics {
     private ReportGuardMetrics() {
     }
 
-    /** reason: in_progress, hourly_limit, cooldown */
+    /** reason: in_progress, user_limit, cooldown */
     static void rejected(MeterRegistry registry, String reason) {
         Counter.builder(REJECTED)
             .description("Gemini 호출 전에 거절한 리포트 생성 요청")

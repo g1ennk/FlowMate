@@ -9,9 +9,11 @@ import kr.io.flowmate.report.exception.AiServiceQuotaExceededException;
 import kr.io.flowmate.report.exception.AiServiceUnavailableException;
 import kr.io.flowmate.report.exception.ReportGenerationException;
 import kr.io.flowmate.report.exception.ReportGenerationInProgressException;
+import kr.io.flowmate.report.exception.ReportRateLimitedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -128,6 +130,16 @@ public class GlobalExceptionHandler {
         log.info("Report generation in progress: {}", ex.getMessage());
         ApiError body = ApiError.of("REPORT_GENERATION_IN_PROGRESS", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // FlowMate 자체 생성 제한(사용자 한도, 같은 기간 cooldown) → 429. Gemini quota 초과(AI_QUOTA_EXCEEDED)와 code로 구분
+    @ExceptionHandler(ReportRateLimitedException.class)
+    public ResponseEntity<ApiError> handleReportRateLimited(ReportRateLimitedException ex) {
+        log.info("Report rate limited: reason={}, retryAfter={}s", ex.getReason(), ex.getRetryAfterSeconds());
+        ApiError body = ApiError.of("REPORT_RATE_LIMITED", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+            .body(body);
     }
 
     // Gemini 응답 파싱 실패 / 필수 필드 누락 등 → 500

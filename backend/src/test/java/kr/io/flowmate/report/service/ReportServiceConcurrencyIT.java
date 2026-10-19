@@ -6,6 +6,7 @@ import kr.io.flowmate.report.domain.ReportContent;
 import kr.io.flowmate.report.domain.ReportType;
 import kr.io.flowmate.report.dto.response.ReportResponse;
 import kr.io.flowmate.report.exception.ReportGenerationInProgressException;
+import kr.io.flowmate.report.exception.ReportRateLimitedException;
 import kr.io.flowmate.report.prompt.TodoFixtures;
 import kr.io.flowmate.report.repository.ReportRepository;
 import kr.io.flowmate.review.repository.ReviewRepository;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -27,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -39,6 +42,7 @@ class ReportServiceConcurrencyIT {
     private static final String USER = "user-1";
     private static final LocalDate DAY = LocalDate.parse("2026-10-20");
     private static final int REQUESTS = 10;
+    private static final Duration COOLDOWN = Duration.ofMillis(500);
 
     private ReportRedisSupport.Connected redis;
     private final AtomicInteger geminiCalls = new AtomicInteger();
@@ -72,10 +76,21 @@ class ReportServiceConcurrencyIT {
     }
 
     @Test
-    @DisplayName("앞선 생성이 끝나면 명시적 다시 생성은 Gemini를 다시 부른다")
-    void afterCompletion_regenerateCallsGeminiAgain() throws Exception {
+    @DisplayName("409로 거절된 요청은 사용자 한도를 쓰지 않는다")
+    void rejectedRequests_doNotConsumeUserLimit() throws Exception {
         runInParallel(REQUESTS);
 
+        assertThat(redis.template().opsForValue().get("report:rate:" + USER)).isEqualTo("1");
+    }
+
+    @Test
+    @DisplayName("다시 생성: cooldown 중에는 429, cooldown이 지나면 기존 row가 있어도 Gemini를 다시 부른다")
+    void regenerate_afterCooldown_callsGeminiAgain() throws Exception {
+        runInParallel(REQUESTS);
+
+        assertThatThrownBy(() -> service.generate(USER, ReportType.DAILY, DAY))
+            .isInstanceOf(ReportRateLimitedException.class);
+        Thread.sleep(COOLDOWN.toMillis() + 200);
         service.generate(USER, ReportType.DAILY, DAY);
 
         assertThat(geminiCalls.get()).isEqualTo(2);
@@ -135,10 +150,13 @@ class ReportServiceConcurrencyIT {
         when(persistence.upsertAndFetch(any(), any(), any(), any())).thenReturn(
             new ReportResponse("r1", "DAILY", DAY, "k", "p", "t", null, "daily.v2", Instant.now()));
 
-        ReportGenerationLock lock = new ReportGenerationLock(
-            connected.template(), new ReportGuardProperties(), new SimpleMeterRegistry());
+        ReportGuardProperties props = new ReportGuardProperties();
+        props.setCooldown(COOLDOWN);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        ReportGenerationLock lock = new ReportGenerationLock(connected.template(), props, meterRegistry);
+        ReportRateLimiter rateLimiter = new ReportRateLimiter(connected.template(), props, meterRegistry);
         return new ReportService(mock(ReportRepository.class), todoRepo, mock(ReviewRepository.class),
-            generator, persistence, lock);
+            generator, persistence, lock, rateLimiter);
     }
 
     private enum Outcome { OK, IN_PROGRESS }

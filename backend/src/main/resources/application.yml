@@ -49,3 +49,11 @@ gemini:
   connect-timeout-ms: ${GEMINI_CONNECT_TIMEOUT_MS:3000}
   read-timeout-ms: ${GEMINI_READ_TIMEOUT_MS:45000}
   max-connections: ${GEMINI_MAX_CONNECTIONS:20}
+
+# AI 리포트 생성 보호 (Redis). Redis 장애 시 lock과 rate limit 모두 fail-open
+report:
+  guard:
+    lock-ttl: 60s        # Gemini 최악 49s + 저장 여유. 짧으면 시작 시 실패
+    user-limit: 10       # 사용자당 window 안 Gemini 호출 수
+    user-window: 1h
+    cooldown: 30s        # 같은 기간 리포트 생성 성공 후 재생성 대기
