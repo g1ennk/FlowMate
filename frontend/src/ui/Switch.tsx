@@ -22,7 +22,7 @@ export function Switch({ checked, onChange, disabled, label, description }: Swit
         onClick={() => !disabled && onChange(!checked)}
         disabled={disabled}
         className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-          checked ? 'bg-accent' : 'bg-border-default'
+          checked ? 'bg-accent' : 'bg-control-off'
         } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
       >
         <span
