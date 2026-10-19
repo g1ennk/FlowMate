@@ -57,7 +57,6 @@ type TimerMenuItemsProps = {
 function TimerMenuItems({ todo, onOpenTimer, setTimerErrorMessage }: TimerMenuItemsProps) {
   const getTimer = useTimerStore((s) => s.getTimer)
   const currentTimer = getTimer(todo.id)
-  const currentTimerRunning = currentTimer?.status === 'running'
 
   const allTimerEntries = Object.entries(useTimerStore.getState().timers)
   const otherRunningTimer = allTimerEntries.find(
@@ -69,10 +68,12 @@ function TimerMenuItems({ todo, onOpenTimer, setTimerErrorMessage }: TimerMenuIt
   function getDisabledReason(conflictingMode: 'stopwatch' | 'pomodoro'): string | null {
     if (isCompleted) return '완료된 태스크는 타이머를 시작할 수 없어요'
     if (otherRunningTimer) return '다른 태스크 타이머가 실행 중이에요'
-    if (currentTimerRunning && currentTimer.mode === conflictingMode) {
-      return conflictingMode === 'pomodoro'
-        ? '같은 태스크의 뽀모도로가 실행 중이에요'
-        : '같은 태스크의 일반 타이머가 실행 중이에요'
+    // 시작한 타이머(실행·일시정지·단계 대기)가 있으면 다른 모드로 열 때 확인 없이 리셋되므로 막는다
+    if (currentTimer && currentTimer.status !== 'idle' && currentTimer.mode === conflictingMode) {
+      const modeName = conflictingMode === 'pomodoro' ? '뽀모도로' : '일반 타이머'
+      return currentTimer.status === 'running'
+        ? `같은 태스크의 ${modeName}가 실행 중이에요`
+        : `같은 태스크에 멈춘 ${modeName}가 있어요. 리셋한 뒤 바꿀 수 있어요`
     }
     return null
   }

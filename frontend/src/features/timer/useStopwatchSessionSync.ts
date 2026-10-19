@@ -3,7 +3,7 @@ import { useCreateSession } from '../todos/hooks'
 import { useTimerStore } from './timerStore'
 import type { SessionRecord, SingleTimerState } from './timerTypes'
 import { resolveSessionRecordId } from './timerSessionIdentity'
-import { type RetryState, canRetry, markRetry, clearRetry } from './timerSyncRetry'
+import { type RetryState, canRetry, markRetry, clearRetry, isPermanentSyncError } from './timerSyncRetry'
 
 type SyncCursorEntry = { count: number; signatures: string[] }
 type SyncCursor = Record<string, SyncCursorEntry>
@@ -112,23 +112,27 @@ export function useStopwatchSessionSync() {
             clientSessionId: resolveSessionRecordId(todoId, latestTimer, session, i),
           },
         })
-        entry = {
-          count: i + 1,
-          signatures: [...entry.signatures],
-        }
-        entry.signatures[i] = signature
-        cursor = { ...cursor, [todoId]: entry }
-        setCursor(cursor)
-        clearRetry(retryRef.current, todoId)
       } catch (error) {
         console.error('[TimerSync] Failed to sync stopwatch session', {
           todoId,
           index: i,
           error,
         })
-        markRetry(retryRef.current, todoId)
-        break
+        if (!isPermanentSyncError(error)) {
+          markRetry(retryRef.current, todoId)
+          break
+        }
+        // 다시 보내도 같은 오류다. 이 세션은 건너뛰고 뒤 세션을 계속 보낸다.
       }
+
+      entry = {
+        count: i + 1,
+        signatures: [...entry.signatures],
+      }
+      entry.signatures[i] = signature
+      cursor = { ...cursor, [todoId]: entry }
+      setCursor(cursor)
+      clearRetry(retryRef.current, todoId)
     }
 
     const latestCount = useTimerStore.getState().timers[todoId]?.sessions.length ?? 0

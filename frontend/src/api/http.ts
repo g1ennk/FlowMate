@@ -5,6 +5,7 @@ import { buildApiUrl } from './baseUrl'
 export type ApiError = {
   status: number
   message: string
+  code?: string
   fields?: Record<string, string>
 }
 
@@ -39,7 +40,7 @@ async function parseError(response: Response): Promise<ApiError> {
   try {
     const data = ErrorSchema.parse(await response.clone().json())
     const message = data?.error?.message ?? data?.message ?? fallback.message
-    return { status: response.status, message, fields: data?.error?.fields }
+    return { status: response.status, message, code: data?.error?.code, fields: data?.error?.fields }
   } catch {
     return fallback
   }

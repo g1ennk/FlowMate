@@ -3,7 +3,7 @@ import { useCreateSession } from '../todos/hooks'
 import { useTimerStore } from './timerStore'
 import type { PendingPomodoroSession, SingleTimerState } from './timerTypes'
 import { normalizeSessionId } from '../../lib/sessionId'
-import { type RetryState, canRetry, markRetry, clearRetry } from './timerSyncRetry'
+import { type RetryState, canRetry, markRetry, clearRetry, isPermanentSyncError } from './timerSyncRetry'
 
 export type AutoSessionSyncState = {
   timers: Record<string, SingleTimerState>
@@ -58,7 +58,13 @@ export function usePomodoroAutoSessionSync() {
         todoId,
         error,
       })
-      markRetry(retryRef.current, todoId)
+      if (isPermanentSyncError(error)) {
+        // 다시 보내도 같은 오류다. 버리고 같은 Todo의 다음 세션이 막히지 않게 한다.
+        clearRetry(retryRef.current, todoId)
+        ackAutoSessionRef.current(todoId)
+      } else {
+        markRetry(retryRef.current, todoId)
+      }
     } finally {
       inFlightRef.current.delete(todoId)
       syncRef.current(useTimerStore.getState())

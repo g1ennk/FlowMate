@@ -42,7 +42,13 @@ public class SseEmitterRegistry {
         );
         ConnectionEntry entry = new ConnectionEntry(internalId, emitter, heartbeatTask);
 
-        connections.computeIfAbsent(userId, k -> new CopyOnWriteArrayList<>()).add(entry);
+        // 목록 추가를 compute 안에서 해야 removeEntry 의 빈 목록 정리와 겹치지 않는다.
+        // (computeIfAbsent 로 꺼낸 뒤 add 하면 그 사이 목록이 맵에서 빠져 새 연결이 고아가 될 수 있다)
+        connections.compute(userId, (key, entries) -> {
+            CopyOnWriteArrayList<ConnectionEntry> list = entries != null ? entries : new CopyOnWriteArrayList<>();
+            list.add(entry);
+            return list;
+        });
 
         emitter.onCompletion(() -> removeEntry(userId, internalId));
         emitter.onTimeout(() -> removeEntry(userId, internalId));
@@ -77,21 +83,20 @@ public class SseEmitterRegistry {
         }
     }
 
+    // 엔트리 제거와 빈 목록 정리를 한 번의 원자 연산으로 처리한다.
+    // isEmpty 확인 뒤 remove 를 따로 하면 그 사이 register 가 같은 목록에 추가한 새 연결까지 맵에서 빠져
+    // broadcast 를 못 받고 heartbeat task 도 취소되지 않은 채 남는다.
     private void removeEntry(String userId, String internalId) {
-        CopyOnWriteArrayList<ConnectionEntry> entries = connections.get(userId);
-        if (entries == null) return;
-
-        entries.removeIf(entry -> {
-            if (!entry.internalId().equals(internalId)) {
-                return false;
-            }
-            entry.heartbeatTask().cancel(true);
-            return true;
+        connections.computeIfPresent(userId, (key, entries) -> {
+            entries.removeIf(entry -> {
+                if (!entry.internalId().equals(internalId)) {
+                    return false;
+                }
+                entry.heartbeatTask().cancel(true);
+                return true;
+            });
+            return entries.isEmpty() ? null : entries;
         });
-
-        if (entries.isEmpty()) {
-            connections.remove(userId, entries);
-        }
     }
 
     // heartbeat 실패는 해당 연결만 정리하고 executor task 는 계속 살려둔다.

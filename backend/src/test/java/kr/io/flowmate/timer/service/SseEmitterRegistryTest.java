@@ -7,6 +7,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiFunction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -49,7 +56,7 @@ class SseEmitterRegistryTest {
         doThrow(new IOException("broken pipe")).when(failingEmitter).send(any(SseEmitter.SseEventBuilder.class));
         injectEmitter("user-fail", failingEmitter);
 
-        // upsertState 트랜잭션이 SSE 실패로 롤백되면 안 되므로 예외는 반드시 안쪽에서 흡수되어야 한다
+        // 한 연결의 전송 실패가 같은 사용자의 나머지 연결 전송과 fan-out 작업을 끊지 않도록 예외는 안쪽에서 흡수되어야 한다
         assertThatCode(() -> registry.broadcast("user-fail",
                 SseEmitter.event().name("timer-state").data("{}")))
                 .doesNotThrowAnyException();
@@ -77,6 +84,23 @@ class SseEmitterRegistryTest {
         verify(e2).send(any(SseEmitter.SseEventBuilder.class));
     }
 
+    @Test
+    @DisplayName("removeEntry: 마지막 연결을 지우는 순간 같은 사용자가 새로 연결해도 새 연결이 맵에서 빠지지 않는다")
+    void removeLastEntry_whileSameUserRegisters_keepsNewConnection() throws Exception {
+        registry.register("user-race");
+        String firstId = internalIdsOf("user-race").get(0);
+
+        // 다른 스레드의 register 가 removeEntry 의 맵 정리 직전에 끼어든 상황을 결정적으로 재현한다.
+        InterleavingMap map = replaceConnectionsWithInterleavingMap();
+        map.beforeRemoval = () -> registry.register("user-race");
+
+        invokeRemoveEntry("user-race", firstId);
+
+        List<String> remaining = internalIdsOf("user-race");
+        assertThat(remaining).hasSize(1);
+        assertThat(remaining.get(0)).isNotEqualTo(firstId);
+    }
+
     // 테스트 전용 헬퍼 — 실제 SseEmitter 를 직접 register 하면 heartbeat task 스케줄이 시작되어 테스트가 무거워진다.
     // 대신 reflection 으로 connections map 에 entry 를 직접 삽입해 broadcast 경로만 격리 검증한다.
     @SuppressWarnings("unchecked")
@@ -91,6 +115,68 @@ class SseEmitterRegistryTest {
         field.setAccessible(true);
         var connections = (java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<Object>>) field.get(registry);
         connections.computeIfAbsent(userId, k -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(entry);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ConcurrentHashMap<String, CopyOnWriteArrayList<Object>> connections() throws Exception {
+        Field field = SseEmitterRegistry.class.getDeclaredField("connections");
+        field.setAccessible(true);
+        return (ConcurrentHashMap<String, CopyOnWriteArrayList<Object>>) field.get(registry);
+    }
+
+    private InterleavingMap replaceConnectionsWithInterleavingMap() throws Exception {
+        InterleavingMap map = new InterleavingMap();
+        map.putAll(connections());
+        Field field = SseEmitterRegistry.class.getDeclaredField("connections");
+        field.setAccessible(true);
+        field.set(registry, map);
+        return map;
+    }
+
+    private List<String> internalIdsOf(String userId) throws Exception {
+        CopyOnWriteArrayList<Object> entries = connections().get(userId);
+        if (entries == null) return List.of();
+        Method internalId = Class.forName("kr.io.flowmate.timer.service.SseEmitterRegistry$ConnectionEntry")
+                .getDeclaredMethod("internalId");
+        internalId.setAccessible(true);
+        List<String> ids = new ArrayList<>();
+        for (Object entry : entries) {
+            ids.add((String) internalId.invoke(entry));
+        }
+        return ids;
+    }
+
+    private void invokeRemoveEntry(String userId, String internalId) throws Exception {
+        Method removeEntry = SseEmitterRegistry.class.getDeclaredMethod("removeEntry", String.class, String.class);
+        removeEntry.setAccessible(true);
+        removeEntry.invoke(registry, userId, internalId);
+    }
+
+    // 맵에서 사용자 키를 정리하는 연산 직전에 한 번 끼어들 수 있는 맵.
+    // 기존 구현의 remove(key, value) 와 원자화한 구현의 computeIfPresent 양쪽에 같은 지점을 건다.
+    private static final class InterleavingMap extends ConcurrentHashMap<String, CopyOnWriteArrayList<Object>> {
+        private Runnable beforeRemoval;
+
+        private void runOnce() {
+            Runnable hook = beforeRemoval;
+            beforeRemoval = null;
+            if (hook != null) hook.run();
+        }
+
+        @Override
+        public boolean remove(Object key, Object value) {
+            runOnce();
+            return super.remove(key, value);
+        }
+
+        @Override
+        public CopyOnWriteArrayList<Object> computeIfPresent(
+                String key,
+                BiFunction<? super String, ? super CopyOnWriteArrayList<Object>, ? extends CopyOnWriteArrayList<Object>> remappingFunction
+        ) {
+            runOnce();
+            return super.computeIfPresent(key, remappingFunction);
+        }
     }
 
     // heartbeat 스케줄 객체 대신 주입하기 위한 최소 ScheduledFuture 더미
