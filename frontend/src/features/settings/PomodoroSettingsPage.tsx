@@ -249,8 +249,7 @@ function PomodoroSettingsPage() {
     period: 'am' | 'pm'
     hour: number
     minute: number
-    is24: boolean
-  }>({ period: 'am', hour: 6, minute: 0, is24: false })
+  }>({ period: 'am', hour: 6, minute: 0 })
   const data = useMemo(
     () =>
       settingsData
@@ -290,7 +289,7 @@ function PomodoroSettingsPage() {
   const formatDisplayTime = (value: string) => {
     const trimmed = value.trim()
     if (!trimmed) return '--:--'
-    if (trimmed === '24:00') return '오후 12:00'
+    if (trimmed === '24:00') return '자정'
     const [rawHours, rawMinutes] = trimmed.split(':')
     const hours = Number(rawHours)
     const minutes = Number(rawMinutes)
@@ -371,19 +370,20 @@ function PomodoroSettingsPage() {
 
   const parseTimeDraft = (value: string, fallback: string) => {
     const trimmed = value.trim() || fallback || '06:00'
-    if (trimmed === '24:00') return { period: 'pm' as const, hour: 12, minute: 0, is24: true }
+    // 24:00(자정)은 휠에서 "오전 12:00"으로 보여준다.
+    if (trimmed === '24:00') return { period: 'am' as const, hour: 12, minute: 0 }
     const [rawHours, rawMinutes] = trimmed.split(':')
     const hours = Number(rawHours)
     const minutes = Number(rawMinutes)
     if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return { period: 'am' as const, hour: 6, minute: 0, is24: false }
+      return { period: 'am' as const, hour: 6, minute: 0 }
     }
     const safeHours = Math.max(0, Math.min(23, hours))
     const safeMinutes = Math.max(0, Math.min(59, minutes))
     const period: 'am' | 'pm' = safeHours >= 12 ? 'pm' : 'am'
     let hour12 = safeHours % 12
     if (hour12 === 0) hour12 = 12
-    return { period, hour: hour12, minute: safeMinutes, is24: false }
+    return { period, hour: hour12, minute: safeMinutes }
   }
 
   const updateMiniDayEditorField = (field: 'label' | 'start' | 'end', value: string) => {
@@ -398,11 +398,12 @@ function PomodoroSettingsPage() {
   }
 
   const commitTimeDraft = (draft: typeof timeDraft) => {
-    if (draft.is24) {
-      updateMiniDayEditorField(miniDayEditField, '24:00')
+    const hour24 = draft.period === 'pm' ? (draft.hour % 12) + 12 : draft.hour % 12
+    // 종료의 "오전 12:00"은 그날의 끝(자정)이므로 24:00으로 저장한다.
+    if (miniDayEditField === 'end' && hour24 === 0 && draft.minute === 0) {
+      updateMiniDayEditorField('end', '24:00')
       return
     }
-    const hour24 = draft.period === 'pm' ? (draft.hour % 12) + 12 : draft.hour % 12
     updateMiniDayEditorField(miniDayEditField, formatTime(hour24, draft.minute))
   }
 
@@ -428,27 +429,19 @@ function PomodoroSettingsPage() {
   }
 
   const handleTogglePeriod = (period: 'am' | 'pm') => {
-    const next = { ...timeDraft, period, is24: false }
+    const next = { ...timeDraft, period }
     setTimeDraft(next)
     commitTimeDraft(next)
   }
 
   const handleSelectHour = (hour: number) => {
-    const next = {
-      ...timeDraft,
-      hour,
-      is24: false,
-    }
+    const next = { ...timeDraft, hour }
     setTimeDraft(next)
     commitTimeDraft(next)
   }
 
   const handleSelectMinute = (minute: number) => {
-    const next = {
-      ...timeDraft,
-      minute,
-      is24: false,
-    }
+    const next = { ...timeDraft, minute }
     setTimeDraft(next)
     commitTimeDraft(next)
   }

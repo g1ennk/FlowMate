@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 import { toast } from 'react-hot-toast'
@@ -475,5 +475,53 @@ describe('PomodoroSettingsPage', () => {
     await user.click(screen.getByRole('button', { name: '저장' }))
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('미니 데이를 저장하지 못했어요'))
+  })
+  it('shows a 24:00 end as midnight and keeps it when the end wheel is touched', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    useSlowSettingsServer()
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const eveningRow = await screen.findByRole('button', { name: /저녁/ })
+    await waitFor(() => expect(eveningRow).not.toBeDisabled())
+    expect(eveningRow).toHaveAccessibleName(/오후 6:00-자정/)
+
+    await user.click(eveningRow)
+    const endCard = await screen.findByRole('button', { name: /종료/ })
+    expect(endCard).toHaveAccessibleName(/자정/)
+
+    await user.click(endCard)
+    await user.click(within(screen.getByLabelText('분 선택')).getByRole('button', { name: '00' }))
+
+    expect(screen.getByRole('button', { name: /종료/ })).toHaveAccessibleName(/자정/)
+    expect(screen.queryByText('종료는 시작 이후여야 합니다')).not.toBeInTheDocument()
+  })
+
+  it('saves midnight as 24:00 when 12 AM is picked for the end', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    server.use(
+      http.put('/api/settings/mini-days', async ({ request }) => {
+        const body = (await request.json()) as Settings['miniDays']
+        serverState.miniDays = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const afternoonRow = await screen.findByRole('button', { name: /^오후/ })
+    await waitFor(() => expect(afternoonRow).not.toBeDisabled())
+
+    await user.click(afternoonRow)
+    await user.click(await screen.findByRole('button', { name: /종료/ }))
+    await user.click(within(screen.getByLabelText('오전 오후 선택')).getByRole('button', { name: '오전' }))
+    await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '12' }))
+
+    expect(screen.getByRole('button', { name: /종료/ })).toHaveAccessibleName(/자정/)
+    expect(screen.queryByText('종료는 시작 이후여야 합니다')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(serverState.miniDays.day2.end).toBe('24:00'))
   })
 })
