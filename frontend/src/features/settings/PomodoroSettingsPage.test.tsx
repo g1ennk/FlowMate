@@ -12,6 +12,12 @@ import { useThemeStore } from '../../store/themeStore'
 import { renderApp } from '../../test/renderApp'
 import PomodoroSettingsPage from './PomodoroSettingsPage'
 
+// toast()를 직접 부르는 경우(정보 토스트)도 확인할 수 있게 함수 자체를 감싼다.
+vi.mock('react-hot-toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-hot-toast')>()
+  return { ...actual, toast: Object.assign(vi.fn(), actual.toast) }
+})
+
 const initialAuthStore = useAuthStore.getState()
 
 function signInAsMember() {
@@ -555,7 +561,7 @@ describe('PomodoroSettingsPage', () => {
     await waitFor(() => expect(serverState.miniDays.day1.label).toBe('아침'))
   })
 
-  it('keeps the mini day sheet open with an error when the range is invalid', async () => {
+  it('discards an invalid mini day edit when the sheet is closed and says it was not saved', async () => {
     const user = userEvent.setup()
     signInAsMember()
     const { serverState } = useSlowSettingsServer()
@@ -577,10 +583,14 @@ describe('PomodoroSettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: /종료/ }))
     await user.click(within(screen.getByLabelText('오전 오후 선택')).getByRole('button', { name: '오전' }))
     await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '5' }))
+    expect(screen.getByText('종료는 시작보다 늦어야 해요')).toBeInTheDocument()
+    expect(screen.getByText('오류를 고치지 않고 닫으면 저장되지 않아요')).toBeInTheDocument()
+    vi.mocked(toast).mockClear()
     await user.keyboard('{Escape}')
 
-    expect(screen.getByRole('heading', { name: '미니 데이 설정' })).toBeInTheDocument()
-    expect(screen.getByText('종료는 시작보다 늦어야 해요')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '미니 데이 설정' })).not.toBeInTheDocument()
+    expect(toast).toHaveBeenCalledWith('저장하지 않았어요', expect.anything())
+    expect(screen.getByRole('button', { name: /오전.*오전 6:00-오후 12:00/ })).toBeInTheDocument()
     expect(putCount).toBe(0)
   })
 

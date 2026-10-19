@@ -358,11 +358,12 @@ function PomodoroSettingsPage() {
     setTimeDraftFromValue(next.start, defaultMiniDaysSettings[dayKey].start)
   }
 
-  // 닫을 때 바뀐 값이 있으면 저장한다. 오류가 있으면 닫지 않고 오류 문구를 보여준다.
+  // 닫을 때 바뀐 값이 있으면 저장한다. 오류가 있으면 바뀐 내용을 버리고 닫는다.
   const closeMiniDayEditor = () => {
     if (!activeMiniDay) return
-    if (activeMiniDayError) return
-    if (isMiniDayDirty) {
+    if (activeMiniDayError) {
+      toast('저장하지 않았어요', { id: 'mini-days-discarded' })
+    } else if (isMiniDayDirty) {
       updateMiniDays.mutate(candidateMiniDays, {
         onSuccess: () => {
           toast.success('저장됨', { id: 'mini-days-saved' })
@@ -877,7 +878,7 @@ function PomodoroSettingsPage() {
             <p className={`text-center text-xs font-medium ${
               activeMiniDayErrorMessage ? 'text-state-error' : 'text-text-secondary'
             }`}>
-              {activeMiniDayErrorMessage ? '오류를 고쳐야 닫을 수 있어요' : '닫으면 자동으로 저장돼요'}
+              {activeMiniDayErrorMessage ? '오류를 고치지 않고 닫으면 저장되지 않아요' : '닫으면 자동으로 저장돼요'}
             </p>
           </div>
         </div>
