@@ -127,3 +127,23 @@ describe('TodoItem 메모', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 })
+
+describe('TodoItem 접근성과 표시', () => {
+  it('더보기와 타이머 버튼에 할 일 이름이 들어간 이름이 있다', () => {
+    const onOpenMenu = vi.fn()
+    const onOpenTimer = vi.fn()
+    renderTodoItem({ sessionCount: 1, sessionFocusSeconds: 600, onOpenMenu, onOpenTimer })
+
+    fireEvent.click(screen.getByRole('button', { name: 'ps: 1, 2번 유형 더보기' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ps: 1, 2번 유형 타이머 열기' }))
+
+    expect(onOpenMenu).toHaveBeenCalledTimes(1)
+    expect(onOpenTimer).toHaveBeenCalledTimes(1)
+  })
+
+  it('긴 영어 단어를 글자 중간에서 끊지 않는다', () => {
+    renderTodoItem({ title: 'Refactoring the authentication module' })
+
+    expect(screen.getByText('Refactoring the authentication module')).not.toHaveClass('break-all')
+  })
+})
