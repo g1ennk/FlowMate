@@ -14,6 +14,7 @@ import { useAppUpdate } from '../features/pwa/useAppUpdate'
 import { ActiveTimerTitle } from './ActiveTimerTitle'
 import { useAuthStore } from '../store/authStore'
 import BackendStatusGate from './BackendStatusGate'
+import { useAuthInitRetry } from './useAuthInitRetry'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
@@ -31,6 +32,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     if (!mockReady) return
     useAuthStore.getState().init()
   }, [mockReady])
+  useAuthInitRetry(mockReady)
 
   useEffect(() => {
     if (!mockEnabled) return
@@ -62,7 +64,8 @@ export function AppProviders({ children }: PropsWithChildren) {
         // BottomSheet·TimerFullScreen(9999), SoundSheet(10000) 포털보다 위에 보이도록 한다.
         containerStyle={{
           zIndex: 10001,
-          marginTop: 'calc(var(--safe-top) + 8px)',
+          // 서버 연결 배너가 떠 있으면 그 아래로 내린다 (배너 높이에 safe-top 포함)
+          marginTop: 'calc(var(--top-banner-offset, var(--safe-top)) + 8px)',
         }}
         toastOptions={{
           duration: 2000,

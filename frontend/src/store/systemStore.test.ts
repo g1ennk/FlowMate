@@ -12,23 +12,39 @@ describe('systemStore', () => {
     expect(useSystemStore.getState().status).toBe('unknown')
   })
 
-  it('setStatus로 available로 전환할 수 있다', () => {
-    useSystemStore.getState().setStatus('available')
+  it('헬스체크 성공을 기록하면 available이 된다', () => {
+    useSystemStore.getState().recordHealth(true)
     expect(useSystemStore.getState().status).toBe('available')
   })
 
-  it('setStatus로 unavailable로 전환할 수 있다', () => {
-    useSystemStore.getState().setStatus('unavailable')
+  it('헬스체크 실패 1회로는 상태를 바꾸지 않는다', () => {
+    const { recordHealth } = useSystemStore.getState()
+    recordHealth(true)
+    recordHealth(false)
+    expect(useSystemStore.getState().status).toBe('available')
+  })
+
+  it('헬스체크가 연속 2회 실패하면 unavailable이 된다', () => {
+    const { recordHealth } = useSystemStore.getState()
+    recordHealth(false)
+    expect(useSystemStore.getState().status).toBe('unknown')
+    recordHealth(false)
     expect(useSystemStore.getState().status).toBe('unavailable')
   })
 
-  it('available → unavailable → available 전환이 가능하다', () => {
-    const { setStatus } = useSystemStore.getState()
-    setStatus('available')
+  it('중간에 성공하면 실패 횟수를 다시 센다', () => {
+    const { recordHealth } = useSystemStore.getState()
+    recordHealth(false)
+    recordHealth(true)
+    recordHealth(false)
     expect(useSystemStore.getState().status).toBe('available')
-    setStatus('unavailable')
-    expect(useSystemStore.getState().status).toBe('unavailable')
-    setStatus('available')
+  })
+
+  it('unavailable에서 성공하면 다시 available이 된다', () => {
+    const { recordHealth } = useSystemStore.getState()
+    recordHealth(false)
+    recordHealth(false)
+    recordHealth(true)
     expect(useSystemStore.getState().status).toBe('available')
   })
 })

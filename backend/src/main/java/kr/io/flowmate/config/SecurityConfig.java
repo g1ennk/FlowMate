@@ -38,6 +38,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/auth/guest/token",
+                                "/api/auth/guest/renew",
                                 "/api/auth/*/authorize-url",
                                 "/api/auth/*/exchange",
                                 "/api/auth/refresh",

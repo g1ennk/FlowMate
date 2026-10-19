@@ -51,6 +51,7 @@ let refreshPromise: Promise<void> | null = null
 export async function http<T>(method: HttpMethod, path: string, options: RequestOptions<T> = {}) {
   const { schema, headers, body, ...rest } = options
   const token = useAuthStore.getState().getToken()
+  const typeAtSend = useAuthStore.getState().state?.type
 
   const response = await fetch(buildApiUrl(path), {
     method,
@@ -66,8 +67,10 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
 
   // 401 → 토큰 재발급 후 1회 재시도
   if (response.status === 401) {
-    const typeBefore = useAuthStore.getState().state?.type
-    if (!refreshPromise) {
+    // 요청이 나간 사이 다른 요청이 이미 토큰을 바꿨다면, 늦게 도착한 401로
+    // 다시 refresh(게스트면 새 신원 발급까지)하지 않고 바뀐 토큰으로 재시도만 한다.
+    const tokenAlreadyReplaced = useAuthStore.getState().getToken() !== token
+    if (!tokenAlreadyReplaced && !refreshPromise) {
       refreshPromise = useAuthStore
         .getState()
         .refresh()
@@ -76,9 +79,9 @@ export async function http<T>(method: HttpMethod, path: string, options: Request
         })
     }
     await refreshPromise
-    // 회원 세션이 만료되어 refresh 실패 → 로그인 유도 상태로 전환된 경우
-    // 비회원 토큰으로 재시도하면 다른 주체에 데이터가 쓰일 수 있으므로 에러를 던진다
-    if (typeBefore === 'member' && useAuthStore.getState().state?.type !== 'member') {
+    // 요청을 보낸 뒤 신원 종류가 바뀌었으면(회원 세션 만료, 그 사이 로그인 등)
+    // 다른 주체의 토큰으로 재시도하면 데이터가 엉뚱한 곳에 쓰일 수 있으므로 에러를 던진다
+    if (useAuthStore.getState().state?.type !== typeAtSend) {
       throw await parseError(response)
     }
     const retryToken = useAuthStore.getState().getToken()

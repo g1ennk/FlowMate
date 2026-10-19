@@ -7,6 +7,10 @@ export const storageKeys = {
   // 온보딩
   onboardingSeen: `${STORAGE_PREFIX}/onboarding/seen`,
   authMode: `${STORAGE_PREFIX}/auth/mode`,
+  // 회원 세션이 만료돼 로그인 화면으로 보낸 경우 남기는 힌트 (다시 로그인하면 지움)
+  sessionExpired: `${STORAGE_PREFIX}/auth/session-expired`,
+  // 로그인 화면에서 "게스트로 둘러보기"를 직접 고른 브라우저 (로그아웃·로그인 시 지움)
+  guestStarted: `${STORAGE_PREFIX}/auth/guest-started`,
   todosCalendarViewMode: `${STORAGE_PREFIX}/ui/todos-calendar-view-mode`,
   // 도메인 캐시
   todos: (clientId: string) => `${STORAGE_PREFIX}/${clientId}/todos`,

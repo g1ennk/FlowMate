@@ -57,6 +57,7 @@ function renderLoginPage() {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     useAuthStore.setState(initialAuthStore, true)
     useAuthStore.setState({
       initialized: true,
@@ -176,5 +177,120 @@ describe('LoginPage', () => {
         '카카오 로그인을 시작할 수 없습니다. 잠시 후 다시 시도해주세요.',
       )
     })
+  })
+
+  it('marks the browser as a guest user when continuing as a guest', async () => {
+    const user = userEvent.setup()
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /게스트로 둘러보기/ }))
+
+    await screen.findByText('todos page')
+    expect(window.localStorage.getItem(storageKeys.guestStarted)).toBe('1')
+  })
+
+  it('does not ask a logged-out member (guest session without the guest-started flag)', async () => {
+    const user = userEvent.setup()
+    mockWindowLocation()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ state: 'oauth-state', authorizeUrl: 'https://kakao.example/authorize' }),
+      }),
+    )
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
+
+    await waitFor(() => expect(window.fetch).toHaveBeenCalled())
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+
+  it('asks for confirmation before a guest who used the app moves to Kakao login', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem(storageKeys.guestStarted, '1')
+    vi.mocked(window.confirm).mockReturnValue(false)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('게스트로 쓴 기록은 회원 계정으로 옮겨지지 않아요'),
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not ask a first-time visitor for confirmation', async () => {
+    const user = userEvent.setup()
+    setOnboardingSeen(false)
+    mockWindowLocation()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ state: 'oauth-state', authorizeUrl: 'https://kakao.example/authorize' }),
+      }),
+    )
+
+    renderLoginPage()
+
+    await user.click(screen.getByRole('button', { name: /카카오로 시작하기/ }))
+
+    await waitFor(() => expect(window.fetch).toHaveBeenCalled())
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+
+  it('explains that guest records are tied to this browser', () => {
+    renderLoginPage()
+
+    expect(screen.getByText('게스트 기록은 이 브라우저에서만 볼 수 있어요')).toBeInTheDocument()
+  })
+
+  it('ignores repeated taps while Kakao login is starting', async () => {
+    const user = userEvent.setup()
+    mockWindowLocation()
+    let resolveFetch!: (value: unknown) => void
+    const fetchMock = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderLoginPage()
+
+    const button = screen.getByRole('button', { name: /카카오로 시작하기/ })
+    await user.click(button)
+    await user.click(button)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    resolveFetch({ ok: true, json: async () => ({ state: 's', authorizeUrl: 'https://kakao.example' }) })
+  })
+
+  it('shows the splash instead of a blank screen before auth init finishes', () => {
+    useAuthStore.setState({ initialized: false, state: null })
+
+    const { container } = renderLoginPage()
+
+    expect(container).not.toBeEmptyDOMElement()
+  })
+
+  it('explains an expired session and keeps the guest option secondary', () => {
+    window.localStorage.setItem(storageKeys.sessionExpired, '1')
+    useAuthStore.setState({ state: null })
+
+    renderLoginPage()
+
+    expect(
+      screen.getByText('로그인이 만료됐어요. 다시 로그인하면 기록이 그대로 있어요'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /게스트로 둘러보기/ })).not.toHaveClass('border')
   })
 })
