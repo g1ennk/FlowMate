@@ -186,9 +186,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       {/* 헤더 */}
       <header
         className="flex items-center justify-between px-4"
+        // 서버 연결 배너가 떠 있으면 배너 높이(safe-top 포함)만큼 내려 버튼이 가리지 않게 한다.
         style={{
-          minHeight: 'calc(56px + var(--safe-top))',
-          paddingTop: 'var(--safe-top)',
+          minHeight: 'calc(56px + var(--top-banner-offset, var(--safe-top)))',
+          paddingTop: 'var(--top-banner-offset, var(--safe-top))',
         }}
       >
         <button

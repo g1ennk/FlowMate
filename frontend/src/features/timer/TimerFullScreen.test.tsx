@@ -406,6 +406,24 @@ describe('TimerFullScreen', () => {
     }
   })
 
+  it('서버 연결 배너가 떠 있으면 헤더를 배너 아래로 내린다', async () => {
+    renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    const header = (await screen.findByRole('button', { name: '타이머 닫기' })).closest('header')
+    expect(header?.style.paddingTop).toContain('--top-banner-offset')
+  })
+
   it('shows the preset label instead of exposing per-track controls', async () => {
     renderApp(
       <TimerFullScreen

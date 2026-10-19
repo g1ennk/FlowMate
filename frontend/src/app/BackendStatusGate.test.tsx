@@ -139,6 +139,23 @@ describe('BackendStatusGate', () => {
     expect(recheckBackend).toHaveBeenCalledTimes(1)
   })
 
+  it('배너는 열린 시트와 풀스크린 타이머보다 위에, 토스트보다는 아래에 뜬다', () => {
+    useSystemStore.setState({ status: 'available' })
+    renderApp(
+      <BackendStatusGate>
+        <div>children</div>
+      </BackendStatusGate>,
+    )
+    act(() => {
+      useSystemStore.setState({ status: 'unavailable' })
+    })
+
+    const zIndex = Number(screen.getByRole('button', { name: disconnectedBannerText }).style.zIndex)
+    // BottomSheet·TimerFullScreen 9999, SoundSheet 10000, Toaster 10002
+    expect(zIndex).toBeGreaterThan(10000)
+    expect(zIndex).toBeLessThan(10002)
+  })
+
   it('배너가 떠 있는 동안 토스트가 배너 아래로 내려가도록 높이를 알린다', () => {
     useSystemStore.setState({ status: 'available' })
     renderApp(
