@@ -8,7 +8,7 @@ import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
 import { Switch } from '../../ui/Switch'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
 import { buildPomodoroSave, useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
-import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
+import { defaultMiniDaysSettings, type MiniDayRange, parseMiniDayTime, validateMiniDaysSettings } from '../../lib/miniDays'
 import { userTextInputClass } from '../../lib/userTextStyles'
 import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
 import { useCoachMark } from '../../lib/useCoachMark'
@@ -502,17 +502,6 @@ function PomodoroSettingsPage() {
     })
   }
 
-  const parseTimeMinutes = (value: string, allow24: boolean) => {
-    const trimmed = value.trim()
-    if (!trimmed) return null
-    if (allow24 && trimmed === '24:00') return 24 * 60
-    const [rawHours, rawMinutes] = trimmed.split(':')
-    const hours = Number(rawHours)
-    const minutes = Number(rawMinutes)
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
-    return hours * 60 + minutes
-  }
-
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
     const remainder = minutes % 60
@@ -524,8 +513,8 @@ function PomodoroSettingsPage() {
 
   const startValueLabel = formatDisplayTime(miniDayEditor.start)
   const endValueLabel = formatDisplayTime(miniDayEditor.end)
-  const startMinutes = parseTimeMinutes(miniDayEditor.start, false)
-  const endMinutes = parseTimeMinutes(miniDayEditor.end, true)
+  const startMinutes = parseMiniDayTime(miniDayEditor.start, false)
+  const endMinutes = parseMiniDayTime(miniDayEditor.end, true)
   const hasValidRange = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
   const previewRange = miniDayEditor.start.trim() && miniDayEditor.end.trim()
     ? `${formatDisplayTime(miniDayEditor.start)} ~ ${formatDisplayTime(miniDayEditor.end)}`
