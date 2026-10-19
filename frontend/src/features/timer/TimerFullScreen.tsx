@@ -579,13 +579,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 </span>
               </button>
 
-              {/* 휴식/집중 시작 버튼 */}
+              {/* 휴식/집중 시작 버튼 - Flow를 시작하기 전에는 비활성화 */}
               <button
                 onClick={() => {
                   // Flow ↔ Break 전환
                   skipToNext(todoId)
                 }}
-                className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
+                disabled={isFlow && timer?.status === 'idle'}
+                className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                   <StopIcon className="h-6 w-6" />

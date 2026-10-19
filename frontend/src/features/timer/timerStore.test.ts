@@ -891,4 +891,58 @@ describe('useTimerStore pomodoro 기록 정확도', () => {
     expect(timer.cycleCount).toBe(1)
     expect(timer.sessions[0].sessionFocusSeconds).toBe(1500)
   })
+
+  it('idle 상태 Flow를 건너뛰어도 사이클이 올라가지 않는다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.cycleCount).toBe(0)
+    expect(timer.sessions).toHaveLength(0)
+  })
+
+  it('최소 집중 시간 미만으로 Flow를 건너뛰면 사이클이 올라가지 않고 짧은 휴식으로 간다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+    useTimerStore.getState().resume(TODO_ID)
+
+    vi.setSystemTime(Date.now() + 30_000)
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.status).toBe('running')
+    expect(timer.cycleCount).toBe(0)
+    expect(timer.sessions).toHaveLength(0)
+  })
+
+  it('최소 집중 시간 미만 Flow 건너뛰기는 긴 휴식 차례여도 짧은 휴식으로 간다', () => {
+    setTimer(
+      createPomodoroTimer({
+        settingsSnapshot: pomodoroSettings,
+        phase: 'flow',
+        endAt: Date.now() + 25 * MINUTE - 30_000,
+        cycleCount: 3,
+      }),
+    )
+
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.cycleCount).toBe(3)
+  })
+
+  it('최소 집중 시간 이상으로 Flow를 건너뛰면 기존처럼 사이클이 올라간다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+    useTimerStore.getState().resume(TODO_ID)
+
+    vi.setSystemTime(Date.now() + 2 * MINUTE)
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.cycleCount).toBe(1)
+    expect(timer.sessions[0].sessionFocusSeconds).toBe(120)
+  })
 })

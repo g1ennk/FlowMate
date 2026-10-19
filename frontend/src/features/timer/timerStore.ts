@@ -841,32 +841,34 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const { breakMin, longBreakMin, flowMin, cycleEvery } = settingsSnapshot
       
       if (phase === 'flow') {
-        // Flow → Break 수동 스킵: cycleCount +1
-        const nextCycle = timer.cycleCount + 1
-        const breakType = getBreakType(nextCycle, cycleEvery)
-        const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
+        // Flow → Break 수동 스킵: 최소 집중 시간을 넘긴 Flow만 사이클로 센다
         const plannedMs = flowMin * MINUTE
         const elapsedMs = getPomodoroElapsedMs(timer, plannedMs)
         const elapsedSec = Math.round(elapsedMs / 1000)
+        const countsAsCycle = elapsedMs >= MIN_FLOW_MS && elapsedSec > 0
+        const breakType = countsAsCycle
+          ? getBreakType(timer.cycleCount + 1, cycleEvery)
+          : { phase: 'short' as const, isLong: false }
+        const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
         const completedSession: PendingPomodoroSession = {
           sessionFocusSeconds: elapsedSec,
           breakSeconds: 0,
           clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
         }
 
-        if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
+        if (countsAsCycle) {
           enqueuePendingAutoSession(todoId, completedSession)
         }
-        
+
         // Flow에서 휴식으로 이동할 때, 최소 집중 시간을 넘긴 경우 현재 Flow를 세션으로 인정
         transitionPhase(
           todoId,
           breakType.phase,
           nextBreakDuration,
           true,
-          1,
+          countsAsCycle ? 1 : 0,
           (currentHistory) => {
-            if (elapsedMs < MIN_FLOW_MS || elapsedSec <= 0) {
+            if (!countsAsCycle) {
               return currentHistory
             }
             return [
