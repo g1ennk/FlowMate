@@ -44,6 +44,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const [mounted, setMounted] = useState(false)
   const [selectedMode, setSelectedMode] = useState<'stopwatch' | 'pomodoro' | null>(null)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
+  const [isCompleting, setIsCompleting] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
   const [showBreakSelection, setShowBreakSelection] = useState(false)
   const [showTotalTime, setShowTotalTime] = useState(false) // 디폴트: 현재 세션(false) vs 전체 누적(true)
@@ -579,13 +580,14 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 </span>
               </button>
 
-              {/* 휴식/집중 시작 버튼 */}
+              {/* 휴식/집중 시작 버튼 - Flow는 진행 중(running/paused)일 때만 휴식으로 넘길 수 있다 */}
               <button
                 onClick={() => {
                   // Flow ↔ Break 전환
                   skipToNext(todoId)
                 }}
-                className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
+                disabled={isFlow && timer?.status !== 'running' && timer?.status !== 'paused'}
+                className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                   <StopIcon className="h-6 w-6" />
@@ -702,12 +704,19 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
               </button>
               <button
                 onClick={async () => {
-                  const completed = await handleComplete()
-                  if (completed) {
-                    setShowCompleteModal(false)
+                  // 처리 중 다시 탭해도 완료가 두 번 실행되지 않게 막는다
+                  setIsCompleting(true)
+                  try {
+                    const completed = await handleComplete()
+                    if (completed) {
+                      setShowCompleteModal(false)
+                    }
+                  } finally {
+                    setIsCompleting(false)
                   }
                 }}
-                className="flex-1 rounded-full bg-accent-hover py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent"
+                disabled={isCompleting}
+                className="flex-1 rounded-full bg-accent-hover py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 확인
               </button>

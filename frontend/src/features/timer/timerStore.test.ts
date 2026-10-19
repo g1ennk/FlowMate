@@ -816,3 +816,133 @@ describe('useTimerStore reset — stopwatch in-progress focus accumulation 보�
     expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]).toBeUndefined()
   })
 })
+
+describe('useTimerStore pomodoro 기록 정확도', () => {
+  const MINUTE = 60_000
+  const pomodoroSettings = {
+    flowMin: 25,
+    breakMin: 5,
+    longBreakMin: 15,
+    cycleEvery: 4,
+    autoStartBreak: false,
+    autoStartSession: false,
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-06T09:00:00.000Z'))
+    useTimerStore.getState().clearAll()
+  })
+
+  afterEach(() => {
+    useTimerStore.getState().clearAll()
+    vi.useRealTimers()
+  })
+
+  it('백그라운드에서 Flow endAt을 한참 넘긴 뒤 복귀해도 계획 시간까지만 기록한다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+    useTimerStore.getState().resume(TODO_ID)
+
+    vi.setSystemTime(Date.now() + 25 * MINUTE + 60 * MINUTE)
+    useTimerStore.getState().syncWithNow()
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.sessions.at(-1)?.sessionFocusSeconds).toBe(1500)
+    expect(
+      useTimerStore.getState().pendingAutoSessions[TODO_ID]?.map((s) => s.sessionFocusSeconds),
+    ).toEqual([1500])
+  })
+
+  it('백그라운드에서 휴식 endAt을 한참 넘긴 뒤 복귀해도 계획 시간까지만 기록한다', () => {
+    setTimer(
+      createPomodoroTimer({
+        settingsSnapshot: pomodoroSettings,
+        phase: 'short',
+        endAt: Date.now() - 60 * MINUTE,
+      }),
+    )
+
+    useTimerStore.getState().tick()
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('flow')
+    expect(timer.sessions[0].breakSeconds).toBe(300)
+    expect(useTimerStore.getState().pendingAutoSessions[TODO_ID]?.[0].breakSeconds).toBe(300)
+  })
+
+  it('남은 시간이 0인 채로 일시정지된 Flow는 재개하면 완료 처리된다', () => {
+    setTimer(
+      createPomodoroTimer({
+        settingsSnapshot: pomodoroSettings,
+        phase: 'flow',
+        status: 'paused',
+        endAt: null,
+        remainingMs: 0,
+        cycleCount: 0,
+        sessions: [],
+      }),
+    )
+
+    useTimerStore.getState().resume(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.cycleCount).toBe(1)
+    expect(timer.sessions[0].sessionFocusSeconds).toBe(1500)
+  })
+
+  it('idle 상태 Flow를 건너뛰어도 사이클이 올라가지 않는다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.cycleCount).toBe(0)
+    expect(timer.sessions).toHaveLength(0)
+  })
+
+  it('최소 집중 시간 미만으로 Flow를 건너뛰면 사이클이 올라가지 않고 짧은 휴식으로 간다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+    useTimerStore.getState().resume(TODO_ID)
+
+    vi.setSystemTime(Date.now() + 30_000)
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.status).toBe('running')
+    expect(timer.cycleCount).toBe(0)
+    expect(timer.sessions).toHaveLength(0)
+  })
+
+  it('최소 집중 시간 미만 Flow 건너뛰기는 긴 휴식 차례여도 짧은 휴식으로 간다', () => {
+    setTimer(
+      createPomodoroTimer({
+        settingsSnapshot: pomodoroSettings,
+        phase: 'flow',
+        endAt: Date.now() + 25 * MINUTE - 30_000,
+        cycleCount: 3,
+      }),
+    )
+
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.cycleCount).toBe(3)
+  })
+
+  it('최소 집중 시간 이상으로 Flow를 건너뛰면 기존처럼 사이클이 올라간다', () => {
+    useTimerStore.getState().initPomodoro(TODO_ID, pomodoroSettings)
+    useTimerStore.getState().resume(TODO_ID)
+
+    vi.setSystemTime(Date.now() + 2 * MINUTE)
+    useTimerStore.getState().skipToNext(TODO_ID)
+
+    const timer = useTimerStore.getState().timers[TODO_ID]
+    expect(timer.phase).toBe('short')
+    expect(timer.cycleCount).toBe(1)
+    expect(timer.sessions[0].sessionFocusSeconds).toBe(120)
+  })
+})

@@ -587,23 +587,15 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         return
       }
       
-      // 뽀모도로 타이머: waiting 상태에서 재개
-      if (timer.status === 'waiting' && timer.remainingMs) {
+      // 뽀모도로 타이머: waiting/paused 상태에서 재개
+      // 남은 시간이 0이면 바로 완료 처리해 다음 phase로 넘긴다
+      if ((timer.status === 'waiting' || timer.status === 'paused') && timer.remainingMs != null) {
         updateTimer(todoId, {
           status: 'running',
           endAt: Date.now() + timer.remainingMs,
           remainingMs: null,
         })
-        return
-      }
-      
-      // 뽀모도로 타이머: paused 상태에서 재개
-      if (timer.status === 'paused' && timer.remainingMs) {
-        updateTimer(todoId, {
-          status: 'running',
-          endAt: Date.now() + timer.remainingMs,
-          remainingMs: null,
-        })
+        if (timer.remainingMs <= 0) get().completePhase(todoId)
       }
     },
 
@@ -778,9 +770,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         const breakDuration = breakType.isLong ? longBreakMin : breakMin
         
         // Flow 완료 시 sessions에 추가 (실제 경과 시간 계산)
+        // 백그라운드 복귀로 endAt을 한참 넘겨 완료돼도 계획 시간까지만 기록한다
         const plannedMs = flowMin * MINUTE
-        const actualElapsedMs = getPomodoroElapsedMs(timer, plannedMs)
-        const flowMs = Math.max(0, actualElapsedMs)
+        const flowMs = Math.min(getPomodoroElapsedMs(timer, plannedMs), plannedMs)
         const flowSeconds = Math.round(flowMs / 1000)
         const completedSession: PendingPomodoroSession = {
           sessionFocusSeconds: flowSeconds,
@@ -806,9 +798,9 @@ export const useTimerStore = create<TimerStore>((set, get) => {
         )
       } else {
         // Break → Flow 자동 전환
-        // Break 완료 시 실제 경과 시간을 기준으로 마지막 세션의 breakSeconds 업데이트
+        // Break 완료 시 실제 경과 시간을 기준으로 마지막 세션의 breakSeconds 업데이트 (계획 시간 상한)
         const plannedBreakMs = (phase === 'long' ? longBreakMin : breakMin) * MINUTE
-        const elapsedBreakMs = getPomodoroElapsedMs(timer, plannedBreakMs)
+        const elapsedBreakMs = Math.min(getPomodoroElapsedMs(timer, plannedBreakMs), plannedBreakMs)
         const breakSeconds = Math.round(elapsedBreakMs / 1000)
         const cycleCountDelta = phase === 'long' ? -cycleCount : 0
 
@@ -849,32 +841,34 @@ export const useTimerStore = create<TimerStore>((set, get) => {
       const { breakMin, longBreakMin, flowMin, cycleEvery } = settingsSnapshot
       
       if (phase === 'flow') {
-        // Flow → Break 수동 스킵: cycleCount +1
-        const nextCycle = timer.cycleCount + 1
-        const breakType = getBreakType(nextCycle, cycleEvery)
-        const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
+        // Flow → Break 수동 스킵: 최소 집중 시간을 넘긴 Flow만 사이클로 센다
         const plannedMs = flowMin * MINUTE
         const elapsedMs = getPomodoroElapsedMs(timer, plannedMs)
         const elapsedSec = Math.round(elapsedMs / 1000)
+        const countsAsCycle = elapsedMs >= MIN_FLOW_MS && elapsedSec > 0
+        const breakType = countsAsCycle
+          ? getBreakType(timer.cycleCount + 1, cycleEvery)
+          : { phase: 'short' as const, isLong: false }
+        const nextBreakDuration = breakType.isLong ? longBreakMin : breakMin
         const completedSession: PendingPomodoroSession = {
           sessionFocusSeconds: elapsedSec,
           breakSeconds: 0,
           clientSessionId: resolveSessionIdentity(todoId, timer).activeSessionId,
         }
 
-        if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
+        if (countsAsCycle) {
           enqueuePendingAutoSession(todoId, completedSession)
         }
-        
+
         // Flow에서 휴식으로 이동할 때, 최소 집중 시간을 넘긴 경우 현재 Flow를 세션으로 인정
         transitionPhase(
           todoId,
           breakType.phase,
           nextBreakDuration,
           true,
-          1,
+          countsAsCycle ? 1 : 0,
           (currentHistory) => {
-            if (elapsedMs < MIN_FLOW_MS || elapsedSec <= 0) {
+            if (!countsAsCycle) {
               return currentHistory
             }
             return [
