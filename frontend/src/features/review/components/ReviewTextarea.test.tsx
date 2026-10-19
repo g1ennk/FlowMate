@@ -217,4 +217,40 @@ describe('ReviewTextarea', () => {
       expect(await screen.findByText('지울 회고')).toBeInTheDocument()
     })
   })
+
+  describe('불러오기 상태', () => {
+    it('회고를 불러오는 중에는 편집에 들어갈 수 없다', async () => {
+      server.use(
+        http.get('/api/reviews/:periodStart', () => new Promise<Response>(() => {})),
+        http.get('/api/reviews', () => HttpResponse.json({ items: [] })),
+      )
+      const user = userEvent.setup()
+      renderTextarea()
+
+      await user.click(await screen.findByText('회고를 불러오는 중...'))
+
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    })
+
+    it('불러오기에 실패하면 편집을 막고 다시 시도할 수 있다', async () => {
+      let fail = true
+      server.use(
+        http.get('/api/reviews/:periodStart', () =>
+          fail
+            ? HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })
+            : HttpResponse.json(makeReview('서버 회고')),
+        ),
+        http.get('/api/reviews', () => HttpResponse.json({ items: [] })),
+      )
+      const user = userEvent.setup()
+      renderTextarea()
+
+      await user.click(await screen.findByText('회고를 불러오지 못했어요'))
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+
+      fail = false
+      await user.click(screen.getByRole('button', { name: '다시 시도' }))
+      expect(await screen.findByText('서버 회고')).toBeInTheDocument()
+    })
+  })
 })

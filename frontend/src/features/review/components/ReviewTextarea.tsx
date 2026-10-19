@@ -61,6 +61,8 @@ export function ReviewTextarea({
   const handleSaveRef = useRef<() => void>(() => {})
   const isSaving = upsert.isPending || remove.isPending
   const isDirty = draft !== content
+  // 불러오는 중이거나 실패한 상태에서 편집을 시작하면 빈 글로 기존 회고를 덮어쓸 수 있다.
+  const canEnterEdit = !isEditing && review.isSuccess
 
   const {
     aiReport, isAiLoading, canRegenerate, regenerateError,
@@ -286,13 +288,13 @@ export function ReviewTextarea({
     <section
       ref={containerRef}
       className={`rounded-2xl border border-border-default bg-surface-card p-card shadow-sm ${
-        isEditing ? '' : 'cursor-pointer'
+        canEnterEdit ? 'cursor-pointer' : ''
       }`}
-      onClick={!isEditing ? enterEdit : undefined}
-      role={!isEditing ? 'button' : undefined}
-      tabIndex={!isEditing ? 0 : undefined}
+      onClick={canEnterEdit ? enterEdit : undefined}
+      role={canEnterEdit ? 'button' : undefined}
+      tabIndex={canEnterEdit ? 0 : undefined}
       onKeyDown={
-        !isEditing
+        canEnterEdit
           ? (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault()
@@ -355,10 +357,24 @@ export function ReviewTextarea({
         />
       ) : (
         <div className="mt-3 rounded-xl p-3 text-left">
-          {review.isLoading ? (
+          {review.isPending ? (
             <p className={`${userTextDisplayClass} text-text-secondary`}>
               회고를 불러오는 중...
             </p>
+          ) : review.isError ? (
+            <div className="space-y-2">
+              <p className={`${userTextDisplayClass} text-text-secondary`}>
+                회고를 불러오지 못했어요
+              </p>
+              <button
+                type="button"
+                onClick={() => { void review.refetch() }}
+                disabled={review.isFetching}
+                className="text-xs font-semibold text-accent hover:text-accent-text disabled:opacity-60"
+              >
+                {review.isFetching ? '불러오는 중...' : '다시 시도'}
+              </button>
+            </div>
           ) : content ? (
             <KptText content={content} />
           ) : (
