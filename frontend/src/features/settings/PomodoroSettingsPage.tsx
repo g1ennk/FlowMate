@@ -7,7 +7,7 @@ import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
 import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
 import { Switch } from '../../ui/Switch'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
-import { useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
+import { buildPomodoroSave, useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
 import { defaultMiniDaysSettings, type MiniDayRange, validateMiniDaysSettings } from '../../lib/miniDays'
 import { userTextInputClass } from '../../lib/userTextStyles'
 import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
@@ -245,7 +245,6 @@ function PomodoroSettingsPage() {
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
   const [miniDayEditor, setMiniDayEditor] = useState<MiniDayRange>(defaultMiniDaysSettings.day1)
   const [miniDayEditField, setMiniDayEditField] = useState<'start' | 'end'>('start')
-  const lastSettingsSavedToastAtRef = useRef(0)
   const [timeDraft, setTimeDraft] = useState<{
     period: 'am' | 'pm'
     hour: number
@@ -278,15 +277,8 @@ function PomodoroSettingsPage() {
   )
 
   const commitSettings = (next: Partial<PomodoroSettings>) => {
-    if (!canEdit) return
-    updateSettings.mutate(next, {
-      onSuccess: () => {
-        const now = Date.now()
-        if (now - lastSettingsSavedToastAtRef.current < 700) return
-        lastSettingsSavedToastAtRef.current = now
-        toast.success('저장됨', { id: 'settings-saved' })
-      },
-    })
+    if (!settingsData) return
+    updateSettings.mutate(buildPomodoroSave(settingsData, next))
   }
 
   const handleToggle = (field: 'autoStartBreak' | 'autoStartSession') => {

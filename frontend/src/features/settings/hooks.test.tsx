@@ -29,7 +29,9 @@ describe('useUpdatePomodoroSettings', () => {
     const { result } = renderHook(() => useUpdatePomodoroSettings(), { wrapper: Wrapper })
 
     act(() => {
-      result.current.mutate({ flowMin: 50 })
+      result.current.mutate({
+        pomodoroSession: { flowMin: 50, breakMin: 5, longBreakMin: 15, cycleEvery: 4 },
+      })
     })
 
     await waitFor(() => expect(result.current.isIdle).toBe(false))

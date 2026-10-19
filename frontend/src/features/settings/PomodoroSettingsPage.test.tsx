@@ -271,6 +271,98 @@ describe('PomodoroSettingsPage', () => {
     expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
   })
 
+  it('keeps both switch changes when a refetch lands while saves are queued', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    server.use(
+      // 서버는 요청 처리가 끝날 때 값을 쓴다. 그 전에 온 GET은 이전 값을 돌려준다.
+      http.put('/api/settings/automation', async ({ request }) => {
+        const body = (await request.json()) as AutomationSettings
+        await delay(200)
+        serverState.automation = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+    // 당겨서 새로고침이나 포커스 refetch가 첫 저장이 끝나기 전에 끼어든다.
+    await queryClient.invalidateQueries()
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/세션 자동 시작/)).toBe(true)
+  })
+
+  it('shows the last saved values when every queued save and the refetch fail', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    useSlowSettingsServer()
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    server.use(
+      http.put('/api/settings/automation', async () => {
+        await delay(50)
+        return HttpResponse.json({ message: 'boom' }, { status: 500 })
+      }),
+      http.get('/api/settings', () => HttpResponse.json({ message: 'boom' }, { status: 500 })),
+    )
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(false)
+    expect(isSwitchOn(/세션 자동 시작/)).toBe(false)
+  })
+
+  it('notifies once by the final result when an earlier save fails and a later one succeeds', async () => {
+    const user = userEvent.setup()
+    const toastError = vi.spyOn(toast, 'error')
+    const toastSuccess = vi.spyOn(toast, 'success')
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    let requestCount = 0
+    server.use(
+      http.put('/api/settings/automation', async ({ request }) => {
+        requestCount += 1
+        const body = (await request.json()) as AutomationSettings
+        await delay(50)
+        if (requestCount === 1) return HttpResponse.json({ message: 'boom' }, { status: 500 })
+        serverState.automation = body
+        return HttpResponse.json(body)
+      }),
+    )
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    await waitFor(() => expect(breakSwitch).not.toBeDisabled())
+
+    await user.click(breakSwitch)
+    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    // 뒤 저장이 같은 묶음(자동화)의 전체 값을 보내므로 앞 변경도 함께 저장된다.
+    expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
+    expect(toastError).not.toHaveBeenCalled()
+    expect(toastSuccess).toHaveBeenCalledTimes(1)
+  })
+
   it('does not undo the first sheet choice when a second sheet choice follows quickly', async () => {
     const user = userEvent.setup()
     signInAsMember()
