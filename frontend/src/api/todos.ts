@@ -22,7 +22,7 @@ export const todoApi = {
   create: (body: TodoCreateInput): Promise<Todo> => api.post('/todos', body, TodoSchema),
   update: (id: string, body: TodoPatchInput): Promise<Todo> =>
     api.patch(`/todos/${id}`, body, TodoSchema),
-  remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`),
+  remove: (id: string, init?: RequestInit): Promise<undefined> => api.delete(`/todos/${id}`, init),
   reorder: (body: TodoReorderRequest): Promise<TodoList> =>
     api.put('/todos/reorder', TodoReorderRequestSchema.parse(body), TodoListSchema),
   listSessions: (todoId: string): Promise<SessionList> =>

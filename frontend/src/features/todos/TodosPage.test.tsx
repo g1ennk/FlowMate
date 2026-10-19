@@ -1,10 +1,15 @@
-import { act, fireEvent, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { delay, http, HttpResponse } from 'msw'
+import { toast, Toaster } from 'react-hot-toast'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { queryKeys } from '../../lib/queryKeys'
 import { storageKeys } from '../../lib/storageKeys'
+import { server } from '../../mocks/server'
 import { useAuthStore } from '../../store/authStore'
 import { renderApp } from '../../test/renderApp'
-import { useTimerStore } from '../timer/timerStore'
+import { initialSingleTimerState, useTimerStore } from '../timer/timerStore'
+import { resetPendingDeletes } from './pendingDeletes'
 import TodosPage from './TodosPage'
 
 const selectedDateKey = '2026-01-09'
@@ -114,6 +119,7 @@ describe('TodosPage', () => {
   })
 
   afterEach(() => {
+    resetPendingDeletes()
     vi.useRealTimers()
     window.localStorage.clear()
     useAuthStore.setState(initialAuthStore, true)
@@ -444,5 +450,237 @@ describe('TodosPage', () => {
     await flushTodosPage()
 
     expect(screen.queryByText('기존 할 일')).not.toBeInTheDocument()
+  })
+})
+
+describe('TodosPage delete undo', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    todoIdSequence = 0
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
+    setGuestAuth()
+    useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    render(<Toaster />)
+  })
+
+  afterEach(() => {
+    resetPendingDeletes()
+    act(() => {
+      toast.remove()
+    })
+    vi.useRealTimers()
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
+    useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    vi.restoreAllMocks()
+  })
+
+  async function renderWithTodos(titles: string[]) {
+    const items = titles.map((title, index) => buildTodo({ title, dayOrder: index }))
+    const result = await renderTodosPage({
+      now: new Date(2026, 0, 9, 2, 0, 0),
+      items,
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    return { ...result, items }
+  }
+
+  async function wait(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms)
+    })
+  }
+
+  function batchDelete(titles: string[]) {
+    fireEvent.click(screen.getByRole('button', { name: '선택' }))
+    for (const title of titles) {
+      fireEvent.click(screen.getByRole('button', { name: `${title} 선택` }))
+    }
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }))
+  }
+
+  function deleteOne(title: string) {
+    fireEvent.click(screen.getByText(title))
+    fireEvent.click(screen.getByRole('button', { name: '삭제하기' }))
+  }
+
+  function storedTitles() {
+    return readStoredTodos().map((todo) => todo.title)
+  }
+
+  it('deletes every batch on the server when two batches are deleted within 5 seconds', async () => {
+    await renderWithTodos(['할 일 A', '할 일 B', '할 일 C'])
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    batchDelete(['할 일 A', '할 일 B'])
+    await wait(2000)
+    batchDelete(['할 일 C'])
+    await wait(6000)
+
+    expect(storedTitles()).toEqual([])
+    // keepalive 는 백그라운드 확정에만 쓴다 (교차 출처 preflight 와 겹치면 거부하는 브라우저가 있다).
+    const deleteCalls = fetchSpy.mock.calls.filter(([, init]) => init?.method === 'DELETE')
+    expect(deleteCalls).toHaveLength(3)
+    expect(deleteCalls.every(([, init]) => !init?.keepalive)).toBe(true)
+  })
+
+  it('undoes only the latest batch while the earlier batch is still deleted', async () => {
+    await renderWithTodos(['할 일 A', '할 일 B', '할 일 C'])
+
+    batchDelete(['할 일 A', '할 일 B'])
+    await wait(2000)
+    batchDelete(['할 일 C'])
+    await wait(100)
+
+    const undoToast = screen.getByText('1개 삭제됨').closest('span') as HTMLElement
+    fireEvent.click(within(undoToast).getByRole('button', { name: '되돌리기' }))
+    await wait(6000)
+
+    expect(storedTitles()).toEqual(['할 일 C'])
+    expect(screen.getAllByText('할 일 C')).toHaveLength(1)
+    expect(screen.queryByText('할 일 A')).not.toBeInTheDocument()
+  })
+
+  it('keeps a pending deleted todo hidden across refetch and restores it once on undo', async () => {
+    const { queryClient } = await renderWithTodos(['할 일 A', '할 일 B'])
+
+    deleteOne('할 일 A')
+    await wait(100)
+    expect(screen.queryByText('할 일 A')).not.toBeInTheDocument()
+
+    // 다른 mutation 의 invalidate, 창 포커스, 당겨서 새로고침과 같은 refetch
+    void queryClient.invalidateQueries({ queryKey: queryKeys.todos() })
+    await wait(700)
+    expect(screen.queryByText('할 일 A')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }))
+    await wait(700)
+    expect(screen.getAllByText('할 일 A')).toHaveLength(1)
+
+    await wait(6000)
+    expect(storedTitles()).toEqual(['할 일 A', '할 일 B'])
+    expect(screen.getAllByText('할 일 A')).toHaveLength(1)
+  })
+
+  it('commits pending deletes and closes the undo toast when leaving the page', async () => {
+    const { unmount } = await renderWithTodos(['할 일 A', '할 일 B'])
+
+    deleteOne('할 일 A')
+    await wait(100)
+    expect(screen.getByRole('button', { name: '되돌리기' })).toBeInTheDocument()
+
+    unmount()
+    await wait(1500)
+
+    expect(storedTitles()).toEqual(['할 일 B'])
+    expect(screen.queryByRole('button', { name: '되돌리기' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the timer and unsynced sessions when a delete is undone', async () => {
+    const { items } = await renderWithTodos(['할 일 A'])
+    const todoId = items[0].id as string
+    act(() => {
+      useTimerStore.setState({
+        timers: {
+          [todoId]: {
+            ...initialSingleTimerState,
+            mode: 'stopwatch',
+            status: 'running',
+            flexiblePhase: 'focus',
+            focusStartedAt: Date.now(),
+            startedAt: Date.now(),
+          },
+        },
+        pendingAutoSessions: {
+          [todoId]: [{ sessionFocusSeconds: 600, breakSeconds: 0, clientSessionId: 'pending-1' }],
+        },
+      })
+    })
+
+    deleteOne('할 일 A')
+    await wait(100)
+
+    // 유예 중에는 흐르던 타이머만 멈춘다.
+    expect(useTimerStore.getState().timers[todoId]?.status).toBe('paused')
+
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }))
+    await wait(6000)
+
+    // 삭제 때문에 멈춘 타이머는 되돌리면 다시 흐른다.
+    expect(useTimerStore.getState().timers[todoId]?.status).toBe('running')
+    expect(useTimerStore.getState().pendingAutoSessions[todoId]).toHaveLength(1)
+  })
+
+  it('keeps a pending deleted todo hidden when another optimistic update rolls back', async () => {
+    await renderWithTodos(['할 일 A', '할 일 B'])
+    server.use(
+      http.patch('/api/todos/:id', async () => {
+        await delay(200)
+        return HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })
+      }),
+    )
+
+    // A 완료 PATCH 의 롤백 스냅샷에 B 가 들어간 뒤 B 를 지운다.
+    fireEvent.click(screen.getByRole('button', { name: '할 일 A 완료' }))
+    await wait(10)
+    deleteOne('할 일 B')
+    await wait(250)
+
+    expect(screen.queryByText('할 일 B')).not.toBeInTheDocument()
+  })
+
+  it('commits pending deletes with keepalive when the app goes to the background', async () => {
+    await renderWithTodos(['할 일 A', '할 일 B'])
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    deleteOne('할 일 A')
+    await wait(100)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await wait(1500)
+
+    expect(storedTitles()).toEqual(['할 일 B'])
+    expect(screen.queryByRole('button', { name: '되돌리기' })).not.toBeInTheDocument()
+    const deleteCall = fetchSpy.mock.calls.find(([, init]) => init?.method === 'DELETE')
+    expect(deleteCall?.[1]?.keepalive).toBe(true)
+  })
+
+  it('clears the timer and unsynced sessions once the delete is committed', async () => {
+    const { items } = await renderWithTodos(['할 일 A'])
+    const todoId = items[0].id as string
+    act(() => {
+      useTimerStore.setState({
+        timers: { [todoId]: { ...initialSingleTimerState, status: 'paused' } },
+        pendingAutoSessions: {
+          [todoId]: [{ sessionFocusSeconds: 600, breakSeconds: 0, clientSessionId: 'pending-1' }],
+        },
+      })
+    })
+
+    deleteOne('할 일 A')
+    await wait(6000)
+
+    expect(storedTitles()).toEqual([])
+    expect(useTimerStore.getState().timers[todoId]).toBeUndefined()
+    expect(useTimerStore.getState().pendingAutoSessions[todoId]).toBeUndefined()
+  })
+
+  it('shows an error and brings the todo back when the delete request fails', async () => {
+    await renderWithTodos(['할 일 A'])
+    server.use(
+      http.delete('/api/todos/:id', () =>
+        HttpResponse.json({ error: { message: 'boom' } }, { status: 500 }),
+      ),
+    )
+
+    deleteOne('할 일 A')
+    await wait(6000)
+
+    expect(screen.getByText('삭제하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
   })
 })

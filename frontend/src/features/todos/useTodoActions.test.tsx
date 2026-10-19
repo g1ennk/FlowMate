@@ -34,7 +34,7 @@ const mocked = vi.hoisted(() => {
     createTodoMutateAsync: vi.fn(),
     updateTodoMutate: vi.fn(),
     updateTodoMutateAsync: vi.fn(),
-    deleteTodoMutate: vi.fn(),
+    deleteTodoMutateAsync: vi.fn(),
     pause: vi.fn(),
     reset: vi.fn(),
     getTimer: vi.fn(() => timer),
@@ -56,7 +56,7 @@ vi.mock('./hooks', () => ({
     mutate: mocked.updateTodoMutate,
     mutateAsync: mocked.updateTodoMutateAsync,
   }),
-  useDeleteTodo: () => ({ mutate: mocked.deleteTodoMutate }),
+  useDeleteTodo: () => ({ mutateAsync: mocked.deleteTodoMutateAsync }),
 }))
 
 vi.mock('../settings/hooks', () => ({

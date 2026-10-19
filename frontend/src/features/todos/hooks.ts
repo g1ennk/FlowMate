@@ -1,4 +1,6 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'react-hot-toast'
 import { todoApi } from '../../api/todos'
 import {
   type Session,
@@ -11,6 +13,7 @@ import {
   type TodoReorderRequest,
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
+import { finishDelete, usePendingDeleteStore } from './pendingDeletes'
 
 type UseTodosOptions = {
   enabled?: boolean
@@ -18,9 +21,17 @@ type UseTodosOptions = {
 
 export function useTodos(options: UseTodosOptions = {}) {
   const { enabled = true } = options
+  // 캐시는 서버값 그대로 두고, 삭제 되돌리기 유예 중인 할 일만 화면에서 숨긴다.
+  const hiddenIds = usePendingDeleteStore((s) => s.hiddenIds)
+  const select = useCallback(
+    (data: TodoList) =>
+      hiddenIds.size === 0 ? data : { items: data.items.filter((t) => !hiddenIds.has(t.id)) },
+    [hiddenIds],
+  )
   return useQuery({
     queryKey: queryKeys.todos(),
     queryFn: () => todoApi.list(),
+    select,
     enabled,
   })
 }
@@ -108,8 +119,24 @@ export function useUpdateTodo() {
 export function useDeleteTodo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => todoApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.todos() }),
+    // keepalive 는 앱이 백그라운드로 가며 확정하는 삭제에만 켠다.
+    mutationFn: ({ id, keepalive }: { id: string; keepalive?: boolean }) =>
+      todoApi.remove(id, keepalive ? { keepalive: true } : undefined),
+    // 숨김을 풀기 전에 캐시에서 빼 두어야 refetch 전까지 다시 보이지 않는다.
+    onSuccess: (_data, { id }) => {
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) => {
+        if (!old) return old
+        return { items: old.items.filter((t) => t.id !== id) }
+      })
+    },
+    onError: () => {
+      toast.error('삭제하지 못했어요. 다시 시도해 주세요', { id: 'todo-delete-failed' })
+    },
+    onSettled: (_data, _error, { id }) => {
+      // 응답을 받았으니 숨김을 풀고 서버값으로 맞춘다. 실패했다면 목록에 다시 보인다.
+      finishDelete(id)
+      return qc.invalidateQueries({ queryKey: queryKeys.todos() })
+    },
   })
 }
 
