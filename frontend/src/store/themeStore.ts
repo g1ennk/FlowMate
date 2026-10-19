@@ -20,6 +20,7 @@ function applyTheme(resolved: 'light' | 'dark') {
   document.documentElement.classList.toggle('dark', resolved === 'dark')
 }
 
+// index.html 인라인 스크립트가 같은 키·규칙으로 첫 화면 테마를 먼저 적용한다. 바꾸면 함께 바꾼다.
 function loadSavedTheme(): Theme {
   const saved = localStorage.getItem(storageKeys.theme)
   if (saved === 'light' || saved === 'dark' || saved === 'system') return saved

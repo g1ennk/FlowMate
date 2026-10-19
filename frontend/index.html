@@ -12,7 +12,17 @@
     <link rel="manifest" href="/manifest.json" />
     
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#10b981" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1e1e1e" />
+    <!-- 앱 JS보다 먼저 테마를 적용해 첫 화면 깜빡임을 막는다 (키·규칙은 src/store/themeStore.ts와 같다) -->
+    <script>
+      try {
+        const savedTheme = localStorage.getItem('flowmate/ui/theme')
+        if (savedTheme === 'dark' || (savedTheme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark')
+        }
+      } catch (e) {}
+    </script>
     <meta name="description" content="할 일 관리와 뽀모도로 타이머를 결합한 생산성 앱" />
     
     <!-- iOS PWA -->
