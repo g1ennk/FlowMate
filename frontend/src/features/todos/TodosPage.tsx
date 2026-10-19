@@ -44,7 +44,9 @@ import {
 } from './todosPageHelpers'
 
 function TodosPage() {
-  const { data, isLoading } = useTodos()
+  const { data, isLoading, isError, isFetching, refetch } = useTodos()
+  // 백그라운드 재조회 실패(data 있음)는 목록을 그대로 두고, 처음부터 못 불러왔을 때만 안내한다.
+  const showLoadError = isError && !data
   const getTimer = useTimerStore((s) => s.getTimer)
   const reorderTodos = useReorderTodos()
   const authState = useAuthStore((s) => s.state)
@@ -338,7 +340,24 @@ function TodosPage() {
 
         {isLoading && <TodosSkeleton />}
 
-        {!isLoading && (
+        {showLoadError && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-card-item rounded-2xl bg-state-error-subtle px-4 py-3"
+          >
+            <p className="text-sm font-medium text-state-error">할 일을 불러오지 못했어요</p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle disabled:cursor-not-allowed disabled:text-text-disabled"
+            >
+              다시 시도
+            </button>
+          </div>
+        )}
+
+        {!isLoading && !showLoadError && (
           <DndContext
             sensors={dnd.sensors}
             collisionDetection={dnd.collisionDetectionStrategy}

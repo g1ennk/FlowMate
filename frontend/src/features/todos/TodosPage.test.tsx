@@ -976,4 +976,23 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(screen.getByText('할 일 A')).toBeInTheDocument()
   })
 
+  it('shows a load error with retry instead of the empty guide when todos fail to load', async () => {
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 }), {
+        once: true,
+      }),
+    )
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+
+    expect(screen.getByText('할 일을 불러오지 못했어요')).toBeInTheDocument()
+    expect(screen.queryByText(/떠오른 일을 먼저 적어둘까요/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    await wait(700)
+
+    expect(screen.queryByText('할 일을 불러오지 못했어요')).not.toBeInTheDocument()
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
+  })
+
 })
