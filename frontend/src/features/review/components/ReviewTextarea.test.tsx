@@ -8,6 +8,7 @@ import { createTestQueryClient, renderApp } from '../../../test/renderApp'
 import type { AiReport } from '../../../api/aiReport'
 import type { Review } from '../../../api/types'
 import { formatReportAsKpt } from '../kptParser'
+import { storageKeys } from '../../../lib/storageKeys'
 import { ReviewTextarea } from './ReviewTextarea'
 
 const REPORT: AiReport = {
@@ -213,6 +214,72 @@ describe('ReviewTextarea', () => {
 
       await waitFor(() => expect(calls.puts).toEqual(['기존 회고 추가']))
       await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument())
+    })
+  })
+
+  describe('작성 중인 글 보관', () => {
+    const draftKey = storageKeys.reviewDraft('daily', '2026-10-19')
+
+    it('화면을 떠났다가 다시 편집하면 쓰던 글을 불러온다', async () => {
+      mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      const { unmount } = renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 쓰던 중')
+      unmount()
+
+      renderTextarea()
+      expect(await openEditor(user, '기존 회고')).toHaveValue('기존 회고 쓰던 중')
+      expect(await screen.findByText('이전에 쓰던 글을 불러왔어요')).toBeInTheDocument()
+    })
+
+    it('앱이 백그라운드로 가면 쓰던 글을 바로 보관한다', async () => {
+      mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 쓰던 중')
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+      fireEvent(document, new Event('visibilitychange'))
+
+      expect(localStorage.getItem(draftKey)).toBe('기존 회고 쓰던 중')
+    })
+
+    it('저장에 성공하면 보관한 글을 지운다', async () => {
+      const calls = mockReviewApi(makeReview('기존 회고'))
+      const user = userEvent.setup()
+      const { unmount } = renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 추가')
+      await user.click(screen.getByRole('button', { name: '저장' }))
+      await waitFor(() => expect(calls.puts).toEqual(['기존 회고 추가']))
+      unmount()
+
+      expect(localStorage.getItem(draftKey)).toBeNull()
+    })
+
+    it('화면을 떠난 뒤 저장에 실패해도 알리고 쓰던 글은 남겨 둔다', async () => {
+      mockReviewApi(makeReview('기존 회고'))
+      let failSave: () => void = () => {}
+      server.use(
+        http.put('/api/reviews', () => new Promise<Response>((resolve) => {
+          failSave = () => resolve(HttpResponse.json({ error: { message: 'boom' } }, { status: 500 }))
+        })),
+      )
+      const user = userEvent.setup()
+      const { rerender } = renderTextarea()
+
+      const textarea = await openEditor(user, '기존 회고')
+      await user.type(textarea, ' 추가')
+      await user.click(document.body)
+      rerender(<Toaster />)
+      failSave()
+
+      expect(await screen.findByText('회고 저장에 실패했어요')).toBeInTheDocument()
+      expect(localStorage.getItem(draftKey)).toBe('기존 회고 추가')
     })
   })
 

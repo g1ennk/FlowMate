@@ -23,6 +23,9 @@ export const storageKeys = {
   coachMarksSeen: `${STORAGE_PREFIX}/ui/coach-marks-seen`,
   // 전환 퍼널
   guestReviewCount: `${STORAGE_PREFIX}/ui/guest-review-count`,
+  // 회고 작성 중인 글 (저장 전 보관)
+  reviewDraft: (type: string, periodStart: string) =>
+    `${STORAGE_PREFIX}/review-draft:${type}:${periodStart}`,
   // OAuth 복귀 경로 (sessionStorage)
   oauthReturnTo: `${STORAGE_PREFIX}/auth/oauth-return-to`,
   // 사운드 (분위기, 밸런스, 전체 볼륨)

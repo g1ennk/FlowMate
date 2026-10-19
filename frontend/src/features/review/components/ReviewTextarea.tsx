@@ -8,6 +8,7 @@ import { useDeleteReview, useReview, useReviewList, useUpsertReview } from '../h
 import { computeStreak } from '../reviewUtils'
 import { storageKeys } from '../../../lib/storageKeys'
 import { useAiReportSheet } from '../hooks/useAiReportSheet'
+import { clearReviewDraft, readReviewDraft, saveReviewDraft } from '../reviewDraft'
 import { formatReportAsKpt } from '../kptParser'
 import { KptText } from './KptText'
 import { UndoToast } from '../../../ui/UndoToast'
@@ -42,6 +43,8 @@ const REVIEW_PLACEHOLDERS: Record<PeriodType, string> = {
 
 // 이 거리보다 많이 움직였으면 탭이 아니라 스크롤이나 드래그로 본다.
 const TAP_SLOP_PX = 10
+// 입력이 멈추고 이만큼 지나면 쓰던 글을 기기에 보관한다.
+const DRAFT_SAVE_DELAY_MS = 500
 
 export function ReviewTextarea({
   title,
@@ -91,19 +94,54 @@ export function ReviewTextarea({
 
   const { data: recentReviews } = useReviewList(periodType, streakFrom, periodStart)
 
+  // 저장하지 않고 편집을 끝내면 보관한 글도 버린다.
   const exitEdit = useCallback((resetDraft = true) => {
     if (resetDraft) {
       setDraft(content)
+      clearReviewDraft(periodType, periodStart)
     }
     setIsEditing(false)
-  }, [content])
+  }, [content, periodStart, periodType])
 
   const enterEdit = useCallback(() => {
     // 새 글을 쓴 뒤 삭제 되돌리기가 그 글을 덮어쓰지 않도록 닫는다.
     toast.dismiss('review-delete-success')
-    setDraft(content)
+    const saved = readReviewDraft(periodType, periodStart)
+    if (saved !== null && saved !== content) {
+      setDraft(saved)
+      toast('이전에 쓰던 글을 불러왔어요', { id: 'review-draft-restored' })
+    } else {
+      clearReviewDraft(periodType, periodStart)
+      setDraft(content)
+    }
     setIsEditing(true)
-  }, [content])
+  }, [content, periodStart, periodType])
+
+  // 쓰던 글을 기기에 보관한다. 입력이 멈추면 저장하고, 앱이 백그라운드로 가면 바로 저장한다.
+  const unsavedRef = useRef<{ draft: string; content: string } | null>(null)
+  useEffect(() => {
+    if (!isEditing) {
+      unsavedRef.current = null
+      return
+    }
+    unsavedRef.current = { draft, content }
+    const persist = () => saveReviewDraft(periodType, periodStart, draft, content)
+    const timer = window.setTimeout(persist, DRAFT_SAVE_DELAY_MS)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') persist()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [content, draft, isEditing, periodStart, periodType])
+
+  // 편집 중에 화면을 떠나면(기간 이동, 탭 이동) 기다리지 않고 바로 보관한다.
+  useEffect(() => () => {
+    const unsaved = unsavedRef.current
+    if (unsaved) saveReviewDraft(periodType, periodStart, unsaved.draft, unsaved.content)
+  }, [periodStart, periodType])
 
   const autoResize = useCallback(() => {
     const node = textareaRef.current
@@ -170,6 +208,7 @@ export function ReviewTextarea({
     if (!deleted?.id) {
       setDraft('')
       setIsEditing(false)
+      clearReviewDraft(periodType, periodStart)
       return
     }
     remove.mutate(
@@ -192,8 +231,9 @@ export function ReviewTextarea({
                     content: deleted.content,
                   },
                   {
+                    // 훅의 저장 실패 토스트를 더 구체적인 문구로 바꾼다.
                     onError: () => {
-                      toast.error('회고를 되돌리지 못했어요', { id: 'review-restore-failed' })
+                      toast.error('회고를 되돌리지 못했어요', { id: 'review-save-failed' })
                     },
                   },
                 )}
@@ -256,9 +296,6 @@ export function ReviewTextarea({
             } catch { /* private browsing / storage quota */ }
           }
         },
-        onError: () => {
-          toast.error('회고 저장에 실패했어요', { id: 'review-save-failed' })
-        },
       },
     )
   }
@@ -274,7 +311,7 @@ export function ReviewTextarea({
     const kpt = formatReportAsKpt(aiReport)
     const question = aiReport.referenceQuestion
     const reportText = question ? `${kpt}\n\n> ${question}\n` : kpt
-    const base = (isEditing ? draft : content).trimEnd()
+    const base = (isEditing ? draft : readReviewDraft(periodType, periodStart) ?? content).trimEnd()
     closeSheet()
     setDraft(base ? `${base}\n\n${reportText}` : reportText)
     setIsEditing(true)
@@ -299,9 +336,6 @@ export function ReviewTextarea({
         onSuccess: () => {
           setIsEditing(false)
           toast.success('회고를 저장했어요', { id: 'review-save-success' })
-        },
-        onError: () => {
-          toast.error('회고 저장에 실패했어요', { id: 'review-save-failed' })
         },
       },
     )
