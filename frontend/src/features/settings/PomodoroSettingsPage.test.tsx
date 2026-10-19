@@ -481,7 +481,7 @@ describe('PomodoroSettingsPage', () => {
     await user.type(labelInput, '아침')
     await user.keyboard('{Escape}')
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('미니 데이를 저장하지 못했어요'))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('미니 데이를 저장하지 못했어요. 다시 시도해 주세요'))
   })
   it('shows a 24:00 end as midnight and keeps it when the end wheel is touched', async () => {
     const user = userEvent.setup()
