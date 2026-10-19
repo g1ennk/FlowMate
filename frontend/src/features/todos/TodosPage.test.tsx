@@ -1078,4 +1078,20 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(screen.getByText('할 일을 추가하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
   })
 
+  it('leaves select mode when another date is picked', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '9일 할 일' }),
+        buildTodo({ title: '10일 할 일', date: '2026-01-10' }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    fireEvent.click(screen.getByRole('button', { name: '선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '9일 할 일 선택' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /^10\b/ }))
+
+    expect(screen.queryByRole('button', { name: '선택 취소' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '선택' })).toBeInTheDocument()
+  })
 })

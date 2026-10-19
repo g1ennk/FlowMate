@@ -134,6 +134,12 @@ function TodosPage() {
 
   const actions = useTodoActions(selectedDateKey)
   const batch = useBatchSelect()
+  // 날짜가 바뀌면(직접 고르거나 자정에 새 오늘로 넘어가면) 보이지 않는 할 일이 선택된 채 남지 않도록 선택 모드를 끝낸다.
+  const [selectModeDateKey, setSelectModeDateKey] = useState(selectedDateKey)
+  if (selectModeDateKey !== selectedDateKey) {
+    setSelectModeDateKey(selectedDateKey)
+    batch.exitSelectMode()
+  }
   const todosCoach = useCoachMark('todos-intro')
   const [inputDay, setInputDay] = useState<number | null>(null)
 
