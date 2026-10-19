@@ -666,6 +666,7 @@ function PomodoroSettingsPage() {
             <span className="text-sm font-medium text-text-primary">화면 테마</span>
             <InlineSegmentToggle
               tone="surface"
+              size="md"
               ariaLabel="화면 테마"
               options={THEME_OPTIONS}
               value={theme}

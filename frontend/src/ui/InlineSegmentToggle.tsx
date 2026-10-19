@@ -5,7 +5,14 @@ type InlineSegmentToggleProps = {
   className?: string
   // overlay: 어두운 타이머 화면 위, surface: 일반 카드 위
   tone?: 'overlay' | 'surface'
+  // sm: 타이머 화면용 작은 칩, md: 설정 등 손가락으로 누르는 곳
+  size?: 'sm' | 'md'
   ariaLabel?: string
+}
+
+const SIZE_CLASSES = {
+  sm: 'px-2.5 py-1 text-[11px]',
+  md: 'min-h-9 px-3.5 py-1.5 text-sm',
 }
 
 const TONE_CLASSES = {
@@ -27,6 +34,7 @@ export function InlineSegmentToggle({
   onChange,
   className = '',
   tone = 'overlay',
+  size = 'sm',
   ariaLabel,
 }: InlineSegmentToggleProps) {
   const toneClasses = TONE_CLASSES[tone]
@@ -44,7 +52,7 @@ export function InlineSegmentToggle({
             type="button"
             onClick={() => onChange(option.value)}
             aria-pressed={active}
-            className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            className={`rounded-full font-medium transition-colors ${SIZE_CLASSES[size]} ${
               active ? toneClasses.active : toneClasses.inactive
             }`}
           >
