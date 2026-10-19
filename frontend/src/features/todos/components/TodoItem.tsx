@@ -6,6 +6,7 @@ import {
   StopIcon,
   MoreVerticalIcon,
 } from '../../../ui/Icons'
+import { isImeComposing } from '../../../lib/keyboard'
 import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
 import { linkifyText } from '../linkifyText'
 import { formatTimerSeconds, getTodoDisplayTimeSeconds } from '../todoTimerDisplay'
@@ -165,6 +166,7 @@ export function TodoItem({
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
+                if (isImeComposing(e)) return
                 e.preventDefault()
                 onSaveEdit()
               }
@@ -235,8 +237,9 @@ export function TodoItem({
             onClick={selectMode ? onSelect : onOpenMenu}
             className="inline-flex max-w-full flex-wrap items-center gap-2 text-left"
           >
+            {/* 긴 URL처럼 한 줄에 안 들어가는 단어만 끊고, 보통 영어 단어는 중간에서 끊지 않는다 */}
             <span
-              className={`${userTextDisplayClass} break-all ${
+              className={`${userTextDisplayClass} wrap-anywhere ${
                 isDone ? 'text-text-tertiary line-through' : 'text-text-primary'
               }`}
             >
@@ -247,6 +250,7 @@ export function TodoItem({
           {shouldShowTimerButton && (
             <button
               onClick={onOpenTimer}
+              aria-label={shouldShowTimerTime ? `${title} 타이머 열기, ${focusTimeDisplay}` : `${title} 타이머 열기`}
               className={`mt-0.5 flex items-center gap-1 rounded-md px-1 -mx-1 py-0.5 transition-colors ${
                 isDone ? 'cursor-default' : 'hover:bg-hover cursor-pointer'
               }`}
@@ -269,6 +273,7 @@ export function TodoItem({
         {/* 더보기 버튼 */}
         <button
           onClick={selectMode ? onSelect : onOpenMenu}
+          aria-label={`${title} 더보기`}
           className="-m-2 flex shrink-0 items-center justify-center rounded-full p-2 text-text-disabled transition-colors hover:bg-hover-strong hover:text-text-secondary"
         >
           <MoreVerticalIcon className="h-4 w-4" />

@@ -44,8 +44,11 @@ function isSameDay(a: Date, b: Date) {
   )
 }
 
-export function getDefaultMiniDayForDate(selectedDate: Date, settings: MiniDaysSettings): number {
-  const now = new Date()
+export function getDefaultMiniDayForDate(
+  selectedDate: Date,
+  settings: MiniDaysSettings,
+  now: Date = new Date(),
+): number {
   if (!isSameDay(selectedDate, now)) return 0
   return getMiniDayFromTime(now, settings)
 }

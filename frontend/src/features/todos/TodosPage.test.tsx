@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { toast, Toaster } from 'react-hot-toast'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '../../lib/queryKeys'
 import { storageKeys } from '../../lib/storageKeys'
@@ -682,5 +682,464 @@ describe('TodosPage delete undo', () => {
 
     expect(screen.getByText('삭제하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
     expect(screen.getByText('할 일 A')).toBeInTheDocument()
+  })
+})
+
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  return (
+    <>
+      <output data-testid="location">{location.pathname + location.search}</output>
+      {/* 하단 탭이나 단축키처럼 날짜 없이 /todos로 이동한다 */}
+      <button type="button" onClick={() => navigate('/todos')}>할 일 탭으로 이동</button>
+    </>
+  )
+}
+
+describe('TodosPage ordering, editing and date flow', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    todoIdSequence = 0
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
+    setGuestAuth()
+    useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    render(<Toaster />)
+  })
+
+  afterEach(() => {
+    resetPendingDeletes()
+    act(() => {
+      toast.remove()
+    })
+    vi.useRealTimers()
+    window.localStorage.clear()
+    useAuthStore.setState(initialAuthStore, true)
+    useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
+    vi.restoreAllMocks()
+  })
+
+  async function wait(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms)
+    })
+  }
+
+  async function renderPage({
+    route = `/todos?date=${selectedDateKey}`,
+    items = [],
+    now = new Date(2026, 0, 9, 2, 0, 0),
+  }: {
+    route?: string
+    items?: Array<Record<string, unknown>>
+    now?: Date
+  } = {}) {
+    vi.setSystemTime(now)
+    seedTodos(items)
+    const result = renderApp(
+      <Routes>
+        <Route
+          path="/todos"
+          element={
+            <>
+              <TodosPage />
+              <LocationProbe />
+            </>
+          }
+        />
+      </Routes>,
+      { route },
+    )
+    await wait(700)
+    return result
+  }
+
+  function visibleTodoTitles() {
+    return screen
+      .getAllByRole('button', { name: / 완료( 취소)?$/ })
+      .map((button) => (button.getAttribute('aria-label') ?? '').replace(/ 완료( 취소)?$/, ''))
+  }
+
+  function openUncategorizedInput() {
+    fireEvent.click(screen.getByLabelText('미분류 할 일 추가'))
+    return screen.getByPlaceholderText('할 일을 입력하세요') as HTMLTextAreaElement
+  }
+
+  function startEditing(title: string) {
+    fireEvent.click(screen.getByText(title))
+    fireEvent.click(screen.getByRole('button', { name: '수정하기' }))
+    return screen.getByDisplayValue(title) as HTMLTextAreaElement
+  }
+
+  function countRequests(fetchSpy: { mock: { calls: unknown[][] } }, method: string) {
+    return fetchSpy.mock.calls.filter((call) => (call[1] as RequestInit | undefined)?.method === method).length
+  }
+
+  it('adds a new todo at the end even when server dayOrders are sparse', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '할 일 A', dayOrder: 5 }),
+        buildTodo({ title: '할 일 B', dayOrder: 7 }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '새 할 일' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await wait(700)
+
+    expect(visibleTodoTitles()).toEqual(['할 일 A', '할 일 B', '새 할 일'])
+  })
+
+  it('moves an uncompleted todo to the end of the active list', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '할 일 A', dayOrder: 5 }),
+        buildTodo({ title: '할 일 B', dayOrder: 7 }),
+        buildTodo({ title: '끝낸 일', dayOrder: 0, isDone: true }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    fireEvent.click(screen.getByRole('button', { name: '끝낸 일 완료 취소' }))
+    await wait(700)
+
+    expect(visibleTodoTitles()).toEqual(['할 일 A', '할 일 B', '끝낸 일'])
+  })
+
+  it('puts a todo back where it was when completing is undone', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '할 일 A', dayOrder: 0 }),
+        buildTodo({ title: '할 일 B', dayOrder: 1 }),
+        buildTodo({ title: '할 일 C', dayOrder: 2 }),
+        buildTodo({ title: '끝낸 일', dayOrder: 3, isDone: true }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    fireEvent.click(screen.getByRole('button', { name: '할 일 A 완료' }))
+    await wait(700)
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }))
+    await wait(700)
+
+    expect(visibleTodoTitles()).toEqual(['할 일 A', '할 일 B', '할 일 C', '끝낸 일'])
+  })
+
+  it('clears the input right away so the next todo can be typed while saving', async () => {
+    await renderPage()
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '  첫째  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(input.value).toBe('')
+
+    fireEvent.change(input, { target: { value: '둘째' } })
+    await wait(700)
+
+    // 첫 할 일이 목록에 나타나도 같은 입력창이 유지되어야 한다.
+    expect(screen.getByPlaceholderText('할 일을 입력하세요')).toHaveValue('둘째')
+    expect(screen.getByText('첫째')).toBeInTheDocument()
+    expect(readStoredTodos().map((todo) => todo.title)).toEqual(['첫째'])
+  })
+
+  it('keeps an empty section open when a todo is added by leaving the input', async () => {
+    await renderPage()
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '나가면서 추가' } })
+    fireEvent.blur(input)
+    await wait(700)
+
+    expectSectionExpanded('미분류')
+    expect(screen.getByText('나가면서 추가')).toBeInTheDocument()
+  })
+
+  it('keeps an empty section open when leaving the input right after adding with Enter', async () => {
+    await renderPage()
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '엔터로 추가' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.blur(input)
+    await wait(700)
+
+    expectSectionExpanded('미분류')
+    expect(screen.getByText('엔터로 추가')).toBeInTheDocument()
+  })
+
+  it('brings the title back with an error when adding fails and the input is still empty', async () => {
+    await renderPage()
+    server.use(
+      http.post('/api/todos', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '첫째' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await wait(700)
+
+    expect(input.value).toBe('첫째')
+    expect(screen.getByText('할 일을 추가하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+  })
+
+  it('keeps what was typed next when adding the previous todo fails', async () => {
+    await renderPage()
+    server.use(
+      http.post('/api/todos', async () => {
+        await delay(200)
+        return HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })
+      }),
+    )
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '첫째' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.change(input, { target: { value: '둘째' } })
+    await wait(700)
+
+    expect(input.value).toBe('둘째')
+  })
+
+  it('ignores Enter while a Korean IME is still composing', async () => {
+    await renderPage()
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '한글' } })
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    await wait(700)
+
+    expect(input.value).toBe('한글')
+    expect(readStoredTodos()).toEqual([])
+  })
+
+  it('leaves editing with the original title when the title is cleared', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '   ' } })
+    fireEvent.blur(textarea)
+    await wait(700)
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(0)
+  })
+
+  it('does not save or announce an edit when the title did not change', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await wait(700)
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(0)
+    expect(screen.queryByText('수정됨')).not.toBeInTheDocument()
+  })
+
+  it('saves an edit once even when Enter is followed by blur', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '고친 할 일' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    fireEvent.blur(textarea)
+    await wait(700)
+
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(1)
+    expect(screen.getByText('고친 할 일')).toBeInTheDocument()
+    expect(readStoredTodos()[0]).toMatchObject({ title: '고친 할 일' })
+  })
+
+  it('ignores Enter while composing when editing a title', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '할 일 A 고침' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: true })
+    await wait(700)
+
+    expect(screen.getByDisplayValue('할 일 A 고침')).toBeInTheDocument()
+    expect(countRequests(fetchSpy, 'PATCH')).toBe(0)
+  })
+
+  it('shows an error when saving an edited title fails', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    server.use(
+      http.patch('/api/todos/:id', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+
+    const textarea = startEditing('할 일 A')
+    fireEvent.change(textarea, { target: { value: '고친 할 일' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await wait(700)
+
+    expect(screen.getByText('수정하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
+  })
+
+  it('shows a load error with retry instead of the empty guide when todos fail to load', async () => {
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 }), {
+        once: true,
+      }),
+    )
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+
+    expect(screen.getByText('할 일을 불러오지 못했어요')).toBeInTheDocument()
+    expect(screen.queryByText(/떠오른 일을 먼저 적어둘까요/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    await wait(700)
+
+    expect(screen.queryByText('할 일을 불러오지 못했어요')).not.toBeInTheDocument()
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    expect(screen.getByText('할 일 A')).toBeInTheDocument()
+  })
+
+  it('follows the new day at midnight and adds todos to it', async () => {
+    await renderPage({ route: '/todos', now: new Date(2026, 0, 9, 23, 59, 30) })
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+
+    await wait(60_000)
+    expect(screen.getByText('1월 10일')).toBeInTheDocument()
+
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    const input = openUncategorizedInput()
+    fireEvent.change(input, { target: { value: '새날 할 일' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await wait(700)
+
+    expect(readStoredTodos()[0]).toMatchObject({ title: '새날 할 일', date: '2026-01-10' })
+  })
+
+  it('follows the new day when the app comes back to the foreground', async () => {
+    await renderPage({ route: '/todos', now: new Date(2026, 0, 9, 21, 0, 0) })
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+
+    vi.setSystemTime(new Date(2026, 0, 10, 8, 0, 0))
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(screen.getByText('1월 10일')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/todos$/)
+  })
+
+  it('keeps the section the user was looking at open when the time section changes', async () => {
+    await renderPage({
+      route: '/todos',
+      now: new Date(2026, 0, 9, 11, 59, 30),
+      items: [
+        buildTodo({ title: '오전 할 일', miniDay: 1 }),
+        buildTodo({ title: '오후 할 일', miniDay: 2 }),
+      ],
+    })
+    expectSectionExpanded('오전')
+    expectSectionCollapsed('오후')
+
+    await wait(60_000)
+
+    expectSectionExpanded('오전')
+    expectSectionExpanded('오후')
+    expect(screen.getByText('오전 할 일')).toBeInTheDocument()
+  })
+
+  it('shows today when the todos tab is opened without a date', async () => {
+    await renderPage({ route: '/todos?date=2026-01-08', now: new Date(2026, 0, 9, 9, 0, 0) })
+    expect(screen.getByText('1월 8일')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '할 일 탭으로 이동' }))
+
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+  })
+
+  it('moves the current time badge when the time section changes', async () => {
+    await renderPage({ route: '/todos', now: new Date(2026, 0, 9, 11, 59, 30) })
+    expect(screen.getByText('현재 시간대').parentElement).toHaveTextContent('오전')
+
+    await wait(60_000)
+    expect(screen.getByText('현재 시간대').parentElement).toHaveTextContent('오후')
+  })
+
+  it('stays on a past date the user picked when the day changes', async () => {
+    await renderPage({ route: '/todos?date=2026-01-08', now: new Date(2026, 0, 9, 23, 59, 30) })
+    expect(screen.getByText('1월 8일')).toBeInTheDocument()
+
+    await wait(60_000)
+    expect(screen.getByText('1월 8일')).toBeInTheDocument()
+  })
+
+  it('drops the date from the address when today is picked', async () => {
+    await renderPage({ route: '/todos?date=2026-01-08', now: new Date(2026, 0, 9, 9, 0, 0) })
+    expect(screen.getByTestId('location')).toHaveTextContent('/todos?date=2026-01-08')
+
+    fireEvent.click(screen.getByRole('button', { name: /^오늘 9\b/ }))
+
+    expect(screen.getByText('1월 9일')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/todos$/)
+  })
+
+  it('shows an error when moving a todo to another day fails', async () => {
+    await renderPage({ items: [buildTodo({ title: '할 일 A' })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    server.use(
+      http.patch('/api/todos/:id', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+
+    fireEvent.click(screen.getByText('할 일 A'))
+    fireEvent.click(screen.getByRole('button', { name: '내일 하기' }))
+    await wait(700)
+
+    expect(screen.getByText('날짜를 바꾸지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+  })
+
+  it('shows an error when doing a todo again fails', async () => {
+    await renderPage({ items: [buildTodo({ title: '끝낸 일', isDone: true })] })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    server.use(
+      http.post('/api/todos', () => HttpResponse.json({ error: { message: 'boom' } }, { status: 500 })),
+    )
+
+    fireEvent.click(screen.getByText('끝낸 일'))
+    fireEvent.click(screen.getByRole('button', { name: '내일 또 하기' }))
+    await wait(700)
+
+    expect(screen.getByText('할 일을 추가하지 못했어요. 다시 시도해 주세요')).toBeInTheDocument()
+  })
+
+  it('leaves select mode when another date is picked', async () => {
+    await renderPage({
+      items: [
+        buildTodo({ title: '9일 할 일' }),
+        buildTodo({ title: '10일 할 일', date: '2026-01-10' }),
+      ],
+    })
+    fireEvent.click(getSectionToggleButton('미분류', '펼치기'))
+    fireEvent.click(screen.getByRole('button', { name: '선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '9일 할 일 선택' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /^10\b/ }))
+
+    expect(screen.queryByRole('button', { name: '선택 취소' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '선택' })).toBeInTheDocument()
   })
 })

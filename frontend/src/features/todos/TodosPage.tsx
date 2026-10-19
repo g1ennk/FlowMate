@@ -5,6 +5,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTimerStore, type SingleTimerState } from '../timer/timerStore'
 import { Calendar, type ViewMode } from '../../ui/Calendar'
 import { formatDateKey } from '../../lib/time'
+import { useNow } from '../../lib/useNow'
 import { PlusIcon, ChevronRightIcon, CheckIcon } from '../../ui/Icons'
 import { SortableTodoItem } from './components/SortableTodoItem'
 import { BatchActionBar } from './components/BatchActionBar'
@@ -43,19 +44,25 @@ import {
 } from './todosPageHelpers'
 
 function TodosPage() {
-  const { data, isLoading } = useTodos()
+  const { data, isLoading, isError, isFetching, refetch } = useTodos()
+  // 백그라운드 재조회 실패(data 있음)는 목록을 그대로 두고, 처음부터 못 불러왔을 때만 안내한다.
+  const showLoadError = isError && !data
   const getTimer = useTimerStore((s) => s.getTimer)
   const reorderTodos = useReorderTodos()
   const authState = useAuthStore((s) => s.state)
   const [searchParams, setSearchParams] = useSearchParams()
   const dateParam = searchParams.get('date')
 
-  const [selectedDate, setSelectedDate] = useState(() => parseDateParam(dateParam) ?? new Date())
+  const now = useNow()
+  const todayDateKey = formatDateKey(now)
+  const todayDate = useMemo(() => parseDateParam(todayDateKey) ?? new Date(), [todayDateKey])
+  // 주소의 날짜만 기준으로 삼는다. 날짜가 없으면(오늘을 골랐거나 탭으로 들어오면) 오늘이고,
+  // 앱을 켜 둔 채 날짜가 바뀌어도 새 오늘을 따라간다.
+  const selectedDate = useMemo(() => parseDateParam(dateParam) ?? todayDate, [dateParam, todayDate])
   const [calendarViewMode, setCalendarViewMode] = useState<TodosCalendarViewMode>(() =>
     readStoredTodosCalendarViewMode(),
   )
   const selectedDateKey = formatDateKey(selectedDate)
-  const todayDateKey = formatDateKey(new Date())
   const isSelectedDateToday = selectedDateKey === todayDateKey
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
   const guideDisplayName = getGuideDisplayName(authState)
@@ -71,11 +78,14 @@ function TodosPage() {
     }
   }, [])
 
+  // 오늘을 고르면 주소에 날짜를 남기지 않아, 다시 열었을 때 지난 날짜에 머무르지 않게 한다.
   const handleSelectedDateChange = useCallback((nextDate: Date) => {
-    setSelectedDate(nextDate)
+    const nextDateKey = formatDateKey(nextDate)
+    const isToday = nextDateKey === formatDateKey(new Date())
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      next.set('date', formatDateKey(nextDate))
+      if (isToday) next.delete('date')
+      else next.set('date', nextDateKey)
       return next
     }, { replace: true, preventScrollReset: true })
   }, [setSearchParams])
@@ -110,6 +120,12 @@ function TodosPage() {
 
   const actions = useTodoActions(selectedDateKey)
   const batch = useBatchSelect()
+  // 날짜가 바뀌면(직접 고르거나 자정에 새 오늘로 넘어가면) 보이지 않는 할 일이 선택된 채 남지 않도록 선택 모드를 끝낸다.
+  const [selectModeDateKey, setSelectModeDateKey] = useState(selectedDateKey)
+  if (selectModeDateKey !== selectedDateKey) {
+    setSelectModeDateKey(selectedDateKey)
+    if (batch.selectMode) batch.exitSelectMode()
+  }
   const todosCoach = useCoachMark('todos-intro')
   const [inputDay, setInputDay] = useState<number | null>(null)
 
@@ -118,8 +134,8 @@ function TodosPage() {
   }, [data?.items, selectedDateKey])
 
   const defaultOpenId = useMemo(
-    () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings),
-    [selectedDate, miniDaysSettings],
+    () => getDefaultMiniDayForDate(selectedDate, miniDaysSettings, now),
+    [selectedDate, miniDaysSettings, now],
   )
 
   const markedDates = useMemo(() => {
@@ -136,18 +152,31 @@ function TodosPage() {
     () => buildGroupedTodos(todosForSelectedDate, daySections),
     [daySections, todosForSelectedDate],
   )
+  // 열림 상태의 기준 시간대는 날짜가 바뀔 때만 다시 잡는다. 같은 날 시간대 경계를 넘으면
+  // 보던 섹션은 그대로 두고 새 시간대 섹션만 연다.
+  const [openBase, setOpenBase] = useState({ dateKey: selectedDateKey, defaultOpenId })
+  const baseDefaultOpenId = openBase.dateKey === selectedDateKey ? openBase.defaultOpenId : defaultOpenId
   const initialOpenSections = useMemo(
     () =>
       buildInitialOpenSections({
         selectedDateKey,
         todayDateKey,
-        defaultOpenId,
+        defaultOpenId: baseDefaultOpenId,
         daySections,
         groupedTodos,
       }),
-    [daySections, defaultOpenId, groupedTodos, selectedDateKey, todayDateKey],
+    [baseDefaultOpenId, daySections, groupedTodos, selectedDateKey, todayDateKey],
   )
   const [openSectionsByDate, setOpenSectionsByDate] = useState<Record<string, Record<number, boolean>>>({})
+  if (openBase.dateKey !== selectedDateKey || openBase.defaultOpenId !== defaultOpenId) {
+    if (openBase.dateKey === selectedDateKey && isSelectedDateToday && defaultOpenId !== 0) {
+      setOpenSectionsByDate((prev) => ({
+        ...prev,
+        [selectedDateKey]: { ...(prev[selectedDateKey] ?? initialOpenSections), [defaultOpenId]: true },
+      }))
+    }
+    setOpenBase({ dateKey: selectedDateKey, defaultOpenId })
+  }
   const openSections = openSectionsByDate[selectedDateKey] ?? initialOpenSections
   const setOpenSections = useCallback<Dispatch<SetStateAction<Record<number, boolean>>>>((value) => {
     setOpenSectionsByDate((prev) => {
@@ -191,9 +220,10 @@ function TodosPage() {
     setInputDay(sectionId)
   }
 
-  const closeInputForSection = (sectionId: number) => {
+  const closeInputForSection = (sectionId: number, submitted: boolean) => {
     setInputDay(null)
-    if (!sectionHasTodos(groupedTodos, sectionId)) {
+    // 방금 추가한 할 일은 아직 목록에 없으니, 추가했다면 섹션을 접지 않는다.
+    if (!submitted && !sectionHasTodos(groupedTodos, sectionId)) {
       setOpenSections((prev) => ({ ...prev, [sectionId]: false }))
     }
   }
@@ -240,6 +270,7 @@ function TodosPage() {
             todo.id,
             !todo.isDone,
             !todo.isDone ? nextDoneOrder : nextActiveOrder,
+            todo.dayOrder,
           )
         }
         onEdit={() => actions.handleEdit(todo.id, todo.title)}
@@ -335,7 +366,24 @@ function TodosPage() {
 
         {isLoading && <TodosSkeleton />}
 
-        {!isLoading && (
+        {showLoadError && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-card-item rounded-2xl bg-state-error-subtle px-4 py-3"
+          >
+            <p className="text-sm font-medium text-state-error">할 일을 불러오지 못했어요</p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle disabled:cursor-not-allowed disabled:text-text-disabled"
+            >
+              다시 시도
+            </button>
+          </div>
+        )}
+
+        {!isLoading && !showLoadError && (
           <DndContext
             sensors={dnd.sensors}
             collisionDetection={dnd.collisionDetectionStrategy}
@@ -359,8 +407,6 @@ function TodosPage() {
                 const shouldShowInput = inputDay === section.id
                 const isEmptySection = totalCount === 0
                 const shouldShowGuide = isCurrentTimeSection || section.id === 0
-                const inputAtTop = shouldShowInput && activeTodos.length === 0
-                const inputBetween = shouldShowInput && activeTodos.length > 0
                 const hasRangeMeta = section.range.trim().length > 0
                 const hasFlowMeta = dayFocus > 0
                 const showRangeOnMobile = hasRangeMeta && (!isSectionOpen || !hasFlowMeta)
@@ -470,14 +516,6 @@ function TodosPage() {
                                 items={sortableIds}
                                 strategy={verticalListSortingStrategy}
                               >
-                                {inputAtTop && (
-                                  <TodoInputForm
-                                    sectionId={section.id}
-                                    nextActiveOrder={nextActiveOrder}
-                                    onCreate={actions.handleCreate}
-                                    onClose={() => closeInputForSection(section.id)}
-                                  />
-                                )}
                                 {previewActiveInsertIndex === 0 && activeTodos.length === 0 && (
                                   <CrossSectionPreviewSlot />
                                 )}
@@ -490,12 +528,13 @@ function TodosPage() {
                                 {previewActiveInsertIndex === activeTodos.length && activeTodos.length > 0 && (
                                   <CrossSectionPreviewSlot />
                                 )}
-                                {inputBetween && (
+                                {/* 입력창은 한 자리에만 둔다. 첫 할 일이 생겨 위치가 바뀌면 다시 마운트되어 치던 글자를 잃는다 */}
+                                {shouldShowInput && (
                                   <TodoInputForm
                                     sectionId={section.id}
                                     nextActiveOrder={nextActiveOrder}
                                     onCreate={actions.handleCreate}
-                                    onClose={() => closeInputForSection(section.id)}
+                                    onClose={(submitted) => closeInputForSection(section.id, submitted)}
                                   />
                                 )}
                                 {doneTodos.map((todo) =>

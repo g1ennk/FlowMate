@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import { UndoToast } from '../../ui/UndoToast'
 import type { Todo } from '../../api/types'
@@ -29,6 +29,8 @@ export function useTodoActions(selectedDateKey: string) {
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const editingIdRef = useRef<string | null>(null)
+  const editingOriginalTitleRef = useRef('')
   const noteModal = useNoteModal()
   const timerOpen = useTimerOpenState()
   const datePicker = useDatePickerActions()
@@ -44,7 +46,12 @@ export function useTodoActions(selectedDateKey: string) {
     })
   }
 
-  const handleToggleDone = async (id: string, next: boolean, nextOrder?: number) => {
+  const handleToggleDone = async (
+    id: string,
+    next: boolean,
+    nextOrder?: number,
+    previousOrder?: number,
+  ) => {
     if (next) {
       const timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
@@ -102,7 +109,16 @@ export function useTodoActions(selectedDateKey: string) {
         <UndoToast
           t={t}
           message={next ? '완료!' : '완료 취소'}
-          onUndo={() => updateTodo.mutate({ id, patch: { isDone: !next } })}
+          onUndo={() =>
+            updateTodo.mutate({
+              id,
+              // 토글 전 순서도 되돌려야 원래 자리로 돌아간다.
+              patch: {
+                isDone: !next,
+                ...(previousOrder === undefined ? {} : { dayOrder: previousOrder }),
+              },
+            })
+          }
         />
       ),
       { id: `toggle-${id}`, duration: 3000 },
@@ -117,22 +133,35 @@ export function useTodoActions(selectedDateKey: string) {
   }, [deleteWithUndo])
 
   const handleEdit = (id: string, currentTitle: string) => {
+    editingIdRef.current = id
+    editingOriginalTitleRef.current = currentTitle
     setEditingId(id)
     setEditingTitle(currentTitle)
     setSelectedTodo(null)
   }
 
-  const handleSaveEdit = async () => {
-    if (!editingId || !editingTitle.trim()) return
-    await updateTodo.mutateAsync({ id: editingId, patch: { title: editingTitle.trim() } })
+  const handleCancelEdit = () => {
+    editingIdRef.current = null
     setEditingId(null)
     setEditingTitle('')
-    toast.success('수정됨', { id: 'todo-updated' })
   }
 
-  const handleCancelEdit = () => {
-    setEditingId(null)
-    setEditingTitle('')
+  // 저장은 편집을 바로 끝내고 진행한다. Enter 뒤 blur가 따라와도 ref가 비어 있어 한 번만 저장한다.
+  // 비우거나 바꾸지 않았다면 원래 제목으로 편집만 끝낸다 (iPhone에는 Esc가 없다).
+  const handleSaveEdit = async () => {
+    const id = editingIdRef.current
+    if (!id) return
+    const title = editingTitle.trim()
+    const unchanged = !title || title === editingOriginalTitleRef.current
+    handleCancelEdit()
+    if (unchanged) return
+
+    try {
+      await updateTodo.mutateAsync({ id, patch: { title } })
+      toast.success('수정됨', { id: 'todo-updated' })
+    } catch {
+      toast.error('수정하지 못했어요. 다시 시도해 주세요', { id: 'todo-update-failed' })
+    }
   }
 
   const handleOpenNote = (todo: Todo) => {
