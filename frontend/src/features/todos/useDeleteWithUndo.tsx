@@ -24,8 +24,17 @@ export function useDeleteWithUndo() {
   const deleteTodoRef = useRef(deleteTodo.mutateAsync)
   useEffect(() => { deleteTodoRef.current = deleteTodo.mutateAsync })
 
-  // 페이지를 떠나면 바로 확정한다.
-  useEffect(() => flushAndDismiss, [])
+  // 페이지를 떠나거나 앱이 백그라운드로 가면(업데이트 reload, 앱 전환, 종료) 바로 확정한다.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushAndDismiss()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      flushAndDismiss()
+    }
+  }, [])
 
   return useCallback((ids: string[], message: string) => {
     if (ids.length === 0) return

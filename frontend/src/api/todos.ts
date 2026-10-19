@@ -22,7 +22,8 @@ export const todoApi = {
   create: (body: TodoCreateInput): Promise<Todo> => api.post('/todos', body, TodoSchema),
   update: (id: string, body: TodoPatchInput): Promise<Todo> =>
     api.patch(`/todos/${id}`, body, TodoSchema),
-  remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`),
+  // 앱이 백그라운드로 가며 확정하는 삭제도 끝까지 전송되게 keepalive 를 켠다.
+  remove: (id: string): Promise<undefined> => api.delete(`/todos/${id}`, { keepalive: true }),
   reorder: (body: TodoReorderRequest): Promise<TodoList> =>
     api.put('/todos/reorder', TodoReorderRequestSchema.parse(body), TodoListSchema),
   listSessions: (todoId: string): Promise<SessionList> =>

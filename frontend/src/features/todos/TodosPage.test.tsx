@@ -625,6 +625,23 @@ describe('TodosPage delete undo', () => {
     expect(screen.queryByText('할 일 B')).not.toBeInTheDocument()
   })
 
+  it('commits pending deletes with keepalive when the app goes to the background', async () => {
+    await renderWithTodos(['할 일 A', '할 일 B'])
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    deleteOne('할 일 A')
+    await wait(100)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await wait(1500)
+
+    expect(storedTitles()).toEqual(['할 일 B'])
+    expect(screen.queryByRole('button', { name: '되돌리기' })).not.toBeInTheDocument()
+    const deleteCall = fetchSpy.mock.calls.find(([, init]) => init?.method === 'DELETE')
+    expect(deleteCall?.[1]?.keepalive).toBe(true)
+  })
 
   it('clears the timer and unsynced sessions once the delete is committed', async () => {
     const { items } = await renderWithTodos(['할 일 A'])
