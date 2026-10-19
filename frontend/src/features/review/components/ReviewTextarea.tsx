@@ -71,10 +71,10 @@ export function ReviewTextarea({
   const canEnterEdit = !isEditing && (review.isSuccess || review.isRefetchError)
 
   const {
-    aiReport, isAiLoading, canRegenerate, regenerateError,
+    aiReport, isAiLoading, canRegenerate, aiError,
     isSheetOpen, isPreview, isThinData, isMember,
     isSheetOpenRef, sheetClosedAtRef,
-    closeSheet, requestAiReport, handleRegenerate,
+    closeSheet, requestAiReport, retryAiReport, handleRegenerate,
   } = useAiReportSheet(periodType, periodStart, completedTodoCount, totalSessionCount)
 
   // 첫 오픈 전까지 AiReportSheet(+markdown 청크) 로드 자체를 지연. 한 번 열리고 나면
@@ -466,7 +466,8 @@ export function ReviewTextarea({
             onStartWithAi={handleStartWithAi}
             onSaveAsIs={handleSaveAsIs}
             onRegenerate={handleRegenerate}
-            regenerateError={regenerateError}
+            onRetry={retryAiReport}
+            error={aiError}
             isPreview={isPreview}
             isThinData={isThinData}
             onLogin={() => {

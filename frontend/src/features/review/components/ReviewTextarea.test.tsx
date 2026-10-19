@@ -36,7 +36,7 @@ vi.mock('../hooks/useAiReportSheet', async () => {
         aiReport: aiState.report,
         isAiLoading: false,
         canRegenerate: true,
-        regenerateError: null,
+        aiError: null,
         isSheetOpen,
         isPreview: false,
         isThinData: false,
@@ -51,6 +51,7 @@ vi.mock('../hooks/useAiReportSheet', async () => {
           isSheetOpenRef.current = true
           setIsSheetOpen(true)
         },
+        retryAiReport: () => {},
         handleRegenerate: () => {},
       }
     },
