@@ -64,7 +64,7 @@ jobs:
           script: |
             set -euo pipefail
             cd ~/FlowMate
-            git fetch --all --tags
+            git fetch --all --tags --force
             git checkout main
             git reset --hard "$IMAGE_TAG"
             cd infra/prod
