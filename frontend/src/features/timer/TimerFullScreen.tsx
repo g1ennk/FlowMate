@@ -11,7 +11,8 @@ import {
   PauseIcon,
   CheckIcon,
   ArrowPathIcon,
-  StopIcon,
+  ArrowRightIcon,
+  MoonIcon,
 } from '../../ui/Icons'
 import { InlineSegmentToggle } from '../../ui/InlineSegmentToggle'
 import { TimerMusicControls } from './TimerMusicControls'
@@ -27,6 +28,7 @@ import { useTimerInit } from './useTimerInit'
 import { useTimerCompletion } from './useTimerCompletion'
 import { useSseStatusStore } from './sseStatusStore'
 import { useAuthStore } from '../../store/authStore'
+import type { SingleTimerState } from './timerTypes'
 
 type TimerFullScreenProps = {
   isOpen: boolean
@@ -222,6 +224,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           timer?.flexiblePhase === 'focus' || !timer?.flexiblePhase ? (
             // 집중 모드
           <>
+              <WaitingNotice timer={timer} isBreak={false} />
             {/* 집중 라벨 */}
               <p className="mb-4 text-center text-base font-semibold text-accent">
               Flow
@@ -310,7 +313,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                     {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
                   </div>
-                  <span className="text-xs font-medium text-timer-focus-text">{isRunning ? '일시정지' : '재개'}</span>
+                  <span className="text-xs font-medium text-timer-focus-text">{getPrimaryActionLabel(timer, false)}</span>
                 </button>
 
                 {/* 휴식 버튼 */}
@@ -320,7 +323,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
-                    <StopIcon className="h-6 w-6" />
+                    <MoonIcon className="h-6 w-6" />
                   </div>
                   <span className="text-xs font-medium text-timer-focus-text">휴식</span>
                 </button>
@@ -467,10 +470,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
                     {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
                   </div>
-                  <span className="text-xs font-medium text-timer-focus-text">{isRunning ? '일시정지' : '재개'}</span>
+                  <span className="text-xs font-medium text-timer-focus-text">{getPrimaryActionLabel(timer, true)}</span>
                 </button>
 
-                {/* 집중 시작 버튼 */}
+                {/* 휴식 끝내기 버튼 */}
                 <button
                   onClick={() => {
                     resumeFocus(todoId)
@@ -478,9 +481,9 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80"
                 >
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
-                    <StopIcon className="h-6 w-6" />
+                    <ArrowRightIcon className="h-6 w-6" />
                   </div>
-                  <span className="text-xs font-medium text-timer-focus-text">Flow 시작</span>
+                  <span className="text-xs font-medium text-timer-focus-text">휴식 끝내기</span>
                 </button>
 
                 {/* 완료 버튼 - 완료된 할일에서는 숨김 */}
@@ -502,6 +505,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
         ) : (
           // 뽀모도로 타이머 (Count-down)
           <>
+            <WaitingNotice timer={timer} isBreak={!isFlow} />
             {/* Phase 라벨 */}
             <p
               className={`mb-4 text-center text-base font-semibold transition-colors ${
@@ -576,11 +580,11 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                   {isRunning ? <PauseIcon className="h-6 w-6" /> : <PlayIcon className="h-6 w-6" />}
                 </div>
                 <span className={`text-xs font-medium ${isFlow ? 'text-timer-focus-text' : 'text-timer-break-text'}`}>
-                  {isRunning ? '일시정지' : '재개'}
+                  {getPrimaryActionLabel(timer, !isFlow)}
                 </span>
               </button>
 
-              {/* 휴식/집중 시작 버튼 - Flow는 진행 중(running/paused)일 때만 휴식으로 넘길 수 있다 */}
+              {/* 휴식 / 휴식 건너뛰기 버튼 - Flow는 진행 중(running/paused)일 때만 휴식으로 넘길 수 있다 */}
               <button
                 onClick={() => {
                   // Flow ↔ Break 전환
@@ -590,10 +594,10 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
                 className="flex flex-col items-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-timer-btn text-timer-btn-text">
-                  <StopIcon className="h-6 w-6" />
+                  {isFlow ? <MoonIcon className="h-6 w-6" /> : <ArrowRightIcon className="h-6 w-6" />}
                 </div>
                 <span className={`text-xs font-medium ${isFlow ? 'text-timer-focus-text' : 'text-timer-break-text'}`}>
-                  {isFlow ? '휴식' : 'Flow 시작'}
+                  {isFlow ? '휴식' : '휴식 건너뛰기'}
                 </span>
               </button>
 
@@ -866,6 +870,24 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
       })()}
     </div>,
     document.body,
+  )
+}
+
+// 재생 버튼 라벨: 처음은 "시작", 멈춘 뒤는 "재개", 단계 사이 대기(waiting)는 다음에 시작할 단계를 보여준다
+function getPrimaryActionLabel(timer: SingleTimerState | undefined, isBreak: boolean) {
+  if (!timer || timer.status === 'idle') return '시작'
+  if (timer.status === 'running') return '일시정지'
+  if (timer.status === 'paused') return '재개'
+  return isBreak ? '휴식 시작' : 'Flow 시작'
+}
+
+// 단계가 끝나고 다음 단계를 기다릴 때 무엇이 끝났는지 한 줄로 알려준다
+function WaitingNotice({ timer, isBreak }: { timer: SingleTimerState | undefined; isBreak: boolean }) {
+  if (timer?.status !== 'waiting') return null
+  return (
+    <p className={`mb-1 text-center text-sm font-medium ${isBreak ? 'text-timer-break-text' : 'text-timer-focus-text'}`}>
+      {isBreak ? 'Flow 완료' : '휴식 완료'}
+    </p>
   )
 }
 
