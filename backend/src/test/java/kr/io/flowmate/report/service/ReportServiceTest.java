@@ -3,6 +3,8 @@ package kr.io.flowmate.report.service;
 import kr.io.flowmate.report.domain.ReportContent;
 import kr.io.flowmate.report.domain.ReportType;
 import kr.io.flowmate.report.dto.response.ReportResponse;
+import kr.io.flowmate.report.exception.AiServiceUnavailableException;
+import kr.io.flowmate.report.exception.ReportGenerationInProgressException;
 import kr.io.flowmate.report.prompt.TodoFixtures;
 import kr.io.flowmate.report.repository.ReportRepository;
 import kr.io.flowmate.review.repository.ReviewRepository;
@@ -34,12 +36,15 @@ class ReportServiceTest {
 
     private static final String USER = "user-1";
     private static final LocalDate TODAY = LocalDate.parse("2026-05-28");
+    private static final ReportGenerationLock.Handle HANDLE =
+        new ReportGenerationLock.Handle("report:generate:user-1:DAILY:2026-05-28", "token");
 
     @Mock private ReportRepository reportRepo;
     @Mock private TodoRepository todoRepo;
     @Mock private ReviewRepository reviewRepo;
     @Mock private AiReportGenerator generator;
     @Mock private ReportPersistence persistence;
+    @Mock private ReportGenerationLock generationLock;
     @InjectMocks private ReportService service;
 
     @Test
@@ -64,6 +69,7 @@ class ReportServiceTest {
 
         when(todoRepo.findAllByUserIdAndDateBetweenOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(USER, TODAY, TODAY))
             .thenReturn(List.of(todo));
+        when(generationLock.acquire(USER, ReportType.DAILY, TODAY)).thenReturn(HANDLE);
         when(generator.generate(eq(ReportType.DAILY), eq(List.of(todo)), eq(List.of())))
             .thenReturn(new AiReportGenerator.Result(
                 new ReportContent("k", "p", "t", null), "daily.v2"));
@@ -73,6 +79,7 @@ class ReportServiceTest {
         ReportResponse resp = service.generate(USER, ReportType.DAILY, TODAY);
 
         assertThat(resp).isSameAs(expected);
+        verify(generationLock).release(HANDLE);
         verify(reviewRepo, never())
             .findAllByUserIdAndTypeAndPeriodStartBetweenOrderByPeriodStartAsc(any(), any(), any(), any());
     }
@@ -85,6 +92,7 @@ class ReportServiceTest {
             .thenReturn(List.of(todo));
         when(reviewRepo.findAllByUserIdAndTypeAndPeriodStartBetweenOrderByPeriodStartAsc(any(), any(), any(), any()))
             .thenReturn(List.of());
+        when(generationLock.acquire(any(), any(), any())).thenReturn(HANDLE);
         when(generator.generate(any(), any(), any()))
             .thenReturn(new AiReportGenerator.Result(new ReportContent("k","p","t",null), "monthly.v2"));
         when(persistence.upsertAndFetch(any(), any(), any(), any())).thenReturn(sampleResponse());
@@ -94,6 +102,36 @@ class ReportServiceTest {
         verify(reviewRepo)
             .findAllByUserIdAndTypeAndPeriodStartBetweenOrderByPeriodStartAsc(any(), any(), any(), any());
         verify(persistence).upsertAndFetch(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("같은 리포트를 생성 중이면 409 — Gemini도 persistence도 호출 안 함")
+    void generate_inProgress() {
+        when(todoRepo.findAllByUserIdAndDateBetweenOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(USER, TODAY, TODAY))
+            .thenReturn(List.of(TodoFixtures.completed("x", 60, 1)));
+        when(generationLock.acquire(USER, ReportType.DAILY, TODAY))
+            .thenThrow(new ReportGenerationInProgressException());
+
+        assertThatThrownBy(() -> service.generate(USER, ReportType.DAILY, TODAY))
+            .isInstanceOf(ReportGenerationInProgressException.class);
+
+        verify(generator, never()).generate(any(), any(), any());
+        verify(persistence, never()).upsertAndFetch(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Gemini가 실패해도 lock은 해제한다")
+    void generate_releasesLockOnFailure() {
+        when(todoRepo.findAllByUserIdAndDateBetweenOrderByDateAscMiniDayAscDayOrderAscCreatedAtAsc(USER, TODAY, TODAY))
+            .thenReturn(List.of(TodoFixtures.completed("x", 60, 1)));
+        when(generationLock.acquire(USER, ReportType.DAILY, TODAY)).thenReturn(HANDLE);
+        when(generator.generate(any(), any(), any())).thenThrow(new AiServiceUnavailableException());
+
+        assertThatThrownBy(() -> service.generate(USER, ReportType.DAILY, TODAY))
+            .isInstanceOf(AiServiceUnavailableException.class);
+
+        verify(generationLock).release(HANDLE);
+        verify(persistence, never()).upsertAndFetch(any(), any(), any(), any());
     }
 
     @Test

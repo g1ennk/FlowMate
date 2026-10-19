@@ -6,6 +6,8 @@ import kr.io.flowmate.common.web.CurrentUserArgumentResolver;
 import kr.io.flowmate.common.web.GlobalExceptionHandler;
 import kr.io.flowmate.report.domain.ReportType;
 import kr.io.flowmate.report.dto.response.ReportResponse;
+import kr.io.flowmate.report.exception.AiServiceUnavailableException;
+import kr.io.flowmate.report.exception.ReportGenerationInProgressException;
 import kr.io.flowmate.report.service.ReportService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -94,6 +96,31 @@ class ReportControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/ai/report/generate — 같은 리포트 생성 중 → 409 REPORT_GENERATION_IN_PROGRESS")
+    void generate_inProgress_409() throws Exception {
+        when(reportService.generate(any(), any(), any())).thenThrow(new ReportGenerationInProgressException());
+
+        mockMvc.perform(post("/api/ai/report/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(dailyBody()))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("REPORT_GENERATION_IN_PROGRESS"));
+    }
+
+    @Test
+    @DisplayName("POST /api/ai/report/generate — Gemini timeout → 503 AI_SERVICE_UNAVAILABLE")
+    void generate_timeout_503() throws Exception {
+        when(reportService.generate(any(), any(), any()))
+            .thenThrow(new AiServiceUnavailableException(new java.net.SocketTimeoutException("Read timed out")));
+
+        mockMvc.perform(post("/api/ai/report/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(dailyBody()))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.error.code").value("AI_SERVICE_UNAVAILABLE"));
+    }
+
+    @Test
     @DisplayName("POST /api/ai/report/generate — type 잘못되면 400 BAD_REQUEST (Jackson 역직렬화 실패)")
     void generate_invalidType_400() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of("type", "YEARLY", "periodStart", "2026-05-28"));
@@ -130,5 +157,9 @@ class ReportControllerTest {
         mockMvc.perform(get("/api/ai/report")
                 .param("type", "DAILY").param("periodStart", "2026-05-28"))
             .andExpect(status().isNoContent());
+    }
+
+    private String dailyBody() throws Exception {
+        return objectMapper.writeValueAsString(Map.of("type", "DAILY", "periodStart", "2026-05-28"));
     }
 }

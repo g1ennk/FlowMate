@@ -25,6 +25,7 @@ public class ReportService {
     private final ReviewRepository reviewRepository;
     private final AiReportGenerator aiReportGenerator;
     private final ReportPersistence reportPersistence;
+    private final ReportGenerationLock generationLock;
 
     /** 트랜잭션 어노테이션 없음 — Gemini 호출 동안 DB connection 미점유 보장 */
     public ReportResponse generate(String userId, ReportType type, LocalDate periodStart) {
@@ -41,11 +42,17 @@ public class ReportService {
                 userId, ReviewType.WEEKLY, range.from(), range.to())
             : List.of();
 
-        // Gemini 호출 — 트랜잭션 컨텍스트 없음
-        AiReportGenerator.Result result = aiReportGenerator.generate(type, todos, weeklyReviews);
+        // 같은 리포트를 이미 만드는 중이면 409. Gemini 호출 전에 거절한다
+        ReportGenerationLock.Handle lock = generationLock.acquire(userId, type, periodStart);
+        try {
+            // Gemini 호출 — 트랜잭션 컨텍스트 없음
+            AiReportGenerator.Result result = aiReportGenerator.generate(type, todos, weeklyReviews);
 
-        // 짧은 쓰기 트랜잭션 (별도 빈이라 AOP 적용됨)
-        return reportPersistence.upsertAndFetch(userId, type, periodStart, result);
+            // 짧은 쓰기 트랜잭션 (별도 빈이라 AOP 적용됨)
+            return reportPersistence.upsertAndFetch(userId, type, periodStart, result);
+        } finally {
+            generationLock.release(lock);
+        }
     }
 
     @Transactional(readOnly = true)

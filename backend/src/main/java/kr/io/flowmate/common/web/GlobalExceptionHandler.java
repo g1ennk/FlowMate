@@ -8,6 +8,7 @@ import kr.io.flowmate.common.exception.NotFoundException;
 import kr.io.flowmate.report.exception.AiServiceQuotaExceededException;
 import kr.io.flowmate.report.exception.AiServiceUnavailableException;
 import kr.io.flowmate.report.exception.ReportGenerationException;
+import kr.io.flowmate.report.exception.ReportGenerationInProgressException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
@@ -119,6 +120,14 @@ public class GlobalExceptionHandler {
         log.warn("AI service unavailable: {}", ex.getMessage());
         ApiError body = ApiError.of("AI_SERVICE_UNAVAILABLE", ex.getMessage());
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    // 같은 리포트를 다른 요청이 생성 중 → 409. 클라이언트는 잠시 뒤 GET으로 결과를 확인한다
+    @ExceptionHandler(ReportGenerationInProgressException.class)
+    public ResponseEntity<ApiError> handleReportInProgress(ReportGenerationInProgressException ex) {
+        log.info("Report generation in progress: {}", ex.getMessage());
+        ApiError body = ApiError.of("REPORT_GENERATION_IN_PROGRESS", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     // Gemini 응답 파싱 실패 / 필수 필드 누락 등 → 500
