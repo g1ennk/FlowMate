@@ -2,7 +2,8 @@ import type { PropsWithChildren } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { toast } from 'react-hot-toast'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AiReport } from '../../../api/aiReport'
 import { server } from '../../../mocks/server'
 import { useAuthStore } from '../../../store/authStore'
@@ -97,5 +98,44 @@ describe('useAiReportSheet', () => {
 
     expect(result.current.isSheetOpen).toBe(true)
     expect(result.current.aiError).toBeNull()
+  })
+
+  it('할 일이 없어 실패하면 다시 시도를 내주지 않는다', async () => {
+    server.use(
+      http.get('/api/ai/report', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/ai/report/generate', () =>
+        HttpResponse.json({ error: { message: 'no data' } }, { status: 400 }),
+      ),
+    )
+    const { result } = renderSheetHook()
+
+    await act(async () => { await result.current.requestAiReport() })
+
+    expect(result.current.aiError).toBe('이 기간에 완료한 할 일이 없어서 분석할 수 없어요')
+    expect(result.current.retryAiReport).toBeUndefined()
+  })
+
+  it('생성 중에 시트를 닫았다가 실패하면 토스트로 한 번 알린다', async () => {
+    let fail: () => void = () => {}
+    server.use(
+      http.get('/api/ai/report', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/ai/report/generate', () => new Promise<Response>((resolve) => {
+        fail = () => resolve(HttpResponse.json({ error: { message: 'boom' } }, { status: 500 }))
+      })),
+    )
+    const errorSpy = vi.spyOn(toast, 'error')
+    const { result } = renderSheetHook()
+
+    let pending: Promise<void> = Promise.resolve()
+    act(() => { pending = result.current.requestAiReport() })
+    await waitFor(() => expect(result.current.isAiLoading).toBe(true))
+    act(() => result.current.closeSheet())
+    await act(async () => {
+      fail()
+      await pending
+    })
+
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    expect(errorSpy).toHaveBeenCalledWith('AI 레포트를 만들지 못했어요', expect.anything())
   })
 })

@@ -166,11 +166,11 @@ export function AiReportSheet({
         )}
 
         {!displayReport ? (
-          error && !isRegenerating && (
+          error && !isRegenerating && onRetry && (
             <div className="pt-2">
               <button
                 type="button"
-                onClick={() => onRetry?.()}
+                onClick={onRetry}
                 className="w-full rounded-xl bg-accent py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
               >
                 다시 시도

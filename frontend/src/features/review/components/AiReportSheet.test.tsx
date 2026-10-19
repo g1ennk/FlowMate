@@ -78,4 +78,23 @@ describe('AiReportSheet', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: '다시 시도' }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
+
+  it('다시 시도해도 소용없는 오류(할 일 없음)에는 다시 시도 버튼을 숨긴다', () => {
+    render(
+      <AiReportSheet
+        isOpen
+        onClose={vi.fn()}
+        report={null}
+        isCached={false}
+        isRegenerating={false}
+        error="이 기간에 완료한 할 일이 없어서 분석할 수 없어요"
+        hasExistingContent={false}
+        onStartWithAi={vi.fn()}
+        onSaveAsIs={vi.fn()}
+        onRegenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+  })
 })
