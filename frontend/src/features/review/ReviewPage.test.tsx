@@ -173,7 +173,7 @@ describe('ReviewPage', () => {
       return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
     }
 
-    it('머리 → 기간 → 회고 입력 → 통계 → 할 일 기록 순서다', async () => {
+    it('머리 → 기간 → 통계 → 할 일 기록 → 회고 입력 순서다(한 일을 다 보고 쓴다)', async () => {
       mockApi([makeTodo()])
       renderApp(<ReviewPage />, { route: `/review?period=daily&date=${DATE}` })
 
@@ -181,9 +181,9 @@ describe('ReviewPage', () => {
       const order = [
         screen.getByRole('heading', { level: 1, name: '회고' }),
         screen.getByRole('radio', { name: '일간' }),
-        textarea,
         screen.getByText('집중 기록'),
         screen.getByText('할 일'),
+        textarea,
       ]
       order.slice(1).forEach((el, i) => expect(isBefore(order[i], el)).toBe(true))
     })

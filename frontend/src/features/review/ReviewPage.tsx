@@ -171,23 +171,6 @@ export function ReviewPage() {
       <PageHeader title="회고" />
       {periodControls}
 
-      <ReviewTextarea
-        key={`review-${period}-${reviewRange.startKey}`}
-        title={diaryTitle}
-        periodType={period}
-        periodStart={reviewRange.startKey}
-        periodEnd={reviewRange.endKey}
-        completedTodoCount={stats.completedCount}
-        totalSessionCount={stats.totalFlows}
-        placeholder={buildReviewPlaceholder(period, {
-          focusCount: stats.totalFlows,
-          completedCount: stats.completedCount,
-          isCurrent: isCurrentPeriod,
-        })}
-        canRequestAi={!isTodosLoadError}
-        todosOffline={isTodosOffline}
-      />
-
       {isTodosOffline ? (
         !isReviewOffline && (
           <Card>
@@ -234,6 +217,24 @@ export function ReviewPage() {
           isPastPeriod={isPastPeriod}
         />
       )}
+
+      {/* 회고는 그 기간의 숫자와 한 일을 다 본 뒤에 쓰도록 맨 아래에 둔다(통계 → 할 일 기록 → 회고, 사용자 결정 2026-10-21) */}
+      <ReviewTextarea
+        key={`review-${period}-${reviewRange.startKey}`}
+        title={diaryTitle}
+        periodType={period}
+        periodStart={reviewRange.startKey}
+        periodEnd={reviewRange.endKey}
+        completedTodoCount={stats.completedCount}
+        totalSessionCount={stats.totalFlows}
+        placeholder={buildReviewPlaceholder(period, {
+          focusCount: stats.totalFlows,
+          completedCount: stats.completedCount,
+          isCurrent: isCurrentPeriod,
+        })}
+        canRequestAi={!isTodosLoadError}
+        todosOffline={isTodosOffline}
+      />
 
       <SessionDetailSheet
         task={selectedTask}

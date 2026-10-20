@@ -41,13 +41,6 @@ export function TodosSkeleton() {
 export function ReviewSkeleton() {
   return (
     <div aria-hidden="true" className="space-y-section">
-      <div data-skeleton-input>
-        <Bone className="h-4 w-20" />
-        <Card className="mt-list">
-          <Bone className="h-32 w-full rounded-control" />
-        </Card>
-      </div>
-
       <div>
         <Bone className="h-4 w-16" />
         <Card data-skeleton-card className="mt-list">
@@ -73,6 +66,13 @@ export function ReviewSkeleton() {
               </div>
             ))}
           </div>
+        </Card>
+      </div>
+
+      <div data-skeleton-input>
+        <Bone className="h-4 w-20" />
+        <Card className="mt-list">
+          <Bone className="h-32 w-full rounded-control" />
         </Card>
       </div>
     </div>

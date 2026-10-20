@@ -25,12 +25,12 @@ describe('Skeleton', () => {
     rows.forEach((row) => expect(row.querySelectorAll('[data-bone]')).toHaveLength(4))
   })
 
-  it('회고 스켈레톤은 실제 순서대로 회고 입력창, 집중 기록 카드, 할 일 카드다(기간 이동은 실제로 그린다)', () => {
+  it('회고 스켈레톤은 실제 순서대로 집중 기록 카드, 할 일 카드, 회고 입력창이다(기간 이동은 실제로 그린다)', () => {
     const { container } = render(<ReviewSkeleton />)
     const parts = [...container.querySelectorAll('[data-skeleton-input], [data-skeleton-card]')]
 
     expect(container.querySelectorAll('[data-skeleton-nav]')).toHaveLength(0)
-    expect(parts.map((e) => (e.hasAttribute('data-skeleton-input') ? 'input' : 'card'))).toEqual(['input', 'card', 'card'])
+    expect(parts.map((e) => (e.hasAttribute('data-skeleton-input') ? 'input' : 'card'))).toEqual(['card', 'card', 'input'])
   })
 
   it('보조 기술에는 읽히지 않는다', () => {
