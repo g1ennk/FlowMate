@@ -17,6 +17,7 @@ import {
 } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
 import { defaultMiniDaysSettings, normalizeMiniDaysSettings } from '../../lib/miniDays'
+import { toastMessages } from '../../lib/messages'
 
 // 설정 저장 요청은 한 줄로 세워 순서대로 보낸다(scope).
 // 서버는 PUT으로 통째로 덮어쓰므로, 요청이 겹치면 늦게 끝난 요청이 앞선 변경을 되돌릴 수 있다.
@@ -152,9 +153,9 @@ export function useUpdatePomodoroSettings() {
       if (!isLastPomodoroSave(qc)) return
       // 연속 저장이 모두 끝난 뒤 최종 결과로 한 번만 알린다.
       if (failedGroups.current.size > 0) {
-        toast.error('설정을 저장하지 못했어요')
+        toast.error(toastMessages.settingsSaveFailed)
       } else {
-        toast.success('저장됨', { id: 'settings-saved' })
+        toast.success(toastMessages.settingsSaved, { id: 'settings-saved' })
       }
       failedGroups.current.clear()
       void qc.invalidateQueries({ queryKey: queryKeys.settings(), exact: true })
@@ -176,7 +177,7 @@ export function useUpdateMiniDaysSettings() {
       )
     },
     onError: () => {
-      toast.error('미니 데이를 저장하지 못했어요. 다시 시도해 주세요')
+      toast.error(toastMessages.miniDaysSaveFailed)
     },
   })
 }

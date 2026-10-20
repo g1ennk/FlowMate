@@ -105,7 +105,7 @@ describe('AuthCallback', () => {
     renderAuthCallback('/auth/callback?code=oauth-code&state=expected-state')
 
     expect(await screen.findByText('login page')).toBeInTheDocument()
-    expect(mocked.toastError).toHaveBeenCalledWith('로그인하지 못했어요. 다시 시도해 주세요')
+    expect(mocked.toastError).toHaveBeenCalledWith('로그인하지 못했어요. 다시 시도해 주세요.')
   })
 
   it('tells the user to try again when the oauth state does not match', async () => {
@@ -115,6 +115,6 @@ describe('AuthCallback', () => {
     renderAuthCallback('/auth/callback?code=oauth-code&state=wrong-state')
 
     expect(await screen.findByText('login page')).toBeInTheDocument()
-    expect(mocked.toastError).toHaveBeenCalledWith('로그인하지 못했어요. 다시 시도해 주세요')
+    expect(mocked.toastError).toHaveBeenCalledWith('로그인하지 못했어요. 다시 시도해 주세요.')
   })
 })

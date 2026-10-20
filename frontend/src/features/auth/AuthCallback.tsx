@@ -4,8 +4,7 @@ import toast from 'react-hot-toast'
 import { useAuthStore } from '../../store/authStore'
 import { queryClient } from '../../app/queryClient'
 import { storageKeys } from '../../lib/storageKeys'
-
-const LOGIN_FAILED_MESSAGE = '로그인하지 못했어요. 다시 시도해 주세요'
+import { authMessages, toastMessages } from '../../lib/messages'
 
 function AuthCallback() {
   const navigate = useNavigate()
@@ -28,7 +27,7 @@ function AuthCallback() {
       if (params.get('error') === 'access_denied') {
         sessionStorage.removeItem('oauth_state')
         sessionStorage.removeItem('oauth_provider')
-        toast('로그인을 취소했어요')
+        toast(toastMessages.loginCanceled)
         navigate('/login', { replace: true })
         return
       }
@@ -36,7 +35,7 @@ function AuthCallback() {
       // state 검증
       if (!code || !stateFromUrl || stateFromUrl !== stateFromStorage) {
         console.error('[AuthCallback] state 불일치 또는 code 없음')
-        toast.error(LOGIN_FAILED_MESSAGE)
+        toast.error(toastMessages.loginFailed)
         navigate('/login', { replace: true })
         return
       }
@@ -52,7 +51,7 @@ function AuthCallback() {
         navigate(returnTo, { replace: true })
       } catch (e) {
         console.error('[AuthCallback] 로그인 실패', e)
-        toast.error(LOGIN_FAILED_MESSAGE)
+        toast.error(toastMessages.loginFailed)
         navigate('/login', { replace: true })
       }
     }
@@ -61,10 +60,10 @@ function AuthCallback() {
   }, [login, navigate])
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-surface-card">
-      <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-        <p className="text-sm text-text-secondary">로그인 처리 중...</p>
+    <div className="flex min-h-dvh items-center justify-center bg-surface-base">
+      <div role="status" className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden />
+        <p className="text-sm text-text-secondary">{authMessages.signingIn}</p>
       </div>
     </div>
   )
