@@ -113,6 +113,37 @@ class ReportPromptsTest {
     }
 
     @Nested
+    @DisplayName("요약형 규칙")
+    class SummaryRules {
+        @Test
+        void systemInstructionHasToneAndTermRules() {
+            String s = PromptTexts.SYSTEM_INSTRUCTION;
+            assertThat(s).contains("해요체", "이모지와 느낌표(!) 금지", "칭찬과 과장 금지", "잘했어요");
+            assertThat(s).contains("\"집중\", \"할 일\", \"휴식\"", "\"카테고리\"", "관찰만", "명령형은 쓰지 말 것");
+            assertThat(s).doesNotContain("KPT", "회고 전문가", "몰입 ", "집중력 좋았어요");
+            assertThat(s).contains("\"keep\"", "\"problem\"", "\"try\"", "\"referenceQuestion\"");
+        }
+
+        @Test
+        @DisplayName("눈에 띈 점 예시는 데이터에 있는 할 일 기준이고, 데이터에 없는 시각 정보(시간대)를 예로 들지 않는다")
+        void problemExampleUsesOnlyDataWeHave() {
+            String s = PromptTexts.SYSTEM_INSTRUCTION;
+            assertThat(s).contains("집중이 몰린 할 일");
+            assertThat(s).doesNotContain("시간대");
+        }
+
+        @Test
+        void commonRulesAppearInEveryPeriodPrompt() {
+            List<Todo> todos = List.of(TodoFixtures.completed("JWT 구현", 4500, 3));
+            for (String prompt : List.of(ReportPrompts.daily(todos), ReportPrompts.weekly(todos),
+                    ReportPrompts.monthly(todos, List.of()))) {
+                assertThat(prompt).contains("해요체", "이모지와 느낌표(!) 금지", "칭찬, 평가, 과장 금지");
+                assertThat(prompt).doesNotContain("투두", "KPT", "세션", "잘한 것");
+            }
+        }
+    }
+
+    @Nested
     @DisplayName("extractTry")
     class ExtractTry {
         @Test

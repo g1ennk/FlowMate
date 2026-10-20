@@ -29,7 +29,7 @@ public final class ReportPrompts {
             ? "(없음)"
             : completed.stream()
                 .map(t -> "- " + t.getTitle() + " (집중 " + PromptTexts.focusTime(t.getSessionFocusSeconds())
-                    + ", " + t.getSessionCount() + "세션)")
+                    + ", 집중 " + t.getSessionCount() + "회)")
                 .collect(Collectors.joining("\n"));
 
         String incompleteLines = incomplete.isEmpty()
@@ -39,22 +39,22 @@ public final class ReportPrompts {
                     + (t.getSessionFocusSeconds() > 0 ? " (집중 " + PromptTexts.focusTime(t.getSessionFocusSeconds()) + ")" : ""))
                 .collect(Collectors.joining("\n"));
 
-        return "사용자의 오늘 하루 활동 데이터입니다. KPT 회고 레포트를 작성해주세요.\n"
+        return "사용자의 오늘 하루 활동 데이터입니다. 하루 요약을 작성해주세요.\n"
             + "\n"
             + "## 요약\n"
-            + "- 전체 투두: " + todos.size() + "개 (완료 " + stats.completed() + ", 미완료 " + stats.incomplete() + ")\n"
-            + "- 총 집중 시간: " + PromptTexts.focusTime(stats.totalFocus()) + " (" + stats.totalSessions() + "세션)\n"
+            + "- 전체 할 일: " + todos.size() + "개 (완료 " + stats.completed() + ", 미완료 " + stats.incomplete() + ")\n"
+            + "- 총 집중 시간: " + PromptTexts.focusTime(stats.totalFocus()) + " (집중 " + stats.totalSessions() + "회)\n"
             + "\n"
-            + "## 완료한 투두\n"
+            + "## 완료한 할 일\n"
             + completedLines + "\n"
             + "\n"
-            + "## 미완료 투두\n"
+            + "## 미완료 할 일\n"
             + incompleteLines + "\n"
             + "\n"
             + PromptTexts.COMMON_RULES + "\n"
-            + "- keep: 오늘 잘한 것, 집중 패턴 분석\n"
-            + "- problem: 아쉬운 것, 미완료 투두의 원인 분석\n"
-            + "- try: 내일 구체적 행동 1개 제안";
+            + "- keep: 오늘 한 일 요약. 완료한 할 일과 집중 횟수 같은 사실 위주\n"
+            + "- problem: 눈에 띈 점. 미완료 할 일, 집중이 몰린 할 일 같은 관찰만 쓰고 원인 추측이나 지적은 하지 않음\n"
+            + "- try: 내일 해 볼 만한 것 1개를 가볍게 제안";
     }
 
     public static String weekly(List<Todo> todos) {
@@ -86,23 +86,22 @@ public final class ReportPrompts {
                         : ""))
                 .collect(Collectors.joining("\n"));
 
-        return "사용자의 이번 주 활동 데이터입니다. KPT 주간 회고 레포트를 작성해주세요.\n"
+        return "사용자의 이번 주 활동 데이터입니다. 한 주 요약을 작성해주세요.\n"
             + "\n"
             + "## 주간 요약\n"
-            + "- 전체 투두: " + todos.size() + "개 (완료 " + stats.completed() + ", 완료율 " + stats.completionRate() + "%)\n"
-            + "- 총 집중 시간: " + PromptTexts.focusTime(stats.totalFocus()) + " (" + stats.totalSessions() + "세션)\n"
+            + "- 전체 할 일: " + todos.size() + "개 (완료 " + stats.completed() + ", 완료율 " + stats.completionRate() + "%)\n"
+            + "- 총 집중 시간: " + PromptTexts.focusTime(stats.totalFocus()) + " (집중 " + stats.totalSessions() + "회)\n"
             + "\n"
             + "## 요일별 현황\n"
             + dailySummaries + "\n"
             + "\n"
-            + "## 미완료 투두\n"
+            + "## 미완료 할 일\n"
             + incompleteLines + "\n"
             + "\n"
             + PromptTexts.COMMON_RULES + "\n"
-            + "- 요일별 패턴, 트렌드 등 사용자가 못 보는 분석\n"
-            + "- keep: 이번 주 잘한 것, 강한 요일\n"
-            + "- problem: 반복되는 패턴, 약한 요일, 미완료 투두 원인\n"
-            + "- try: 다음 주 루틴 제안 1개";
+            + "- keep: 이번 주 한 일 요약. 완료한 할 일, 집중 횟수, 집중이 많았던 요일 같은 사실 위주\n"
+            + "- problem: 눈에 띈 점. 반복되어 보이는 패턴, 미완료 할 일 같은 관찰만 쓰고 원인 추측이나 지적은 하지 않음\n"
+            + "- try: 다음 주에 해 볼 만한 것 1개를 가볍게 제안";
     }
 
     public static String monthly(List<Todo> todos, List<Review> weeklyReviews) {
@@ -151,27 +150,26 @@ public final class ReportPrompts {
             weeklyTrySection = "\n\n## 사용자의 주간 목표 (Try)\n"
                 + tries + "\n"
                 + "\n"
-                + "위 목표 중 투두 데이터에서 실천 흔적이 보이는 것과 그렇지 않은 것을 분석해주세요.";
+                + "위 목표 중 할 일 데이터에서 실천한 흔적이 보이는 것이 있으면 keep에서 사실로만 짚어 주세요.";
         }
 
-        return "사용자의 이번 달 활동 데이터입니다. KPT 월간 회고 레포트를 작성해주세요.\n"
+        return "사용자의 이번 달 활동 데이터입니다. 한 달 요약을 작성해주세요.\n"
             + "\n"
             + "## 월간 요약\n"
-            + "- 전체 투두: " + todos.size() + "개 (완료 " + stats.completed() + ", 완료율 " + stats.completionRate() + "%)\n"
-            + "- 총 집중 시간: " + PromptTexts.focusTime(stats.totalFocus()) + " (" + stats.totalSessions() + "세션)\n"
+            + "- 전체 할 일: " + todos.size() + "개 (완료 " + stats.completed() + ", 완료율 " + stats.completionRate() + "%)\n"
+            + "- 총 집중 시간: " + PromptTexts.focusTime(stats.totalFocus()) + " (집중 " + stats.totalSessions() + "회)\n"
             + "\n"
             + "## 주차별 현황\n"
             + weeklySummaries + "\n"
             + "\n"
-            + "## 미완료 투두 (상위 10개)\n"
+            + "## 미완료 할 일 (상위 10개)\n"
             + incompleteLines + "\n"
             + overflow + weeklyTrySection + "\n"
             + "\n"
             + PromptTexts.COMMON_RULES + "\n"
-            + "- 월간 성장 추세, 정체 구간 등 장기 패턴 분석\n"
-            + "- keep: 이번 달 성장, 최고 성과 주\n"
-            + "- problem: 정체 구간, 목표 대비 갭, 미완료 투두 패턴\n"
-            + "- try: 다음 달 방향성 제안 1개";
+            + "- keep: 이번 달 한 일 요약. 완료한 할 일, 집중 횟수, 집중이 많았던 주차 같은 사실 위주\n"
+            + "- problem: 눈에 띈 점. 집중이 줄어든 주차, 미완료 할 일 패턴 같은 관찰만 쓰고 원인 추측이나 지적은 하지 않음\n"
+            + "- try: 다음 달에 해 볼 만한 것 1개를 가볍게 제안";
     }
 
     static String extractTry(String content) {
