@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type TouchEvent } from 'react'
 
-// 할 일 행을 왼쪽으로 밀어 지우는 손짓(사용자 결정 2026-10-21, iOS 목록의 trailing 스와이프와 같다).
-// 조금 밀면 오른쪽에 빨간 "삭제"가 드러나 머물고(REVEAL_WIDTH), 행 폭의 절반을 넘겨 밀고 놓으면 바로 지운다(full swipe).
-// 절반을 넘기면 "삭제" 글자가 내용 쪽으로 붙어 놓으면 지운다는 것을 알리고, 놓으면 행이 밀려 나간 뒤 지워진다(COMMIT_MS).
-// 지운 뒤에는 되돌리기 토스트로 되살린다.
+// 할 일 행을 왼쪽으로 밀어 지우는 손짓(사용자 결정 2026-10-21, iOS 목록의 trailing 스와이프에서 full swipe를 뺀 모양).
+// 살짝 밀면 오른쪽에 빨간 "삭제"가 드러나 머물고(REVEAL_WIDTH), 그 버튼을 눌러야 지운다. 끝까지 밀어 바로 지우는 동작은 없다.
+// 버튼 폭보다 더 밀면 고무줄처럼 조금만 더 따라오고(OVERSCROLL_MAX), 놓으면 버튼 폭으로 돌아온다. 지운 뒤에는 되돌리기 토스트로 되살린다.
 // 손짓은 세 가지다. 터치, 마우스로 왼쪽으로 끌기, 트랙패드 두 손가락 가로 밀기(데스크톱도 같은 동작, 사용자 결정 2026-10-21).
 // 터치와 마우스는 처음 8px을 움직인 방향이 가로일 때만 민다. 세로는 스크롤과 길게 눌러/세로로 끌어 순서 바꾸기(dnd-kit)에 남긴다.
 // 키보드와 스크린리더는 메뉴 시트의 "삭제"를 쓴다. 한 번에 한 행만 열어 둔다. 다른 행을 밀거나 행 밖을 누르면 열린 행은 닫힌다.
 
 export const REVEAL_WIDTH = 72
 const AXIS_LOCK_PX = 8
-const FULL_SWIPE_RATIO = 0.5
-export const COMMIT_MS = 200
+// 버튼 폭을 넘겨 밀 때 따라오는 비율과 최대 거리
+const OVERSCROLL_RATIO = 0.3
+const OVERSCROLL_MAX = 24
 // 트랙패드 가로 밀기는 끝 이벤트가 없어서, 이만큼 wheel이 멈추면 손을 뗀 것으로 본다
 const WHEEL_END_MS = 140
 
@@ -23,13 +23,11 @@ type Options = {
   onDelete: () => void
 }
 
-type Gesture = { x: number; y: number; base: number; width: number; axis: 'x' | 'y' | null }
+type Gesture = { x: number; y: number; base: number; axis: 'x' | 'y' | null }
 
 export function useSwipeToDelete({ enabled, onDelete }: Options) {
   const [offset, setOffsetState] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
-  // 지금 놓으면 지워지는지(절반을 넘겼는지)
-  const [willDelete, setWillDelete] = useState(false)
   const rowRef = useRef<HTMLDivElement | null>(null)
   // 창에 단 마우스, wheel 리스너가 최신 값을 읽도록 offset을 ref로도 들고 있는다
   const offsetRef = useRef(0)
@@ -84,7 +82,7 @@ export function useSwipeToDelete({ enabled, onDelete }: Options) {
   }, [close])
 
   const begin = (x: number, y: number) => {
-    gesture.current = { x, y, base: offsetRef.current, width: rowRef.current?.offsetWidth ?? 0, axis: null }
+    gesture.current = { x, y, base: offsetRef.current, axis: null }
     suppressClick.current = false
   }
 
@@ -102,9 +100,11 @@ export function useSwipeToDelete({ enabled, onDelete }: Options) {
     const g = gesture.current
     if (!g) return
     suppressClick.current = true
-    const next = Math.max(-g.width, Math.min(0, g.base + dx))
+    const raw = Math.min(0, g.base + dx)
+    const next = raw >= -REVEAL_WIDTH
+      ? raw
+      : -REVEAL_WIDTH - Math.min(OVERSCROLL_MAX, (-raw - REVEAL_WIDTH) * OVERSCROLL_RATIO)
     setOffset(next)
-    setWillDelete(g.width > 0 && -next > g.width * FULL_SWIPE_RATIO)
   }
 
   // x, y는 시작점 기준이 아닌 화면 좌표다
@@ -126,17 +126,7 @@ export function useSwipeToDelete({ enabled, onDelete }: Options) {
     gesture.current = null
     if (!g || g.axis !== 'x') return
     setIsSwiping(false)
-    setWillDelete(false)
     const current = -offsetRef.current
-    if (g.width > 0 && current > g.width * FULL_SWIPE_RATIO) {
-      // 행을 끝까지 밀어 낸 뒤 지운다. 지운 행은 목록에서 빠지고, 되돌리면 제자리(0)로 돌아온다
-      setOffset(-g.width)
-      window.setTimeout(() => {
-        onDeleteRef.current()
-        close()
-      }, COMMIT_MS)
-      return
-    }
     if (current > REVEAL_WIDTH / 2) setOffset(-REVEAL_WIDTH)
     else close()
   }
@@ -211,7 +201,6 @@ export function useSwipeToDelete({ enabled, onDelete }: Options) {
     offset,
     isSwiping,
     isOpen,
-    willDelete,
     // 손짓은 행 전체(삭제 버튼 포함)에서 받고, click 가로채기는 밀리는 내용에만 단다(삭제 버튼 click은 막지 않는다)
     handlers: { onTouchStart, onTouchMove, onTouchEnd: finish, onTouchCancel: finish, onPointerDown },
     onClickCapture,

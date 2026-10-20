@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
-import { COMMIT_MS, REVEAL_WIDTH, useSwipeToDelete } from './useSwipeToDelete'
+import { REVEAL_WIDTH, useSwipeToDelete } from './useSwipeToDelete'
 
 function Row({ onDelete, onTap, enabled = true }: { onDelete: () => void; onTap?: () => void; enabled?: boolean }) {
   const { rowRef, offset, handlers, onClickCapture, handleDelete } = useSwipeToDelete({ enabled, onDelete })
@@ -43,18 +43,16 @@ describe('useSwipeToDelete', () => {
     expect(row).toHaveAttribute('data-offset', '0')
   })
 
-  it('행 폭의 절반을 넘겨 밀면 행을 끝까지 밀어 낸 뒤 지운다', () => {
-    vi.useFakeTimers()
-    try {
-      const { onDelete, row } = setup()
-      swipe(row, -200)
-      expect(row).toHaveAttribute('data-offset', '-320')
-      expect(onDelete).not.toHaveBeenCalled()
-      act(() => { vi.advanceTimersByTime(COMMIT_MS) })
-      expect(onDelete).toHaveBeenCalledTimes(1)
-    } finally {
-      vi.useRealTimers()
-    }
+  it('끝까지 밀어도 바로 지우지 않고, 놓으면 삭제 버튼 폭으로 돌아온다(full swipe 없음)', () => {
+    const { onDelete, row } = setup()
+    fireEvent.touchStart(row, { touches: [{ clientX: 300, clientY: 100 }] })
+    fireEvent.touchMove(row, { touches: [{ clientX: 200, clientY: 100 }] })
+    fireEvent.touchMove(row, { touches: [{ clientX: 20, clientY: 100 }] })
+    // 버튼 폭을 넘긴 만큼은 고무줄처럼 조금만(최대 24) 따라온다
+    expect(Number(row.getAttribute('data-offset'))).toBeGreaterThanOrEqual(-(REVEAL_WIDTH + 24))
+    fireEvent.touchEnd(row, { touches: [] })
+    expect(row).toHaveAttribute('data-offset', String(-REVEAL_WIDTH))
+    expect(onDelete).not.toHaveBeenCalled()
   })
 
   it('데스크톱: 마우스로 왼쪽으로 끌어도 삭제가 드러난다', () => {
@@ -63,7 +61,6 @@ describe('useSwipeToDelete', () => {
     const down = new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 300, clientY: 100 })
     Object.defineProperty(down, 'pointerType', { value: 'mouse' })
     fireEvent(row, down)
-    // jsdom에 PointerEvent가 없어 좌표가 실리는 MouseEvent로 보낸다
     act(() => {
       window.dispatchEvent(new MouseEvent('pointermove', { clientX: 270, clientY: 100 }))
       window.dispatchEvent(new MouseEvent('pointermove', { clientX: 240, clientY: 100 }))
