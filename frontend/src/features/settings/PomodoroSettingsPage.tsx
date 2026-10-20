@@ -554,41 +554,6 @@ function PomodoroSettingsPage() {
         />
       )}
 
-      {/* 계정은 맨 위에 이름 한 줄로 둔다(섹션 제목, 카드, 프로필 사진 없음. 별따먹자 마이페이지 참고, 사용자 결정 2026-10-21).
-          회원은 닉네임 옆에 카카오 표시만 두고 "카카오 계정으로 로그인했어요" 문구는 쓰지 않는다. 게스트는 그 아래 회색 면에 "기록은 이 브라우저에만 남아요"와 카카오 로그인 버튼을 둔다 */}
-      {authState && (
-        <section aria-label="계정" className="space-y-card-item">
-          <div className="flex items-center">
-            <div className="flex min-w-0 items-center gap-list">
-              <p className="min-w-0 truncate text-xl font-semibold text-text-primary">
-                {authState.type === 'member' ? authState.user.nickname : authMessages.guestStatus}
-              </p>
-              {authState.type === 'member' && (
-                <span
-                  role="img"
-                  aria-label="카카오 계정"
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-kakao"
-                >
-                  <KakaoIcon className="h-3 w-3 text-kakao-label" />
-                </span>
-              )}
-            </div>
-          </div>
-          {authState.type === 'guest' && (
-            <div className="flex items-center justify-between gap-card-item rounded-card bg-surface-sunken py-card-item pr-card-item pl-card">
-              <p className="min-w-0 break-keep text-sm text-text-secondary">{authMessages.guestStatusNotice}</p>
-              <button
-                type="button"
-                onClick={() => navigate('/login')}
-                className="h-9 shrink-0 whitespace-nowrap rounded-control bg-kakao px-3 text-sm font-medium text-kakao-label transition-opacity active:opacity-80"
-              >
-                {authMessages.kakaoLogin}
-              </button>
-            </div>
-          )}
-        </section>
-      )}
-
       <section ref={sessionSectionRef}>
         <SectionHeader
           title="뽀모도로"
@@ -685,11 +650,43 @@ function PomodoroSettingsPage() {
       </section>
 
 
-      {/* 로그아웃은 자주 누르지 않으니 계정 정보와 떨어진 맨 아래에 한 줄로 둔다(사용자 결정 2026-10-21) */}
-      {authState?.type === 'member' && (
-        <section aria-label={authMessages.logout}>
+      {/* 계정은 맨 아래에 이름과 로그아웃을 한 카드로 묶는다(사용자 결정 2026-10-21).
+          회원은 닉네임 옆에 카카오 표시만 두고 "카카오 계정으로 로그인했어요" 문구는 쓰지 않는다.
+          게스트는 "게스트로 쓰는 중"과 기록이 이 브라우저에만 남는다는 안내, 카카오 로그인 */}
+      {authState && (
+        <section>
+          <SectionHeader title="계정" />
           <RowsCard>
-            <ListRow size="lg" label={authMessages.logout} onClick={handleLogout} />
+            {authState.type === 'member' ? (
+              <>
+                <ListRow
+                  size="lg"
+                  label={
+                    <span className="flex min-w-0 items-center gap-list">
+                      <span className="min-w-0 truncate">{authState.user.nickname}</span>
+                      <span
+                        role="img"
+                        aria-label="카카오 계정"
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-kakao"
+                      >
+                        <KakaoIcon className="h-3 w-3 text-kakao-label" />
+                      </span>
+                    </span>
+                  }
+                />
+                <ListRow size="lg" label={authMessages.logout} onClick={handleLogout} />
+              </>
+            ) : (
+              <>
+                <ListRow size="lg" label={authMessages.guestStatus} description={authMessages.guestStatusNotice} />
+                <ListRow
+                  size="lg"
+                  label={authMessages.kakaoLogin}
+                  onClick={() => navigate('/login')}
+                  trailing={<ChevronRightIcon className="h-4 w-4" />}
+                />
+              </>
+            )}
           </RowsCard>
         </section>
       )}

@@ -102,14 +102,15 @@ describe('PomodoroSettingsPage', () => {
     expect(screen.getByRole('button', { name: '카카오로 로그인' })).toBeInTheDocument()
   })
 
-  it('계정이 맨 위(뽀모도로 위)이고, 회원의 로그아웃은 화면 섹션 아래 맨 끝에 따로 있다', async () => {
+  it('계정은 맨 아래(화면 섹션 다음)에 이름과 로그아웃을 한 카드로 묶는다', async () => {
     useAuthStore.setState({
       initialized: true,
       state: { type: 'member', accessToken: 'token', user: { id: 'user-1', email: null, nickname: 'Glenn' } },
     })
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
-    const account = await screen.findByRole('region', { name: '계정' })
+    const accountHeading = await screen.findByRole('heading', { level: 2, name: '계정' })
+    const account = accountHeading.closest('section') as HTMLElement
     // 이름 옆 카카오 표시만 두고 "카카오 계정으로 로그인했어요" 문구는 없다. 프로필 사진도 없다
     expect(within(account).getByText('Glenn')).toBeInTheDocument()
     expect(within(account).getByRole('img', { name: '카카오 계정' })).toBeInTheDocument()
@@ -118,9 +119,9 @@ describe('PomodoroSettingsPage', () => {
     const display = screen.getByRole('heading', { level: 2, name: '화면' })
     const logout = await screen.findByRole('button', { name: '로그아웃' })
     const follows = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
-    expect(follows(account, pomodoro)).toBe(true)
-    expect(follows(display, logout)).toBe(true)
-    expect(account).not.toContainElement(logout)
+    expect(follows(pomodoro, display)).toBe(true)
+    expect(follows(display, accountHeading)).toBe(true)
+    expect(account).toContainElement(logout)
   })
 
   it('keeps the guest status and where guest records live in the account section', async () => {
@@ -135,7 +136,7 @@ describe('PomodoroSettingsPage', () => {
       { route: '/settings' },
     )
 
-    expect(await screen.findByRole('region', { name: '계정' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '계정' })).toBeInTheDocument()
     expect(screen.getByText('게스트로 쓰는 중')).toBeInTheDocument()
     expect(screen.getByText('기록은 이 브라우저에만 남아요')).toBeInTheDocument()
     // 설정에는 코치마크가 없다(섹션 설명이 같은 일을 한다)
