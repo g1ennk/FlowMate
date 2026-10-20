@@ -1,194 +1,186 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { TimelineGroupData, TaskItem } from '../reviewTypes'
-import { formatMonthDayLabel } from '../reviewUtils'
-import { TimelineGroup } from './TimelineGroup'
+import { buildMonthWeekGroups } from '../reviewUtils'
+import { Card } from '../../../ui/Card'
+import { EmptyState } from '../../../ui/EmptyState'
+import { SectionHeader } from '../../../ui/SectionHeader'
+import { ChevronRightIcon } from '../../../ui/Icons'
+import { GroupCaption } from './GroupCaption'
+import { MiniDayTaskGroups } from './MiniDayTaskGroups'
 import { TimelineTaskItem } from './TimelineTaskItem'
 
 type TimelineListProps = {
-  groups: TimelineGroupData[]
+  title: string
+  // 주간은 날짜 → 미니데이 → 할 일, 월간은 주 → 날짜 → 할 일(미니데이 구분 없음)
   viewMode: 'weekly' | 'monthly'
+  // 기간의 날마다 한 묶음(buildDailyGroups). 월간은 안에서 주로 다시 묶는다
+  groups: TimelineGroupData[]
   miniDayLabels: Array<{ id: number; label: string }>
   onSelectTask?: (task: TaskItem) => void
-  todayKey?: string
-  title?: string
-  highlightKey?: string
+  todayKey: string
+  // 끝난 기간이면 기록 있는 날(월간은 주)을 모두 펼쳐 둔다. 진행 중이면 오늘(월간은 오늘이 든 주)만 펼친다
+  isPastPeriod: boolean
 }
 
-function groupItemsByDate(
-  completed: TaskItem[],
-  incomplete: TaskItem[],
-): Array<{ dateKey: string; completed: TaskItem[]; incomplete: TaskItem[] }> {
-  const map = new Map<string, { completed: TaskItem[]; incomplete: TaskItem[] }>()
-
-  function getOrCreate(date: string) {
-    if (!map.has(date)) map.set(date, { completed: [], incomplete: [] })
-    return map.get(date)!
-  }
-
-  completed.forEach((item) => getOrCreate(item.date).completed.push(item))
-  incomplete.forEach((item) => getOrCreate(item.date).incomplete.push(item))
-
-  return Array.from(map.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([dateKey, items]) => ({ dateKey, ...items }))
-}
-
-function buildMiniDaySections(
-  completed: TaskItem[],
-  incomplete: TaskItem[],
-  miniDayLabels: Array<{ id: number; label: string }>,
-) {
-  return miniDayLabels
-    .map((group) => {
-      const doneItems = completed.filter((item) => (item.miniDay ?? 0) === group.id)
-      const incompleteItems = incomplete.filter((item) => (item.miniDay ?? 0) === group.id)
-      return {
-        id: group.id,
-        label: group.label,
-        completed: doneItems,
-        incomplete: incompleteItems,
-        hasItems: doneItems.length + incompleteItems.length > 0,
-      }
-    })
-    .filter((group) => group.hasItems)
-}
-
-type MiniDaySectionsProps = {
-  completed: TaskItem[]
-  incomplete: TaskItem[]
-  miniDayLabels: Array<{ id: number; label: string }>
-  onSelectTask?: (task: TaskItem) => void
-}
-
-function MiniDaySections({ completed, incomplete, miniDayLabels, onSelectTask }: MiniDaySectionsProps) {
+// 펼치고 접는 머리 한 줄: 화살표 + 이름 + 오른쪽 "완료/전체".
+// 화살표(버튼 안 20)는 목록 앞 열(32 칸) 가운데, 이름은 글자 열(+40)에 둔다. 안의 할 일 행과 날짜 이름도 같은 글자 열이다(Task 21)
+function GroupToggle({ expanded, onToggle, label, count }: { expanded: boolean; onToggle: () => void; label: ReactNode; count: string }) {
   return (
-    <>
-      {buildMiniDaySections(completed, incomplete, miniDayLabels).map((miniDayGroup) => (
-        <div key={miniDayGroup.id} className="space-y-element">
-          <div className="flex items-center gap-list text-[11px] font-semibold text-text-tertiary">
-            <span>{miniDayGroup.label}</span>
-            <div className="h-px flex-1 bg-surface-sunken" />
-          </div>
-          {[...miniDayGroup.completed, ...miniDayGroup.incomplete].map((item) => (
-            <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
-          ))}
-        </div>
-      ))}
-    </>
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className="relative isolate flex min-h-11 w-full items-center gap-list text-left before:absolute before:-inset-x-2 before:inset-y-0 before:-z-10 before:rounded-control before:transition-colors hover:before:bg-hover"
+    >
+      <span aria-hidden className="flex w-8 shrink-0 justify-center">
+        <ChevronRightIcon
+          className={`h-5 w-5 text-text-secondary transition-transform ${expanded ? 'rotate-90' : ''}`}
+        />
+      </span>
+      <span className="min-w-0 flex-1 text-sm font-semibold text-text-primary">{label}</span>
+      <span className="shrink-0 text-xs text-text-secondary">{count}</span>
+    </button>
   )
 }
 
+// 기록 없는 날(주) 한 줄. 화살표 자리(32)를 비워 이름을 펼치는 줄과 같은 글자 열에 둔다
+function EmptyGroupRow({ label, range }: { label: string; range?: string }) {
+  return (
+    <div className="flex min-h-11 items-center gap-list border-t border-border-subtle first:border-t-0">
+      <span aria-hidden className="w-8 shrink-0" />
+      <p className="min-w-0 flex-1 text-sm text-text-secondary">
+        {label}
+        {range && <span className="ml-list text-xs">{range}</span>}
+      </p>
+      <p className="text-xs text-text-secondary">기록 없음</p>
+    </div>
+  )
+}
+
+// 주간, 월간 할 일 기록. 목록 한 장 안에 주간은 날마다, 월간은 주마다 한 묶음을 둔다(사용자 결정 2026-10-20: 월간 주 묶음).
+// 아직 오지 않은 날(주)은 숨기고, 기록 없는 날(주)은 한 줄로 줄인다.
 export function TimelineList({
-  groups,
+  title,
   viewMode,
+  groups,
   miniDayLabels,
   onSelectTask,
   todayKey,
-  title,
-  highlightKey,
+  isPastPeriod,
 }: TimelineListProps) {
-  const matchKey = highlightKey ?? todayKey
-  const isCurrentPeriod = useCallback(
-    (key: string) => {
-      if (!matchKey) return false
-      return key === `daily-${matchKey}` || key.startsWith(`weekly-${matchKey}-`)
-    },
-    [matchKey],
-  )
+  const pastOrToday = groups.filter((group) => group.dateKey <= todayKey)
+  const hasRecords = pastOrToday.some((group) => group.taskCount > 0)
+  const weeks = viewMode === 'monthly'
+    ? buildMonthWeekGroups(groups).filter((week) => week.startKey <= todayKey)
+    : []
 
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
-    () => new Set(groups.filter((g) => g.taskCount > 0 && isCurrentPeriod(g.key)).map((g) => g.key)),
-  )
-
-  useEffect(() => {
-    // groups 변경 시 현재 기간 그룹 자동 펼침 동기화
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- props→state 동기화 필요
-    setExpandedKeys((prev) => {
-      const validKeys = new Set(groups.map((g) => g.key))
-      const next = new Set([...prev].filter((k) => validKeys.has(k)))
-      groups.forEach((g) => {
-        if (g.taskCount > 0 && isCurrentPeriod(g.key) && !next.has(g.key)) next.add(g.key)
-      })
-      return next.size === prev.size && [...next].every((k) => prev.has(k)) ? prev : next
-    })
-  }, [groups, isCurrentPeriod])
+  // 부모가 기간마다 key를 바꿔 다시 만들므로 처음 펼칠 묶음은 처음 렌더에서 한 번만 정한다
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => {
+    if (viewMode === 'monthly') {
+      return new Set(
+        weeks
+          .filter((week) => week.taskCount > 0 && (isPastPeriod || (week.startKey <= todayKey && todayKey <= week.endKey)))
+          .map((week) => week.key),
+      )
+    }
+    return new Set(
+      groups
+        .filter((group) => group.taskCount > 0 && (isPastPeriod || group.dateKey === todayKey))
+        .map((group) => group.key),
+    )
+  })
 
   const toggleGroup = (key: string) => {
     setExpandedKeys((prev) => {
       const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
 
+  const todayMark = <span className="ml-list text-xs font-medium text-text-secondary">오늘</span>
+  // 묶음 안 할 일: 완료한 것을 먼저 둔다
+  const tasksOf = (group: TimelineGroupData) => [...group.completedTasks, ...group.incompleteTasks]
+
   return (
-    <div className="space-y-card-item">
-      {title && (
-        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-      )}
-      {groups.map((group, index) => {
-        const isExpanded = expandedKeys.has(group.key)
-        const hasCompleted = group.completedTasks.length > 0
-        const hasIncomplete = group.incompleteTasks.length > 0
-        const showMonthly = viewMode === 'monthly'
-        const dateGroups =
-          viewMode === 'monthly'
-            ? groupItemsByDate(group.completedTasks, group.incompleteTasks)
-            : []
-
-        const isGroupToday = isCurrentPeriod(group.key)
-
-        return (
-          <TimelineGroup
-            key={`${viewMode}-${group.key}-${index}`}
-            label={group.label}
-            taskCount={group.taskCount}
-            completedCount={group.completedTasks.length}
-            incompleteCount={group.incompleteTasks.length}
-            isExpanded={isExpanded}
-            onToggle={() => toggleGroup(group.key)}
-            isToday={isGroupToday}
-          >
-            {!hasCompleted && !hasIncomplete && (
-              <p className="text-sm text-text-tertiary">이 기간에 작업한 내역이 없어요. 할 일을 완료하면 타임라인이 만들어져요.</p>
-            )}
-
-            {(hasCompleted || hasIncomplete) && showMonthly && (
-              <div className="space-y-element">
-                {dateGroups.map((dateGroup) => (
-                  <div key={dateGroup.dateKey} className="space-y-element">
-                    <div className="flex items-center gap-list text-[11px] font-semibold text-text-tertiary">
-                      <span>{formatMonthDayLabel(dateGroup.dateKey)}</span>
-                      <div className="h-px flex-1 bg-surface-sunken" />
-                    </div>
-                    <MiniDaySections
-                      completed={dateGroup.completed}
-                      incomplete={dateGroup.incomplete}
-                      miniDayLabels={miniDayLabels}
-                      onSelectTask={onSelectTask}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {(hasCompleted || hasIncomplete) && !showMonthly && (
-              <div className="space-y-element">
-                <MiniDaySections
-                  completed={group.completedTasks}
-                  incomplete={group.incompleteTasks}
-                  miniDayLabels={miniDayLabels}
-                  onSelectTask={onSelectTask}
+    <section>
+      <SectionHeader title={title} />
+      {!hasRecords ? (
+        <Card>
+          <EmptyState message="이 기간에는 할 일 기록이 없어요" className="py-0" />
+        </Card>
+      ) : viewMode === 'monthly' ? (
+        <Card>
+          {weeks.map((week) => {
+            if (week.taskCount === 0) return <EmptyGroupRow key={week.key} label={week.label} range={week.rangeLabel} />
+            const isExpanded = expandedKeys.has(week.key)
+            return (
+              <div key={week.key} className="border-t border-border-subtle first:border-t-0">
+                <GroupToggle
+                  expanded={isExpanded}
+                  onToggle={() => toggleGroup(week.key)}
+                  label={
+                    <>
+                      {week.label}
+                      <span className="ml-list text-xs font-normal text-text-secondary">{week.rangeLabel}</span>
+                    </>
+                  }
+                  count={`${week.completedCount}/${week.taskCount} 완료`}
                 />
+                {isExpanded && (
+                  // 주 안에서는 기록 있는 날짜만, 날짜 이름(caption) 아래에 할 일을 둔다. 날짜 이름도 미니데이 머리와 같은 선 머리(GroupCaption)다. 미니데이 구분은 없다.
+                  // 안쪽을 들이지 않는다: 날짜 이름과 할 일 글자는 머리 이름과 같은 글자 열, 체크는 화살표와 같은 앞 열이다
+                  <div className="space-y-list pb-list">
+                    {week.days
+                      .filter((day) => day.taskCount > 0 && day.dateKey <= todayKey)
+                      .map((day) => (
+                        <div key={day.key}>
+                          <GroupCaption>
+                            {day.label}
+                            {day.dateKey === todayKey && <span className="ml-list">오늘</span>}
+                          </GroupCaption>
+                          <div>
+                            {tasksOf(day).map((item) => (
+                              <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
-            )}
-          </TimelineGroup>
-        )
-      })}
-    </div>
+            )
+          })}
+        </Card>
+      ) : (
+        <Card>
+          {pastOrToday.map((group) => {
+            if (group.taskCount === 0) return <EmptyGroupRow key={group.key} label={group.label} />
+            const isExpanded = expandedKeys.has(group.key)
+            return (
+              <div key={group.key} className="border-t border-border-subtle first:border-t-0">
+                <GroupToggle
+                  expanded={isExpanded}
+                  onToggle={() => toggleGroup(group.key)}
+                  label={
+                    <>
+                      {group.label}
+                      {group.dateKey === todayKey && todayMark}
+                    </>
+                  }
+                  count={`${group.completedTasks.length}/${group.taskCount} 완료`}
+                />
+                {isExpanded && (
+                  <div className="pb-list">
+                    <MiniDayTaskGroups tasks={tasksOf(group)} miniDayLabels={miniDayLabels} onSelectTask={onSelectTask} />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </Card>
+      )}
+    </section>
   )
 }

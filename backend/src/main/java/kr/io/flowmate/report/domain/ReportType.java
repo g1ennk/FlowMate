@@ -6,9 +6,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Arrays;
 
 public enum ReportType {
-    DAILY("daily.v2"),
-    WEEKLY("weekly.v2"),
-    MONTHLY("monthly.v2");
+    DAILY("daily.v3"),
+    WEEKLY("weekly.v3"),
+    MONTHLY("monthly.v3");
 
     private final String promptVersion;
 

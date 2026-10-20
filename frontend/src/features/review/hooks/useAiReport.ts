@@ -45,6 +45,8 @@ export function useAiReport(type: string, periodStart: string) {
     queryFn: () => aiReportApi.get(type, periodStart),
     enabled: false,
     staleTime: Infinity,
+    // 누를 때만 부르는 조회라 오프라인이면 기다리지 않고 바로 실패한다(시트가 "만드는 중"에 멈추지 않게)
+    networkMode: 'always',
   })
 }
 

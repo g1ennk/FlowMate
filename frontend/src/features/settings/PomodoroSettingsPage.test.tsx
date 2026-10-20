@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
+import { onlineManager } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 import { toast } from 'react-hot-toast'
@@ -9,6 +10,7 @@ import { storageKeys } from '../../lib/storageKeys'
 import { server } from '../../mocks/server'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
+import { Route, Routes } from 'react-router-dom'
 import { renderApp } from '../../test/renderApp'
 import PomodoroSettingsPage from './PomodoroSettingsPage'
 
@@ -95,9 +97,90 @@ describe('PomodoroSettingsPage', () => {
 
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
-    expect(await screen.findByText('설정')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Flow 시간.*25분/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '로그인' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '설정' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /집중 시간.*25분/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '카카오로 로그인' })).toBeInTheDocument()
+  })
+
+  it('keeps the guest status and where guest records live in the account section', async () => {
+    const user = userEvent.setup()
+    useAuthStore.setState({ initialized: true, state: { type: 'guest', token: 'guest-token' } })
+
+    renderApp(
+      <Routes>
+        <Route path="/settings" element={<PomodoroSettingsPage />} />
+        <Route path="/login" element={<div>login page</div>} />
+      </Routes>,
+      { route: '/settings' },
+    )
+
+    expect(await screen.findByRole('heading', { level: 2, name: '계정' })).toBeInTheDocument()
+    expect(screen.getByText('게스트로 쓰는 중')).toBeInTheDocument()
+    expect(screen.getByText('기록은 이 브라우저에만 남아요')).toBeInTheDocument()
+    // 설정에는 코치마크가 없다(섹션 설명이 같은 일을 한다)
+    expect(screen.queryByRole('button', { name: '힌트 닫기' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '카카오로 로그인' }))
+    expect(await screen.findByText('login page')).toBeInTheDocument()
+  })
+
+  it('shows 기본값 복원 only for a section whose values differ from the defaults', async () => {
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+
+    const { unmount } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    await screen.findByRole('button', { name: /집중 시간.*25분/ })
+    await waitFor(() => expect(screen.getByRole('button', { name: /집중 시간.*25분/ })).not.toBeDisabled())
+    expect(screen.queryByRole('button', { name: '기본값 복원' })).not.toBeInTheDocument()
+    unmount()
+
+    serverState.pomodoroSession = { ...serverState.pomodoroSession, flowMin: 30 }
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    await screen.findByRole('button', { name: /집중 시간.*30분/ })
+
+    expect(await screen.findAllByRole('button', { name: '기본값 복원' })).toHaveLength(1)
+  })
+
+  it('기본값 복원 뒤 버튼이 사라져도 포커스를 그 섹션 첫 행으로 옮긴다', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+    serverState.pomodoroSession = { ...serverState.pomodoroSession, flowMin: 30 }
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    await user.click(await screen.findByRole('button', { name: '기본값 복원' }))
+    const sheet = screen.getByRole('dialog', { name: '뽀모도로 설정을 기본값으로 복원할까요?' })
+    await user.click(within(sheet).getByRole('button', { name: '기본값으로 복원' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: '기본값 복원' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /집중 시간.*25분/ })).toHaveFocus())
+  })
+
+  it('keeps the break sheet open after a choice, saves it at once and moves the check', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    const { serverState } = useSlowSettingsServer()
+
+    const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const breakRow = await screen.findByRole('button', { name: /휴식 시간.*짧은 5분, 긴 15분/ })
+    await waitFor(() => expect(breakRow).not.toBeDisabled())
+    await user.click(breakRow)
+
+    const sheet = await screen.findByRole('dialog', { name: '휴식 시간' })
+    const short = within(sheet).getByRole('group', { name: '짧은 휴식' })
+    const long = within(sheet).getByRole('group', { name: '긴 휴식' })
+    expect(within(short).getByRole('button', { name: '5분' })).toHaveAttribute('aria-current', 'true')
+
+    await user.click(within(short).getByRole('button', { name: '10분' }))
+    expect(screen.getByRole('dialog', { name: '휴식 시간' })).toBeInTheDocument()
+    expect(within(short).getByRole('button', { name: '10분' })).toHaveAttribute('aria-current', 'true')
+    expect(within(short).getByRole('button', { name: '5분' })).not.toHaveAttribute('aria-current')
+
+    await user.click(within(long).getByRole('button', { name: '30분' }))
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+
+    expect(serverState.pomodoroSession).toMatchObject({ breakMin: 10, longBreakMin: 30 })
+    expect(screen.getByRole('dialog', { name: '휴식 시간' })).toBeInTheDocument()
   })
 
   it('saves automation and flow settings for a signed-in user', async () => {
@@ -122,24 +205,24 @@ describe('PomodoroSettingsPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('switch', { name: /휴식 시간 자동 시작/ }),
+        screen.getByRole('switch', { name: /휴식 자동 시작/ }),
       ).not.toBeDisabled()
     })
 
-    await user.click(screen.getByRole('switch', { name: /휴식 시간 자동 시작/ }))
+    await user.click(screen.getByRole('switch', { name: /휴식 자동 시작/ }))
 
     await waitFor(() => {
       expect(readStoredSettings()?.automation.autoStartBreak).toBe(true)
     })
 
-    await user.click(screen.getByRole('button', { name: /Flow 시간.*25분/ }))
+    await user.click(screen.getByRole('button', { name: /집중 시간.*25분/ }))
     await user.click(await screen.findByRole('button', { name: '30분' }))
 
     await waitFor(() => {
       expect(readStoredSettings()?.pomodoroSession.flowMin).toBe(30)
     })
 
-    expect(screen.getByRole('button', { name: /Flow 시간.*30분/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /집중 시간.*30분/ })).toBeInTheDocument()
   })
 
   it('saves 120 minutes as the maximum flow preset for a signed-in user', async () => {
@@ -162,7 +245,7 @@ describe('PomodoroSettingsPage', () => {
 
     expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
 
-    const flowRow = screen.getByRole('button', { name: /Flow 시간.*25분/ })
+    const flowRow = await screen.findByRole('button', { name: /집중 시간.*25분/ })
     await waitFor(() => expect(flowRow).not.toBeDisabled())
 
     await user.click(flowRow)
@@ -172,7 +255,7 @@ describe('PomodoroSettingsPage', () => {
       expect(readStoredSettings()?.pomodoroSession.flowMin).toBe(120)
     })
 
-    expect(screen.getByRole('button', { name: /Flow 시간.*120분/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /집중 시간.*120분/ })).toBeInTheDocument()
   })
 
   it('saves 60 minutes as the maximum long break preset for a signed-in user', async () => {
@@ -195,7 +278,7 @@ describe('PomodoroSettingsPage', () => {
 
     expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
 
-    const breakRow = screen.getByRole('button', { name: /휴식 시간.*짧은 5분, 긴 15분/ })
+    const breakRow = await screen.findByRole('button', { name: /휴식 시간.*짧은 5분, 긴 15분/ })
     await waitFor(() => expect(breakRow).not.toBeDisabled())
 
     await user.click(breakRow)
@@ -214,7 +297,7 @@ describe('PomodoroSettingsPage', () => {
     const { serverState } = useSlowSettingsServer()
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 자동 시작/ })
     await waitFor(() => expect(breakSwitch).not.toBeDisabled())
 
     await user.click(breakSwitch)
@@ -223,7 +306,7 @@ describe('PomodoroSettingsPage', () => {
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
-    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(false)
+    expect(isSwitchOn(/휴식 자동 시작/)).toBe(false)
     expect(serverState.automation.autoStartBreak).toBe(false)
   })
 
@@ -233,17 +316,17 @@ describe('PomodoroSettingsPage', () => {
     const { serverState } = useSlowSettingsServer()
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 자동 시작/ })
     await waitFor(() => expect(breakSwitch).not.toBeDisabled())
 
     await user.click(breakSwitch)
-    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+    await user.click(screen.getByRole('switch', { name: /집중 자동 시작/ }))
 
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
-    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(true)
-    expect(isSwitchOn(/세션 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/휴식 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/집중 자동 시작/)).toBe(true)
     expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
   })
 
@@ -264,17 +347,17 @@ describe('PomodoroSettingsPage', () => {
     )
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 자동 시작/ })
     await waitFor(() => expect(breakSwitch).not.toBeDisabled())
 
     await user.click(breakSwitch)
-    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+    await user.click(screen.getByRole('switch', { name: /집중 자동 시작/ }))
 
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
-    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(true)
-    expect(isSwitchOn(/세션 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/휴식 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/집중 자동 시작/)).toBe(true)
     expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
   })
 
@@ -293,11 +376,11 @@ describe('PomodoroSettingsPage', () => {
     )
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 자동 시작/ })
     await waitFor(() => expect(breakSwitch).not.toBeDisabled())
 
     await user.click(breakSwitch)
-    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+    await user.click(screen.getByRole('switch', { name: /집중 자동 시작/ }))
     // 당겨서 새로고침이나 포커스 refetch가 첫 저장이 끝나기 전에 끼어든다.
     await queryClient.invalidateQueries()
 
@@ -305,8 +388,8 @@ describe('PomodoroSettingsPage', () => {
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
     expect(serverState.automation).toEqual({ autoStartBreak: true, autoStartSession: true })
-    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(true)
-    expect(isSwitchOn(/세션 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/휴식 자동 시작/)).toBe(true)
+    expect(isSwitchOn(/집중 자동 시작/)).toBe(true)
   })
 
   it('shows the last saved values when every queued save and the refetch fail', async () => {
@@ -315,7 +398,7 @@ describe('PomodoroSettingsPage', () => {
     useSlowSettingsServer()
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 자동 시작/ })
     await waitFor(() => expect(breakSwitch).not.toBeDisabled())
 
     server.use(
@@ -327,13 +410,13 @@ describe('PomodoroSettingsPage', () => {
     )
 
     await user.click(breakSwitch)
-    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+    await user.click(screen.getByRole('switch', { name: /집중 자동 시작/ }))
 
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
-    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(false)
-    expect(isSwitchOn(/세션 자동 시작/)).toBe(false)
+    expect(isSwitchOn(/휴식 자동 시작/)).toBe(false)
+    expect(isSwitchOn(/집중 자동 시작/)).toBe(false)
   })
 
   it('notifies once by the final result when an earlier save fails and a later one succeeds', async () => {
@@ -355,11 +438,11 @@ describe('PomodoroSettingsPage', () => {
     )
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 자동 시작/ })
     await waitFor(() => expect(breakSwitch).not.toBeDisabled())
 
     await user.click(breakSwitch)
-    await user.click(screen.getByRole('switch', { name: /세션 자동 시작/ }))
+    await user.click(screen.getByRole('switch', { name: /집중 자동 시작/ }))
 
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
@@ -376,7 +459,7 @@ describe('PomodoroSettingsPage', () => {
     const { serverState } = useSlowSettingsServer()
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const flowRow = await screen.findByRole('button', { name: /Flow 시간.*25분/ })
+    const flowRow = await screen.findByRole('button', { name: /집중 시간.*25분/ })
     await waitFor(() => expect(flowRow).not.toBeDisabled())
 
     await user.click(flowRow)
@@ -387,7 +470,7 @@ describe('PomodoroSettingsPage', () => {
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
-    expect(screen.getByRole('button', { name: /Flow 시간.*30분/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /집중 시간.*30분/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /긴 휴식까지.*6회/ })).toBeInTheDocument()
     expect(serverState.pomodoroSession).toMatchObject({ flowMin: 30, cycleEvery: 6 })
   })
@@ -403,22 +486,42 @@ describe('PomodoroSettingsPage', () => {
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
     expect(await screen.findByText('설정을 불러오지 못했어요')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Flow 시간/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /휴식 시간/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /긴 휴식까지/ })).toBeDisabled()
-    expect(screen.getByRole('switch', { name: /휴식 시간 자동 시작/ })).toBeDisabled()
-    expect(screen.getByRole('switch', { name: /세션 자동 시작/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /오전/ })).toBeDisabled()
-
-    await user.click(screen.getByRole('switch', { name: /휴식 시간 자동 시작/ }))
+    // 실패 안내는 상자 없는 한 줄(InlineStatus)이다(§3-2)
+    expect(screen.getByRole('alert').className).not.toMatch(/(^|\s)(bg|rounded|border)-/)
+    // 불러오지 못한 값은 기본값으로 꾸미지 않는다. 값 자리는 "—"(읽을 때는 "알 수 없음"), 스위치는 숨긴다.
+    // 값을 모르는 행은 모두 같은 모양의 누를 수 없는 줄이다(뽀모도로·자동화·미니 데이 3+2+3)
+    expect(screen.getAllByText('—')).toHaveLength(8)
+    expect(screen.getAllByText('알 수 없음')).toHaveLength(8)
+    expect(screen.queryByRole('button', { name: /집중 시간|휴식 시간|긴 휴식까지|오전/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(screen.queryByText(/25분/)).not.toBeInTheDocument()
     expect(putCount.value).toBe(0)
 
     await user.click(screen.getByRole('button', { name: '다시 시도' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Flow 시간/ })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /집중 시간.*25분/ })).not.toBeDisabled()
     })
+    expect(screen.getByRole('switch', { name: /휴식 자동 시작/ })).toBeInTheDocument()
     expect(screen.queryByText('설정을 불러오지 못했어요')).not.toBeInTheDocument()
+  })
+
+  it('says settings could not be loaded offline instead of leaving blank values, and loads after reconnecting', async () => {
+    signInAsMember()
+    useSlowSettingsServer()
+    onlineManager.setOnline(false)
+    try {
+      renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+      expect(await screen.findByText('오프라인이라 설정을 불러오지 못했어요. 연결되면 다시 불러와요.')).toBeInTheDocument()
+      expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+
+      act(() => onlineManager.setOnline(true))
+      expect(await screen.findByRole('switch', { name: /휴식 자동 시작/ })).toBeInTheDocument()
+      expect(screen.queryByText(/오프라인이라 설정을/)).not.toBeInTheDocument()
+    } finally {
+      onlineManager.setOnline(true)
+    }
   })
 
   it('blocks editing while settings are still loading', async () => {
@@ -433,10 +536,9 @@ describe('PomodoroSettingsPage', () => {
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
     expect(await screen.findByText('설정')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Flow 시간/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /휴식 시간/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /긴 휴식까지/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /오전/ })).toBeDisabled()
+    expect(screen.getByText('집중 시간')).toBeInTheDocument()
+    expect(screen.getAllByText('알 수 없음')).toHaveLength(8)
+    expect(screen.queryByRole('button', { name: /집중 시간|휴식 시간|긴 휴식까지|오전/ })).not.toBeInTheDocument()
   })
 
   it('rolls back the switch and shows an error toast when saving fails', async () => {
@@ -452,14 +554,14 @@ describe('PomodoroSettingsPage', () => {
     )
 
     const { queryClient } = renderApp(<PomodoroSettingsPage />, { route: '/settings' })
-    const breakSwitch = await screen.findByRole('switch', { name: /휴식 시간 자동 시작/ })
+    const breakSwitch = await screen.findByRole('switch', { name: /휴식 자동 시작/ })
     await waitFor(() => expect(breakSwitch).not.toBeDisabled())
 
     await user.click(breakSwitch)
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('설정을 저장하지 못했어요'))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('설정을 저장하지 못했어요. 다시 시도해 주세요.'))
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
-    expect(isSwitchOn(/휴식 시간 자동 시작/)).toBe(false)
+    expect(isSwitchOn(/휴식 자동 시작/)).toBe(false)
   })
 
   it('shows an error toast when saving a mini day fails', async () => {
@@ -481,9 +583,9 @@ describe('PomodoroSettingsPage', () => {
     await user.type(labelInput, '아침')
     await user.keyboard('{Escape}')
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('미니 데이를 저장하지 못했어요. 다시 시도해 주세요'))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('미니 데이를 저장하지 못했어요. 다시 시도해 주세요.'))
   })
-  it('shows a 24:00 end as midnight and keeps it when the end wheel is touched', async () => {
+  it('shows a 24:00 end as 24:00 in the one range format and keeps it when the end wheel is touched', async () => {
     const user = userEvent.setup()
     signInAsMember()
     useSlowSettingsServer()
@@ -491,20 +593,21 @@ describe('PomodoroSettingsPage', () => {
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
     const eveningRow = await screen.findByRole('button', { name: /저녁/ })
     await waitFor(() => expect(eveningRow).not.toBeDisabled())
-    expect(eveningRow).toHaveAccessibleName(/오후 6:00-자정/)
+    // 미니 데이 구간은 계획과 같은 "18:00–24:00" 한 형식이다(C8)
+    expect(eveningRow).toHaveAccessibleName(/18:00–24:00/)
 
     await user.click(eveningRow)
-    const endCard = await screen.findByRole('button', { name: /종료/ })
-    expect(endCard).toHaveAccessibleName(/자정/)
+    const endCard = await screen.findByRole('radio', { name: /종료/ })
+    expect(endCard).toHaveAccessibleName('종료 24:00')
 
     await user.click(endCard)
     await user.click(within(screen.getByLabelText('분 선택')).getByRole('button', { name: '00' }))
 
-    expect(screen.getByRole('button', { name: /종료/ })).toHaveAccessibleName(/자정/)
+    expect(screen.getByRole('radio', { name: /종료/ })).toHaveAccessibleName('종료 24:00')
     expect(screen.queryByText('종료는 시작보다 늦어야 해요')).not.toBeInTheDocument()
   })
 
-  it('saves midnight as 24:00 when 12 AM is picked for the end', async () => {
+  it('saves midnight as 24:00 when 24 is picked for the end', async () => {
     const user = userEvent.setup()
     signInAsMember()
     const { serverState } = useSlowSettingsServer()
@@ -521,11 +624,10 @@ describe('PomodoroSettingsPage', () => {
     await waitFor(() => expect(afternoonRow).not.toBeDisabled())
 
     await user.click(afternoonRow)
-    await user.click(await screen.findByRole('button', { name: /종료/ }))
-    await user.click(within(screen.getByLabelText('오전 오후 선택')).getByRole('button', { name: '오전' }))
-    await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '12' }))
+    await user.click(await screen.findByRole('radio', { name: /종료/ }))
+    await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '24' }))
 
-    expect(screen.getByRole('button', { name: /종료/ })).toHaveAccessibleName(/자정/)
+    expect(screen.getByRole('radio', { name: /종료/ })).toHaveAccessibleName('종료 24:00')
     expect(screen.queryByText('종료는 시작보다 늦어야 해요')).not.toBeInTheDocument()
 
     await user.keyboard('{Escape}')
@@ -605,9 +707,8 @@ describe('PomodoroSettingsPage', () => {
     await waitFor(() => expect(morningRow).not.toBeDisabled())
 
     await user.click(morningRow)
-    await user.click(await screen.findByRole('button', { name: /종료/ }))
-    await user.click(within(screen.getByLabelText('오전 오후 선택')).getByRole('button', { name: '오전' }))
-    await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '5' }))
+    await user.click(await screen.findByRole('radio', { name: /종료/ }))
+    await user.click(within(screen.getByLabelText('시 선택')).getByRole('button', { name: '05' }))
     expect(screen.getByText('종료는 시작보다 늦어야 해요')).toBeInTheDocument()
     expect(screen.getByText('오류를 고치지 않고 닫으면 저장되지 않아요')).toBeInTheDocument()
     vi.mocked(toast).mockClear()
@@ -615,8 +716,68 @@ describe('PomodoroSettingsPage', () => {
 
     expect(screen.queryByRole('heading', { name: '미니 데이 설정' })).not.toBeInTheDocument()
     expect(toast).toHaveBeenCalledWith('저장하지 않았어요', expect.anything())
-    expect(screen.getByRole('button', { name: /오전.*오전 6:00-오후 12:00/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /오전.*06:00–12:00/ })).toBeInTheDocument()
     expect(putCount).toBe(0)
+  })
+
+  it('edits start and end with one SegmentToggle and a 44px wheel, without boxes inside boxes', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    useSlowSettingsServer()
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const morningRow = await screen.findByRole('button', { name: /오전/ })
+    await waitFor(() => expect(morningRow).not.toBeDisabled())
+    await user.click(morningRow)
+
+    const sheet = await screen.findByRole('dialog', { name: '미니 데이 설정' })
+    const segment = within(sheet).getByRole('radiogroup', { name: '고칠 시각' })
+    expect(within(segment).getByRole('radio', { name: '시작 06:00' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(segment).getByRole('radio', { name: '종료 12:00' })).toHaveAttribute('aria-checked', 'false')
+    // 미리 보기도 같은 구간 형식이다
+    expect(sheet).toHaveTextContent('06:00–12:00 · 6시간')
+    // 휠 항목은 터치 44 이상이다(X3)
+    for (const item of within(screen.getByRole('group', { name: '시 선택' })).getAllByRole('button')) {
+      expect(item.style.height).toBe('44px')
+    }
+    // 시트 면 위에 상자를 겹치지 않는다(H3): 휠 묶음과 시작/종료 고르기를 담던 sunken/base 상자가 없다
+    expect(sheet.querySelector('.rounded-card, .bg-surface-base')).toBeNull()
+
+    await user.click(within(segment).getByRole('radio', { name: '종료 12:00' }))
+    expect(within(segment).getByRole('radio', { name: '종료 12:00' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  // 칸("시작 18:00")과 휠이 같은 24시간 표기다. 오전/오후 열은 없고, 종료만 그날의 끝 24를 고를 수 있다
+  it('picks times on a 24-hour wheel: start 00–23, end 01–24, and 24 always means 24:00', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    useSlowSettingsServer()
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    const eveningRow = await screen.findByRole('button', { name: /저녁/ })
+    await waitFor(() => expect(eveningRow).not.toBeDisabled())
+    await user.click(eveningRow)
+
+    const sheet = await screen.findByRole('dialog', { name: '미니 데이 설정' })
+    expect(within(sheet).queryByLabelText('오전 오후 선택')).not.toBeInTheDocument()
+    const hourLabels = () => within(screen.getByRole('group', { name: '시 선택' })).getAllByRole('button').map((b) => b.textContent)
+    expect(hourLabels()).toEqual(Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')))
+    expect(within(sheet).getByRole('radio', { name: '시작 18:00' })).toBeInTheDocument()
+
+    await user.click(within(screen.getByRole('group', { name: '시 선택' })).getByRole('button', { name: '19' }))
+    expect(within(sheet).getByRole('radio', { name: '시작 19:00' })).toBeInTheDocument()
+
+    await user.click(within(sheet).getByRole('radio', { name: '종료 24:00' }))
+    expect(hourLabels()).toEqual(Array.from({ length: 24 }, (_, h) => String(h + 1).padStart(2, '0')))
+    // 24시면 분 휠에는 00 하나만 있다(돌려서 30에 멈춰도 값은 24:00인 어긋남이 없다)
+    const minuteLabels = () => within(screen.getByRole('group', { name: '분 선택' })).getAllByRole('button').map((b) => b.textContent)
+    expect(minuteLabels()).toEqual(['00'])
+    expect(within(sheet).getByRole('radio', { name: '종료 24:00' })).toBeInTheDocument()
+    await user.click(within(screen.getByRole('group', { name: '시 선택' })).getByRole('button', { name: '23' }))
+    expect(within(sheet).getByRole('radio', { name: '종료 23:00' })).toBeInTheDocument()
+    expect(minuteLabels()).toHaveLength(12)
+    await user.click(within(screen.getByRole('group', { name: '분 선택' })).getByRole('button', { name: '30' }))
+    expect(within(sheet).getByRole('radio', { name: '종료 23:30' })).toBeInTheDocument()
   })
 
   it('tells once that setting changes apply to newly started timers', async () => {
@@ -648,14 +809,40 @@ describe('PomodoroSettingsPage', () => {
       ...defaultMiniDaysSettings,
       day1: { label: '아침', start: '07:00', end: '12:00' },
     }
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const nativeConfirm = vi.spyOn(window, 'confirm')
 
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
     await screen.findByRole('button', { name: /아침/ })
     const resetButtons = screen.getAllByRole('button', { name: '기본값 복원' })
     await user.click(resetButtons[resetButtons.length - 1])
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('오전 6:00, 오후 12:00, 오후 6:00'))
+    const sheet = screen.getByRole('dialog', { name: '미니 데이를 기본값으로 복원할까요?' })
+    expect(sheet).toHaveTextContent('06:00, 12:00, 18:00')
+    expect(within(sheet).getByRole('button', { name: '기본값으로 복원' })).toBeInTheDocument()
+    await user.click(within(sheet).getByRole('button', { name: '돌아가기' }))
+    expect(serverState.miniDays.day1.start).toBe('07:00')
+    expect(nativeConfirm).not.toHaveBeenCalled()
+  })
+
+  it('asks with a confirm sheet before logging out and logs out only on the logout action', async () => {
+    const user = userEvent.setup()
+    signInAsMember()
+    useSlowSettingsServer()
+    const logout = vi.fn().mockResolvedValue(undefined)
+    useAuthStore.setState({ logout })
+
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+    await user.click(await screen.findByRole('button', { name: '로그아웃' }))
+
+    const sheet = screen.getByRole('dialog', { name: '로그아웃할까요?' })
+    await user.click(within(sheet).getByRole('button', { name: '돌아가기' }))
+    expect(logout).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '로그아웃' }))
+    await user.click(
+      within(screen.getByRole('dialog', { name: '로그아웃할까요?' })).getByRole('button', { name: '로그아웃' }),
+    )
+    await waitFor(() => expect(logout).toHaveBeenCalledTimes(1))
   })
 
   it('lets the user pick system, light or dark theme in one row', async () => {
@@ -666,15 +853,18 @@ describe('PomodoroSettingsPage', () => {
 
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
-    expect(await screen.findByText('화면 테마')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '시스템', pressed: true })).toBeInTheDocument()
+    expect(await screen.findByRole('radiogroup', { name: '화면 테마' })).toBeInTheDocument()
+    expect(screen.getByText('테마')).toBeInTheDocument()
+    // 다른 묶음처럼 테마 행도 카드에 담는다(사용자 결정 2026-10-20)
+    expect(screen.getByRole('radiogroup', { name: '화면 테마' }).closest('.rounded-card')).toHaveClass('bg-surface-card')
+    expect(screen.getByRole('radio', { name: '시스템', checked: true })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '다크' }))
+    await user.click(screen.getByRole('radio', { name: '다크' }))
     expect(useThemeStore.getState().theme).toBe('dark')
     expect(document.documentElement).toHaveClass('dark')
-    expect(screen.getByRole('button', { name: '다크', pressed: true })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: '다크', checked: true })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '시스템' }))
+    await user.click(screen.getByRole('radio', { name: '시스템' }))
     expect(useThemeStore.getState().theme).toBe('system')
     expect(document.documentElement).not.toHaveClass('dark')
   })

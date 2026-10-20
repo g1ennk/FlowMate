@@ -227,7 +227,8 @@ export function useDragAndDrop({
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 12 } }),
+    // 행 전체를 길게 눌러 끈다. 스크롤하다 잠깐 멈춘 손가락이 끌기로 바뀌지 않게 250ms 동안 8px 안에 머물러야 시작한다
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 

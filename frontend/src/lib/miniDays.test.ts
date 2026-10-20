@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MiniDaysSettings } from '../api/types'
-import { defaultMiniDaysSettings, getMiniDayFromTime } from './miniDays'
+import { defaultMiniDaysSettings, getMiniDayFromTime, hasMiniDayEnded } from './miniDays'
 
 function at(hours: number, minutes = 0) {
   return new Date(2026, 9, 19, hours, minutes)
@@ -39,5 +39,19 @@ describe('getMiniDayFromTime', () => {
       day3: { label: '저녁', start: '18:00', end: '24:00' },
     }
     expect(getMiniDayFromTime(at(12, 30), settings)).toBe(1)
+  })
+})
+
+describe('hasMiniDayEnded', () => {
+  it('구간 끝 시각부터 지난 것으로 본다', () => {
+    expect(hasMiniDayEnded(1, defaultMiniDaysSettings, at(11, 59))).toBe(false)
+    expect(hasMiniDayEnded(1, defaultMiniDaysSettings, at(12))).toBe(true)
+    // 24:00에 끝나는 구간은 그날 안에 끝나지 않는다
+    expect(hasMiniDayEnded(3, defaultMiniDaysSettings, at(23, 59))).toBe(false)
+  })
+
+  it('미분류(0)나 없는 구간은 지난 것으로 보지 않는다', () => {
+    expect(hasMiniDayEnded(0, defaultMiniDaysSettings, at(23))).toBe(false)
+    expect(hasMiniDayEnded(4, defaultMiniDaysSettings, at(23))).toBe(false)
   })
 })

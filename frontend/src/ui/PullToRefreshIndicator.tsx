@@ -3,6 +3,8 @@ import { ArrowPathIcon } from './Icons'
 
 const SIZE = 40
 
+// 그림자 없는 낮은 원(surface-sunken). 떠 있는 것 3종(시트, 토스트, 선택 바)만 그림자를 쓴다(§6-1)
+
 type PullToRefreshIndicatorProps = {
   pullDistance: number
   isRefreshing: boolean
@@ -24,7 +26,7 @@ export function PullToRefreshIndicator({ pullDistance, isRefreshing }: PullToRef
       }}
     >
       <div
-        className="flex items-center justify-center rounded-full bg-surface-card text-accent shadow-md"
+        className="flex items-center justify-center rounded-full bg-surface-sunken text-text-secondary"
         style={{ width: SIZE, height: SIZE }}
       >
         <ArrowPathIcon

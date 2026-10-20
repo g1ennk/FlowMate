@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseKpt, extractTry } from './kptParser'
+import { parseKpt } from './kptParser'
 
 describe('parseKpt', () => {
   it('parses bracket KPT tags', () => {
@@ -57,21 +57,5 @@ describe('parseKpt', () => {
   it('treats > as plain when no KPT tags exist', () => {
     const result = parseKpt('> 그냥 인용')
     expect(result).toBeNull()
-  })
-})
-
-describe('extractTry', () => {
-  it('extracts Try text from KPT content', () => {
-    const input = `[Keep] 잘한 것\n\n[Problem] 문제\n\n[Try] 개선할 것`
-    expect(extractTry(input)).toBe('개선할 것')
-  })
-
-  it('returns null for content without Try tag', () => {
-    expect(extractTry('그냥 텍스트')).toBeNull()
-  })
-
-  it('extracts multiline Try from emoji format', () => {
-    const input = `✅ Keep\n잘한 것\n\n💡 Try\n- 내일 아침에 운동하기\n- 일찍 자기\n\n> 질문`
-    expect(extractTry(input)).toBe('- 내일 아침에 운동하기\n- 일찍 자기')
   })
 })

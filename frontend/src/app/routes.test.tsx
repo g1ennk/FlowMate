@@ -37,13 +37,24 @@ describe('routes 에러 처리', () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/settings'] })
     render(<RouterProvider router={router} />)
 
-    expect(await screen.findByText('오류가 발생했어요')).toBeInTheDocument()
+    expect(await screen.findByText('화면을 열지 못했어요')).toBeInTheDocument()
     expect(screen.getByText('하단 탭')).toBeInTheDocument()
 
     settingsPage.shouldThrow = false
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 
     expect(await screen.findByText('설정 화면')).toBeInTheDocument()
-    expect(screen.queryByText('오류가 발생했어요')).not.toBeInTheDocument()
+    expect(screen.queryByText('화면을 열지 못했어요')).not.toBeInTheDocument()
+  })
+})
+
+describe('routes 404', () => {
+  it('없는 주소는 레이아웃 안에서 "계획으로 가기" 링크와 함께 안내한다', async () => {
+    const router = createMemoryRouter(routes, { initialEntries: ['/nowhere'] })
+    render(<RouterProvider router={router} />)
+
+    expect(await screen.findByRole('heading', { name: '페이지를 찾을 수 없어요' })).toBeInTheDocument()
+    expect(screen.getByText('하단 탭')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '계획으로 가기' })).toHaveAttribute('href', '/todos')
   })
 })

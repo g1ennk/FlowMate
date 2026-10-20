@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import { UndoToast } from '../../ui/UndoToast'
+import { toastMessages } from '../../lib/messages'
 import { useDeleteTodo } from './hooks'
 import { useTimerStore } from '../timer/timerStore'
 import { cancelDelete, flushDeletes, scheduleDelete } from './pendingDeletes'
+import { findNeighborRowId, focusTodoRow } from './rowFocus'
 
 const UNDO_MS = 5000
 
@@ -13,6 +15,7 @@ function flushAndDismiss(keepalive = false) {
 }
 
 // 할 일을 화면에서 바로 숨기고, 5초 안에 되돌리지 않으면 서버에서 삭제한다.
+// message는 대상을 말한다(toastMessages.todoDeleted(제목), 여러 개면 todosDeleted(개수)).
 export function useDeleteWithUndo() {
   const deleteTodo = useDeleteTodo()
   const pause = useTimerStore((s) => s.pause)
@@ -42,6 +45,8 @@ export function useDeleteWithUndo() {
     // 되돌릴 수 있도록 타이머는 멈추기만 하고, 정리는 실제로 삭제된 뒤에 한다.
     const pausedIds = ids.filter((id) => getTimer(id)?.status === 'running')
     pausedIds.forEach(pause)
+    // 숨기기 전에 다음 행을 기억해 둔다. 토스트가 사라지면 포커스를 그 행으로 돌려준다
+    const neighborId = findNeighborRowId(ids)
 
     const key = scheduleDelete(ids, (commitIds, keepalive) => {
       for (const id of commitIds) {
@@ -63,10 +68,15 @@ export function useDeleteWithUndo() {
           message={message}
           onUndo={() => {
             if (!cancelDelete(key)) {
-              toast.error('이미 삭제돼서 되돌릴 수 없어요', { id: 'delete-undo-too-late' })
+              toast.error(toastMessages.undoTooLate, { id: 'delete-undo-too-late' })
               return
             }
             pausedIds.forEach(resume)
+          }}
+          takeFocus
+          returnFocus={(undone) => {
+            if (undone && focusTodoRow(ids[0])) return
+            focusTodoRow(neighborId)
           }}
         />
       ),

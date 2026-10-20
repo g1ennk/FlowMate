@@ -57,7 +57,7 @@ describe('AppLayoutGate', () => {
     renderGate()
 
     // Splash는 FlowMate 로고를 보여준다 (로그인 페이지로 리다이렉트되지 않음)
-    expect(screen.getByText('Flow')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'FlowMate' })).toBeInTheDocument()
     expect(screen.queryByText('login page')).not.toBeInTheDocument()
   })
 

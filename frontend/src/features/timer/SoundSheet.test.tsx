@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { SoundSheet } from './SoundSheet'
 import { SOUND_PRESETS } from './soundCatalog'
 import { setSoundEngineForTest, type SoundEngine } from './soundEngine'
@@ -39,7 +39,7 @@ describe('SoundSheet', () => {
 
   it('passes zIndex 10000 to the sheet', () => {
     render(<SoundSheet isOpen onClose={() => {}} />)
-    const container = screen.getByText('분위기').closest('[aria-hidden]') as HTMLElement
+    const container = screen.getByRole('dialog', { name: '사운드' }).closest('[style*="z-index"]') as HTMLElement
     expect(container.style.zIndex).toBe('10000')
   })
 
@@ -53,9 +53,13 @@ describe('SoundSheet', () => {
     expect(screen.getByRole('button', { name: '비 오는 카페' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: '숲속 로파이' })).toHaveAttribute('aria-pressed', 'false')
     cards.forEach((card) => expect(card).toHaveClass('break-keep', 'min-h-12', 'text-center'))
-    expect(cards[0]).toHaveClass('text-accent-text')
-    expect(cards[0]).not.toHaveClass('text-accent')
-    expect(cards[1]).toHaveClass('text-text-primary')
+    // 타이머 위에서 여는 시트라 테마와 무관한 timer 면이고, 앱 토큰을 쓰지 않는다(.impeccable.md §4-3)
+    const sheet = screen.getByRole('dialog', { name: '사운드' })
+    expect(sheet).toHaveClass('bg-timer-modal-bg')
+    const appToken = /(^|[\s:])(bg|text|border|from|to)-(accent|surface-|text-|border-)/
+    for (const el of [sheet, ...sheet.querySelectorAll('*')]) {
+      expect(el.getAttribute('class') ?? '').not.toMatch(appToken)
+    }
     for (const removed of ['백색소음', '로파이만', '피아노만', '재즈만', '빗소리만']) {
       expect(screen.queryByRole('button', { name: removed })).not.toBeInTheDocument()
     }
@@ -120,6 +124,48 @@ describe('SoundSheet', () => {
     expect(screen.queryByText('일부 소리를 불러오지 못했어요')).not.toBeInTheDocument()
   })
 
+  it('자동 재생이 막혔으면 시트에서도 눌러서 다시 재생할 수 있다', async () => {
+    const retryPlayback = vi.fn()
+    const original = useSoundscapeStore.getState().retryPlayback
+    onTestFinished(() => useSoundscapeStore.setState({ retryPlayback: original }))
+    useSoundscapeStore.setState({ enabled: true, blocked: true, retryPlayback })
+    render(<SoundSheet isOpen onClose={() => {}} />)
+
+    expect(screen.getByText('브라우저가 소리를 막았어요')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '눌러서 재생' }))
+    expect(retryPlayback).toHaveBeenCalledTimes(1)
+
+    act(() => useSoundscapeStore.setState({ blocked: false }))
+    expect(screen.queryByRole('button', { name: '눌러서 재생' })).not.toBeInTheDocument()
+  })
+
+  it('휴식과 대기 중에 켜 두면 스위치 아래에 집중할 때 재생된다고 알린다', () => {
+    useSoundscapeStore.setState({ enabled: true, phase: 'break' })
+    render(<SoundSheet isOpen onClose={() => {}} />)
+    expect(screen.getByRole('switch', { name: '사운드' })).toBeChecked()
+    expect(screen.getByText('집중할 때 다시 재생돼요')).toBeInTheDocument()
+    // 안내는 스위치 설명으로 읽힌다(스위치에 포커스했을 때 왜 조용한지 함께 들린다)
+    expect(screen.getByRole('switch', { name: '사운드' })).toHaveAccessibleDescription('집중할 때 다시 재생돼요')
+
+    act(() => useSoundscapeStore.setState({ phase: 'waiting' }))
+    expect(screen.getByText('집중할 때 다시 재생돼요')).toBeInTheDocument()
+
+    act(() => useSoundscapeStore.setState({ phase: 'focus' }))
+    expect(screen.queryByText('집중할 때 다시 재생돼요')).not.toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: '사운드' })).not.toHaveAttribute('aria-describedby')
+
+    act(() => useSoundscapeStore.setState({ phase: 'break', enabled: false }))
+    expect(screen.queryByText('집중할 때 다시 재생돼요')).not.toBeInTheDocument()
+  })
+
+  it('묶음 제목은 SectionHeader(h3)이고 비율 이름은 제목 줄 오른쪽에 있다', () => {
+    render(<SoundSheet isOpen onClose={() => {}} />)
+    for (const name of ['볼륨', '분위기', '음악과 환경음']) {
+      expect(screen.getByRole('heading', { level: 3, name })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('heading', { level: 3, name: '음악과 환경음' }).parentElement).toHaveTextContent('균형')
+  })
+
   it('has no break-time sound option', () => {
     render(<SoundSheet isOpen onClose={() => {}} />)
     expect(screen.queryByText('휴식 시간')).not.toBeInTheDocument()
@@ -143,6 +189,31 @@ describe('SoundSheet', () => {
     expect(screen.queryByRole('button', { name: '음원 출처' })).not.toBeInTheDocument()
     expect(screen.queryByText('음원 출처')).not.toBeInTheDocument()
     expect(screen.queryAllByRole('link')).toHaveLength(0)
+  })
+
+  it('turns sound on and off with the switch and sets the master volume (moved from the timer screen)', async () => {
+    const user = userEvent.setup()
+    render(<SoundSheet isOpen onClose={() => {}} />)
+    const toggle = screen.getByRole('switch', { name: '사운드' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByLabelText('전체 볼륨')).toBeDisabled()
+
+    await user.click(toggle)
+    expect(useSoundscapeStore.getState().enabled).toBe(true)
+    expect(screen.getByRole('switch', { name: '사운드' })).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.change(screen.getByLabelText('전체 볼륨'), { target: { value: '0.6' } })
+    expect(useSoundscapeStore.getState().masterVolume).toBe(0.6)
+    // 슬라이더의 터치 높이는 44다
+    expect(screen.getByLabelText('전체 볼륨')).toHaveClass('h-11')
+    expect(screen.getByLabelText('음악과 환경음 비율')).toHaveClass('h-11')
+  })
+
+  it('shows the current balance step name next to the slider', () => {
+    render(<SoundSheet isOpen onClose={() => {}} />)
+    expect(screen.getByText('균형')).toBeVisible()
+    fireEvent.change(screen.getByLabelText('음악과 환경음 비율'), { target: { value: '0.25' } })
+    expect(screen.getByText('음악 위주')).toBeVisible()
   })
 
   describe('reset', () => {

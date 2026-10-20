@@ -34,7 +34,7 @@ export const routes: RouteObject[] = [
     children: [
       {
         // 화면 안에서 난 에러는 여기서 받아 레이아웃(하단 탭)을 유지한다
-        errorElement: <RouteErrorBoundary />,
+        errorElement: <RouteErrorBoundary inLayout />,
         children: [
           { index: true, element: <Navigate to="/todos" replace /> },
           { path: 'todos', element: <TodosPage /> },

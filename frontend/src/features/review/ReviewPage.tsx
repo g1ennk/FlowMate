@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { formatDateKey } from '../../lib/time'
+import { systemMessages } from '../../lib/messages'
+import { isWaitingOffline } from '../../lib/queryStatus'
 import { useTodos } from '../todos/hooks'
+import { useReview } from './hooks'
+import { InlineStatus } from '../../ui/InlineStatus'
+import { Card } from '../../ui/Card'
 import { useTimerStore } from '../timer/timerStore'
 import type { SingleTimerState } from '../timer/timerStore'
 import { defaultMiniDaysSettings } from '../../lib/miniDays'
@@ -12,27 +17,24 @@ import { PeriodTabs } from './components/PeriodTabs'
 import { DailyTaskList } from './components/DailyTaskList'
 import { TimelineList } from './components/TimelineList'
 import { ReviewTextarea } from './components/ReviewTextarea'
-import { PreviousTryBanner } from './components/PreviousTryBanner'
 import { SessionDetailSheet } from './components/SessionDetailSheet'
 import {
   buildPeriodStats,
   buildDailyGroups,
-  buildWeeklyGroups,
+  buildStatDeltas,
   getPeriodRange,
-  getPreviousPeriodStart,
   shiftBaseDate,
   formatPeriodLabel,
   buildTasksByDate,
+  buildReviewPlaceholder,
 } from './reviewUtils'
-import { useReview, useReviewList } from './hooks'
 import { getReviewRouteState } from './reviewRouteParams'
 import type { TaskItem } from './reviewTypes'
-import { useCoachMark } from '../../lib/useCoachMark'
-import { CoachMark } from '../../ui/CoachMark'
 import { ReviewSkeleton } from '../../ui/Skeleton'
+import { PageHeader } from '../../ui/PageHeader'
 
 const DIARY_TITLES: Record<ReturnType<typeof getReviewRouteState>['period'], string> = {
-  daily: '하루 회고',
+  daily: '일간 회고',
   weekly: '주간 회고',
   monthly: '월간 회고',
 }
@@ -45,7 +47,8 @@ function selectRunningTodoKey(timers: Record<string, SingleTimerState>): string 
 }
 
 export function ReviewPage() {
-  const { data, isLoading, isError, isFetching, refetch } = useTodos()
+  const todosQuery = useTodos()
+  const { data, isLoading, isError, isFetching, refetch } = todosQuery
   const { data: miniDaysSettings = defaultMiniDaysSettings } = useMiniDaysSettings()
   // 타이머는 250ms마다 갱신되지만 회고에는 "지금 실행 중인 할 일"만 필요하다.
   // 문자열로 구독해 실행 여부가 바뀔 때만 다시 그린다.
@@ -80,25 +83,20 @@ export function ReviewPage() {
     [todos, runningIds, period, baseDate],
   )
 
-  const reviewRange = getPeriodRange(period, baseDate)
-  const { data: currentReview } = useReview(period, reviewRange.startKey)
+  const reviewRange = useMemo(() => getPeriodRange(period, baseDate), [period, baseDate])
   const today = new Date()
   const todayKey = formatDateKey(today)
   const currentWeekStartKey = getPeriodRange('weekly', today).startKey
   const currentMonthStartKey = getPeriodRange('monthly', today).startKey
 
-  const monthRange = getPeriodRange('monthly', baseDate)
-  const { data: monthlyReviews } = useReviewList('daily', monthRange.startKey, monthRange.endKey)
-  const monthlyReviewCount = monthlyReviews?.items?.length ?? 0
   const tasksByDate = useMemo(
-    () => buildTasksByDate(todos ?? [], runningIds, getPeriodRange(period, baseDate)),
-    [todos, runningIds, period, baseDate],
+    () => buildTasksByDate(todos ?? [], runningIds, reviewRange),
+    [todos, runningIds, reviewRange],
   )
   const dailyTasks = period === 'daily' ? tasksByDate[reviewRange.startKey] ?? [] : []
-  const weeklyGroups =
-    period === 'weekly' ? buildDailyGroups(tasksByDate, reviewRange) : []
-  const monthlyGroups =
-    period === 'monthly' ? buildWeeklyGroups(tasksByDate, reviewRange) : []
+  // 날마다 한 묶음. 월간은 TimelineList가 이것을 주로 다시 묶는다(주 → 날짜)
+  const dayGroups = period === 'daily' ? [] : buildDailyGroups(tasksByDate, reviewRange)
+  const isPastPeriod = reviewRange.endKey < todayKey
   const miniDayLabels = [
     { id: 0, label: '미분류' },
     { id: 1, label: miniDaysSettings.day1.label },
@@ -107,8 +105,9 @@ export function ReviewPage() {
   ]
 
   // 탭을 바꿔도 보고 있던 날짜를 기준으로 그 주와 그 달을 보여 준다.
+  // 방향키로 기간을 훑어도 뒤로 가기 기록이 쌓이지 않게 replace한다.
   const handlePeriodChange = (nextPeriod: typeof period) => {
-    setSearchParams({ period: nextPeriod, date: dateKey }, { preventScrollReset: true })
+    setSearchParams({ period: nextPeriod, date: dateKey }, { replace: true, preventScrollReset: true })
   }
 
   const handlePrev = () => {
@@ -130,78 +129,88 @@ export function ReviewPage() {
     setSearchParams({ period, date: todayKey }, { preventScrollReset: true })
   }
 
-  const PERIOD_LABELS: Record<typeof period, { badge: string; jump: string }> = {
-    daily: { badge: '오늘', jump: '오늘로 이동' },
-    weekly: { badge: '이번 주', jump: '이번 주로 이동' },
-    monthly: { badge: '이번 달', jump: '이번 달로 이동' },
-  }
-  const currentJumpLabel = PERIOD_LABELS[period].jump
   const isToday = dateKey === todayKey
   const diaryTitle = period === 'daily' && isToday ? '오늘 회고' : DIARY_TITLES[period]
   // 할 일을 불러오지 못했는데 보여 줄 데이터도 없으면 0건처럼 보이지 않게 실패를 알린다.
-  const isTodosLoadError = isError && !data
+  // 오프라인으로 열어 아직 못 불러왔으면(paused) 0건처럼 보이지 않게 오프라인이라고 알린다. 연결되면 저절로 불러온다
+  const isTodosOffline = isWaitingOffline(todosQuery)
+  const isTodosLoadError = (isError && !data) || isTodosOffline
+  // 회고도 오프라인으로 기다리는 중이면 회고 자리에서 "회고와 기록"을 한 줄로 알리고, 아래에서 같은 말을 되풀이하지 않는다
+  const isReviewOffline = isWaitingOffline(useReview(period, reviewRange.startKey))
 
-  const reviewCoach = useCoachMark('review-intro')
+  // 기간 고르기와 날짜 이동은 데이터와 상관없으니 불러오는 동안에도 그대로 보여 준다.
+  // 둘은 한 묶음이라 카드 한 장에 담는다. 날짜가 위, 기간 고르기가 아래이고 사이는 목록 행과 같은 가는 선으로 나눈다(사용자 결정 2026-10-20)
+  const periodControls = (
+    <Card>
+      <PeriodNavigator
+        period={period}
+        label={formatPeriodLabel(period, baseDate)}
+        isCurrent={isCurrentPeriod}
+        onJumpToCurrent={handleJumpToCurrent}
+        onPrev={handlePrev}
+        onNext={handleNext}
+      />
+      <div className="mt-card-item border-t border-border-subtle pt-card-item">
+        <PeriodTabs value={period} onChange={handlePeriodChange} />
+      </div>
+    </Card>
+  )
 
   if (isLoading) {
     return (
-      <div className="animate-fade-in-up space-y-section">
-        <PeriodTabs value={period} onChange={handlePeriodChange} />
+      <div className="space-y-section">
+        <PageHeader title="회고" />
+        {periodControls}
         <ReviewSkeleton />
       </div>
     )
   }
 
   return (
-    <div className="animate-fade-in-up space-y-section">
-      <PeriodTabs value={period} onChange={handlePeriodChange} />
+    <div className="space-y-section">
+      <PageHeader title="회고" />
+      {periodControls}
 
-      <CoachMark
-        message={"오늘 완료한 할 일과 집중 시간이 여기에 기록돼요.\n일간/주간/월간으로 회고할 수 있어요."}
-        visible={reviewCoach.visible}
-        onDismiss={reviewCoach.dismiss}
+      <ReviewTextarea
+        key={`review-${period}-${reviewRange.startKey}`}
+        title={diaryTitle}
+        periodType={period}
+        periodStart={reviewRange.startKey}
+        periodEnd={reviewRange.endKey}
+        completedTodoCount={stats.completedCount}
+        totalSessionCount={stats.totalFlows}
+        placeholder={buildReviewPlaceholder(period, {
+          focusCount: stats.totalFlows,
+          completedCount: stats.completedCount,
+          isCurrent: isCurrentPeriod,
+        })}
+        canRequestAi={!isTodosLoadError}
+        todosOffline={isTodosOffline}
       />
 
-      <PeriodNavigator
-        label={formatPeriodLabel(period, baseDate)}
-        badge={isCurrentPeriod ? PERIOD_LABELS[period].badge : undefined}
-        isCurrent={isCurrentPeriod}
-        jumpLabel={currentJumpLabel}
-        onJumpToCurrent={handleJumpToCurrent}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        reviewCount={monthlyReviewCount}
-      />
-
-      {isTodosLoadError ? (
-        <div
-          role="alert"
-          className="mt-section flex items-center justify-between gap-card-item rounded-2xl bg-state-error-subtle px-4 py-3"
-        >
-          <p className="text-sm font-medium text-state-error">기록을 불러오지 못했어요</p>
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle disabled:cursor-not-allowed disabled:text-text-disabled"
-          >
-            다시 시도
-          </button>
-        </div>
-      ) : (
-        <div className="mt-section">
-          <StatsSummary
-            totalFocusSeconds={stats.totalFocusSeconds}
-            totalFlows={stats.totalFlows}
-            completedCount={stats.completedCount}
-            comparison={stats.comparison}
-            isCurrentPeriod={isCurrentPeriod}
-            hasReview={!!currentReview?.content}
-            onScrollToReview={() =>
-              document.getElementById('review-card')?.scrollIntoView({ behavior: 'smooth' })
-            }
+      {isTodosOffline ? (
+        !isReviewOffline && (
+          <Card>
+            <InlineStatus kind="waiting" message={systemMessages.offlineLoadFailed('기록')} />
+          </Card>
+        )
+      ) : isTodosLoadError ? (
+        <Card>
+          <InlineStatus
+            message="기록을 불러오지 못했어요"
+            actionLabel="다시 시도"
+            onAction={() => void refetch()}
+            actionDisabled={isFetching}
           />
-        </div>
+        </Card>
+      ) : (
+        <StatsSummary
+          totalFocusSeconds={stats.totalFocusSeconds}
+          totalFlows={stats.totalFlows}
+          completedCount={stats.completedCount}
+          deltas={buildStatDeltas(period, reviewRange, todayKey, stats.comparison)}
+          isCurrentPeriod={isCurrentPeriod}
+        />
       )}
 
       {!isTodosLoadError && period === 'daily' && (
@@ -213,51 +222,18 @@ export function ReviewPage() {
         />
       )}
 
-      {!isTodosLoadError && period === 'weekly' && (
+      {!isTodosLoadError && period !== 'daily' && (
         <TimelineList
-          key={`timeline-weekly-${reviewRange.startKey}`}
+          key={`timeline-${period}-${reviewRange.startKey}`}
           title="타임라인"
-          viewMode="weekly"
-          groups={weeklyGroups}
+          viewMode={period}
+          groups={dayGroups}
           miniDayLabels={miniDayLabels}
           onSelectTask={setSelectedTask}
           todayKey={todayKey}
+          isPastPeriod={isPastPeriod}
         />
       )}
-
-      {!isTodosLoadError && period === 'monthly' && (
-        <TimelineList
-          key={`timeline-monthly-${reviewRange.startKey}`}
-          title="타임라인"
-          viewMode="monthly"
-          groups={monthlyGroups}
-          miniDayLabels={miniDayLabels}
-          onSelectTask={setSelectedTask}
-          todayKey={todayKey}
-          highlightKey={currentWeekStartKey}
-        />
-      )}
-
-      <PreviousTryBanner
-        periodType={period}
-        previousPeriodStart={getPreviousPeriodStart(period, baseDate)}
-        onNavigateToPrevious={() => {
-          const prevDate = shiftBaseDate(period, baseDate, -1)
-          setSearchParams({ period, date: formatDateKey(prevDate) }, { preventScrollReset: true })
-        }}
-      />
-
-      <div id="review-card">
-        <ReviewTextarea
-          key={`review-${period}-${reviewRange.startKey}`}
-          title={diaryTitle}
-          periodType={period}
-          periodStart={reviewRange.startKey}
-          periodEnd={reviewRange.endKey}
-          completedTodoCount={stats.completedCount}
-          totalSessionCount={stats.totalFlows}
-        />
-      </div>
 
       <SessionDetailSheet
         task={selectedTask}

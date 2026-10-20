@@ -1,42 +1,34 @@
-import { CheckIcon } from '../../../ui/Icons'
+import { ListRow } from '../../../ui/ListRow'
+import { CheckIcon, ChevronRightIcon } from '../../../ui/Icons'
 import type { TaskItem } from '../reviewTypes'
 
-type TimelineTaskItemProps = {
-  item: TaskItem
-  dateLabel?: string
-  onSelect?: (item: TaskItem) => void
-}
-
-export function TimelineTaskItem({ item, dateLabel, onSelect }: TimelineTaskItemProps) {
-  const isDone = item.isDone
+// 기록 속 할 일 한 줄. 누르면 세션 상세가 열린다(오른쪽 화살표).
+// 행 사이 선은 긋지 않는다. 묶음 머리(GroupCaption)의 가로선이 묶음을 나눈다(사용자 결정 2026-10-20, 바꾸기 전 모양).
+// 완료는 체크 아이콘만 둔다. 계획 화면의 체크 원과 달라야 눌러서 완료를 바꿀 수 있을 것처럼 보이지 않는다.
+export function TimelineTaskItem({ item, onSelect }: { item: TaskItem; onSelect?: (item: TaskItem) => void }) {
   const timeLabel = item.focusSeconds >= 60 ? item.focusTime : '-'
 
   return (
-    <button
-      type="button"
-      onClick={onSelect ? () => onSelect(item) : undefined}
-      className="flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left"
-    >
-      <div
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-          isDone
-            ? 'border-accent bg-accent text-text-inverse'
-            : 'border-border-strong bg-surface-card'
-        }`}
-      >
-        {isDone && <CheckIcon className="h-3 w-3" strokeWidth={3} />}
-      </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-baseline gap-2">
-            {dateLabel && (
-              <span className="text-[11px] font-medium text-text-tertiary">
-                {dateLabel}
-              </span>
-            )}
-            <span className="truncate text-sm text-text-primary">{item.title}</span>
-          </div>
-        </div>
-      <span className="text-[11px] text-text-tertiary">{timeLabel}</span>
-    </button>
+    <ListRow
+      divider={false}
+      onClick={() => onSelect?.(item)}
+      leading={
+        <span className="flex h-5 w-5 items-center justify-center">
+          {item.isDone && <CheckIcon className="h-4 w-4 text-accent" />}
+        </span>
+      }
+      label={
+        <>
+          {item.title}
+          {item.isDone && <span className="sr-only">, 완료</span>}
+        </>
+      }
+      trailing={
+        <>
+          <span className="whitespace-nowrap text-xs">{timeLabel}</span>
+          <ChevronRightIcon className="h-4 w-4" />
+        </>
+      }
+    />
   )
 }

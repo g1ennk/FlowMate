@@ -91,6 +91,7 @@ vi.mock('./useNoteModal', () => ({
     isNoteSaving: false,
     handleOpenNote: vi.fn(),
     handleEditNote: vi.fn(),
+    handleCancelNoteEdit: vi.fn(),
     handleSaveNote: vi.fn(),
     handleDeleteNote: vi.fn(),
     handleCloseNote: vi.fn(),
@@ -119,8 +120,7 @@ vi.mock('./useTimerOpenState', () => ({
   useTimerOpenState: () => ({
     timerTodo: null,
     timerMode: null,
-    timerErrorMessage: null,
-    setTimerErrorMessage: vi.fn(),
+    showTimerError: vi.fn(),
     handleOpenTimer: vi.fn(),
     handleCloseTimer: vi.fn(),
   }),
@@ -147,12 +147,13 @@ describe('useTodoActions timer completion', () => {
     const { result } = renderTodoActions()
 
     await act(async () => {
-      await result.current.handleToggleDone('todo-1', true)
+      await result.current.handleToggleDone('todo-1', '할 일', true)
     })
 
+    // 집중 기록을 보내지 못했으니 완료하지 않았다고 사실대로 알린다
     expect(mocked.toastError).toHaveBeenCalledWith(
-      '타이머 저장에 실패했습니다. 다시 시도해주세요.',
-      { id: 'timer-save-failed' },
+      '집중 기록을 저장하지 못해서 완료하지 않았어요. 다시 시도해 주세요.',
+      { id: 'timer-save-failed', duration: 5000 },
     )
     expect(mocked.updateSessions).not.toHaveBeenCalled()
     expect(mocked.updateTodoMutateAsync).not.toHaveBeenCalled()
@@ -161,11 +162,41 @@ describe('useTodoActions timer completion', () => {
     expect(mocked.toastSuccess).not.toHaveBeenCalled()
   })
 
+  it('says the todo was not completed when the session was saved but completing failed', async () => {
+    mocked.updateTodoMutateAsync.mockRejectedValueOnce(new Error('update failed'))
+    const { result } = renderTodoActions()
+
+    await act(async () => {
+      await result.current.handleToggleDone('todo-1', '할 일', true)
+    })
+
+    expect(mocked.createSessionMutateAsync).toHaveBeenCalledTimes(1)
+    expect(mocked.toastError).toHaveBeenCalledWith(
+      '할 일을 완료하지 못했어요. 다시 시도해 주세요.',
+      { id: 'timer-save-failed', duration: 5000 },
+    )
+    expect(mocked.reset).not.toHaveBeenCalled()
+    expect(mocked.toastSuccess).not.toHaveBeenCalled()
+  })
+
+  it('completes the todo when the session was already saved with a different length (409 IDEMPOTENCY_CONFLICT)', async () => {
+    mocked.createSessionMutateAsync.mockRejectedValueOnce({ status: 409, code: 'IDEMPOTENCY_CONFLICT' })
+    const { result } = renderTodoActions()
+
+    await act(async () => {
+      await result.current.handleToggleDone('todo-1', '할 일', true)
+    })
+
+    expect(mocked.updateTodoMutateAsync).toHaveBeenCalledTimes(1)
+    expect(mocked.reset).toHaveBeenCalledWith('todo-1')
+    expect(mocked.toastError).not.toHaveBeenCalled()
+  })
+
   it('completes and resets the todo after immediate session sync succeeds', async () => {
     const { result } = renderTodoActions()
 
     await act(async () => {
-      await result.current.handleToggleDone('todo-1', true)
+      await result.current.handleToggleDone('todo-1', '할 일', true)
     })
 
     expect(mocked.createSessionMutateAsync).toHaveBeenCalledTimes(1)
@@ -174,7 +205,7 @@ describe('useTodoActions timer completion', () => {
       patch: { isDone: true, timerMode: 'stopwatch' },
     })
     expect(mocked.reset).toHaveBeenCalledWith('todo-1')
-    expect(mocked.toastSuccess).toHaveBeenCalledWith('타이머 저장 완료!', {
+    expect(mocked.toastSuccess).toHaveBeenCalledWith('타이머를 저장했어요', {
       id: 'timer-saved',
     })
     expect(mocked.toastError).not.toHaveBeenCalled()

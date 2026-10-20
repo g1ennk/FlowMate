@@ -8,7 +8,7 @@ import { userTextMarkdownClass } from '../../../lib/userTextStyles'
 // 없으니 unwrapDisallowed 로 셀 텍스트가 구분자 없이 이어 붙어 가비지가 된다.
 // GFM 자체를 끄면 사용자가 `~~` 로 취소선을 만들 수 없는 대신 표 붕괴 위험은 사라진다.
 //
-// h1-h6 도 명시 허용한다. KPT 라벨이 이미 헤딩 역할을 하니 별도 크기 강조는 안 하지만,
+// h1-h6 도 명시 허용한다. 소제목(예전 KPT 라벨, AI 리포트 머리말)이 헤딩 역할을 하니 별도 크기 강조는 안 하지만,
 // 허용하지 않으면 unwrapDisallowed 가 노드를 풀어 텍스트만 남기고 paragraph wrap 도 안
 // 해서 `# 하이\n## 하이` 같은 입력이 한 줄로 합쳐져 표시된다.
 const ALLOWED = [
@@ -16,10 +16,11 @@ const ALLOWED = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
 ]
 
-export function MarkdownText({ content, muted = false }: { content: string; muted?: boolean }) {
-  const text = `${userTextMarkdownClass} ${muted ? 'text-text-tertiary' : 'text-text-secondary'}`
+// tone: primary는 사람이 쓴 회고(이 화면의 주인공), secondary는 AI 리포트 요약이다. 색으로도 "내 글"과 "요약"이 갈린다
+export function MarkdownText({ content, tone = 'secondary' }: { content: string; tone?: 'primary' | 'secondary' }) {
+  const text = `${userTextMarkdownClass} ${tone === 'primary' ? 'text-text-primary' : 'text-text-secondary'}`
   // h1-h6 는 모두 paragraph 와 동일 스타일로 렌더 — 줄바꿈 보존이 목적이고 크기 강조는
-  // KPT 라벨이 담당하므로 의도된 동일 처리.
+  // 예전 KPT 소제목과 AI 리포트 머리말이 담당하므로 의도된 동일 처리.
   const Para = ({ children }: { children?: ReactNode }) => <p className={text}>{children}</p>
   return (
     <ReactMarkdown
@@ -35,25 +36,24 @@ export function MarkdownText({ content, muted = false }: { content: string; mute
         h5: Para,
         h6: Para,
         ul: ({ children }) => (
-          <ul className="list-disc list-inside space-y-0.5 pl-1">{children}</ul>
+          <ul className="list-disc list-inside space-y-tight pl-1">{children}</ul>
         ),
         ol: ({ children }) => (
-          <ol className="list-decimal list-inside space-y-0.5 pl-1">{children}</ol>
+          <ol className="list-decimal list-inside space-y-tight pl-1">{children}</ol>
         ),
         li: ({ children }) => (
           <li className={`${text} marker:text-text-tertiary`}>{children}</li>
         ),
-        strong: ({ children }) => (
-          <strong className="font-semibold text-text-primary">{children}</strong>
-        ),
+        // 굵은 글씨는 굵기만 올린다. 색까지 바꾸면 문장 중간에 제목이 낀 것처럼 보인다
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
         em: ({ children }) => <em className="italic">{children}</em>,
         code: ({ children }) => (
-          <code className="rounded bg-surface-elevated px-1 py-0.5 text-[0.85em] font-mono">
+          <code className="rounded-control bg-surface-sunken px-1 font-mono text-xs">
             {children}
           </code>
         ),
         pre: ({ children }) => (
-          <pre className="my-1 overflow-x-auto rounded bg-surface-elevated p-2 text-[0.85em] font-mono">
+          <pre className="my-1 overflow-x-auto rounded-control bg-surface-sunken p-2 font-mono text-xs">
             {children}
           </pre>
         ),
@@ -67,7 +67,7 @@ export function MarkdownText({ content, muted = false }: { content: string; mute
             href={href}
             target="_blank"
             rel="noopener noreferrer nofollow"
-            className="text-accent underline"
+            className="text-accent-text underline"
           >
             {children}
           </a>

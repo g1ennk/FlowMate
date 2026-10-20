@@ -64,7 +64,7 @@ class AiReportGeneratorTest {
         assertThat(result.content().keep()).isEqualTo("- k");
         assertThat(result.content().tryAction()).isEqualTo("- t");
         assertThat(result.content().referenceQuestion()).isEqualTo("q?");
-        assertThat(result.promptVersion()).isEqualTo("daily.v2");
+        assertThat(result.promptVersion()).isEqualTo("daily.v3");
         assertThat(count("success", "200")).isEqualTo(1);
     }
 

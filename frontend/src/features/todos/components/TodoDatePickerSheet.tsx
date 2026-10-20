@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { BottomSheet } from '../../../ui/BottomSheet'
+import { Button } from '../../../ui/Button'
+import { CalendarMonthGrid } from '../../../ui/Calendar'
 import { ChevronLeftIcon, ChevronRightIcon } from '../../../ui/Icons'
 import { formatDateKey } from '../../../lib/time'
 import { parseDateKey } from '../todoDateActionHelpers'
@@ -7,6 +9,8 @@ import { parseDateKey } from '../todoDateActionHelpers'
 type TodoDatePickerSheetProps = {
   isOpen: boolean
   mode: 'move' | 'duplicate' | null
+  // 어떤 할 일의 날짜를 고르는지 제목 아래에 보인다(메뉴 시트를 닫고 왔으므로)
+  todoTitle?: string
   currentDateKey: string | null
   selectedDateKey: string
   onSelectDateKey: (dateKey: string) => void
@@ -14,133 +18,55 @@ type TodoDatePickerSheetProps = {
   onConfirm: () => void
 }
 
-function buildMonthDays(monthDate: Date) {
-  const year = monthDate.getFullYear()
-  const month = monthDate.getMonth()
-  const firstDay = new Date(year, month, 1)
-  const lastDay = new Date(year, month + 1, 0)
-  const daysInMonth = lastDay.getDate()
-
-  let startDayOfWeek = firstDay.getDay() - 1
-  if (startDayOfWeek < 0) startDayOfWeek = 6
-
-  const days: Array<Date | null> = []
-  for (let i = 0; i < startDayOfWeek; i += 1) {
-    days.push(null)
-  }
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    days.push(new Date(year, month, day))
-  }
-
-  return days
-}
-
-const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일']
-
-type TodoDatePickerCalendarProps = {
+type MonthPickerProps = {
   initialVisibleMonth: Date
   selectedDateKey: string
-  todayDateKey: string
   onSelectDateKey: (dateKey: string) => void
 }
 
-function TodoDatePickerCalendar({
-  initialVisibleMonth,
-  selectedDateKey,
-  todayDateKey,
-  onSelectDateKey,
-}: TodoDatePickerCalendarProps) {
+// 월 그리드는 계획 달력과 같은 부품(ui/Calendar)의 picker 모양을 쓰고, 달 이동 헤더만 시트 안에 따로 둔다.
+// 모양은 예전 시트 그대로다: 큰 연월 제목, 원 화살표, 고른 날은 진하게 채운 원
+const ARROW_CLASS =
+  'relative flex h-9 w-9 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-hover-strong after:absolute after:-inset-y-1'
+
+function MonthPicker({ initialVisibleMonth, selectedDateKey, onSelectDateKey }: MonthPickerProps) {
   const [visibleMonth, setVisibleMonth] = useState(
     () => new Date(initialVisibleMonth.getFullYear(), initialVisibleMonth.getMonth(), 1),
   )
-  const monthDays = useMemo(() => buildMonthDays(visibleMonth), [visibleMonth])
+  const moveMonth = (step: number) =>
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + step, 1))
 
   return (
-    <>
-      <div className="flex items-center justify-between px-1">
-        <p className="text-xl font-semibold text-text-primary">
+    <div>
+      <div className="mb-4 flex items-center justify-between px-1">
+        <h3 className="text-xl font-semibold text-text-primary">
           {visibleMonth.getFullYear()}년 {visibleMonth.getMonth() + 1}월
-        </p>
+        </h3>
+        {/* 보이는 36에 터치 영역만 넓혀 44: 이전은 왼쪽 8, 4px 띄운 다음은 양옆 4 */}
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() =>
-              setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))
-            }
-            className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-hover-strong hover:text-text-secondary"
-            aria-label="이전 달"
-          >
+          <button type="button" aria-label="이전 달" onClick={() => moveMonth(-1)} className={`${ARROW_CLASS} after:-left-2 after:right-0`}>
             <ChevronLeftIcon className="h-5 w-5" />
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))
-            }
-            className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-hover-strong hover:text-text-secondary"
-            aria-label="다음 달"
-          >
+          <button type="button" aria-label="다음 달" onClick={() => moveMonth(1)} className={`${ARROW_CLASS} after:-inset-x-1`}>
             <ChevronRightIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
-
-      <div className="grid grid-cols-7 gap-y-2 text-center text-xs font-semibold text-text-tertiary">
-        {WEEKDAYS.map((weekday) => (
-          <span key={weekday}>{weekday}</span>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-y-2">
-        {monthDays.map((date, index) => {
-          if (!date) {
-            return <div key={`empty-${index}`} className="h-11" />
-          }
-
-          const dateKey = formatDateKey(date)
-          const isSelected = dateKey === selectedDateKey
-          const isToday = dateKey === todayDateKey
-          const dayOfWeek = date.getDay()
-          const toneClassName =
-            dayOfWeek === 0
-              ? 'text-cal-sunday'
-              : dayOfWeek === 6
-                ? 'text-cal-saturday'
-                : 'text-text-primary'
-          const buttonClassName = isSelected
-            ? 'bg-text-primary text-text-inverse shadow-sm'
-            : isToday
-              ? 'bg-surface-sunken text-text-primary'
-              : `hover:bg-hover-strong ${toneClassName}`
-
-          return (
-            <button
-              key={dateKey}
-              type="button"
-              aria-label={`${dateKey} 선택`}
-              onClick={() => onSelectDateKey(dateKey)}
-              className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full text-base font-medium transition-colors ${buttonClassName}`}
-            >
-              <span className="flex flex-col items-center leading-none">
-                <span>{date.getDate()}</span>
-                {isToday ? (
-                  <span className={`mt-0.5 text-[11px] font-semibold ${isSelected ? 'text-text-inverse/80' : 'text-text-secondary'}`}>
-                    오늘
-                  </span>
-                ) : null}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-    </>
+      <CalendarMonthGrid
+        variant="picker"
+        month={visibleMonth}
+        selectedDateKey={selectedDateKey}
+        onSelect={(date) => onSelectDateKey(formatDateKey(date))}
+        showIndicators={false}
+      />
+    </div>
   )
 }
 
 export function TodoDatePickerSheet({
   isOpen,
   mode,
+  todoTitle,
   currentDateKey,
   selectedDateKey,
   onSelectDateKey,
@@ -151,42 +77,25 @@ export function TodoDatePickerSheet({
     const initial = parseDateKey(selectedDateKey) ?? parseDateKey(currentDateKey ?? '') ?? new Date()
     return new Date(initial.getFullYear(), initial.getMonth(), 1)
   }, [currentDateKey, selectedDateKey])
-  const calendarKey = `${isOpen ? 'open' : 'closed'}:${mode ?? 'none'}:${currentDateKey ?? ''}:${selectedDateKey}`
-  const todayDateKey = formatDateKey(new Date())
+  const calendarKey = `${isOpen ? 'open' : 'closed'}:${mode ?? 'none'}:${currentDateKey ?? ''}`
   const title = mode === 'duplicate' ? '다른 날 또 하기' : '날짜 바꾸기'
   const confirmLabel = mode === 'duplicate' ? '새로 추가' : '이 날짜로 이동'
   const confirmDisabled = mode === 'move' && currentDateKey === selectedDateKey
 
   return (
-    <BottomSheet
-      isOpen={isOpen}
-      onClose={onClose}
-      title={title}
-      panelClassName="min-h-[52dvh]"
-      contentClassName="pt-4"
-    >
-      <div className="space-y-4">
-        <TodoDatePickerCalendar
-          key={calendarKey}
-          initialVisibleMonth={initialVisibleMonth}
-          selectedDateKey={selectedDateKey}
-          todayDateKey={todayDateKey}
-          onSelectDateKey={onSelectDateKey}
-        />
-
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={confirmDisabled}
-          className={`mt-2 w-full rounded-2xl px-4 py-3 text-sm font-semibold transition-colors ${
-            confirmDisabled
-              ? 'cursor-not-allowed bg-surface-sunken text-text-tertiary'
-              : 'bg-text-primary text-text-inverse hover:opacity-80'
-          }`}
-        >
-          {confirmLabel}
-        </button>
-      </div>
+    <BottomSheet isOpen={isOpen} onClose={onClose} title={title}>
+      {todoTitle && (
+        <p className="mb-card truncate text-center text-sm text-text-secondary">{todoTitle}</p>
+      )}
+      <MonthPicker
+        key={calendarKey}
+        initialVisibleMonth={initialVisibleMonth}
+        selectedDateKey={selectedDateKey}
+        onSelectDateKey={onSelectDateKey}
+      />
+      <Button fullWidth className="mt-sheet" onClick={onConfirm} disabled={confirmDisabled}>
+        {confirmLabel}
+      </Button>
     </BottomSheet>
   )
 }

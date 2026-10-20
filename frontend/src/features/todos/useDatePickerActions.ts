@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast'
 import { useCreateTodo, useUpdateTodo } from './hooks'
 import type { Todo, TodoList } from '../../api/types'
 import { queryKeys } from '../../lib/queryKeys'
+import { toastMessages } from '../../lib/messages'
 import {
   getNextTodoDayOrder,
   getOffsetDateKey,
@@ -89,7 +90,7 @@ export function useDatePickerActions() {
         dayOrder: nextOrder,
       })
     } catch {
-      toast.error('할 일을 추가하지 못했어요. 다시 시도해 주세요', { id: 'todo-create-failed' })
+      toast.error(toastMessages.todoCreateFailed, { id: 'todo-create-failed' })
       return
     }
     toast.success(successMessage, { id: 'todo-duplicated' })

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderApp } from '../test/renderApp'
 import { useSystemStore } from '../store/systemStore'
 import BackendStatusGate from './BackendStatusGate'
+import { BottomSheet } from '../ui/BottomSheet'
 
 // useBackendWatcher는 폴링을 일으키므로 noop으로 mock
 vi.mock('../features/system/useBackendWatcher', () => ({
@@ -14,6 +15,8 @@ vi.mock('../features/system/useBackendWatcher', () => ({
 const initialState = useSystemStore.getState()
 const serviceUnavailableTitle = '지금은 서버에 연결할 수 없어요'
 const disconnectedBannerText = /서버에 연결할 수 없어요\. 지금은 저장되지 않아요/
+// 오프라인으로 처음 열면 저장이 바로 실패하고, 멈춘 저장도 앱을 닫으면 사라지므로 저장된다고 약속하지 않는다
+const offlineBannerText = '오프라인이에요. 지금은 저장되지 않아요'
 
 function setOnline(value: boolean) {
   Object.defineProperty(window.navigator, 'onLine', { value, configurable: true })
@@ -37,7 +40,7 @@ describe('BackendStatusGate', () => {
         <div>children content</div>
       </BackendStatusGate>,
     )
-    expect(screen.getByText('Flow')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'FlowMate' })).toBeInTheDocument()
     expect(screen.queryByText('children content')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: serviceUnavailableTitle })).not.toBeInTheDocument()
   })
@@ -83,7 +86,7 @@ describe('BackendStatusGate', () => {
     expect(screen.getByLabelText('메모')).toHaveValue('작성 중')
   })
 
-  it('오프라인이면 전체 화면 대신 children을 렌더한다 (OfflineBanner가 보이도록)', () => {
+  it('오프라인이면 전체 화면 대신 children과 오프라인 배너를 렌더한다', () => {
     setOnline(false)
     useSystemStore.setState({ status: 'unavailable', })
     renderApp(
@@ -94,6 +97,47 @@ describe('BackendStatusGate', () => {
     expect(screen.getByText('children content')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: serviceUnavailableTitle })).not.toBeInTheDocument()
     expect(screen.queryByText(disconnectedBannerText)).not.toBeInTheDocument()
+    // 오프라인 배너는 저장이 어떻게 되는지 말한다
+    expect(screen.getByRole('status')).toHaveTextContent(offlineBannerText)
+  })
+
+  it('쓰던 중 오프라인이 되면 같은 상단 배너 자리에 오프라인 문구를 띄운다', () => {
+    useSystemStore.setState({ status: 'available' })
+    renderApp(
+      <BackendStatusGate>
+        <div>children</div>
+      </BackendStatusGate>,
+    )
+    expect(screen.queryByText(offlineBannerText)).not.toBeInTheDocument()
+
+    act(() => {
+      setOnline(false)
+      window.dispatchEvent(new Event('offline'))
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(offlineBannerText)
+    expect(document.documentElement.style.getPropertyValue('--top-banner-offset')).not.toBe('')
+  })
+
+  it('시트가 열려 있는 동안 앱 화면은 inert이고, 배너는 계속 누를 수 있다', () => {
+    useSystemStore.setState({ status: 'available' })
+    const { rerender } = renderApp(
+      <BackendStatusGate>
+        <button type="button">앱 버튼</button>
+      </BackendStatusGate>,
+    )
+    act(() => {
+      useSystemStore.setState({ status: 'unavailable' })
+    })
+
+    rerender(
+      <BackendStatusGate>
+        <button type="button">앱 버튼</button>
+        <BottomSheet isOpen onClose={() => {}} title="메뉴">내용</BottomSheet>
+      </BackendStatusGate>,
+    )
+
+    expect(screen.getByRole('button', { name: '앱 버튼', hidden: true }).closest('[inert]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: disconnectedBannerText }).closest('[inert]')).toBeNull()
   })
 
   it('오프라인으로 처음 열고 온라인이 되어도 확인 결과 전까지 화면을 바꾸지 않는다', async () => {
@@ -150,7 +194,9 @@ describe('BackendStatusGate', () => {
       useSystemStore.setState({ status: 'unavailable' })
     })
 
-    const zIndex = Number(screen.getByRole('button', { name: disconnectedBannerText }).style.zIndex)
+    const banner = screen.getByRole('status')
+    expect(banner).toContainElement(screen.getByRole('button', { name: disconnectedBannerText }))
+    const zIndex = Number(banner.style.zIndex)
     // BottomSheet·TimerFullScreen 9999, SoundSheet 10000, Toaster 10002
     expect(zIndex).toBeGreaterThan(10000)
     expect(zIndex).toBeLessThan(10002)
@@ -203,7 +249,7 @@ describe('BackendStatusGate', () => {
       useSystemStore.setState({ status: 'unavailable' })
     })
 
-    const banner = screen.getByRole('button', { name: disconnectedBannerText })
+    const banner = screen.getByRole('status')
     Object.defineProperty(banner, 'offsetHeight', { configurable: true, value: 52 })
     act(() => notifyResize())
     expect(document.documentElement.style.getPropertyValue('--top-banner-offset')).toBe('52px')

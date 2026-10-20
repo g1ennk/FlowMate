@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast'
 import type { ApiError } from '../../../api/http'
 import { useAuthStore } from '../../../store/authStore'
 import { useAiReportFlow } from './useAiReport'
+import { toastMessages } from '../../../lib/messages'
 import type { PeriodType } from '../reviewTypes'
 
 type AiError = { message: string; retryable: boolean }
@@ -10,7 +11,7 @@ type AiError = { message: string; retryable: boolean }
 function toAiError(err: unknown): AiError {
   const { status, code, message } = typeof err === 'object' && err !== null
     ? err as Partial<ApiError> : {}
-  // 다른 곳에서 만들던 레포트를 기다리다 시간이 다 된 경우
+  // 다른 곳에서 만들던 리포트를 기다리다 시간이 다 된 경우
   if (status === 409 && code === 'REPORT_GENERATION_IN_PROGRESS') {
     return { message: '아직 만드는 중이에요. 잠시 후 다시 확인해 주세요', retryable: true }
   }
@@ -23,13 +24,13 @@ function toAiError(err: unknown): AiError {
     return { message: 'AI 사용량이 많아요. 잠시 후 다시 시도해 주세요', retryable: true }
   }
   if (status === 503 || status === 504) {
-    return { message: '잠시 후 다시 시도해 주세요', retryable: true }
+    return { message: toastMessages.aiReportBusy, retryable: true }
   }
   // 할 일이 없어서 실패한 것은 다시 시도해도 같으므로 다시 시도를 내주지 않는다.
   if (status === 400) {
-    return { message: '이 기간에 완료한 할 일이 없어서 분석할 수 없어요', retryable: false }
+    return { message: toastMessages.aiReportNoData, retryable: false }
   }
-  return { message: 'AI 레포트를 만들지 못했어요', retryable: true }
+  return { message: toastMessages.aiReportFailed, retryable: true }
 }
 
 export function useAiReportSheet(

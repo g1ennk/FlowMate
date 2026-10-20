@@ -1,31 +1,36 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/authStore'
 import { type Theme, useThemeStore } from '../../store/themeStore'
 import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
+import { Card } from '../../ui/Card'
 import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
-import { InlineSegmentToggle } from '../../ui/InlineSegmentToggle'
+import { InlineStatus } from '../../ui/InlineStatus'
+import { ListRow } from '../../ui/ListRow'
+import { PageHeader } from '../../ui/PageHeader'
+import { SectionHeader } from '../../ui/SectionHeader'
+import { SegmentToggle } from '../../ui/SegmentToggle'
 import { Switch } from '../../ui/Switch'
+import { TextField } from '../../ui/TextField'
 import { type MiniDaysSettings, type PomodoroSettings } from '../../api/types'
 import { buildPomodoroSave, useSettings, useUpdateMiniDaysSettings, useUpdatePomodoroSettings } from './hooks'
 import { defaultMiniDaysSettings, type MiniDayRange, parseMiniDayTime, validateMiniDaysSettings } from '../../lib/miniDays'
-import { userTextInputClass } from '../../lib/userTextStyles'
 import { DEFAULT_POMODORO_SETTINGS } from '../timer/timerDefaults'
-import { useCoachMark } from '../../lib/useCoachMark'
-import { CoachMark } from '../../ui/CoachMark'
+import { authMessages, confirmMessages, systemMessages, toastMessages } from '../../lib/messages'
+import { isWaitingOffline } from '../../lib/queryStatus'
+import { formatClockTime, formatTimeRange } from '../../lib/time'
+import { useConfirmSheet } from '../../ui/useConfirmSheet'
 
 const FLOW_PRESETS = [15, 20, 25, 30, 45, 50, 60, 90, 120]
 const SHORT_BREAK_PRESETS = [5, 10, 15, 20, 30]
 const LONG_BREAK_PRESETS = [15, 20, 30, 45, 60]
 const CYCLE_PRESETS = Array.from({ length: 10 }, (_, index) => index + 1)
-const HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1)
+// 시각 휠은 칸("시작 18:00")과 같은 24시간 표기다. 시작은 00–23시, 종료는 01–24시(24는 그날의 끝 24:00)
+const START_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index)
+const END_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index + 1)
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => index * 5)
-const PERIOD_OPTIONS = [
-  { value: 'am', label: '오전' },
-  { value: 'pm', label: '오후' },
-] as const
 const THEME_OPTIONS: Array<{ label: string; value: Theme }> = [
   { label: '시스템', value: 'system' },
   { label: '라이트', value: 'light' },
@@ -33,70 +38,95 @@ const THEME_OPTIONS: Array<{ label: string; value: Theme }> = [
 ]
 const WHEEL_SCROLL_END_COMMIT_DELAY_MS = 120
 const WHEEL_LIVE_SELECT_BIAS = 0.35
-const WHEEL_ITEM_HEIGHT = 40
+// 휠 항목 한 칸. 터치 영역 44를 지킨다(§6-2)
+const WHEEL_ITEM_HEIGHT = 44
 const WHEEL_VISIBLE_COUNT = 5
 const WHEEL_PADDING = (WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT - WHEEL_ITEM_HEIGHT) / 2
 
+// 불러오지 못했거나 아직 불러오는 중인 값의 자리. 기본값으로 꾸며 실제 값처럼 보이지 않게 한다.
+// "—"는 읽어 주지 않거나 "대시"로 읽으므로 보조 기술에는 "알 수 없음"으로 읽힌다
+const MISSING_VALUE = (
+  <>
+    <span aria-hidden="true">—</span>
+    <span className="sr-only">알 수 없음</span>
+  </>
+)
+
 type SettingsRowProps = {
   label: string
-  value: string
+  // null이면 값을 모른다(불러오는 중이거나 실패). 그때는 고를 수 없으니 버튼이 아닌 줄로 둔다
+  value: string | null
   onClick: () => void
-  disabled?: boolean
 }
 
-type SectionHeaderProps = {
-  title: string
-  description?: string
-  actionLabel?: string
-  onActionClick?: () => void
-  actionDisabled?: boolean
-}
-
-function SettingsRow({ label, value, onClick, disabled = false }: SettingsRowProps) {
+// 누르면 고르는 시트가 열리는 설정 한 줄: 라벨 + 값 + 화살표(48px).
+// 값을 모르면 스위치 행(SwitchRow)과 같은 모양의 누를 수 없는 줄에 "—"만 둔다
+function SettingsRow({ label, value, onClick }: SettingsRowProps) {
+  if (value === null) {
+    return <ListRow size="lg" label={label} trailing={MISSING_VALUE} />
+  }
   return (
-    <button
-      type="button"
+    <ListRow
+      size="lg"
+      label={label}
       onClick={onClick}
-      disabled={disabled}
-      className={`flex min-h-12 w-full items-center justify-between rounded-xl px-4 py-3.5 text-left transition-colors ${
-        disabled ? 'cursor-not-allowed text-text-tertiary' : 'hover:bg-hover'
-      }`}
-    >
-      <span className={`text-sm font-medium ${disabled ? 'text-text-tertiary' : 'text-text-primary'}`}>{label}</span>
-      <span className="flex items-center gap-1.5">
-        <span className={`text-sm ${disabled ? 'text-text-disabled' : 'text-text-secondary'}`}>{value}</span>
-        <ChevronRightIcon className={`h-4 w-4 ${disabled ? 'text-text-disabled' : 'text-text-tertiary'}`} />
-      </span>
-    </button>
+      trailing={
+        <>
+          <span className="whitespace-nowrap">{value}</span>
+          <ChevronRightIcon className="h-4 w-4" />
+        </>
+      }
+    />
   )
 }
 
-function SectionHeader({
-  title,
-  description,
-  actionLabel,
-  onActionClick,
-  actionDisabled = false,
-}: SectionHeaderProps) {
+type SwitchRowProps = {
+  label: string
+  checked: boolean | null
+  onChange: () => void
+}
+
+// 스위치 한 줄. 줄 전체가 label이라 줄 높이(48)가 곧 터치 영역이다.
+// 값을 모르면(checked=null) 꺼진 스위치로 꾸미지 않고 값 자리에 "—"를 둔다
+function SwitchRow({ label, checked, onChange }: SwitchRowProps) {
+  if (checked === null) {
+    return <ListRow size="lg" label={label} trailing={MISSING_VALUE} />
+  }
   return (
-    <div className="mb-card-item">
-      <div className="flex items-center justify-between gap-card-item">
-        <p className="text-sm font-medium text-text-secondary">{title}</p>
-      {actionLabel && onActionClick && (
-        <button
-          type="button"
-          onClick={onActionClick}
-          disabled={actionDisabled}
-          className="text-xs font-medium text-text-tertiary transition-colors hover:text-text-secondary disabled:cursor-not-allowed disabled:text-text-disabled"
-        >
-          {actionLabel}
-        </button>
-      )}
-      </div>
-      {description && (
-        <p className="mt-1 text-xs text-text-tertiary">{description}</p>
-      )}
+    <div className="border-t border-border-subtle first:border-t-0">
+      <Switch className="min-h-12" label={label} checked={checked} onChange={onChange} />
     </div>
+  )
+}
+
+// "기본값 복원" 버튼은 값이 기본값이 되면 사라진다. 그 버튼에 있던 포커스가 body로 떨어지지 않게 섹션 첫 행으로 옮긴다.
+// 복원을 확인했거나(requestFocus) 포커스가 이미 떨어졌을 때만 옮긴다
+function useFocusSectionWhenResetHides(showReset: boolean) {
+  const sectionRef = useRef<HTMLElement>(null)
+  const shownBefore = useRef(showReset)
+  const pending = useRef(false)
+  useEffect(() => {
+    const hid = shownBefore.current && !showReset
+    shownBefore.current = showReset
+    if (!hid) return
+    const active = document.activeElement
+    const focusLost = !active || active === document.body
+    if (!pending.current && !focusLost) return
+    pending.current = false
+    sectionRef.current?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')?.focus()
+  }, [showReset])
+  const requestFocus = () => {
+    pending.current = true
+  }
+  return { sectionRef, requestFocus }
+}
+
+// 섹션 안 목록 카드. 행의 글자가 카드 안쪽 선(16px)에 맞는다
+function RowsCard({ children }: { children: ReactNode }) {
+  return (
+    <Card padding="none" className="px-card py-tight">
+      {children}
+    </Card>
   )
 }
 
@@ -187,15 +217,14 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
     commitScrollIndex(true)
   }
 
+  // 상자 없이 열만 둔다. 고른 줄의 띠는 세 열 뒤에 하나로 깐다(시트의 휠 묶음)
   return (
-    <div className="relative h-[200px] rounded-2xl bg-surface-base">
-      <div className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2 h-10 rounded-xl bg-accent-muted/50" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-2xl bg-gradient-to-b from-surface-base to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 rounded-b-2xl bg-gradient-to-t from-surface-base to-transparent" />
+    <div className="relative overflow-hidden" style={{ height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_COUNT }}>
       <div
         ref={scrollRef}
+        role="group"
         aria-label={ariaLabel}
-        className="h-full overflow-y-auto overscroll-contain snap-y snap-mandatory touch-pan-y"
+        className="relative h-full overflow-y-auto overscroll-contain snap-y snap-mandatory touch-pan-y"
         onScroll={handleScroll}
         onPointerDown={handleUserScrollStart}
         onPointerUp={handleUserScrollEnd}
@@ -210,7 +239,7 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
               key={`${String(item.value)}-${index}`}
               type="button"
               onClick={() => onSelectIndex(index)}
-              className={`flex h-10 w-full snap-center items-center justify-center text-sm font-medium transition-colors ${
+              className={`flex w-full snap-center items-center justify-center text-sm font-medium transition-colors ${
                 isSelected ? 'text-accent-text' : 'text-text-tertiary'
               }`}
               style={{ height: WHEEL_ITEM_HEIGHT }}
@@ -226,7 +255,10 @@ function WheelColumn<T>({ items, selectedIndex, onSelectIndex, ariaLabel }: Whee
 }
 
 function PomodoroSettingsPage() {
-  const { data: settingsData, isError, isFetching, refetch } = useSettings()
+  const settingsQuery = useSettings()
+  const { data: settingsData, isError, isFetching, refetch } = settingsQuery
+  // 오프라인으로 열어 아직 못 불러왔으면(paused) 값 자리만 비워 두지 않고 알린다. 연결되면 저절로 불러온다
+  const settingsOffline = isWaitingOffline(settingsQuery)
   // 서버 값을 불러오기 전에 편집하면 나머지 값이 기본값으로 덮어써지므로 막는다.
   const canEdit = !!settingsData
   const updateSettings = useUpdatePomodoroSettings()
@@ -237,15 +269,12 @@ function PomodoroSettingsPage() {
   const setTheme = useThemeStore((s) => s.setTheme)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { confirm, confirmSheet } = useConfirmSheet()
   const [activeSheet, setActiveSheet] = useState<null | 'flow' | 'break' | 'cycle'>(null)
   const [activeMiniDay, setActiveMiniDay] = useState<keyof MiniDaysSettings | null>(null)
   const [miniDayEditor, setMiniDayEditor] = useState<MiniDayRange>(defaultMiniDaysSettings.day1)
   const [miniDayEditField, setMiniDayEditField] = useState<'start' | 'end'>('start')
-  const [timeDraft, setTimeDraft] = useState<{
-    period: 'am' | 'pm'
-    hour: number
-    minute: number
-  }>({ period: 'am', hour: 6, minute: 0 })
+  const [timeDraft, setTimeDraft] = useState<{ hour: number; minute: number }>({ hour: 6, minute: 0 })
   const data = useMemo(
     () =>
       settingsData
@@ -286,26 +315,8 @@ function PomodoroSettingsPage() {
 
   const breakValueLabel = `짧은 ${values.breakMin}분, 긴 ${values.longBreakMin}분`
   const cycleLabel = `${values.cycleEvery}회`
-  const formatDisplayTime = (value: string) => {
-    const trimmed = value.trim()
-    if (!trimmed) return '--:--'
-    if (trimmed === '24:00') return '자정'
-    const [rawHours, rawMinutes] = trimmed.split(':')
-    const hours = Number(rawHours)
-    const minutes = Number(rawMinutes)
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) return trimmed
-    const period = hours >= 12 ? '오후' : '오전'
-    let hour12 = hours % 12
-    if (hour12 === 0) hour12 = 12
-    return `${period} ${hour12}:${String(minutes).padStart(2, '0')}`
-  }
-
-  const formatMiniDayRange = (range: MiniDayRange) => {
-    const start = range.start.trim()
-    const end = range.end.trim()
-    if (!start || !end) return '미설정'
-    return `${formatDisplayTime(start)}-${formatDisplayTime(end)}`
-  }
+  // 미니 데이 구간은 계획, 설정, 시트가 모두 "06:00–12:00" 한 형식이다(lib/time.ts)
+  const formatMiniDayRange = (range: MiniDayRange) => formatTimeRange(range.start, range.end) || '미설정'
 
   const candidateMiniDays = useMemo(() => {
     if (!activeMiniDay) return miniDaysBase
@@ -349,6 +360,13 @@ function PomodoroSettingsPage() {
     )
   })
 
+  const showSessionReset = canEdit && !isSessionDefault
+  const showAutomationReset = canEdit && !isAutomationDefault
+  const showMiniDaysReset = canEdit && !isMiniDaysDefault
+  const { sectionRef: sessionSectionRef, requestFocus: requestSessionFocus } = useFocusSectionWhenResetHides(showSessionReset)
+  const { sectionRef: automationSectionRef, requestFocus: requestAutomationFocus } = useFocusSectionWhenResetHides(showAutomationReset)
+  const { sectionRef: miniDaysSectionRef, requestFocus: requestMiniDaysFocus } = useFocusSectionWhenResetHides(showMiniDaysReset)
+
   const openMiniDayEditor = (dayKey: keyof MiniDaysSettings) => {
     if (!canEdit) return
     const next = miniDaysBase[dayKey]
@@ -362,11 +380,11 @@ function PomodoroSettingsPage() {
   const closeMiniDayEditor = () => {
     if (!activeMiniDay) return
     if (activeMiniDayError) {
-      toast('저장하지 않았어요', { id: 'mini-days-discarded' })
+      toast(toastMessages.miniDaysDiscarded, { id: 'mini-days-discarded' })
     } else if (isMiniDayDirty) {
       updateMiniDays.mutate(candidateMiniDays, {
         onSuccess: () => {
-          toast.success('저장됨', { id: 'mini-days-saved' })
+          toast.success(toastMessages.miniDaysSaved, { id: 'mini-days-saved' })
         },
       })
     }
@@ -391,22 +409,15 @@ function PomodoroSettingsPage() {
     return `${hh}:${mm}`
   }
 
+  // "HH:mm"을 휠 값으로 읽는다. 24:00(그날의 끝)은 24시 00분이다
   const parseTimeDraft = (value: string, fallback: string) => {
     const trimmed = value.trim() || fallback || '06:00'
-    // 24:00(자정)은 휠에서 "오전 12:00"으로 보여준다.
-    if (trimmed === '24:00') return { period: 'am' as const, hour: 12, minute: 0 }
     const [rawHours, rawMinutes] = trimmed.split(':')
     const hours = Number(rawHours)
     const minutes = Number(rawMinutes)
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return { period: 'am' as const, hour: 6, minute: 0 }
-    }
-    const safeHours = Math.max(0, Math.min(23, hours))
-    const safeMinutes = Math.max(0, Math.min(59, minutes))
-    const period: 'am' | 'pm' = safeHours >= 12 ? 'pm' : 'am'
-    let hour12 = safeHours % 12
-    if (hour12 === 0) hour12 = 12
-    return { period, hour: hour12, minute: safeMinutes }
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return { hour: 6, minute: 0 }
+    const hour = Math.max(0, Math.min(24, hours))
+    return { hour, minute: hour === 24 ? 0 : Math.max(0, Math.min(59, minutes)) }
   }
 
   const updateMiniDayEditorField = (field: 'label' | 'start' | 'end', value: string) => {
@@ -421,13 +432,7 @@ function PomodoroSettingsPage() {
   }
 
   const commitTimeDraft = (draft: typeof timeDraft) => {
-    const hour24 = draft.period === 'pm' ? (draft.hour % 12) + 12 : draft.hour % 12
-    // 종료의 "오전 12:00"은 그날의 끝(자정)이므로 24:00으로 저장한다.
-    if (miniDayEditField === 'end' && hour24 === 0 && draft.minute === 0) {
-      updateMiniDayEditorField('end', '24:00')
-      return
-    }
-    updateMiniDayEditorField(miniDayEditField, formatTime(hour24, draft.minute))
+    updateMiniDayEditorField(miniDayEditField, formatTime(draft.hour, draft.minute))
   }
 
   const handleSelectMiniDayField = (field: 'start' | 'end') => {
@@ -436,30 +441,24 @@ function PomodoroSettingsPage() {
     setTimeDraftFromValue(miniDayEditor[field], defaultMiniDaysSettings[activeMiniDay][field])
   }
 
-  const handleTogglePeriod = (period: 'am' | 'pm') => {
-    const next = { ...timeDraft, period }
-    setTimeDraft(next)
-    commitTimeDraft(next)
-  }
-
+  // 24시는 그날의 끝이라 분을 00으로 둔다
   const handleSelectHour = (hour: number) => {
-    const next = { ...timeDraft, hour }
+    const next = { hour, minute: hour === 24 ? 0 : timeDraft.minute }
     setTimeDraft(next)
     commitTimeDraft(next)
   }
 
   const handleSelectMinute = (minute: number) => {
-    const next = { ...timeDraft, minute }
+    const next = { ...timeDraft, minute: timeDraft.hour === 24 ? 0 : minute }
     setTimeDraft(next)
     commitTimeDraft(next)
   }
 
-  const handleResetSessionDefaults = () => {
-    if (isSessionDefault) {
-      toast('이미 기본값이에요', { id: 'session-reset-noop' })
-      return
-    }
-    if (!window.confirm('뽀모도로 세션 설정을 기본값으로 복원할까요?')) return
+  const handleResetSessionDefaults = async () => {
+    // 버튼은 기본값과 다를 때만 보인다. 그 사이 값이 기본값이 됐으면 아무것도 하지 않는다
+    if (isSessionDefault) return
+    if (!(await confirm(confirmMessages.resetSession))) return
+    requestSessionFocus()
     commitSettings({
       flowMin: DEFAULT_POMODORO_SETTINGS.flowMin,
       breakMin: DEFAULT_POMODORO_SETTINGS.breakMin,
@@ -468,27 +467,25 @@ function PomodoroSettingsPage() {
     })
   }
 
-  const handleResetAutomationDefaults = () => {
-    if (isAutomationDefault) {
-      toast('이미 기본값이에요', { id: 'automation-reset-noop' })
-      return
-    }
-    if (!window.confirm('자동화 설정을 기본값으로 복원할까요?')) return
+  const handleResetAutomationDefaults = async () => {
+    // 버튼은 기본값과 다를 때만 보인다. 그 사이 값이 기본값이 됐으면 아무것도 하지 않는다
+    if (isAutomationDefault) return
+    if (!(await confirm(confirmMessages.resetAutomation))) return
+    requestAutomationFocus()
     commitSettings({
       autoStartBreak: DEFAULT_POMODORO_SETTINGS.autoStartBreak,
       autoStartSession: DEFAULT_POMODORO_SETTINGS.autoStartSession,
     })
   }
 
-  const handleResetMiniDaysDefaults = () => {
-    if (isMiniDaysDefault) {
-      toast('이미 기본값이에요', { id: 'mini-days-reset-noop' })
-      return
-    }
+  const handleResetMiniDaysDefaults = async () => {
+    // 버튼은 기본값과 다를 때만 보인다. 그 사이 값이 기본값이 됐으면 아무것도 하지 않는다
+    if (isMiniDaysDefault) return
     const defaultStarts = [defaultMiniDaysSettings.day1, defaultMiniDaysSettings.day2, defaultMiniDaysSettings.day3]
-      .map((range) => formatDisplayTime(range.start))
+      .map((range) => formatClockTime(range.start))
       .join(', ')
-    if (!window.confirm(`미니 데이를 기본값(${defaultStarts} 시작)으로 복원할까요?`)) return
+    if (!(await confirm(confirmMessages.resetMiniDays(defaultStarts)))) return
+    requestMiniDaysFocus()
     const resetPayload: MiniDaysSettings = {
       day1: { ...defaultMiniDaysSettings.day1 },
       day2: { ...defaultMiniDaysSettings.day2 },
@@ -496,7 +493,7 @@ function PomodoroSettingsPage() {
     }
     updateMiniDays.mutate(resetPayload, {
       onSuccess: () => {
-        toast.success('미니 데이 기본값으로 복원됨', { id: 'mini-days-reset-saved' })
+        toast.success(toastMessages.miniDaysReset, { id: 'mini-days-reset-saved' })
         if (!activeMiniDay) return
         const defaults = defaultMiniDaysSettings[activeMiniDay]
         setMiniDayEditor({ ...defaults })
@@ -515,131 +512,106 @@ function PomodoroSettingsPage() {
     return `${hours}시간 ${remainder}분`
   }
 
-  const startValueLabel = formatDisplayTime(miniDayEditor.start)
-  const endValueLabel = formatDisplayTime(miniDayEditor.end)
+  const startValueLabel = formatClockTime(miniDayEditor.start) || '--:--'
+  const endValueLabel = formatClockTime(miniDayEditor.end) || '--:--'
   const startMinutes = parseMiniDayTime(miniDayEditor.start, false)
   const endMinutes = parseMiniDayTime(miniDayEditor.end, true)
   const hasValidRange = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
-  const previewRange = miniDayEditor.start.trim() && miniDayEditor.end.trim()
-    ? `${formatDisplayTime(miniDayEditor.start)} ~ ${formatDisplayTime(miniDayEditor.end)}`
-    : '--'
+  const previewRange = formatTimeRange(miniDayEditor.start, miniDayEditor.end) || '--'
   const previewDuration = hasValidRange ? formatDuration(endMinutes - startMinutes) : '--'
   const activeMiniDayErrorMessage = activeMiniDayError === '시작은 종료보다 빨라야 해요'
     ? '종료는 시작보다 늦어야 해요'
     : activeMiniDayError
-  const hourIndex = Math.max(0, HOUR_OPTIONS.indexOf(timeDraft.hour))
-  const minuteIndex = Math.max(0, MINUTE_OPTIONS.indexOf(timeDraft.minute))
-  const periodIndex = timeDraft.period === 'am' ? 0 : 1
-  const hourItems = HOUR_OPTIONS.map((hour) => ({ value: hour, label: `${hour}` }))
-  const minuteItems = MINUTE_OPTIONS.map((minute) => ({ value: minute, label: minute.toString().padStart(2, '0') }))
-  const periodItems = PERIOD_OPTIONS.map((period) => ({ value: period.value, label: period.label }))
+  const hourOptions = miniDayEditField === 'end' ? END_HOUR_OPTIONS : START_HOUR_OPTIONS
+  const hourIndex = Math.max(0, hourOptions.indexOf(timeDraft.hour))
+  // 24시(그날의 끝)는 24:00 하나뿐이라 분 휠에 00만 둔다. 12칸을 두면 돌려서 30에 멈춰도 값은 24:00이라 휠과 값이 어긋난다
+  const minuteOptions = timeDraft.hour === 24 ? [0] : MINUTE_OPTIONS
+  const minuteIndex = Math.max(0, minuteOptions.indexOf(timeDraft.minute))
+  const hourItems = hourOptions.map((hour) => ({ value: hour, label: String(hour).padStart(2, '0') }))
+  const minuteItems = minuteOptions.map((minute) => ({ value: minute, label: minute.toString().padStart(2, '0') }))
   const handleLogout = async () => {
-    if (!window.confirm('로그아웃 할까요?')) return
+    if (!(await confirm(confirmMessages.logout))) return
     await logout()
     queryClient.clear()
     navigate('/login', { replace: true })
   }
 
-  const settingsCoach = useCoachMark('settings-intro')
+  // 서버 값을 모르는 동안(불러오는 중이거나 실패)에는 값 자리에 "—"를 두고 스위치를 숨긴다
+  const shown = (text: string) => (settingsData ? text : null)
 
   return (
-    <div className="animate-fade-in-up space-y-section">
-      <header>
-        <h1 className="text-2xl font-bold text-text-primary">설정</h1>
-      </header>
+    <div className="space-y-section">
+      <PageHeader title="설정" />
 
-      <CoachMark
-        message={"뽀모도로 세션 길이와 미니 데이 시간대를 설정해보세요.\n미니 데이는 하루를 시간대별로 나누어 할 일을 정리하는 기능이에요."}
-        visible={settingsCoach.visible}
-        onDismiss={settingsCoach.dismiss}
-      />
+      {settingsOffline && <InlineStatus kind="waiting" message={systemMessages.offlineLoadFailed('설정')} />}
 
       {isError && !settingsData && (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-card-item rounded-2xl bg-state-error-subtle px-4 py-3"
-        >
-          <p className="text-sm font-medium text-state-error">설정을 불러오지 못했어요</p>
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-accent transition-colors hover:bg-accent-subtle disabled:cursor-not-allowed disabled:text-text-disabled"
-          >
-            다시 시도
-          </button>
-        </div>
+        <InlineStatus
+          message="설정을 불러오지 못했어요"
+          actionLabel="다시 시도"
+          onAction={() => void refetch()}
+          actionDisabled={isFetching}
+        />
       )}
 
-      <section>
+      <section ref={sessionSectionRef}>
         <SectionHeader
-          title="뽀모도로 세션"
-          description="집중 시간, 휴식 시간, 긴 휴식까지 몇 번 집중할지 정해요. 새로 시작하는 타이머부터 적용돼요."
-          actionLabel="기본값 복원"
-          onActionClick={handleResetSessionDefaults}
-          actionDisabled={!canEdit || updateSettings.isPending || isSessionDefault}
+          title="뽀모도로"
+          description="새로 시작하는 타이머부터 적용돼요."
+          actionLabel={showSessionReset ? '기본값 복원' : undefined}
+          onAction={handleResetSessionDefaults}
+          actionDisabled={updateSettings.isPending}
         />
-        <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
+        <RowsCard>
           <SettingsRow
-            label="Flow 시간"
-            value={`${values.flowMin}분`}
+            label="집중 시간"
+            value={shown(`${values.flowMin}분`)}
             onClick={() => setActiveSheet('flow')}
-            disabled={!canEdit}
           />
           <SettingsRow
             label="휴식 시간"
-            value={breakValueLabel}
+            value={shown(breakValueLabel)}
             onClick={() => setActiveSheet('break')}
-            disabled={!canEdit}
           />
           <SettingsRow
             label="긴 휴식까지"
-            value={cycleLabel}
+            value={shown(cycleLabel)}
             onClick={() => setActiveSheet('cycle')}
-            disabled={!canEdit}
           />
-        </div>
+        </RowsCard>
       </section>
 
-      <section>
+      <section ref={automationSectionRef}>
         <SectionHeader
           title="자동화"
-          description="Flow와 휴식이 끝나면 다음을 자동으로 시작할지 정해요."
-          actionLabel="기본값 복원"
-          onActionClick={handleResetAutomationDefaults}
-          actionDisabled={!canEdit || updateSettings.isPending || isAutomationDefault}
+          description="집중과 휴식이 끝나면 다음을 자동으로 시작할지 정해요."
+          actionLabel={showAutomationReset ? '기본값 복원' : undefined}
+          onAction={handleResetAutomationDefaults}
+          actionDisabled={updateSettings.isPending}
         />
-        <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
-          <div className="rounded-xl px-3 py-3">
-            <Switch
-              label="휴식 시간 자동 시작"
-              description="Flow 종료 후 자동으로 휴식 시작"
-              checked={values.autoStartBreak ?? false}
-              onChange={() => handleToggle('autoStartBreak')}
-              disabled={!canEdit}
-            />
-          </div>
-          <div className="rounded-xl px-3 py-3">
-            <Switch
-              label="세션 자동 시작"
-              description="휴식 종료 후 자동으로 Flow 시작"
-              checked={values.autoStartSession ?? false}
-              onChange={() => handleToggle('autoStartSession')}
-              disabled={!canEdit}
-            />
-          </div>
-        </div>
+        <RowsCard>
+          <SwitchRow
+            label="휴식 자동 시작"
+            checked={settingsData ? values.autoStartBreak ?? false : null}
+            onChange={() => handleToggle('autoStartBreak')}
+          />
+          <SwitchRow
+            label="집중 자동 시작"
+            checked={settingsData ? values.autoStartSession ?? false : null}
+            onChange={() => handleToggle('autoStartSession')}
+          />
+        </RowsCard>
       </section>
 
-      <section>
+      <section ref={miniDaysSectionRef}>
         <SectionHeader
           title="미니 데이"
           description="하루를 시간대별로 나누어 할 일을 정리할 수 있어요."
-          actionLabel="기본값 복원"
-          onActionClick={handleResetMiniDaysDefaults}
-          actionDisabled={!settingsData || updateMiniDays.isPending || isMiniDaysDefault}
+          actionLabel={showMiniDaysReset ? '기본값 복원' : undefined}
+          onAction={handleResetMiniDaysDefaults}
+          actionDisabled={updateMiniDays.isPending}
         />
-        <div className="space-y-1 rounded-2xl bg-surface-card p-1 shadow-sm">
+        <RowsCard>
           {([
             { key: 'day1', title: miniDaysBase.day1.label, range: formatMiniDayRange(miniDaysBase.day1) },
             { key: 'day2', title: miniDaysBase.day2.label, range: formatMiniDayRange(miniDaysBase.day2) },
@@ -648,71 +620,69 @@ function PomodoroSettingsPage() {
             <SettingsRow
               key={key}
               label={title}
-              value={range}
+              value={shown(range)}
               onClick={() => openMiniDayEditor(key)}
-              disabled={!canEdit}
             />
           ))}
-        </div>
-        <p className="mt-2 text-xs text-text-secondary">
+        </RowsCard>
+        <p className="mt-list break-keep text-xs text-text-secondary">
           미분류는 항상 있어요. 구간은 이어지지 않아도 되고, 겹치면 위 구간이 우선이에요.
         </p>
       </section>
 
       <section>
         <SectionHeader title="화면" />
-        <div className="rounded-2xl bg-surface-card p-1 shadow-sm">
-          <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl px-4 py-2.5">
-            <span className="text-sm font-medium text-text-primary">화면 테마</span>
-            <InlineSegmentToggle
-              tone="surface"
-              size="md"
-              ariaLabel="화면 테마"
-              options={THEME_OPTIONS}
-              value={theme}
-              onChange={(value) => setTheme(value as Theme)}
-            />
-          </div>
-        </div>
+        {/* 한 줄짜리라도 다른 묶음과 같게 카드에 담는다(통일성, 사용자 결정 2026-10-20) */}
+        <RowsCard>
+          <ListRow
+            size="lg"
+            label="테마"
+            trailing={
+              <SegmentToggle
+                ariaLabel="화면 테마"
+                options={THEME_OPTIONS}
+                value={theme}
+                onChange={setTheme}
+              />
+            }
+          />
+        </RowsCard>
       </section>
 
-      {authState?.type === 'member' && (
+      {authState && (
         <section>
-          <div className="rounded-2xl bg-surface-card p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-state-error transition-colors hover:bg-state-error-subtle"
-            >
-              로그아웃
-            </button>
-          </div>
-        </section>
-      )}
-
-      {authState?.type === 'guest' && (
-        <section>
-          <div className="rounded-2xl bg-surface-card p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => navigate('/login')}
-              className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3.5 text-sm font-medium text-accent transition-colors hover:bg-accent-subtle"
-            >
-              로그인
-            </button>
-          </div>
+          <SectionHeader title="계정" />
+          <RowsCard>
+            {authState.type === 'member' ? (
+              <>
+                <ListRow size="lg" label={authState.user.nickname} description={authMessages.memberStatus} />
+                <ListRow size="lg" label={authMessages.logout} onClick={handleLogout} />
+              </>
+            ) : (
+              <>
+                <ListRow size="lg" label={authMessages.guestStatus} description={authMessages.guestStatusNotice} />
+                <ListRow
+                  size="lg"
+                  label={authMessages.kakaoLogin}
+                  onClick={() => navigate('/login')}
+                  trailing={<ChevronRightIcon className="h-4 w-4" />}
+                />
+              </>
+            )}
+          </RowsCard>
         </section>
       )}
 
       <BottomSheet
         isOpen={activeSheet === 'flow'}
         onClose={() => setActiveSheet(null)}
-        title="Flow 시간"
+        title="집중 시간"
       >
         {FLOW_PRESETS.map((preset) => (
           <BottomSheetItem
             key={preset}
             label={`${preset}분`}
+            selected={values.flowMin === preset}
             rightIcon={values.flowMin === preset ? (
               <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
@@ -725,39 +695,40 @@ function PomodoroSettingsPage() {
         {/* 사용자 지정은 다음 버전에서 공개 */}
       </BottomSheet>
 
+      {/* 짧은 휴식과 긴 휴식을 한 시트에서 고른다. 하나를 골라도 닫지 않고 체크만 옮긴다(저장은 바로 한다) */}
       <BottomSheet
         isOpen={activeSheet === 'break'}
         onClose={() => setActiveSheet(null)}
         title="휴식 시간"
       >
-        <p className="px-2 pb-2 pt-1 text-xs font-semibold text-text-tertiary">짧은 휴식</p>
-        {SHORT_BREAK_PRESETS.map((preset) => (
-          <BottomSheetItem
-            key={`short-${preset}`}
-            label={`${preset}분`}
-            rightIcon={values.breakMin === preset ? (
-              <CheckIcon className="h-4 w-4 text-accent" />
-            ) : undefined}
-            onClick={() => {
-              commitSettings({ breakMin: preset })
-              setActiveSheet(null)
-            }}
-          />
-        ))}
-        <p className="px-2 pb-2 pt-4 text-xs font-semibold text-text-tertiary">긴 휴식</p>
-        {LONG_BREAK_PRESETS.map((preset) => (
-          <BottomSheetItem
-            key={`long-${preset}`}
-            label={`${preset}분`}
-            rightIcon={values.longBreakMin === preset ? (
-              <CheckIcon className="h-4 w-4 text-accent" />
-            ) : undefined}
-            onClick={() => {
-              commitSettings({ longBreakMin: preset })
-              setActiveSheet(null)
-            }}
-          />
-        ))}
+        <div role="group" aria-labelledby="break-short-title">
+          <SectionHeader id="break-short-title" title="짧은 휴식" size="sm" as="h3" className="pt-tight" />
+          {SHORT_BREAK_PRESETS.map((preset) => (
+            <BottomSheetItem
+              key={`short-${preset}`}
+              label={`${preset}분`}
+              selected={values.breakMin === preset}
+              rightIcon={values.breakMin === preset ? (
+                <CheckIcon className="h-4 w-4 text-accent" />
+              ) : undefined}
+              onClick={() => commitSettings({ breakMin: preset })}
+            />
+          ))}
+        </div>
+        <div role="group" aria-labelledby="break-long-title">
+          <SectionHeader id="break-long-title" title="긴 휴식" size="sm" as="h3" className="pt-card" />
+          {LONG_BREAK_PRESETS.map((preset) => (
+            <BottomSheetItem
+              key={`long-${preset}`}
+              label={`${preset}분`}
+              selected={values.longBreakMin === preset}
+              rightIcon={values.longBreakMin === preset ? (
+                <CheckIcon className="h-4 w-4 text-accent" />
+              ) : undefined}
+              onClick={() => commitSettings({ longBreakMin: preset })}
+            />
+          ))}
+        </div>
         {/* 사용자 지정은 다음 버전에서 공개 */}
       </BottomSheet>
 
@@ -770,6 +741,7 @@ function PomodoroSettingsPage() {
           <BottomSheetItem
             key={preset}
             label={`${preset}회`}
+            selected={values.cycleEvery === preset}
             rightIcon={values.cycleEvery === preset ? (
               <CheckIcon className="h-4 w-4 text-accent" />
             ) : undefined}
@@ -794,92 +766,56 @@ function PomodoroSettingsPage() {
             style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
           >
             <div>
-              <input
-                type="text"
+              <TextField
+                aria-label="미니 데이 이름"
                 value={miniDayEditor.label}
                 onChange={(e) => updateMiniDayEditorField('label', e.target.value)}
                 placeholder="미니 데이 1"
-                className={`w-full rounded-xl border border-border-default bg-surface-card px-4 py-3 ${userTextInputClass} text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-subtle`}
               />
-              <p className="mt-2 px-1 text-xs text-text-tertiary">
+              <p className="mt-list break-keep text-xs text-text-secondary">
                 이름도 바꿀 수 있어요. 예: 오전/오후/저녁, 집중 시간, 회의 시간
               </p>
             </div>
 
             <div className="space-y-list">
-              <div className="rounded-2xl bg-surface-base p-1.5">
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMiniDayField('start')}
-                    className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
-                      miniDayEditField === 'start'
-                        ? 'border-accent bg-surface-card shadow-sm'
-                        : 'border-transparent text-text-secondary hover:bg-surface-card/70'
-                    }`}
-                  >
-                    <p className={`text-xs font-medium ${
-                      miniDayEditField === 'start' ? 'text-accent-text' : 'text-text-secondary'
-                    }`}>
-                      시작
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-text-primary">{startValueLabel}</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMiniDayField('end')}
-                    className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
-                      miniDayEditField === 'end'
-                        ? 'border-accent bg-surface-card shadow-sm'
-                        : 'border-transparent text-text-secondary hover:bg-surface-card/70'
-                    }`}
-                  >
-                    <p className={`text-xs font-medium ${
-                      miniDayEditField === 'end' ? 'text-accent-text' : 'text-text-secondary'
-                    }`}>
-                      종료
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-text-primary">{endValueLabel}</p>
-                  </button>
-                </div>
-              </div>
+              <SegmentToggle
+                ariaLabel="고칠 시각"
+                fullWidth
+                options={[
+                  { label: `시작 ${startValueLabel}`, value: 'start' },
+                  { label: `종료 ${endValueLabel}`, value: 'end' },
+                ]}
+                value={miniDayEditField}
+                onChange={handleSelectMiniDayField}
+              />
 
               {activeMiniDayErrorMessage && (
-                <p className="text-xs font-medium text-state-error">{activeMiniDayErrorMessage}</p>
+                <p className="text-xs font-medium text-state-error-text">{activeMiniDayErrorMessage}</p>
               )}
             </div>
 
-            <div className="space-y-card-item rounded-2xl bg-surface-base px-3 py-3">
-              <p className="text-xs font-medium text-text-secondary">
-                {miniDayEditField === 'start' ? '시작 시간 선택' : '종료 시간 선택'}
-              </p>
-
-              <div className="grid grid-cols-3 gap-card-item">
-                <div className="space-y-list">
-                  <WheelColumn
-                    items={periodItems}
-                    selectedIndex={periodIndex}
-                    onSelectIndex={(index) => handleTogglePeriod(PERIOD_OPTIONS[index].value)}
-                    ariaLabel="오전 오후 선택"
-                  />
-                </div>
-                <div className="space-y-list">
-                  <WheelColumn
-                    items={hourItems}
-                    selectedIndex={hourIndex}
-                    onSelectIndex={(index) => handleSelectHour(HOUR_OPTIONS[index])}
-                    ariaLabel="시 선택"
-                  />
-                </div>
-                <div className="space-y-list">
-                  <WheelColumn
-                    items={minuteItems}
-                    selectedIndex={minuteIndex}
-                    onSelectIndex={(index) => handleSelectMinute(MINUTE_OPTIONS[index])}
-                    ariaLabel="분 선택"
-                  />
-                </div>
-              </div>
+            {/* 시각 휠(24시간): 상자 없이 시와 분 두 열을 두고, 고른 줄은 두 열을 가로지르는 띠 하나로 보여 준다 */}
+            <div className="relative grid grid-cols-2 gap-card-item">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-control bg-accent-subtle"
+                style={{ height: WHEEL_ITEM_HEIGHT }}
+              />
+              <WheelColumn
+                key={miniDayEditField}
+                items={hourItems}
+                selectedIndex={hourIndex}
+                onSelectIndex={(index) => handleSelectHour(hourOptions[index])}
+                ariaLabel="시 선택"
+              />
+              <WheelColumn
+                // 칸 수가 바뀌면 스크롤 위치를 새로 잡도록 다시 그린다
+                key={timeDraft.hour === 24 ? 'minute-end-of-day' : 'minute'}
+                items={minuteItems}
+                selectedIndex={minuteIndex}
+                onSelectIndex={(index) => handleSelectMinute(minuteOptions[index])}
+                ariaLabel="분 선택"
+              />
             </div>
 
             <div className="text-center text-sm font-medium text-text-secondary">
@@ -889,13 +825,15 @@ function PomodoroSettingsPage() {
             </div>
 
             <p className={`text-center text-xs font-medium ${
-              activeMiniDayErrorMessage ? 'text-state-error' : 'text-text-secondary'
+              activeMiniDayErrorMessage ? 'text-state-error-text' : 'text-text-secondary'
             }`}>
               {activeMiniDayErrorMessage ? '오류를 고치지 않고 닫으면 저장되지 않아요' : '닫으면 자동으로 저장돼요'}
             </p>
           </div>
         </div>
       </BottomSheet>
+
+      {confirmSheet}
     </div>
   )
 }
