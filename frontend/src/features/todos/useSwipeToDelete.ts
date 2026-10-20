@@ -2,16 +2,15 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type Pointer
 
 // 할 일 행을 왼쪽으로 밀어 지우는 손짓(사용자 결정 2026-10-21, iOS 목록의 trailing 스와이프에서 full swipe를 뺀 모양).
 // 살짝 밀면 오른쪽에 빨간 "삭제"가 드러나 머물고(REVEAL_WIDTH), 그 버튼을 눌러야 지운다. 끝까지 밀어 바로 지우는 동작은 없다.
-// 버튼 폭보다 더 밀면 고무줄처럼 조금만 더 따라오고(OVERSCROLL_MAX), 놓으면 버튼 폭으로 돌아온다. 지운 뒤에는 되돌리기 토스트로 되살린다.
+// 밀리는 거리는 REVEAL_WIDTH로 고정이다(더 밀어도 따라오지 않는다, 사용자 결정 2026-10-21). 지운 뒤에는 되돌리기 토스트로 되살린다.
 // 손짓은 세 가지다. 터치, 마우스로 왼쪽으로 끌기, 트랙패드 두 손가락 가로 밀기(데스크톱도 같은 동작, 사용자 결정 2026-10-21).
 // 터치와 마우스는 처음 8px을 움직인 방향이 가로일 때만 민다. 세로는 스크롤과 길게 눌러/세로로 끌어 순서 바꾸기(dnd-kit)에 남긴다.
 // 키보드와 스크린리더는 메뉴 시트의 "삭제"를 쓴다. 한 번에 한 행만 열어 둔다. 다른 행을 밀거나 행 밖을 누르면 열린 행은 닫힌다.
 
-export const REVEAL_WIDTH = 72
+// 내용이 밀리는 거리. 삭제 버튼(DELETE_BUTTON_WIDTH)과 내용 사이에 8을 띄운다
+export const REVEAL_WIDTH = 80
+export const DELETE_BUTTON_WIDTH = 72
 const AXIS_LOCK_PX = 8
-// 버튼 폭을 넘겨 밀 때 따라오는 비율과 최대 거리
-const OVERSCROLL_RATIO = 0.3
-const OVERSCROLL_MAX = 24
 // 트랙패드 가로 밀기는 끝 이벤트가 없어서, 이만큼 wheel이 멈추면 손을 뗀 것으로 본다
 const WHEEL_END_MS = 140
 
@@ -100,11 +99,7 @@ export function useSwipeToDelete({ enabled, onDelete }: Options) {
     const g = gesture.current
     if (!g) return
     suppressClick.current = true
-    const raw = Math.min(0, g.base + dx)
-    const next = raw >= -REVEAL_WIDTH
-      ? raw
-      : -REVEAL_WIDTH - Math.min(OVERSCROLL_MAX, (-raw - REVEAL_WIDTH) * OVERSCROLL_RATIO)
-    setOffset(next)
+    setOffset(Math.max(-REVEAL_WIDTH, Math.min(0, g.base + dx)))
   }
 
   // x, y는 시작점 기준이 아닌 화면 좌표다

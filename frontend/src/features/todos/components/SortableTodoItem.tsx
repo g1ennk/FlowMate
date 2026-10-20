@@ -2,7 +2,7 @@ import type { KeyboardEventHandler } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TodoItem, type TodoItemProps } from './TodoItem'
-import { REVEAL_WIDTH, useSwipeToDelete } from '../useSwipeToDelete'
+import { DELETE_BUTTON_WIDTH, useSwipeToDelete } from '../useSwipeToDelete'
 import { TrashIcon } from '../../../ui/Icons'
 
 type SortableTodoItemProps = TodoItemProps & {
@@ -79,8 +79,9 @@ export function SortableTodoItem({
             aria-hidden
             tabIndex={-1}
             onClick={handleDelete}
-            className="absolute inset-y-0 right-0 flex items-center justify-center rounded-control bg-state-error-strong pl-2 text-sm font-medium whitespace-nowrap text-white"
-            style={{ width: Math.max(REVEAL_WIDTH, -offset) + 8 }}
+            // 네 모서리가 둥근 버튼 하나. 폭은 고정이고, 내용과 8 떨어져 행 오른쪽 끝(강조 면 끝)에 붙는다. 위아래도 4씩 띄운다
+            className="absolute inset-y-1 right-2 flex items-center justify-center rounded-control bg-state-error-strong text-sm font-medium whitespace-nowrap text-white"
+            style={{ width: DELETE_BUTTON_WIDTH }}
           >
             <TrashIcon className="mr-1 h-4 w-4" />
             삭제

@@ -43,13 +43,12 @@ describe('useSwipeToDelete', () => {
     expect(row).toHaveAttribute('data-offset', '0')
   })
 
-  it('끝까지 밀어도 바로 지우지 않고, 놓으면 삭제 버튼 폭으로 돌아온다(full swipe 없음)', () => {
+  it('끝까지 밀어도 버튼 폭(고정)까지만 밀리고 지우지 않는다(full swipe 없음)', () => {
     const { onDelete, row } = setup()
     fireEvent.touchStart(row, { touches: [{ clientX: 300, clientY: 100 }] })
     fireEvent.touchMove(row, { touches: [{ clientX: 200, clientY: 100 }] })
     fireEvent.touchMove(row, { touches: [{ clientX: 20, clientY: 100 }] })
-    // 버튼 폭을 넘긴 만큼은 고무줄처럼 조금만(최대 24) 따라온다
-    expect(Number(row.getAttribute('data-offset'))).toBeGreaterThanOrEqual(-(REVEAL_WIDTH + 24))
+    expect(row).toHaveAttribute('data-offset', String(-REVEAL_WIDTH))
     fireEvent.touchEnd(row, { touches: [] })
     expect(row).toHaveAttribute('data-offset', String(-REVEAL_WIDTH))
     expect(onDelete).not.toHaveBeenCalled()
