@@ -1,6 +1,10 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import type { TaskItem } from '../reviewTypes'
-import { TimelineTaskItem } from './TimelineTaskItem'
+import { Card } from '../../../ui/Card'
+import { EmptyState } from '../../../ui/EmptyState'
+import { SectionHeader } from '../../../ui/SectionHeader'
+import { systemMessages } from '../../../lib/messages'
+import { MiniDayTaskGroups } from './MiniDayTaskGroups'
 
 type DailyTaskListProps = {
   tasks: TaskItem[]
@@ -9,59 +13,36 @@ type DailyTaskListProps = {
   onSelectTask?: (task: TaskItem) => void
 }
 
+// 일간 할 일 기록. 카드 밖 섹션 제목 + 목록(빈 상태도) 카드 한 장, 미니데이 구간 순서로 묶는다(§2-1)
 export function DailyTaskList({
   tasks,
   isToday = true,
   miniDayLabels,
   onSelectTask,
 }: DailyTaskListProps) {
-  const hasTasks = tasks.length > 0
-  const miniDayGroups = miniDayLabels
-    .map((group) => ({
-      ...group,
-      items: tasks.filter((item) => (item.miniDay ?? 0) === group.id),
-    }))
-    .filter((group) => group.items.length > 0)
+  const navigate = useNavigate()
 
   return (
-    <section className="rounded-2xl bg-surface-card p-card shadow-sm">
-      <h3 className="mb-card-item text-sm font-semibold text-text-primary">
-        {isToday ? '오늘의 할 일' : '할 일'}
-      </h3>
-      <div className="space-y-list md:max-h-72 md:overflow-y-auto md:pr-1">
-        {!hasTasks && (
-          <div className="space-y-list py-list text-center">
-            <p className="text-sm text-text-tertiary">
-              {isToday ? '오늘 할 일을 추가하고 완료하면 여기에 나타나요.' : '이날은 할 일이 없어요.'}
-            </p>
-            <Link
-              to="/todos"
-              className="inline-block rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-text-inverse transition-colors hover:bg-accent-hover"
-            >
-              계획 페이지로 이동
-            </Link>
-          </div>
-        )}
-
-        {miniDayGroups.map((group) => {
-          const completed = group.items.filter((item) => item.isDone)
-          const incomplete = group.items.filter((item) => !item.isDone)
-          return (
-            <div key={group.id} className="space-y-element">
-              <div className="flex items-center gap-list text-[11px] font-semibold text-text-tertiary">
-                <span>{group.label}</span>
-                <div className="h-px flex-1 bg-surface-sunken" />
-              </div>
-              {completed.map((item) => (
-                <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
-              ))}
-              {incomplete.map((item) => (
-                <TimelineTaskItem key={item.id} item={item} onSelect={onSelectTask} />
-              ))}
-            </div>
-          )
-        })}
-      </div>
+    <section>
+      <SectionHeader title={isToday ? '오늘의 할 일' : '할 일'} />
+      {tasks.length === 0 ? (
+        <Card>
+          {isToday ? (
+            <EmptyState
+              message="오늘은 아직 할 일이 없어요"
+              actionLabel={systemMessages.goToPlan}
+              onAction={() => navigate('/todos')}
+              className="py-0"
+            />
+          ) : (
+            <EmptyState message="이날은 할 일이 없어요" className="py-0" />
+          )}
+        </Card>
+      ) : (
+        <Card>
+          <MiniDayTaskGroups tasks={tasks} miniDayLabels={miniDayLabels} onSelectTask={onSelectTask} />
+        </Card>
+      )}
     </section>
   )
 }

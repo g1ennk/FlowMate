@@ -193,5 +193,15 @@ export function useStopwatchSessionSync() {
     syncTimersRef.current = syncTimers
   }, [syncTimers])
 
+  // 오프라인에서는 저장이 바로 실패해 백오프(최대 60초)에 들어간다. 다시 연결되면 기다리지 않고 바로 보낸다
+  useEffect(() => {
+    const handleOnline = () => {
+      retryRef.current = {}
+      syncTimersRef.current(useTimerStore.getState())
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [])
+
   return syncTimers
 }

@@ -2,6 +2,7 @@ import type { PropsWithChildren, ReactElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, type RenderOptions } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { mutationDefaults } from '../app/queryClient'
 
 export function createTestQueryClient() {
   return new QueryClient({
@@ -12,7 +13,9 @@ export function createTestQueryClient() {
         gcTime: 0,
         refetchOnWindowFocus: false,
       },
+      // 오프라인 동작은 앱과 같게 둔다(저장을 멈춰 두지 않고 바로 실패)
       mutations: {
+        ...mutationDefaults,
         retry: false,
       },
     },

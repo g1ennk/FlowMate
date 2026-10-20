@@ -73,7 +73,7 @@ describe('useAiReportSheet', () => {
     await act(async () => { await result.current.requestAiReport() })
 
     expect(result.current.isSheetOpen).toBe(true)
-    expect(result.current.aiError).toBe('잠시 후 다시 시도해 주세요')
+    expect(result.current.aiError).toBe('요청이 많아 AI 리포트를 만들지 못했어요. 다시 시도해 주세요.')
   })
 
   it('다시 생성 실패 문구는 시트를 닫았다 열면 지운다', async () => {
@@ -111,7 +111,7 @@ describe('useAiReportSheet', () => {
 
     await act(async () => { await result.current.requestAiReport() })
 
-    expect(result.current.aiError).toBe('이 기간에 완료한 할 일이 없어서 분석할 수 없어요')
+    expect(result.current.aiError).toBe('이 기간에 완료한 할 일이 없어서 요약할 수 없어요')
     expect(result.current.retryAiReport).toBeUndefined()
   })
 
@@ -136,6 +136,6 @@ describe('useAiReportSheet', () => {
     })
 
     expect(errorSpy).toHaveBeenCalledTimes(1)
-    expect(errorSpy).toHaveBeenCalledWith('AI 레포트를 만들지 못했어요', expect.anything())
+    expect(errorSpy).toHaveBeenCalledWith('AI 리포트를 만들지 못했어요. 다시 시도해 주세요.', expect.anything())
   })
 })

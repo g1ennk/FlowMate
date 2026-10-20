@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate, useRouteError } from 'react-router-dom'
+import { systemMessages } from '../lib/messages'
+import { SystemMessage } from '../ui/SystemMessage'
 
 const RELOAD_KEY = 'flowmate:chunk-reload-count'
 const MAX_RELOADS = 2
@@ -24,7 +26,12 @@ function reloadWithCounter(): void {
   window.location.reload()
 }
 
-export default function RouteErrorBoundary() {
+type RouteErrorBoundaryProps = {
+  // 하단 탭이 있는 레이아웃 안에서 쓰면 그 영역 가운데에 둔다
+  inLayout?: boolean
+}
+
+export default function RouteErrorBoundary({ inLayout = false }: RouteErrorBoundaryProps) {
   const error = useRouteError()
   const location = useLocation()
   const navigate = useNavigate()
@@ -48,80 +55,35 @@ export default function RouteErrorBoundary() {
 
   if (isChunkError && canAutoReload) return null
 
+  const placement = inLayout ? 'layout' : 'screen'
+
   if (isChunkError) {
+    // 오프라인에서 화면 코드를 받지 못한 것은 업데이트가 아니라 연결 문제다
+    const copy = navigator.onLine === false ? systemMessages.chunkOffline : systemMessages.appUpdated
     return (
-      <div className="flex min-h-[60dvh] flex-col items-center justify-center px-6 text-center">
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-sunken">
-          <svg
-            className="h-8 w-8 text-accent"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.5}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"
-            />
-          </svg>
-        </div>
-        <h1 className="mb-1 text-lg font-semibold text-text-primary">
-          앱이 업데이트되었어요
-        </h1>
-        <p className="mb-6 text-sm text-text-secondary">
-          새 버전이 배포되어 페이지를 새로고침해야 합니다.
-        </p>
-        <button
-          onClick={reloadWithCounter}
-          className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
-        >
-          새로고침
-        </button>
-      </div>
+      <SystemMessage
+        placement={placement}
+        title={copy.title}
+        body={copy.body}
+        primary={{ label: copy.action, onClick: reloadWithCounter }}
+      />
     )
   }
 
   console.error('[RouteErrorBoundary]', error)
 
   return (
-    <div className="flex min-h-[60dvh] flex-col items-center justify-center px-6 text-center">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-sunken">
-        <svg
-          className="h-8 w-8 text-text-tertiary"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={1.5}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
-          />
-        </svg>
-      </div>
-      <h1 className="mb-1 text-lg font-semibold text-text-primary">
-        오류가 발생했어요
-      </h1>
-      <p className="mb-6 max-w-xs text-sm text-text-secondary">
-        잠시 후 다시 시도해주세요
-      </p>
-      <button
-        type="button"
+    <SystemMessage
+      placement={placement}
+      title={systemMessages.routeError.title}
+      body={systemMessages.routeError.body}
+      primary={{
+        label: systemMessages.routeError.action,
         // 같은 주소로 다시 이동하면 에러 경계가 초기화되어 화면을 다시 그린다
-        onClick={() => navigate(location, { replace: true, state: location.state })}
-        className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
-      >
-        다시 시도
-      </button>
-      <button
-        type="button"
-        onClick={() => window.location.assign('/')}
-        className="mt-3 px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
-      >
-        홈으로 돌아가기
-      </button>
-    </div>
+        onClick: () => navigate(location, { replace: true, state: location.state }),
+      }}
+      // 앱을 처음부터 다시 연다(/는 계획으로 보낸다)
+      secondary={{ label: systemMessages.goToPlan, onClick: () => window.location.assign('/') }}
+    />
   )
 }

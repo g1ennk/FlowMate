@@ -4,8 +4,9 @@ import { useCreateSession, useUpdateTodo } from './hooks'
 import { useDeleteWithUndo } from './useDeleteWithUndo'
 import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
-import { completeTaskFromTimer } from '../timer/completeHelpers'
+import { postSessions, tryCompleteTaskFromTimer } from '../timer/completeHelpers'
 import { normalizeSessionId } from '../../lib/sessionId'
+import { FAILURE_TOAST_MS, toastMessages } from '../../lib/messages'
 
 export function useBatchSelect() {
   const [selectMode, setSelectMode] = useState(false)
@@ -40,52 +41,58 @@ export function useBatchSelect() {
   const batchComplete = useCallback(async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    try {
-      for (const id of ids) {
-        const timer = getTimer(id)
-        if (timer && timer.status !== 'idle') {
-          // 활성 timer 가 있으면 누적된 focus 를 flush 한 뒤 완료 처리.
-          await completeTaskFromTimer({
-            todoId: id,
-            timer,
-            settings: settings ?? undefined,
-            pause,
-            reset,
-            getTimer,
-            syncSessionsImmediately: async (sessions) => {
-              for (const session of sessions) {
-                if (session.sessionFocusSeconds <= 0) continue
-                await createSession.mutateAsync({
-                  todoId: id,
-                  body: {
-                    sessionFocusSeconds: session.sessionFocusSeconds,
-                    breakSeconds: session.breakSeconds,
-                    clientSessionId: normalizeSessionId(session.clientSessionId),
-                  },
-                })
-              }
-            },
-            updateTodo: updateTodo.mutateAsync,
-          })
-        } else {
-          updateTodo.mutate({ id, patch: { isDone: true } })
+    // 타이머가 없는 할 일도 저장이 끝난 뒤에 완료를 알린다(실패하면 행은 롤백되고 선택은 남는다)
+    const plainSaves: Promise<unknown>[] = []
+    for (const id of ids) {
+      const timer = getTimer(id)
+      if (timer && timer.status !== 'idle') {
+        // 활성 timer 가 있으면 누적된 focus 를 flush 한 뒤 완료 처리.
+        const result = await tryCompleteTaskFromTimer({
+          todoId: id,
+          timer,
+          settings: settings ?? undefined,
+          pause,
+          reset,
+          getTimer,
+          syncSessionsImmediately: (sessions) =>
+            postSessions(sessions, (session) =>
+              createSession.mutateAsync({
+                todoId: id,
+                body: {
+                  sessionFocusSeconds: session.sessionFocusSeconds,
+                  breakSeconds: session.breakSeconds,
+                  clientSessionId: normalizeSessionId(session.clientSessionId),
+                },
+              }),
+            ),
+          updateTodo: updateTodo.mutateAsync,
+        })
+        if (result !== 'completed') {
+          await Promise.allSettled(plainSaves)
+          toast.error(
+            result === 'sessionSaveFailed' ? toastMessages.timerSessionSaveFailed : toastMessages.batchCompleteFailed,
+            { id: 'timer-save-failed', duration: FAILURE_TOAST_MS },
+          )
+          return
         }
+      } else {
+        plainSaves.push(updateTodo.mutateAsync({ id, patch: { isDone: true } }))
       }
-    } catch {
-      toast.error('타이머 저장에 실패했습니다. 다시 시도해주세요.', {
-        id: 'timer-save-failed',
-      })
+    }
+    const saved = await Promise.allSettled(plainSaves)
+    if (saved.some((item) => item.status === 'rejected')) {
+      toast.error(toastMessages.batchCompleteFailed, { id: 'timer-save-failed', duration: FAILURE_TOAST_MS })
       return
     }
 
-    toast.success(`${ids.length}개 완료 처리됨`, { id: 'batch-complete' })
+    toast.success(toastMessages.batchCompleted(ids.length), { id: 'batch-complete' })
     exitSelectMode()
   }, [selectedIds, settings, createSession, updateTodo, getTimer, pause, reset, exitSelectMode])
 
   const batchDelete = useCallback(() => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    deleteWithUndo(ids, `${ids.length}개 삭제됨`)
+    deleteWithUndo(ids, toastMessages.todosDeleted(ids.length))
     exitSelectMode()
   }, [selectedIds, deleteWithUndo, exitSelectMode])
 

@@ -1,7 +1,8 @@
+import { SegmentToggle } from '../../../ui/SegmentToggle'
 import type { PeriodType } from '../reviewTypes'
 
 const TABS: Array<{ value: PeriodType; label: string }> = [
-  { value: 'daily', label: '일일' },
+  { value: 'daily', label: '일간' },
   { value: 'weekly', label: '주간' },
   { value: 'monthly', label: '월간' },
 ]
@@ -11,26 +12,10 @@ type PeriodTabsProps = {
   onChange: (value: PeriodType) => void
 }
 
+// 회고 기간 세그먼트. 날짜 이동과 함께 기간 카드 한 장에 담기고(ReviewPage), 카드 안에서 줄을 꽉 채운다(사용자 결정 2026-10-20).
+// 흰 카드 안에 회색 트랙을 겹치지 않는다. 고른 기간은 연두 면과 초록 글자로 보인다
 export function PeriodTabs({ value, onChange }: PeriodTabsProps) {
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-surface-card p-2 shadow-sm">
-      {TABS.map((tab) => {
-        const isActive = value === tab.value
-        return (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => onChange(tab.value)}
-            className={`flex-1 rounded-xl transition-colors ${
-              isActive
-                ? 'bg-accent px-3 py-2.5 text-sm font-bold text-text-inverse'
-                : 'bg-surface-sunken px-3 py-2 text-sm font-medium text-text-secondary hover:bg-hover-strong'
-            }`}
-          >
-            {tab.label}
-          </button>
-        )
-      })}
-    </div>
+    <SegmentToggle ariaLabel="회고 기간" fullWidth track="none" selectedStyle="accent" options={TABS} value={value} onChange={onChange} />
   )
 }

@@ -111,8 +111,8 @@ describe('useBatchSelect timer completion', () => {
     })
 
     expect(mocked.toastError).toHaveBeenCalledWith(
-      '타이머 저장에 실패했습니다. 다시 시도해주세요.',
-      { id: 'timer-save-failed' },
+      '집중 기록을 저장하지 못해서 완료하지 않았어요. 다시 시도해 주세요.',
+      { id: 'timer-save-failed', duration: 5000 },
     )
     expect(result.current.selectMode).toBe(true)
     expect(result.current.selectedIds.has('todo-1')).toBe(true)
@@ -121,6 +121,26 @@ describe('useBatchSelect timer completion', () => {
     expect(mocked.updateTodoMutate).not.toHaveBeenCalled()
     expect(mocked.reset).not.toHaveBeenCalled()
     expect(mocked.toastSuccess).not.toHaveBeenCalled()
+  })
+
+  // 타이머가 없는 할 일도 저장이 끝난 뒤에 "완료했어요"라고 알린다(오프라인이면 바로 실패한다)
+  it('keeps the selection and says some were not completed when saving a todo without a timer fails', async () => {
+    mocked.getTimer.mockReturnValue(undefined as never)
+    mocked.updateTodoMutateAsync.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const { result } = renderBatchSelect()
+    await selectTodo(result)
+
+    await act(async () => {
+      await result.current.batchComplete()
+    })
+
+    expect(mocked.updateTodoMutateAsync).toHaveBeenCalledWith({ id: 'todo-1', patch: { isDone: true } })
+    expect(mocked.toastError).toHaveBeenCalledWith(
+      '완료하지 못한 할 일이 있어요. 다시 시도해 주세요.',
+      { id: 'timer-save-failed', duration: 5000 },
+    )
+    expect(mocked.toastSuccess).not.toHaveBeenCalled()
+    expect(result.current.selectMode).toBe(true)
   })
 
   it('completes selected todos and clears selection after session sync succeeds', async () => {
@@ -137,7 +157,7 @@ describe('useBatchSelect timer completion', () => {
       patch: { isDone: true, timerMode: 'stopwatch' },
     })
     expect(mocked.reset).toHaveBeenCalledWith('todo-1')
-    expect(mocked.toastSuccess).toHaveBeenCalledWith('1개 완료 처리됨', {
+    expect(mocked.toastSuccess).toHaveBeenCalledWith('할 일 1개를 완료했어요', {
       id: 'batch-complete',
     })
     expect(result.current.selectMode).toBe(false)

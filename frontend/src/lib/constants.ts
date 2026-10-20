@@ -1,5 +1,5 @@
 export const PHASE_LABELS: Record<string, string> = {
-  flow: 'Flow',
+  flow: '집중',
   short: '휴식',
   long: '긴 휴식',
 }

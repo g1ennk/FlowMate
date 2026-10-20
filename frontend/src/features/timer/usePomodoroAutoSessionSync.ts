@@ -94,5 +94,15 @@ export function usePomodoroAutoSessionSync() {
     syncRef.current = syncAutoCompleted
   }, [syncAutoCompleted])
 
+  // 오프라인에서는 저장이 바로 실패해 백오프(최대 60초)에 들어간다. 다시 연결되면 기다리지 않고 바로 보낸다
+  useEffect(() => {
+    const handleOnline = () => {
+      retryRef.current = {}
+      syncRef.current(useTimerStore.getState())
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [])
+
   return syncAutoCompleted
 }

@@ -12,7 +12,6 @@ export function ActiveTimerTitle() {
   const initialized = useAuthStore((s) => s.initialized)
   const timers = useTimerStore((s) => s.timers)
   const showTotalFocus = useTimerDisplayStore((s) => s.showTotalFocus)
-  const showTotalBreak = useTimerDisplayStore((s) => s.showTotalBreak)
   const lastRunningIdRef = useRef<string | null>(null)
 
   const hasActiveTimer = Object.values(timers).some((timer) => timer.status !== 'idle')
@@ -33,12 +32,11 @@ export function ActiveTimerTitle() {
         timer,
         sessionFocusSeconds: todo?.sessionFocusSeconds ?? 0,
         showTotalFocus,
-        showTotalBreak,
         nowMs: Date.now(),
       }) ?? APP_TITLE
 
     if (document.title !== title) document.title = title
-  }, [timers, data?.items, showTotalFocus, showTotalBreak])
+  }, [timers, data?.items, showTotalFocus])
 
   return null
 }

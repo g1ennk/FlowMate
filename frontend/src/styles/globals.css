@@ -20,12 +20,15 @@
   /* Text */
   --color-text-primary: #111827;
   --color-text-secondary: #4b5563;
-  --color-text-tertiary: #9ca3af;
+  --color-text-tertiary: #6b7280;
   --color-text-inverse: #ffffff;
   --color-text-disabled: #d1d5db;
 
   /* Brand / Accent */
-  --color-accent: #10b981;
+  --color-accent: #059669;
+  --color-accent-fill: #10b981;
+  --color-on-accent: #111827;
+  --color-focus-ring: #047857;
   --color-accent-hover: #059669;
   --color-accent-subtle: #ecfdf5;
   --color-accent-muted: #d1fae5;
@@ -35,6 +38,8 @@
   --color-border-default: #e5e7eb;
   --color-border-subtle: #f3f4f6;
   --color-border-strong: #d1d5db;
+  /* 카드 테두리 — 라이트는 border-default, 다크는 면의 명도로만 구분한다 */
+  --color-card-border: #e5e7eb;
 
   /* Controls — 꺼진 스위치 트랙. 카드(#fff) 대비 3:1 이상 */
   --color-control-off: #8a9099;
@@ -43,14 +48,36 @@
   --color-error: #ef4444;
   --color-error-subtle: #fef2f2;
   --color-error-text: #b91c1c;
+  --color-info-text: #1d4ed8;
+  --color-error-strong: #b91c1c;
+  --color-on-error: #ffffff;
   --color-warning: #f59e0b;
-  --color-warning-subtle: #fefce8;
+  --color-warning-text: #b45309;
   --color-success: #10b981;
   --color-success-subtle: #ecfdf5;
+
+  /* 메뉴 시트 아이콘 색(사용자 결정 2026-10-20: 바꾸기 전 색). 그래픽이라 카드 #fff와 hover #f9fafb 위에서 3:1 이상.
+     파랑 3.52, 주황 3.41, 노랑 4.71, 초록 3.61, 빨강 3.60, 남색 4.27 (hover 기준) */
+  --color-icon-blue: #3b82f6;
+  --color-icon-orange: #ea580c;
+  --color-icon-yellow: #a16207;
+  --color-icon-green: #059669;
+  --color-icon-red: #ef4444;
+  --color-icon-indigo: #6366f1;
+
+  /* Rest (휴식) — 집중(초록)과 색상이 달라야 한다 */
+  --color-rest-text: #0369a1;
+  --color-rest-subtle: #f0f9ff;
+
+  /* Toast */
+  --color-toast-bg: #111827;
+  --color-toast-text: #f9fafb;
+  --color-toast-action: #6ee7b7;
 
   /* Hover */
   --color-hover: #f9fafb;
   --color-hover-strong: #f3f4f6;
+  --color-sunken-hover: #e5e7eb;
 
   /* Timer — 항상 다크 컨텍스트 */
   --color-timer-focus-bg: #1e1e1e;
@@ -62,8 +89,18 @@
   --color-timer-btn-text: #ececec;
   --color-timer-modal-bg: #2b2b2b;
   --color-timer-modal-text: #ececec;
-  --color-timer-modal-secondary: #a0a0a0;
+  /* 타이머 보조 글자. 버튼 면 위에서도 4.5를 넘게 둔다: 집중 면 버튼 #393939 5.82, 시트 면 버튼 #444444 4.91 */
+  --color-timer-modal-secondary: #b8b8b8;
   --color-timer-modal-subtle: #363636;
+  --color-timer-accent: #34d399;
+  --color-timer-on-accent: #06281d;
+  /* 타이머 하위 트리의 포커스 링. 집중 면 #1e1e1e 8.67, 시트 면 #2b2b2b 7.37, 휴식 면 #1a2e2a 7.44 (§10 3:1) */
+  --color-timer-focus-ring: #34d399;
+  /* 타이머 위 시트의 막, 동기화 재연결 점 */
+  --color-timer-overlay: rgba(0, 0, 0, 0.6);
+  --color-timer-warning: #fbbf24;
+  /* 타이머 위 시트의 그림자. 늘 어두운 면이라 다크 값 하나로 고정한다 */
+  --shadow-timer-float-value: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
 
   /* Scrollbar */
   --color-scrollbar: #d1d5db;
@@ -74,12 +111,11 @@
   --color-selection-text: #111827;
 
   /* Nav */
-  --color-nav-active: #059669;
-  --color-nav-inactive: #9ca3af;
+  --color-nav-active: #047857;
+  --color-nav-inactive: #6b7280;
 
-  /* Calendar */
-  --color-cal-sunday: #ef4444;
-  --color-cal-saturday: #3b82f6;
+  /* Shadow */
+  --shadow-float-value: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .dark {
@@ -91,33 +127,56 @@
   --color-surface-overlay: rgba(0, 0, 0, 0.6);
 
   --color-text-primary: #ececec;
-  --color-text-secondary: #a0a0a0;
-  --color-text-tertiary: #6b6b6b;
+  --color-text-secondary: #c4c4c4;
+  --color-text-tertiary: #a3a3a3;
   --color-text-inverse: #1e1e1e;
   --color-text-disabled: #4a4a4a;
 
   --color-accent: #34d399;
+  --color-accent-fill: #34d399;
+  --color-on-accent: #1e1e1e;
+  --color-focus-ring: #34d399;
   --color-accent-hover: #6ee7b7;
   --color-accent-subtle: rgba(52, 211, 153, 0.1);
   --color-accent-muted: rgba(52, 211, 153, 0.2);
   --color-accent-text: #6ee7b7;
 
-  --color-border-default: #3a3a3a;
-  --color-border-subtle: #2b2b2b;
+  --color-border-default: #4a4a4a;
+  --color-border-subtle: #404040;
   --color-border-strong: #505050;
+  --color-card-border: transparent;
 
   --color-control-off: #7a7a7a;
 
   --color-error: #f87171;
   --color-error-subtle: rgba(248, 113, 113, 0.1);
   --color-error-text: #fca5a5;
+  --color-info-text: #93c5fd;
+  --color-error-strong: #b91c1c;
+  --color-on-error: #ffffff;
   --color-warning: #fbbf24;
-  --color-warning-subtle: rgba(251, 191, 36, 0.1);
+  --color-warning-text: #fbbf24;
   --color-success: #34d399;
   --color-success-subtle: rgba(52, 211, 153, 0.1);
 
+  /* 시트 #2b2b2b와 hover #323232 위에서 3:1 이상: 파랑 5.04, 주황 5.66, 노랑 8.37, 초록 6.67, 빨강 4.64, 남색 4.30 (hover 기준) */
+  --color-icon-blue: #60a5fa;
+  --color-icon-orange: #fb923c;
+  --color-icon-yellow: #facc15;
+  --color-icon-green: #34d399;
+  --color-icon-red: #f87171;
+  --color-icon-indigo: #818cf8;
+
+  --color-rest-text: #7dd3fc;
+  --color-rest-subtle: rgba(125, 211, 252, 0.1);
+
+  --color-toast-bg: #3f3f3f;
+  --color-toast-text: #ececec;
+  --color-toast-action: #6ee7b7;
+
   --color-hover: #323232;
   --color-hover-strong: #3a3a3a;
+  --color-sunken-hover: #262626;
 
   /* Timer 토큰은 :root과 동일 (항상 다크 컨텍스트) — 재선언 불필요 */
 
@@ -128,10 +187,9 @@
   --color-selection-text: #ececec;
 
   --color-nav-active: #34d399;
-  --color-nav-inactive: #6b6b6b;
+  --color-nav-inactive: #a3a3a3;
 
-  --color-cal-sunday: #f87171;
-  --color-cal-saturday: #60a5fa;
+  --shadow-float-value: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 /* ── Tailwind Theme Tokens ──────────────────────────── */
@@ -150,6 +208,9 @@
   --color-text-disabled: var(--color-text-disabled);
 
   --color-accent: var(--color-accent);
+  --color-accent-fill: var(--color-accent-fill);
+  --color-on-accent: var(--color-on-accent);
+  --color-focus-ring: var(--color-focus-ring);
   --color-accent-hover: var(--color-accent-hover);
   --color-accent-subtle: var(--color-accent-subtle);
   --color-accent-muted: var(--color-accent-muted);
@@ -158,18 +219,37 @@
   --color-border-default: var(--color-border-default);
   --color-border-subtle: var(--color-border-subtle);
   --color-border-strong: var(--color-border-strong);
+  --color-card-border: var(--color-card-border);
   --color-control-off: var(--color-control-off);
 
   --color-state-error: var(--color-error);
   --color-state-error-subtle: var(--color-error-subtle);
   --color-state-error-text: var(--color-error-text);
+  --color-state-error-strong: var(--color-error-strong);
+  --color-state-info-text: var(--color-info-text);
+  --color-on-error: var(--color-on-error);
   --color-state-warning: var(--color-warning);
-  --color-state-warning-subtle: var(--color-warning-subtle);
+  --color-state-warning-text: var(--color-warning-text);
   --color-state-success: var(--color-success);
   --color-state-success-subtle: var(--color-success-subtle);
 
+  --color-rest-text: var(--color-rest-text);
+  --color-rest-subtle: var(--color-rest-subtle);
+
+  --color-icon-blue: var(--color-icon-blue);
+  --color-icon-orange: var(--color-icon-orange);
+  --color-icon-yellow: var(--color-icon-yellow);
+  --color-icon-green: var(--color-icon-green);
+  --color-icon-red: var(--color-icon-red);
+  --color-icon-indigo: var(--color-icon-indigo);
+
+  --color-toast-bg: var(--color-toast-bg);
+  --color-toast-text: var(--color-toast-text);
+  --color-toast-action: var(--color-toast-action);
+
   --color-hover: var(--color-hover);
   --color-hover-strong: var(--color-hover-strong);
+  --color-sunken-hover: var(--color-sunken-hover);
 
   --color-timer-focus-bg: var(--color-timer-focus-bg);
   --color-timer-focus-text: var(--color-timer-focus-text);
@@ -182,12 +262,18 @@
   --color-timer-modal-text: var(--color-timer-modal-text);
   --color-timer-modal-secondary: var(--color-timer-modal-secondary);
   --color-timer-modal-subtle: var(--color-timer-modal-subtle);
+  --color-timer-accent: var(--color-timer-accent);
+  --color-timer-on-accent: var(--color-timer-on-accent);
+  --color-timer-focus-ring: var(--color-timer-focus-ring);
+  --color-timer-overlay: var(--color-timer-overlay);
+  --color-timer-warning: var(--color-timer-warning);
 
   --color-nav-active: var(--color-nav-active);
   --color-nav-inactive: var(--color-nav-inactive);
 
-  --color-cal-sunday: var(--color-cal-sunday);
-  --color-cal-saturday: var(--color-cal-saturday);
+  /* 카카오 로그인 버튼. 카카오 디자인 가이드의 색이라 테마와 무관하다(§4 원시 색 금지의 유일한 예외) */
+  --color-kakao: #FEE500;
+  --color-kakao-label: #3C1E1E;
 
   /* ── Spacing Tokens ─────────────────────────────────── */
   --spacing-page-x: 20px;
@@ -196,9 +282,15 @@
   --spacing-card: 16px;
   --spacing-card-item: 12px;
   --spacing-list: 8px;
-  --spacing-element: 6px;
   --spacing-tight: 4px;
   --spacing-sheet: 20px;
+
+  /* ── Radius / Shadow ────────────────────────────────── */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-sheet: 24px;
+  --shadow-float: var(--shadow-float-value);
+  --shadow-timer-float: var(--shadow-timer-float-value);
 }
 
 *,
@@ -208,7 +300,7 @@
 }
 
 html {
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
@@ -224,6 +316,7 @@ body {
   background: var(--color-surface-base);
   color: var(--color-text-primary);
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -233,9 +326,27 @@ body {
   flex-direction: column;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* 하단 탭이 있는 화면에서는 토스트를 탭 위로 올린다 (ui/AppToaster).
+   선택 모드의 일괄 동작 바가 떠 있으면 바 높이 + 간격(--batch-bar-offset, BatchActionBar)만큼 더 올린다 */
+:root:has([data-bottom-nav]) {
+  --toast-bottom-offset: calc(var(--bottom-nav-height) + var(--batch-bar-offset, 0px));
+}
+
+@layer base {
+  /* 링 색은 포커스 전부터 정해 둔다. 포커스 때만 색을 주면 transition이 outline-color를 글자색(currentColor)에서
+     링 색으로 150ms 동안 바꿔서, 채운 버튼 위에서는 그동안 글자색 링(대비 1.1)이 보인다.
+     타이머 하위 트리(전체 화면, 그 위 시트)는 앱 테마와 상관없이 timer-focus-ring을 쓴다(§4-3) */
+  :where(*) {
+    outline-color: var(--color-focus-ring);
+  }
+  :where([data-timer-fullscreen], [data-tone='timer']) :where(*) {
+    outline-color: var(--color-timer-focus-ring);
+  }
+  :focus-visible {
+    outline-style: solid;
+    outline-width: 2px;
+    outline-offset: 2px;
+  }
 }
 
 ::selection {
@@ -308,6 +419,15 @@ input[type="number"] {
 
 .animate-overlay-in {
   animation: overlay-in 0.15s ease-out;
+}
+
+/* 슬라이드 대신 페이드로 (움직임 줄이기) */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fade-in-up { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slide-up { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes scale-in { from { opacity: 0; } to { opacity: 1; } }
+  .animate-slide-up { animation: slide-up 0.2s ease-out; }
 }
 
 .bottom-sheet-scroll {

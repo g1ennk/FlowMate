@@ -102,6 +102,22 @@ describe('세션 큐의 영구 오류 처리', () => {
 
       expect(sentSessionIds()).toEqual([SID_A, SID_A, SID_B])
     })
+    // 오프라인에서는 저장이 바로 실패해 백오프(최대 60초)에 들어간다. 다시 연결되면 기다리지 않고 바로 보낸다
+    it('다시 연결되면(online) 백오프를 풀고 바로 다시 보낸다', async () => {
+      mocked.mutateAsync.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(undefined)
+      queueTwoSessions()
+
+      await runSync()
+      expect(sentSessionIds()).toEqual([SID_A])
+
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+      await flush()
+      await flush()
+
+      expect(sentSessionIds()).toEqual([SID_A, SID_A, SID_B])
+    })
   })
 
   describe('일반 타이머 세션', () => {
@@ -155,6 +171,22 @@ describe('세션 큐의 영구 오류 처리', () => {
 
       await act(() => vi.advanceTimersByTimeAsync(1_500))
       act(() => result.current(useTimerStore.getState()))
+      await flush()
+      await flush()
+
+      expect(sentSessionIds()).toEqual([SID_A, SID_A, SID_B])
+    })
+
+    it('다시 연결되면(online) 백오프를 풀고 같은 세션부터 바로 보낸다', async () => {
+      mocked.mutateAsync.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(undefined)
+      setStopwatchWithTwoSessions()
+
+      await runSync()
+      expect(sentSessionIds()).toEqual([SID_A])
+
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
       await flush()
       await flush()
 

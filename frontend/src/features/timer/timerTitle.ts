@@ -1,11 +1,10 @@
-import { formatTimerMinutesSeconds } from '../todos/todoTimerDisplay'
+import { formatPausedClock, formatRunningTime } from '../../lib/time'
 import type { SingleTimerState } from './timerTypes'
 
 type TimerTitleArgs = {
   timer: SingleTimerState | undefined
   sessionFocusSeconds: number
   showTotalFocus: boolean
-  showTotalBreak: boolean
   nowMs: number
 }
 
@@ -20,7 +19,7 @@ function isBreakTimer(timer: SingleTimerState) {
 // TimerFullScreen 이 보여주는 값과 같은 식으로 계산한다
 function getDisplaySeconds(
   timer: SingleTimerState,
-  { sessionFocusSeconds, showTotalFocus, showTotalBreak, nowMs }: Omit<TimerTitleArgs, 'timer'>,
+  { sessionFocusSeconds, showTotalFocus, nowMs }: Omit<TimerTitleArgs, 'timer'>,
 ) {
   if (timer.mode === 'pomodoro') {
     const remainingMs = timer.endAt ? timer.endAt - nowMs : (timer.remainingMs ?? 0)
@@ -29,9 +28,8 @@ function getDisplaySeconds(
 
   if (timer.flexiblePhase === 'break_suggested') {
     const targetMs = timer.breakTargetMs ?? 0
-    if (timer.breakCompleted && targetMs > 0) {
-      return floorSeconds(showTotalBreak ? timer.breakElapsedMs : timer.breakElapsedMs - targetMs)
-    }
+    // 목표를 넘기면 화면 숫자는 총 휴식이다(넘친 시간은 라벨 "휴식 끝 · +1:00"에만 있다)
+    if (timer.breakCompleted && targetMs > 0) return floorSeconds(timer.breakElapsedMs)
     return ceilSeconds(targetMs - timer.breakElapsedMs)
   }
 
@@ -69,12 +67,15 @@ export function pickTitleTimerId(
 export function getTimerTitle({ timer, ...display }: TimerTitleArgs): string | null {
   if (!timer || timer.status === 'idle') return null
 
-  // 대기 중에는 시간보다 다음에 할 일이 중요하다. phase 는 다음 단계를 가리킨다.
+  // 대기 중에는 시간보다 상태가 중요하다. 화면의 단계 끝 줄과 같은 문구를 쓴다.
+  // phase 는 다음 단계를 가리키므로 휴식을 기다리면 집중이 끝난 것이다
   if (timer.status === 'waiting') {
-    return isBreakTimer(timer) ? '휴식 대기' : 'Flow 대기'
+    return isBreakTimer(timer) ? '집중 끝' : '휴식 끝'
   }
 
-  const timeLabel = formatTimerMinutesSeconds(getDisplaySeconds(timer, display))
-  if (timer.status === 'paused') return `일시정지: ${timeLabel}`
-  return `${isBreakTimer(timer) ? '휴식' : 'Flow'}: ${timeLabel}`
+  // 실행 중 카운트는 "집중 12:30"(§9). 일시정지도 화면이 멈춘 시계를 그대로 보여 주므로 분:초를 쓰고,
+  // 할 일 행("집중 일시정지 · 12분")과 같은 말 순서로 상태를 붙인다
+  const phase = isBreakTimer(timer) ? 'break' : 'focus'
+  const seconds = getDisplaySeconds(timer, display)
+  return timer.status === 'paused' ? formatPausedClock(phase, seconds) : formatRunningTime(phase, seconds)
 }

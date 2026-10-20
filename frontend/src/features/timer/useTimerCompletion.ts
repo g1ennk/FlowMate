@@ -5,10 +5,11 @@ import type { PomodoroSettings, TodoList } from '../../api/types'
 import { useCreateSession, useUpdateTodo } from '../todos/hooks'
 import { useTimerStore } from './timerStore'
 import type { SingleTimerState } from './timerTypes'
-import { completeTaskFromTimer } from './completeHelpers'
+import { postSessions, tryCompleteTaskFromTimer } from './completeHelpers'
 import { getPlannedMs as getPlannedMsUtil } from './timerHelpers'
 import { normalizeSessionId } from '../../lib/sessionId'
 import { queryKeys } from '../../lib/queryKeys'
+import { FAILURE_TOAST_MS, toastMessages } from '../../lib/messages'
 
 type UseTimerCompletionParams = {
   todoId: string
@@ -59,39 +60,38 @@ export function useTimerCompletion({
     const timer = getTimer(todoId)
     if (!timer) return false
 
-    try {
-      await completeTaskFromTimer({
-        todoId,
-        timer,
-        settings: settings ?? undefined,
-        pause,
-        reset,
-        getTimer,
-        syncSessionsImmediately: async (sessions) => {
-          for (const session of sessions) {
-            if (session.sessionFocusSeconds <= 0) continue
-            await createSession.mutateAsync({
-              todoId,
-              body: {
-                sessionFocusSeconds: session.sessionFocusSeconds,
-                breakSeconds: session.breakSeconds,
-                clientSessionId: normalizeSessionId(session.clientSessionId),
-              },
-            })
-          }
-        },
-        updateTodo: updateTodo.mutateAsync,
-        nextOrder: getNextDoneOrder(),
-        debug: timer.mode === 'stopwatch',
-      })
-    } catch {
-      toast.error('타이머 저장에 실패했습니다. 다시 시도해주세요.', {
-        id: 'timer-save-failed',
-      })
+    const result = await tryCompleteTaskFromTimer({
+      todoId,
+      timer,
+      settings: settings ?? undefined,
+      pause,
+      reset,
+      getTimer,
+      syncSessionsImmediately: (sessions) =>
+        postSessions(sessions, (session) =>
+          createSession.mutateAsync({
+            todoId,
+            body: {
+              sessionFocusSeconds: session.sessionFocusSeconds,
+              breakSeconds: session.breakSeconds,
+              clientSessionId: normalizeSessionId(session.clientSessionId),
+            },
+          }),
+        ),
+      updateTodo: updateTodo.mutateAsync,
+      nextOrder: getNextDoneOrder(),
+      debug: timer.mode === 'stopwatch',
+    })
+    // 실패하면 성공 토스트를 띄우지 않는다. 확인 시트와 타이머가 그대로 남아 다시 누르면 다시 보낸다(멱등)
+    if (result !== 'completed') {
+      toast.error(
+        result === 'sessionSaveFailed' ? toastMessages.timerSessionSaveFailed : toastMessages.timerCompleteFailed,
+        { id: 'timer-save-failed', duration: FAILURE_TOAST_MS },
+      )
       return false
     }
 
-    toast.success('태스크 완료! 🎉', { id: 'task-completed' })
+    toast.success(toastMessages.timerTodoCompleted, { id: 'task-completed' })
     endMusicSession()
     onClose()
     return true

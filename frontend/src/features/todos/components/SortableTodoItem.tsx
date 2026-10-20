@@ -1,3 +1,4 @@
+import type { KeyboardEventHandler } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TodoItem, type TodoItemProps } from './TodoItem'
@@ -6,6 +7,8 @@ type SortableTodoItemProps = TodoItemProps & {
   id: string
 }
 
+// 할 일 한 줄(li). 길게 눌러 끄는 포인터 리스너는 행 전체에 두고, 키보드 정렬용 속성(role=button, tabIndex)은
+// 행 위에 깐 보이지 않는 층에만 준다. 행 전체가 버튼이 되면 안의 버튼들과 겹쳐(nested-interactive) 이름이 반복해 읽힌다
 export function SortableTodoItem({
   id,
   ...props
@@ -14,6 +17,7 @@ export function SortableTodoItem({
     attributes,
     listeners,
     setNodeRef,
+    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
@@ -28,23 +32,36 @@ export function SortableTodoItem({
 
   // 편집 중이거나 선택 모드이면 드래그 불가
   const canDrag = !props.isEditing && !props.selectMode
+  const { onKeyDown, ...pointerListeners } = listeners ?? {}
 
   return (
-    <div
+    <li
       ref={setNodeRef}
       style={style}
-      className={`touch-manipulation select-none ${isDragging ? 'z-50' : ''}`}
-      {...(canDrag ? { ...attributes, ...listeners } : {})}
+      className={`relative touch-manipulation select-none ${isDragging ? 'z-50' : ''}`}
+      {...(canDrag ? pointerListeners : {})}
     >
+      {canDrag && (
+        // 키보드로 Tab해 들어와 Space로 집고 방향키로 옮긴다. 포인터는 통과시켜 행 안 버튼이 그대로 눌린다.
+        // pointer-events: none은 손가락·마우스의 hit test만 막는다. VoiceOver 두 번 탭(WebKit AX press)은 hit test 결과가
+        // 이 요소의 자식일 때만 그쪽을 누르고, 자식이 없는 이 층은 자기 자신에 click을 보내므로 아래 제목·체크 버튼이 눌리지 않는다.
+        // 그 click은 아무것도 하지 않게 여기서 멈춘다(스크린리더로 옮기기는 dnd-kit 키보드 방식만 된다)
+        <span
+          ref={setActivatorNodeRef}
+          {...attributes}
+          aria-label={`${props.title} 순서 바꾸기`}
+          onKeyDown={onKeyDown as KeyboardEventHandler | undefined}
+          onClick={(e) => e.stopPropagation()}
+          className="pointer-events-none absolute inset-0 rounded-control"
+        />
+      )}
       <div
-        className={`rounded-xl transition-[box-shadow,opacity] duration-150 ease-out motion-reduce:transition-none ${
-          isDragging
-            ? 'shadow-2xl'
-            : ''
+        className={`rounded-control transition-[box-shadow,opacity] duration-150 ease-out motion-reduce:transition-none ${
+          isDragging ? 'bg-surface-card shadow-float' : ''
         }`}
       >
         <TodoItem {...props} />
       </div>
-    </div>
+    </li>
   )
 }

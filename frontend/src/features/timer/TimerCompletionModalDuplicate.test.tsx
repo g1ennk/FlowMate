@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderApp } from '../../test/renderApp'
@@ -87,7 +87,7 @@ describe('완료 확인 모달 — 완료 진행 중 이중 집계 방지', () =
     useTimerStore.setState({ timers: {}, pendingAutoSessions: {} })
   })
 
-  it('updateTodo 가 처리되는 동안 총 Flow 시간이 두 배로 표시되지 않는다', async () => {
+  it('updateTodo 가 처리되는 동안 총 집중 시간이 두 배로 표시되지 않는다', async () => {
     const user = userEvent.setup()
 
     // 2분(>= MIN_FLOW) 집중, 휴식 없음, 첫 세션 (initialFocusMs=0, sessions=[])
@@ -115,15 +115,16 @@ describe('완료 확인 모달 — 완료 진행 중 이중 집계 방지', () =
     )
 
     await user.click(await screen.findByRole('button', { name: '완료' }))
-    await user.click(screen.getByRole('button', { name: '확인' }))
+    const dialog = screen.getByRole('dialog', { name: '이 할 일을 완료할까요?' })
+    await user.click(within(dialog).getByRole('button', { name: '완료' }))
 
     // 세션 POST(syncSessionsImmediately) 가 호출되면 completeStopwatch 가 진행되어
     // updateSessions 로 store 가 갱신된 상태 = 모달이 이중 집계를 보일 수 있는 시점.
     await waitFor(() => expect(mocked.createSessionMutateAsync).toHaveBeenCalled())
 
     // 실제 집중 시간은 2분. 완료 중에도 "4분"(두 배)이 떠서는 안 된다.
-    expect(screen.queryByText('4분 0초')).not.toBeInTheDocument()
-    expect(screen.getByText('2분 0초')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/4분/)).not.toBeInTheDocument()
+    expect(within(dialog).getByText('이 할 일에 집중 1회, 2분이 기록돼요.')).toBeInTheDocument()
 
     resolveUpdateTodo()
   })

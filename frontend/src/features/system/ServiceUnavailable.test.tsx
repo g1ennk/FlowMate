@@ -26,6 +26,11 @@ describe('ServiceUnavailable', () => {
     expect(screen.queryByText(/운영/)).not.toBeInTheDocument()
   })
 
+  it('자동으로 다시 확인한다는 사실을 한 줄로 알린다', () => {
+    renderApp(<ServiceUnavailable />)
+    expect(screen.getByText('연결되면 화면이 자동으로 열려요.')).toBeInTheDocument()
+  })
+
   it('"다시 확인"을 누르면 헬스체크 후 상태를 갱신한다', async () => {
     vi.mocked(checkHealth).mockResolvedValue(true)
     renderApp(<ServiceUnavailable />)

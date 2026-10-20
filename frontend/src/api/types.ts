@@ -131,10 +131,6 @@ export const ReviewUpsertSchema = z.object({
   content: z.string(),
 })
 
-export const ReviewListSchema = z.object({
-  items: z.array(ReviewSchema),
-})
-
 export type Todo = z.infer<typeof TodoSchema>
 export type TodoList = z.infer<typeof TodoListSchema>
 export type TodoCreateInput = z.infer<typeof TodoCreateSchema>
@@ -153,6 +149,5 @@ export type TodoReorderRequest = z.infer<typeof TodoReorderRequestSchema>
 export type ReviewType = z.infer<typeof ReviewTypeSchema>
 export type Review = z.infer<typeof ReviewSchema>
 export type ReviewUpsertInput = z.infer<typeof ReviewUpsertSchema>
-export type ReviewList = z.infer<typeof ReviewListSchema>
 
 export type { SingleTimerState } from '../features/timer/timerTypes'
