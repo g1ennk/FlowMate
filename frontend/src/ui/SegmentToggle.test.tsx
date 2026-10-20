@@ -114,11 +114,13 @@ describe('SegmentToggle', () => {
     expect(screen.getByRole('radio', { name: '현재 세션' })).toHaveClass('bg-timer-btn-hover', 'text-timer-focus-text')
   })
 
-  it('고른 칸은 면 차이만으로는 약해서 3:1 넘는 경계선(안쪽 ring)을 두르고, 다른 칸에는 없다', () => {
+  it('고른 칸은 계획 달력 월/주처럼 카드 면으로 채우고 그림자를 주며 테두리는 없다', () => {
     render(<Controlled />)
 
-    expect(screen.getByRole('radio', { name: '시스템' })).toHaveClass('ring-1', 'ring-inset', 'ring-text-tertiary')
-    expect(screen.getByRole('radio', { name: '다크' }).className).not.toMatch(/ring-/)
+    const active = screen.getByRole('radio', { name: '시스템' })
+    expect(active).toHaveClass('bg-surface-card', 'font-semibold', 'shadow-sm')
+    expect(active.className).not.toMatch(/ring-/)
+    expect(screen.getByRole('radio', { name: '다크' }).className).not.toMatch(/ring-|shadow/)
   })
 
   it('timer tone의 고른 칸 경계도 timer 토큰이다', () => {
