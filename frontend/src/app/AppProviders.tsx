@@ -2,7 +2,6 @@ import type { PropsWithChildren } from 'react'
 import { useEffect, useState } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { Toaster } from 'react-hot-toast'
 import { timerApi } from '../api/timerApi'
 import { queryClient } from './queryClient'
 import { startMockWorker } from '../mocks/browser'
@@ -15,6 +14,7 @@ import { ActiveTimerTitle } from './ActiveTimerTitle'
 import { useAuthStore } from '../store/authStore'
 import BackendStatusGate from './BackendStatusGate'
 import { useAuthInitRetry } from './useAuthInitRetry'
+import { AppToaster } from '../ui/AppToaster'
 
 const mockEnabled =
   import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === '1'
@@ -45,8 +45,8 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   if (!mockReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
-        모킹 워커를 준비 중입니다...
+      <div className="flex min-h-screen items-center justify-center bg-surface-base text-text-secondary">
+        모킹 워커를 준비하고 있어요
       </div>
     )
   }
@@ -59,29 +59,8 @@ export function AppProviders({ children }: PropsWithChildren) {
       <TimerSyncLayer />
       <ActiveTimerTitle />
       <BackendStatusGate>{children}</BackendStatusGate>
-      <Toaster
-        position="top-center"
-        // BottomSheet·TimerFullScreen(9999), SoundSheet(10000), 서버 연결 배너(10001)보다 위에 보이도록 한다.
-        containerStyle={{
-          zIndex: 10002,
-          // 서버 연결 배너가 떠 있으면 그 아래로 내린다 (배너 높이에 safe-top 포함)
-          marginTop: 'calc(var(--top-banner-offset, var(--safe-top)) + 8px)',
-        }}
-        toastOptions={{
-          duration: 2000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            // 좁은 화면에서도 잘리지 않게 화면 폭 안에서 줄바꿈한다.
-            maxWidth: 'min(420px, calc(100vw - 32px))',
-            // 한국어는 어절 단위로 줄바꿈하고, 긴 URL처럼 한 덩어리가 넘칠 때만 중간에서 끊는다.
-            wordBreak: 'keep-all',
-            overflowWrap: 'anywhere',
-          },
-        }}
-      />
+      {/* 토스트는 BackendStatusGate의 inert 영역 밖에 둔다(시트가 열려 있어도 "되돌리기"를 누를 수 있게) */}
+      <AppToaster />
       {import.meta.env.DEV ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
     </QueryClientProvider>
   )

@@ -36,6 +36,16 @@ export function getMiniDayFromTime(date: Date, settings: MiniDaysSettings): numb
   return index + 1
 }
 
+// 그 구간의 끝 시각이 이미 지났는지. 구간 사이에 빈 시간이 있어도(지금이 어느 구간에도 없어도) 끝 시각으로 가른다.
+// 시간은 getMiniDayFromTime처럼 기기 시각(KST)으로 본다. 1~3이 아니거나 끝 시각을 못 읽으면 false.
+export function hasMiniDayEnded(miniDay: number, settings: MiniDaysSettings, now: Date): boolean {
+  const key = MINI_DAY_KEYS[miniDay - 1]
+  if (!key) return false
+  const end = parseMiniDayTime(settings[key].end, true)
+  if (end === null) return false
+  return now.getHours() * 60 + now.getMinutes() >= end
+}
+
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear()

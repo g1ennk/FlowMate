@@ -37,7 +37,7 @@ export function useKeyboardShortcuts() {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (isInputFocused() && e.key !== 'Escape') return
+      if (isInputFocused()) return
 
       // 풀스크린 타이머가 열려 있으면 단축키 비활성화
       if (document.querySelector('[data-timer-fullscreen]')) return
@@ -64,15 +64,9 @@ export function useKeyboardShortcuts() {
           setHelpOpen((prev) => !prev)
           e.preventDefault()
           break
-        case 'Escape':
-          if (helpOpen) {
-            setHelpOpen(false)
-            e.preventDefault()
-          }
-          break
       }
     },
-    [navigate, location.pathname, setTheme, resolved, helpOpen],
+    [navigate, location.pathname, setTheme, resolved],
   )
 
   useEffect(() => {

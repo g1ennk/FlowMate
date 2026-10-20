@@ -12,3 +12,8 @@ function subscribe(onChange: () => void) {
 export function useOnlineStatus() {
   return useSyncExternalStore(subscribe, () => navigator.onLine)
 }
+
+/** 배너와 같은 기준(navigator.onLine)으로 지금 오프라인인지. 오프라인이면 저장을 보내지 않고 입력을 그대로 둔다 */
+export function isOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}

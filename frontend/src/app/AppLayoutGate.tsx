@@ -3,6 +3,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { getAuthMode, hasSessionExpired } from '../lib/auth'
 import { getOnboardingSeen } from '../lib/onboarding'
 import { useAuthStore } from '../store/authStore'
+import { systemMessages } from '../lib/messages'
+import { SystemMessage } from '../ui/SystemMessage'
 import AppLayout from './App'
 import AppSplash from './AppSplash'
 
@@ -15,6 +17,7 @@ function AuthRestoreFailed() {
   const navigate = useNavigate()
   const init = useAuthStore((s) => s.init)
   const [retrying, setRetrying] = useState(false)
+  const copy = systemMessages.authRestoreFailed
 
   const handleRetry = async () => {
     setRetrying(true)
@@ -26,29 +29,12 @@ function AuthRestoreFailed() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-surface-base">
-      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center px-6 py-10 text-center">
-        <h1 className="text-xl font-bold text-text-primary">로그인 정보를 불러오지 못했어요</h1>
-        <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-          로그아웃된 건 아니에요. 잠시 후 다시 시도해 주세요.
-        </p>
-        <button
-          type="button"
-          onClick={handleRetry}
-          disabled={retrying}
-          className="mt-8 rounded-full bg-surface-card px-5 py-2.5 text-sm font-medium text-text-secondary shadow-sm transition-colors hover:bg-hover-strong disabled:opacity-60"
-        >
-          {retrying ? '불러오는 중...' : '다시 시도'}
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/login')}
-          className="mt-3 rounded-full px-5 py-2.5 text-sm text-text-tertiary transition-colors hover:bg-hover"
-        >
-          로그인 화면으로
-        </button>
-      </div>
-    </div>
+    <SystemMessage
+      title={copy.title}
+      body={copy.body}
+      primary={{ label: retrying ? copy.pending : copy.action, onClick: handleRetry, disabled: retrying }}
+      secondary={{ label: copy.secondary, onClick: () => navigate('/login') }}
+    />
   )
 }
 

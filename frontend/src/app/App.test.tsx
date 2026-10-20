@@ -91,3 +91,38 @@ describe('AppLayout 테마 버튼', () => {
     expect(screen.queryByRole('button', { name: /모드로 전환/ })).not.toBeInTheDocument()
   })
 })
+
+describe('AppLayout 하단 탭', () => {
+  it('현재 탭만 aria-current이고 채운 아이콘을 쓴다', async () => {
+    renderLayout()
+    await screen.findByText('회고 화면')
+    const active = screen.getByRole('link', { name: '회고' })
+    const inactive = screen.getByRole('link', { name: '계획' })
+
+    expect(active).toHaveAttribute('aria-current', 'page')
+    expect(inactive).not.toHaveAttribute('aria-current')
+    expect(active.querySelector('svg')).toHaveAttribute('stroke', 'none')
+    expect(inactive.querySelector('svg')).toHaveAttribute('stroke', 'currentColor')
+
+    await userEvent.click(inactive)
+
+    expect(await screen.findByText('계획 화면')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '계획' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '계획' }).querySelector('svg')).toHaveAttribute('stroke', 'none')
+  })
+
+  it('하단 탭 막대는 본문과 같은 최대 폭(512) 안에 놓인다', async () => {
+    renderLayout()
+    await screen.findByText('회고 화면')
+    expect(screen.getByRole('navigation')).toHaveClass('mx-auto', 'w-full', 'max-w-lg')
+  })
+
+  it('계획 아이콘은 빈 모양과 채운 모양의 선 길이가 같다', async () => {
+    renderLayout()
+    await screen.findByText('회고 화면')
+    const outline = screen.getByRole('link', { name: '계획' }).querySelector('path')?.getAttribute('d') ?? ''
+    // 채운 아이콘의 선은 x=8.25에서 20.25까지(12)다
+    expect(outline).toContain('M8.25 6.75h12')
+    expect(outline).not.toContain('h7.5')
+  })
+})

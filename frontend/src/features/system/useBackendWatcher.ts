@@ -32,7 +32,7 @@ export function useBackendWatcher() {
     let timerId: ReturnType<typeof setTimeout> | undefined
 
     async function tick() {
-      // 오프라인 실패는 서버 장애가 아니므로 세지 않는다 (OfflineBanner가 안내한다)
+      // 오프라인 실패는 서버 장애가 아니므로 세지 않는다 (ConnectionBanner가 오프라인 문구로 안내한다)
       if (navigator.onLine) await recheckBackend()
       if (cancelled) return
 
