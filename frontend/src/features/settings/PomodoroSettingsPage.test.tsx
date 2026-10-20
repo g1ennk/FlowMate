@@ -109,14 +109,18 @@ describe('PomodoroSettingsPage', () => {
     })
     renderApp(<PomodoroSettingsPage />, { route: '/settings' })
 
-    const account = await screen.findByRole('heading', { level: 2, name: '계정' })
+    const account = await screen.findByRole('region', { name: '계정' })
+    // 이름 옆 카카오 표시만 두고 "카카오 계정으로 로그인했어요" 문구는 없다. 프로필 사진도 없다
+    expect(within(account).getByText('Glenn')).toBeInTheDocument()
+    expect(within(account).getByRole('img', { name: '카카오 계정' })).toBeInTheDocument()
+    expect(screen.queryByText('카카오 계정으로 로그인했어요')).not.toBeInTheDocument()
     const pomodoro = screen.getByRole('heading', { level: 2, name: '뽀모도로' })
     const display = screen.getByRole('heading', { level: 2, name: '화면' })
     const logout = await screen.findByRole('button', { name: '로그아웃' })
     const follows = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
     expect(follows(account, pomodoro)).toBe(true)
     expect(follows(display, logout)).toBe(true)
-    expect(account.closest('section')).not.toContainElement(logout)
+    expect(account).not.toContainElement(logout)
   })
 
   it('keeps the guest status and where guest records live in the account section', async () => {
@@ -131,7 +135,7 @@ describe('PomodoroSettingsPage', () => {
       { route: '/settings' },
     )
 
-    expect(await screen.findByRole('heading', { level: 2, name: '계정' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: '계정' })).toBeInTheDocument()
     expect(screen.getByText('게스트로 쓰는 중')).toBeInTheDocument()
     expect(screen.getByText('기록은 이 브라우저에만 남아요')).toBeInTheDocument()
     // 설정에는 코치마크가 없다(섹션 설명이 같은 일을 한다)

@@ -101,7 +101,6 @@ export const authMessages = {
   guestStatus: '게스트로 쓰는 중',
   guestStatusNotice: '기록은 이 브라우저에만 남아요',
   kakaoLogin: '카카오로 로그인',
-  memberStatus: '카카오 계정으로 로그인했어요',
   logout: '로그아웃',
   signingIn: '로그인하는 중...',
 } as const

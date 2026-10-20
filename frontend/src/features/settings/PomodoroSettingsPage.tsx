@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/authStore'
 import { type Theme, useThemeStore } from '../../store/themeStore'
 import { BottomSheet, BottomSheetItem } from '../../ui/BottomSheet'
 import { Card } from '../../ui/Card'
-import { CheckIcon, ChevronRightIcon } from '../../ui/Icons'
+import { CheckIcon, ChevronRightIcon, KakaoIcon } from '../../ui/Icons'
 import { InlineStatus } from '../../ui/InlineStatus'
 import { ListRow } from '../../ui/ListRow'
 import { PageHeader } from '../../ui/PageHeader'
@@ -554,27 +554,38 @@ function PomodoroSettingsPage() {
         />
       )}
 
-      {/* 계정은 맨 위에 둔다. 게스트에게는 기록이 이 브라우저에만 남는다는 안내와 로그인이 먼저 보여야 한다(사용자 결정 2026-10-21) */}
+      {/* 계정은 맨 위에 이름 한 줄로 둔다(섹션 제목, 카드, 프로필 사진 없음. 별따먹자 마이페이지 참고, 사용자 결정 2026-10-21).
+          회원은 닉네임 옆에 카카오 표시만 두고 "카카오 계정으로 로그인했어요" 문구는 쓰지 않는다. 게스트는 그 아래 회색 면에 "기록은 이 브라우저에만 남아요"와 카카오 로그인 버튼을 둔다 */}
       {authState && (
-        <section>
-          <SectionHeader title="계정" />
-          <RowsCard>
-            {authState.type === 'member' ? (
-              <>
-                <ListRow size="lg" label={authState.user.nickname} description={authMessages.memberStatus} />
-              </>
-            ) : (
-              <>
-                <ListRow size="lg" label={authMessages.guestStatus} description={authMessages.guestStatusNotice} />
-                <ListRow
-                  size="lg"
-                  label={authMessages.kakaoLogin}
-                  onClick={() => navigate('/login')}
-                  trailing={<ChevronRightIcon className="h-4 w-4" />}
-                />
-              </>
-            )}
-          </RowsCard>
+        <section aria-label="계정" className="space-y-card-item">
+          <div className="flex items-center">
+            <div className="flex min-w-0 items-center gap-list">
+              <p className="min-w-0 truncate text-xl font-semibold text-text-primary">
+                {authState.type === 'member' ? authState.user.nickname : authMessages.guestStatus}
+              </p>
+              {authState.type === 'member' && (
+                <span
+                  role="img"
+                  aria-label="카카오 계정"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-kakao"
+                >
+                  <KakaoIcon className="h-3 w-3 text-kakao-label" />
+                </span>
+              )}
+            </div>
+          </div>
+          {authState.type === 'guest' && (
+            <div className="flex items-center justify-between gap-card-item rounded-card bg-surface-sunken py-card-item pr-card-item pl-card">
+              <p className="min-w-0 break-keep text-sm text-text-secondary">{authMessages.guestStatusNotice}</p>
+              <button
+                type="button"
+                onClick={() => navigate('/login')}
+                className="h-9 shrink-0 whitespace-nowrap rounded-control bg-kakao px-3 text-sm font-medium text-kakao-label transition-opacity active:opacity-80"
+              >
+                {authMessages.kakaoLogin}
+              </button>
+            </div>
+          )}
         </section>
       )}
 
