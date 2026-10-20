@@ -1,6 +1,7 @@
 import type { SingleTimerState } from './timerStore'
 import type { PomodoroSettings as SettingsType } from '../../api/types'
 import { MINUTE_MS } from '../../lib/time'
+import { toastMessages } from '../../lib/messages'
 
 /**
  * 타이머 유틸리티 함수 모음
@@ -66,6 +67,5 @@ export function getPomodoroElapsedMs(
  * 타이머 충돌 에러 메시지 생성
  */
 export function getTimerConflictMessage(mode: 'stopwatch' | 'pomodoro'): string {
-  const timerType = mode === 'stopwatch' ? '일반 타이머' : '뽀모도로 타이머'
-  return `다른 태스크에서 이미 ${timerType}가 실행 중입니다`
+  return toastMessages.timerConflict(mode)
 }

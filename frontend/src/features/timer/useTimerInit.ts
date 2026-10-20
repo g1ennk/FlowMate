@@ -75,7 +75,9 @@ export function useTimerInit({
       }
 
       onMounted()
-    } else if (!isOpen) {
+    } else if (!isOpen && hasInitializedRef.current) {
+      // 열려 있다가 닫힐 때만 정리한다. usePomodoroSettings가 렌더마다 새 settings 객체를 주므로
+      // 닫힌 채로 다시 렌더될 때마다 상태를 건드리지 않게 한다(목록 화면이 그릴 때마다 불필요한 갱신)
       hasInitializedRef.current = false
       pomodoroInitKeyRef.current = null
       onUnmounted()

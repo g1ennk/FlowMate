@@ -959,7 +959,7 @@ describe('useTimerStore 일반 타이머 휴식 끝내기', () => {
     vi.useRealTimers()
   })
 
-  it('자동 Flow 시작이 꺼져 있어도 직접 휴식을 끝내면 바로 Flow가 시작된다', () => {
+  it('자동 집중 시작이 꺼져 있어도 직접 휴식을 끝내면 바로 Flow가 시작된다', () => {
     setTimer(createPomodoroTimer({
       mode: 'stopwatch',
       phase: 'flow',

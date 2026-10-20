@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { PomodoroSettings } from '../../api/types'
 import type { SingleTimerState } from './timerTypes'
-import { completeTaskFromTimer } from './completeHelpers'
+import { completeTaskFromTimer, postSessions } from './completeHelpers'
 
 const settings: PomodoroSettings = {
   flowMin: 25,
@@ -189,9 +189,60 @@ describe('completeTaskFromTimer', () => {
     expect(updateTodo.mock.invocationCallOrder[0]).toBeLessThan(reset.mock.invocationCallOrder[0])
   })
 
+  // 휴식 단계에서 완료해도, 집중이 끝날 때 백그라운드 저장이 실패한 기록을 완료 전에 다시 보낸다(멱등 id 그대로).
+  // 예전에는 휴식 단계면 아무것도 보내지 않아서 저장 실패한 집중 기록이 0분으로 완료됐다
+  it('re-sends the recorded focus sessions before completing a pomodoro in its break phase', async () => {
+    const recorded = { sessionFocusSeconds: 1500, breakSeconds: 0, clientSessionId: '11111111-1111-4111-8111-111111111111' }
+    const syncSessionsImmediately = vi.fn().mockResolvedValue(undefined)
+    const updateTodo = vi.fn().mockResolvedValue(undefined)
+    const reset = vi.fn()
+
+    await completeTaskFromTimer({
+      todoId: 'todo-break',
+      timer: createPomodoroTimer({ phase: 'short', remainingMs: 4 * 60_000, sessions: [recorded] }),
+      settings,
+      pause: vi.fn(),
+      reset,
+      getTimer: vi.fn(),
+      updateTodo,
+      syncSessionsImmediately,
+    })
+
+    expect(syncSessionsImmediately).toHaveBeenCalledWith([recorded])
+    expect(syncSessionsImmediately.mock.invocationCallOrder[0]).toBeLessThan(updateTodo.mock.invocationCallOrder[0])
+    expect(reset).toHaveBeenCalledWith('todo-break')
+  })
+
+  it('completes a pomodoro in its break phase without sending anything when nothing was recorded', async () => {
+    const syncSessionsImmediately = vi.fn().mockResolvedValue(undefined)
+    const updateTodo = vi.fn().mockResolvedValue(undefined)
+
+    await completeTaskFromTimer({
+      todoId: 'todo-break-empty',
+      timer: createPomodoroTimer({ phase: 'long', remainingMs: 10 * 60_000, sessions: [] }),
+      settings,
+      pause: vi.fn(),
+      reset: vi.fn(),
+      getTimer: vi.fn(),
+      updateTodo,
+      syncSessionsImmediately,
+    })
+
+    expect(syncSessionsImmediately).not.toHaveBeenCalled()
+    expect(updateTodo).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     ['stopwatch', createStopwatchTimer()],
     ['pomodoro', createPomodoroTimer()],
+    [
+      'pomodoro (break phase)',
+      createPomodoroTimer({
+        phase: 'short',
+        remainingMs: 4 * 60_000,
+        sessions: [{ sessionFocusSeconds: 1500, breakSeconds: 0, clientSessionId: '22222222-2222-4222-8222-222222222222' }],
+      }),
+    ],
   ] as const)(
     'keeps the %s timer and session state when immediate session sync fails',
     async (_mode, timer) => {
@@ -245,3 +296,37 @@ describe('completeTaskFromTimer', () => {
     expect(reset).toHaveBeenCalledTimes(1)
   })
 })
+
+// 다시 보내도 결과가 같은 오류(400, 404, 409 IDEMPOTENCY_CONFLICT)에 완료가 영영 막히지 않게 백그라운드 동기화처럼 건너뛴다
+describe('postSessions', () => {
+  const a = { sessionFocusSeconds: 600, breakSeconds: 0, clientSessionId: 'a' }
+  const b = { sessionFocusSeconds: 900, breakSeconds: 0, clientSessionId: 'b' }
+
+  it.each([
+    ['409 IDEMPOTENCY_CONFLICT', { status: 409, code: 'IDEMPOTENCY_CONFLICT' }],
+    ['400', { status: 400 }],
+    ['404', { status: 404 }],
+  ])('%s 오류는 건너뛰고 다음 세션을 보낸다', async (_name, error) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const post = vi.fn().mockRejectedValueOnce(error).mockResolvedValueOnce(undefined)
+
+    await expect(postSessions([a, b], post)).resolves.toBeUndefined()
+    expect(post).toHaveBeenCalledTimes(2)
+    expect(post).toHaveBeenLastCalledWith(b)
+  })
+
+  it('다시 보내면 될 수 있는 오류(5xx, 네트워크)는 그대로 던진다', async () => {
+    const post = vi.fn().mockRejectedValueOnce({ status: 500 })
+
+    await expect(postSessions([a, b], post)).rejects.toEqual({ status: 500 })
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('0초 세션은 보내지 않는다', async () => {
+    const post = vi.fn().mockResolvedValue(undefined)
+
+    await postSessions([{ ...a, sessionFocusSeconds: 0 }, b], post)
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+})
+

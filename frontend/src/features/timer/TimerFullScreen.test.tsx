@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TodoList } from '../../api/types'
@@ -152,6 +152,20 @@ describe('TimerFullScreen', () => {
     localStorage.removeItem('flowmate/ui/sound-prefs')
   })
 
+
+  // 사운드 켜기/끄기는 사운드 시트 안에 있다. 시트를 열어 켜고 닫는다
+  async function turnSoundOn(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: /^사운드 선택:/ }))
+    const sheet = await screen.findByRole('dialog', { name: '사운드' })
+    await user.click(within(sheet).getByRole('switch', { name: '사운드' }))
+    await user.click(within(sheet).getByRole('button', { name: '닫기' }))
+  }
+
+  // 완료 확인은 타이머 위에 뜨는 확인 시트다
+  function completeDialog() {
+    return screen.getByRole('dialog', { name: '이 할 일을 완료할까요?' })
+  }
+
   it('resumes a paused timer and keeps fullscreen open when the timer is reset', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
@@ -172,10 +186,15 @@ describe('TimerFullScreen', () => {
     await user.click(await screen.findByRole('button', { name: '재개' }))
     expect(mocked.timerStoreActions.resume).toHaveBeenCalledWith('todo-1')
 
-    await user.click(screen.getByRole('button', { name: '배경 음악 켜기' }))
+    await turnSoundOn(user)
 
-    await user.click(screen.getByTitle('전체 리셋'))
-    await user.click(screen.getByRole('button', { name: '확인' }))
+    await user.click(screen.getByRole('button', { name: '초기화' }))
+    const resetDialog = await screen.findByRole('dialog', { name: '타이머를 초기화할까요?' })
+    // 본문은 두 줄이다: 무엇이 돌아가는지, 무엇이 남는지
+    expect(within(resetDialog).getByText(/지금 진행 중인 구간만 처음으로 돌려요\./).textContent).toBe(
+      '지금 진행 중인 구간만 처음으로 돌려요.\n이미 기록된 집중은 남아요.',
+    )
+    await user.click(within(resetDialog).getByRole('button', { name: '초기화' }))
 
     expect(mocked.timerStoreActions.reset).toHaveBeenCalledWith('todo-1')
     expect(mocked.timerStoreActions.initStopwatch).toHaveBeenCalledWith(
@@ -219,10 +238,9 @@ describe('TimerFullScreen', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: '완료' }))
-    expect(
-      screen.getByText('현재 진행 상황이 저장되고 타이머가 초기화됩니다.'),
-    ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '확인' }))
+    expect(within(completeDialog()).getByText('이 할 일에 집중 1회, 2분이 기록돼요.')).toBeInTheDocument()
+    expect(within(completeDialog()).getByRole('button', { name: '계속 집중' })).toBeInTheDocument()
+    await user.click(within(completeDialog()).getByRole('button', { name: '완료' }))
 
     await waitFor(() => {
       expect(mocked.createSessionMutateAsync).toHaveBeenCalledWith({
@@ -303,7 +321,7 @@ describe('TimerFullScreen', () => {
       })
 
       await user.click(await screen.findByRole('button', { name: '완료' }))
-      await user.click(screen.getByRole('button', { name: '확인' }))
+      await user.click(within(completeDialog()).getByRole('button', { name: '완료' }))
 
       await waitFor(() => {
         expect(mocked.updateTodoMutateAsync).toHaveBeenCalled()
@@ -334,15 +352,16 @@ describe('TimerFullScreen', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: '완료' }))
-    await user.click(screen.getByRole('button', { name: '확인' }))
+    await user.click(within(completeDialog()).getByRole('button', { name: '완료' }))
 
     await waitFor(() => {
+      // 성공 토스트("할 일을 완료했어요") 대신 기록을 저장하지 못해 완료하지 않았다고 알린다
       expect(mocked.toastError).toHaveBeenCalledWith(
-        '타이머 저장에 실패했습니다. 다시 시도해주세요.',
-        { id: 'timer-save-failed' },
+        '집중 기록을 저장하지 못해서 완료하지 않았어요. 다시 시도해 주세요.',
+        { id: 'timer-save-failed', duration: 5000 },
       )
     })
-    expect(screen.getByText('타이머를 완료하시겠습니까?')).toBeInTheDocument()
+    expect(completeDialog()).toBeInTheDocument()
     expect(mocked.timerStoreActions.updateSessions).not.toHaveBeenCalled()
     expect(mocked.updateTodoMutateAsync).not.toHaveBeenCalled()
     expect(mocked.timerStoreActions.reset).not.toHaveBeenCalled()
@@ -384,7 +403,7 @@ describe('TimerFullScreen', () => {
 
       const view = renderApp(renderTimer())
 
-      await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+      await turnSoundOn(user)
       await waitFor(() => expect(engine.play).toHaveBeenCalledWith('music', expect.any(String), 1))
       const playedInFocus = vi.mocked(engine.play).mock.calls.length
 
@@ -426,6 +445,27 @@ describe('TimerFullScreen', () => {
     expect(header?.style.paddingTop).toContain('--top-banner-offset')
   })
 
+  it('registers as an overlay while open so the app behind is locked and toasts move to the top', async () => {
+    const { unmount } = renderApp(
+      <TimerFullScreen
+        isOpen
+        onClose={vi.fn()}
+        todoId="todo-1"
+        todoTitle="타이머 테스트"
+        sessionFocusSeconds={0}
+        sessionCount={0}
+        initialMode="stopwatch"
+        isDone={false}
+      />,
+    )
+
+    await screen.findByRole('button', { name: '타이머 닫기' })
+    expect(document.body.style.overflow).toBe('hidden')
+
+    unmount()
+    expect(document.body.style.overflow).toBe('')
+  })
+
   it('shows the preset label instead of exposing per-track controls', async () => {
     renderApp(
       <TimerFullScreen
@@ -452,7 +492,7 @@ describe('TimerFullScreen', () => {
 
     renderApp(renderTimer())
 
-    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await turnSoundOn(user)
     await waitFor(() =>
       expect(useSoundscapeStore.getState()).toMatchObject({ enabled: true, phase: 'focus' }),
     )
@@ -481,7 +521,7 @@ describe('TimerFullScreen', () => {
     view.rerender(renderTimer({ isOpen: false, todoId: '' }))
     view.rerender(renderTimer({ isOpen: true, todoId: 'todo-1' }))
 
-    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await turnSoundOn(user)
     await waitFor(() => {
       expect(playSpy).toHaveBeenCalled()
       expect(useSoundscapeStore.getState().phase).toBe('focus')
@@ -493,7 +533,7 @@ describe('TimerFullScreen', () => {
     Object.assign(mocked.timerState, { status: 'running', flexiblePhase: 'focus' })
 
     const view = renderApp(renderTimer())
-    await user.click(await screen.findByRole('button', { name: '전체 누적' }))
+    await user.click(await screen.findByRole('radio', { name: '전체 누적' }))
     expect(useTimerDisplayStore.getState().showTotalFocus).toBe(true)
 
     view.rerender(renderTimer({ isOpen: false, todoId: '' }))
@@ -513,7 +553,7 @@ describe('TimerFullScreen', () => {
 
       renderApp(renderTimer())
 
-      await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+      await turnSoundOn(user)
       await user.click(await screen.findByRole('button', { name: '일시정지' }))
 
       expect(mocked.timerStoreActions.pause).toHaveBeenCalled()
@@ -545,7 +585,7 @@ describe('TimerFullScreen', () => {
       />,
     )
 
-    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await turnSoundOn(user)
 
     await user.click(screen.getByRole('button', { name: '타이머 닫기' }))
 
@@ -577,7 +617,7 @@ describe('TimerFullScreen', () => {
       />,
     )
 
-    await user.click(await screen.findByRole('button', { name: '배경 음악 켜기' }))
+    await turnSoundOn(user)
 
     view.unmount()
 
@@ -587,8 +627,7 @@ describe('TimerFullScreen', () => {
     })
   })
 
-  it('disables the pomodoro break button before the flow starts', async () => {
-    const user = userEvent.setup()
+  it('hides the pomodoro break button before the flow starts', async () => {
 
     Object.assign(mocked.timerState, {
       mode: 'pomodoro',
@@ -611,13 +650,13 @@ describe('TimerFullScreen', () => {
       />,
     )
 
-    const breakButton = await screen.findByRole('button', { name: '휴식' })
-    expect(breakButton).toBeDisabled()
-    await user.click(breakButton)
+    // 누를 수 없는 버튼은 보여 주지 않는다. 대기 상태의 버튼은 시작과 완료 두 개다
+    expect(await screen.findByRole('button', { name: '시작' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '휴식' })).not.toBeInTheDocument()
     expect(mocked.timerStoreActions.skipToNext).not.toHaveBeenCalled()
   })
 
-  it('disables the pomodoro break button while the next flow is waiting', async () => {
+  it('hides the pomodoro break button while the next flow is waiting', async () => {
     Object.assign(mocked.timerState, {
       mode: 'pomodoro',
       phase: 'flow',
@@ -640,7 +679,8 @@ describe('TimerFullScreen', () => {
       />,
     )
 
-    expect(await screen.findByRole('button', { name: '휴식' })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: '집중 시작' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '휴식' })).not.toBeInTheDocument()
   })
 
   it('keeps the pomodoro break button enabled while the flow is paused', async () => {
@@ -729,7 +769,7 @@ describe('TimerFullScreen', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: '완료' }))
-    const confirmButton = screen.getByRole('button', { name: '확인' })
+    const confirmButton = within(completeDialog()).getByRole('button', { name: '완료' })
     await user.click(confirmButton)
     await user.click(confirmButton)
 
@@ -798,7 +838,7 @@ describe('TimerFullScreen', () => {
       expect(await screen.findByRole('button', { name: '재개' })).toBeInTheDocument()
     })
 
-    it('Flow가 끝나고 휴식을 기다릴 때는 "Flow 완료"와 "휴식 시작", "휴식 건너뛰기"를 보여준다', async () => {
+    it('Flow가 끝나고 휴식을 기다릴 때는 안내 줄 없이 "휴식 시작", "휴식 건너뛰기"를 보여준다', async () => {
       const user = userEvent.setup()
       Object.assign(mocked.timerState, {
         mode: 'pomodoro',
@@ -812,9 +852,10 @@ describe('TimerFullScreen', () => {
 
       renderTimer('pomodoro')
 
-      expect(await screen.findByText('Flow 완료')).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: '휴식 시작' })).toBeInTheDocument()
+      expect(screen.queryByText('집중 끝')).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: '재개' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Flow 시작' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '집중 시작' })).not.toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: '휴식 시작' }))
       expect(mocked.timerStoreActions.resume).toHaveBeenCalledWith('todo-1')
@@ -823,7 +864,7 @@ describe('TimerFullScreen', () => {
       expect(mocked.timerStoreActions.skipToNext).toHaveBeenCalledWith('todo-1')
     })
 
-    it('휴식이 끝나고 다음 Flow를 기다릴 때는 "휴식 완료"와 "Flow 시작"을 보여준다', async () => {
+    it('휴식이 끝나고 다음 Flow를 기다릴 때는 안내 줄 없이 "집중 시작"을 보여준다', async () => {
       Object.assign(mocked.timerState, {
         mode: 'pomodoro',
         phase: 'flow',
@@ -836,8 +877,8 @@ describe('TimerFullScreen', () => {
 
       renderTimer('pomodoro')
 
-      expect(await screen.findByText('휴식 완료')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Flow 시작' })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: '집중 시작' })).toBeInTheDocument()
+      expect(screen.queryByText('휴식 끝')).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: '재개' })).not.toBeInTheDocument()
     })
 
@@ -854,7 +895,7 @@ describe('TimerFullScreen', () => {
 
       await user.click(await screen.findByRole('button', { name: '휴식 끝내기' }))
       expect(mocked.timerStoreActions.resumeFocus).toHaveBeenCalledWith('todo-1')
-      expect(screen.queryByRole('button', { name: 'Flow 시작' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '집중 시작' })).not.toBeInTheDocument()
     })
 
     it('휴식으로 가는 버튼과 휴식을 넘기는 버튼은 아이콘이 다르다', async () => {
@@ -880,6 +921,255 @@ describe('TimerFullScreen', () => {
       expect(toBreakIcon).toBeTruthy()
       expect(skipBreakIcon).toBeTruthy()
       expect(toBreakIcon).not.toBe(skipBreakIcon)
+    })
+  })
+
+  describe('Task 8: 위계와 의미', () => {
+    function renderTimer(initialMode: 'stopwatch' | 'pomodoro', isDone = false) {
+      return renderApp(
+        <TimerFullScreen
+          isOpen
+          onClose={vi.fn()}
+          todoId="todo-1"
+          todoTitle="타이머 테스트"
+          sessionFocusSeconds={0}
+          sessionCount={0}
+          initialMode={initialMode}
+          isDone={isDone}
+        />,
+      )
+    }
+    const emphasis = (name: string) => screen.getByRole('button', { name }).getAttribute('data-emphasis')
+    const pomodoro = (state: Record<string, unknown>) =>
+      Object.assign(mocked.timerState, { mode: 'pomodoro', flexiblePhase: null, ...state })
+
+    it('풀스크린은 할 일 이름을 가진 모달 dialog다', async () => {
+      renderTimer('stopwatch')
+      const dialog = await screen.findByRole('dialog', { name: '타이머 테스트 일반 타이머' })
+      expect(dialog).toHaveAttribute('aria-modal', 'true')
+      // 글자색을 앱 테마에서 물려받지 않는다(라이트와 다크에서 같은 색)
+      expect(dialog).toHaveClass('text-timer-focus-text')
+    })
+
+    it('대기: 시작이 primary, 완료는 neutral', async () => {
+      pomodoro({ phase: 'flow', status: 'idle', remainingMs: 25 * 60_000 })
+      renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '시작' })
+      expect(emphasis('시작')).toBe('primary')
+      expect(emphasis('완료')).toBe('neutral')
+    })
+
+    it('진행: 일시정지가 primary, 휴식과 완료는 neutral', async () => {
+      pomodoro({ phase: 'flow', status: 'running', endAt: Date.now() + 10 * 60_000 })
+      renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '일시정지' })
+      expect(emphasis('일시정지')).toBe('primary')
+      expect(emphasis('휴식')).toBe('neutral')
+      expect(emphasis('완료')).toBe('neutral')
+    })
+
+    it('일시정지: 재개가 primary, 숫자를 흐리게 하고 라벨에 일시정지를 붙인다', async () => {
+      pomodoro({ phase: 'flow', status: 'paused', remainingMs: 10 * 60_000 })
+      renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '재개' })
+      expect(emphasis('재개')).toBe('primary')
+      expect(screen.getByText('집중 · 일시정지')).toBeInTheDocument()
+      expect(screen.getByText('10:00')).toHaveClass('opacity-50')
+    })
+
+    it('단계 끝: 다음 단계 시작이 primary이고, 끝 안내 줄은 어느 상태에도 없다', async () => {
+      pomodoro({ phase: 'short', status: 'waiting', endAt: null, remainingMs: 5 * 60_000, cycleCount: 1 })
+      const { unmount } = renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '휴식 시작' })
+      expect(emphasis('휴식 시작')).toBe('primary')
+      expect(emphasis('휴식 건너뛰기')).toBe('neutral')
+      expect(screen.queryByText('집중 끝')).not.toBeInTheDocument()
+      // 안내 줄 자리도 두지 않는다(어느 상태에서도 없으니 단계가 바뀌어도 숫자가 움직이지 않는다)
+      expect(screen.queryByTestId('phase-end-notice')).not.toBeInTheDocument()
+      unmount()
+
+      pomodoro({ phase: 'flow', status: 'running', endAt: Date.now() + 10 * 60_000, cycleCount: 0 })
+      renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '일시정지' })
+      expect(screen.queryByTestId('phase-end-notice')).not.toBeInTheDocument()
+    })
+
+    it('할 일 완료 버튼은 휴식 중에도 neutral이다', async () => {
+      pomodoro({ phase: 'short', status: 'running', endAt: Date.now() + 3 * 60_000, cycleCount: 1 })
+      renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '일시정지' })
+      expect(emphasis('완료')).toBe('neutral')
+    })
+
+    it('뽀모도로 휴식에도 진행 막대를 보여 준다', async () => {
+      pomodoro({ phase: 'short', status: 'running', endAt: Date.now() + 3 * 60_000, remainingMs: null, cycleCount: 1 })
+      renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '일시정지' })
+      expect(screen.getByTestId('cycle-progress')).toBeInTheDocument()
+    })
+
+    it('헤더에는 모드 제목과 초기화가 없고, 초기화는 멈춘 상태에서만 글자 버튼으로 보인다', async () => {
+      pomodoro({ phase: 'flow', status: 'running', endAt: Date.now() + 10 * 60_000 })
+      const { unmount } = renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '일시정지' })
+      const header = screen.getByRole('button', { name: '타이머 닫기' }).closest('header') as HTMLElement
+      expect(within(header).queryByRole('button', { name: /초기화/ })).not.toBeInTheDocument()
+      expect(screen.queryByText('뽀모도로 타이머')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '초기화' })).not.toBeInTheDocument()
+      unmount()
+
+      pomodoro({ phase: 'flow', status: 'paused', endAt: null, remainingMs: 10 * 60_000 })
+      const paused = renderTimer('pomodoro')
+      expect(await screen.findByRole('button', { name: '초기화' })).toBeInTheDocument()
+      paused.unmount()
+
+      // 막 연 대기 상태(기록도 사이클도 없음)에서는 되돌릴 것이 없어 초기화를 숨긴다. 자리는 남는다
+      pomodoro({ phase: 'flow', status: 'idle', endAt: null, remainingMs: 25 * 60_000, cycleCount: 0, sessions: [] })
+      const fresh = renderTimer('pomodoro')
+      await screen.findByRole('button', { name: '시작' })
+      expect(screen.queryByRole('button', { name: '초기화' })).not.toBeInTheDocument()
+      fresh.unmount()
+
+      // 대기라도 지난 기록이 있으면 보인다
+      pomodoro({ phase: 'flow', status: 'idle', endAt: null, remainingMs: 25 * 60_000, cycleCount: 1, sessions: [] })
+      renderTimer('pomodoro')
+      expect(await screen.findByRole('button', { name: '초기화' })).toBeInTheDocument()
+    })
+
+    it('뽀모도로 풀스크린 이름에 모드가 들어간다', async () => {
+      pomodoro({ phase: 'flow', status: 'idle', remainingMs: 25 * 60_000 })
+      renderTimer('pomodoro')
+      expect(await screen.findByRole('dialog', { name: '타이머 테스트 뽀모도로 타이머' })).toBeInTheDocument()
+    })
+
+    it('뽀모도로를 막 시작하고 바로 완료하면(1분 미만) 확인 없이 완료한다', async () => {
+      const user = userEvent.setup()
+      pomodoro({ phase: 'flow', status: 'running', endAt: Date.now() + 25 * 60_000 - 5_000, remainingMs: null, sessions: [], cycleCount: 0 })
+      renderTimer('pomodoro')
+
+      await user.click(await screen.findByRole('button', { name: '완료' }))
+
+      expect(screen.queryByRole('dialog', { name: '이 할 일을 완료할까요?' })).not.toBeInTheDocument()
+      await waitFor(() =>
+        expect(mocked.updateTodoMutateAsync).toHaveBeenCalledWith({
+          id: 'todo-1',
+          patch: expect.objectContaining({ isDone: true }),
+        }),
+      )
+      expect(mocked.createSessionMutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('스톱워치 표시 기준 토글은 대기 상태에서 숨기고, 시작한 뒤에 보인다', async () => {
+      Object.assign(mocked.timerState, { mode: 'stopwatch', status: 'idle', flexiblePhase: 'focus', focusElapsedMs: 0 })
+      const { unmount } = renderTimer('stopwatch')
+      await screen.findByRole('button', { name: '시작' })
+      expect(screen.queryByRole('radiogroup', { name: '스톱워치 표시 기준' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '휴식' })).not.toBeInTheDocument()
+      unmount()
+
+      Object.assign(mocked.timerState, { status: 'paused', focusElapsedMs: 90_000 })
+      renderTimer('stopwatch')
+      expect(await screen.findByRole('radiogroup', { name: '스톱워치 표시 기준' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '휴식' })).toBeInTheDocument()
+    })
+
+    it('추천 휴식이 끝나면 "휴식 끝 · +1:00"과 휴식 끝내기 primary를 보여 준다', async () => {
+      Object.assign(mocked.timerState, {
+        mode: 'stopwatch',
+        status: 'running',
+        flexiblePhase: 'break_suggested',
+        breakTargetMs: 300_000,
+        breakElapsedMs: 360_000,
+        breakCompleted: true,
+        breakStartedAt: Date.now(),
+      })
+      renderTimer('stopwatch')
+      expect(await screen.findByText('휴식 끝 · +1:00')).toBeInTheDocument()
+      expect(emphasis('휴식 끝내기')).toBe('primary')
+      expect(emphasis('일시정지')).toBe('neutral')
+      // 넘친 시간은 라벨에, 전체 휴식 시간은 숫자에 함께 보이므로 추가/총 휴식 토글은 두지 않는다
+      expect(screen.getByText('06:00')).toBeInTheDocument()
+      expect(screen.queryByRole('radiogroup', { name: '휴식 표시 기준' })).not.toBeInTheDocument()
+    })
+
+    it('스톱워치 휴식 숫자는 뽀모도로 휴식과 같은 휴식 색이고, 완료한 집중 점에 크기가 있다', async () => {
+      Object.assign(mocked.timerState, {
+        mode: 'stopwatch',
+        status: 'running',
+        flexiblePhase: 'break_free',
+        breakElapsedMs: 60_000,
+        breakStartedAt: Date.now(),
+        sessions: [
+          { sessionFocusSeconds: 600, breakSeconds: 0, clientSessionId: 's1' },
+          { sessionFocusSeconds: 600, breakSeconds: 0, clientSessionId: 's2' },
+        ],
+      })
+      renderTimer('stopwatch')
+      expect(await screen.findByText('01:00')).toHaveClass('text-timer-break-text')
+      // 앞의 완료 점은 보이는 크기가 있고, 방금 끝낸 집중 자리는 휴식 막대다
+      const dots = screen.getByRole('img', { name: /집중 2회/ })
+      expect(dots.children).toHaveLength(2)
+      expect(dots.children[0]).toHaveClass('h-2.5', 'w-2.5')
+      expect(dots.children[1]).toHaveClass('h-3', 'w-10')
+    })
+
+    it('기록할 집중이 없으면 확인 없이 바로 완료한다', async () => {
+      const user = userEvent.setup()
+      Object.assign(mocked.timerState, { mode: 'stopwatch', status: 'paused', flexiblePhase: 'focus', focusElapsedMs: 30_000, sessions: [] })
+      renderTimer('stopwatch')
+
+      await user.click(await screen.findByRole('button', { name: '완료' }))
+
+      expect(screen.queryByRole('dialog', { name: '이 할 일을 완료할까요?' })).not.toBeInTheDocument()
+      await waitFor(() =>
+        expect(mocked.updateTodoMutateAsync).toHaveBeenCalledWith({
+          id: 'todo-1',
+          patch: expect.objectContaining({ isDone: true }),
+        }),
+      )
+    })
+
+    it('완료 확인의 "계속 집중"은 아무것도 기록하지 않고 닫는다', async () => {
+      const user = userEvent.setup()
+      Object.assign(mocked.timerState, { mode: 'stopwatch', status: 'paused', flexiblePhase: 'focus', focusElapsedMs: 120_000 })
+      renderTimer('stopwatch')
+
+      await user.click(await screen.findByRole('button', { name: '완료' }))
+      await user.click(within(screen.getByRole('dialog', { name: '이 할 일을 완료할까요?' })).getByRole('button', { name: '계속 집중' }))
+      await act(async () => {})
+
+      expect(mocked.updateTodoMutateAsync).not.toHaveBeenCalled()
+      expect(mocked.createSessionMutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('휴식 선택은 집중한 시간을 제목에 쓰고, 기호 없이 분으로 추천한다', async () => {
+      const user = userEvent.setup()
+      Object.assign(mocked.timerState, {
+        mode: 'stopwatch',
+        status: 'paused',
+        flexiblePhase: 'focus',
+        focusElapsedMs: 12 * 60_000,
+        initialFocusMs: 0,
+      })
+      renderTimer('stopwatch')
+
+      await user.click(await screen.findByRole('button', { name: '휴식' }))
+      const sheet = await screen.findByRole('dialog', { name: '12분 집중했어요. 얼마나 쉴까요?' })
+      expect(within(sheet).getByRole('button', { name: /추천 휴식.*5분/ })).toBeInTheDocument()
+      expect(within(sheet).getByRole('button', { name: /자유 휴식.*원하는 만큼/ })).toBeInTheDocument()
+      expect(sheet.textContent).not.toMatch(/∞|'/)
+      expect(within(sheet).queryByRole('button', { name: '취소' })).not.toBeInTheDocument()
+
+      await user.click(within(sheet).getByRole('button', { name: /추천 휴식/ }))
+      expect(mocked.timerStoreActions.startBreak).toHaveBeenCalledWith('todo-1', 300_000)
+    })
+
+    it('사운드는 분위기 이름 버튼 하나만 두고, 켜기와 볼륨은 시트 안에 있다', async () => {
+      renderTimer('stopwatch')
+      const fullscreen = await screen.findByRole('dialog', { name: '타이머 테스트 일반 타이머' })
+      expect(within(fullscreen).getByRole('button', { name: /^사운드 선택: 비 오는 카페/ })).toBeInTheDocument()
+      expect(within(fullscreen).queryByRole('slider')).not.toBeInTheDocument()
+      expect(within(fullscreen).queryByRole('button', { name: /배경 음악/ })).not.toBeInTheDocument()
     })
   })
 })

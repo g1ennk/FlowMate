@@ -6,6 +6,7 @@ import {
   getPomodoroElapsedMs,
 } from './timerHelpers'
 import { resolveSessionIdentity, resolveSessionRecordId } from './timerSessionIdentity'
+import { isPermanentSyncError } from './timerSyncRetry'
 
 type UpdateTodoArgs = {
   id: string
@@ -120,18 +121,22 @@ async function completePomodoro(
   const { todoId } = deps
   const activeSessionId = resolveSessionIdentity(todoId, timer).activeSessionId
 
+  const newSessions = timer.sessions.map((session, index) => ({
+    ...session,
+    clientSessionId: resolveSessionRecordId(todoId, timer, session, index),
+  }))
+
+  // 휴식 단계에는 진행 중인 집중이 없다. 다만 집중이 끝날 때 백그라운드 저장이 실패한 기록이 남아 있을 수 있어
+  // 완료 전에 이미 기록된 sessions 를 다시 보낸다(멱등). 보내지 못하면 완료하지 않고 실패를 알린다.
+  // 예전에는 여기서 바로 반환해서, 저장 실패한 집중이 0분으로 완료되고 성공 토스트가 떴다.
   if (timer.phase !== 'flow') {
+    if (newSessions.length > 0) await deps.syncSessionsImmediately?.(newSessions)
     return
   }
 
   const plannedMs = getPlannedMsUtil(timer, settings)
   const elapsedMs = getPomodoroElapsedMs(timer, plannedMs)
   const elapsedSec = Math.round(elapsedMs / 1000)
-
-  const newSessions = timer.sessions.map((session, index) => ({
-    ...session,
-    clientSessionId: resolveSessionRecordId(todoId, timer, session, index),
-  }))
 
   if (elapsedMs >= MIN_FLOW_MS && elapsedSec > 0) {
     newSessions.push({
@@ -176,4 +181,47 @@ export async function completeTaskFromTimer(deps: CompletionDeps) {
   })
 
   deps.reset(todoId)
+}
+
+// 완료 직전에 sessions 를 하나씩 보낸다(syncSessionsImmediately 구현용). 0초 세션은 보내지 않는다.
+// 다시 보내도 결과가 같은 오류(400, 404, 409 IDEMPOTENCY_CONFLICT)는 백그라운드 동기화처럼 건너뛴다.
+// 던지면 완료가 막히는데, 그런 오류는 몇 번을 눌러도 같아서 "다시 시도해 주세요"가 끝나지 않는다
+export async function postSessions(
+  sessions: SessionRecord[],
+  post: (session: SessionRecord) => Promise<unknown>,
+) {
+  for (const session of sessions) {
+    if (session.sessionFocusSeconds <= 0) continue
+    try {
+      await post(session)
+    } catch (error) {
+      if (!isPermanentSyncError(error)) throw error
+      console.error('[TimerSync] Skipped a session that cannot be saved', { session, error })
+    }
+  }
+}
+
+export type CompletionResult = 'completed' | 'sessionSaveFailed' | 'completeFailed'
+
+// 완료를 시도하고 어디서 멈췄는지 돌려준다. 집중 기록을 보내다 실패했는지, 기록은 보냈지만 완료 저장이 실패했는지에 따라
+// 알리는 말이 다르다(둘 다 완료되지 않았고 타이머는 그대로 남는다).
+export async function tryCompleteTaskFromTimer(deps: CompletionDeps): Promise<CompletionResult> {
+  const sync = deps.syncSessionsImmediately
+  let sessionFailed = false
+  try {
+    await completeTaskFromTimer({
+      ...deps,
+      syncSessionsImmediately: sync && (async (sessions) => {
+        try {
+          await sync(sessions)
+        } catch (error) {
+          sessionFailed = true
+          throw error
+        }
+      }),
+    })
+    return 'completed'
+  } catch {
+    return sessionFailed ? 'sessionSaveFailed' : 'completeFailed'
+  }
 }
