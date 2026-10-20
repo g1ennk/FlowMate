@@ -554,6 +554,30 @@ function PomodoroSettingsPage() {
         />
       )}
 
+      {/* 계정은 맨 위에 둔다. 게스트에게는 기록이 이 브라우저에만 남는다는 안내와 로그인이 먼저 보여야 한다(사용자 결정 2026-10-21) */}
+      {authState && (
+        <section>
+          <SectionHeader title="계정" />
+          <RowsCard>
+            {authState.type === 'member' ? (
+              <>
+                <ListRow size="lg" label={authState.user.nickname} description={authMessages.memberStatus} />
+              </>
+            ) : (
+              <>
+                <ListRow size="lg" label={authMessages.guestStatus} description={authMessages.guestStatusNotice} />
+                <ListRow
+                  size="lg"
+                  label={authMessages.kakaoLogin}
+                  onClick={() => navigate('/login')}
+                  trailing={<ChevronRightIcon className="h-4 w-4" />}
+                />
+              </>
+            )}
+          </RowsCard>
+        </section>
+      )}
+
       <section ref={sessionSectionRef}>
         <SectionHeader
           title="뽀모도로"
@@ -649,26 +673,12 @@ function PomodoroSettingsPage() {
         </RowsCard>
       </section>
 
-      {authState && (
-        <section>
-          <SectionHeader title="계정" />
+
+      {/* 로그아웃은 자주 누르지 않으니 계정 정보와 떨어진 맨 아래에 한 줄로 둔다(사용자 결정 2026-10-21) */}
+      {authState?.type === 'member' && (
+        <section aria-label={authMessages.logout}>
           <RowsCard>
-            {authState.type === 'member' ? (
-              <>
-                <ListRow size="lg" label={authState.user.nickname} description={authMessages.memberStatus} />
-                <ListRow size="lg" label={authMessages.logout} onClick={handleLogout} />
-              </>
-            ) : (
-              <>
-                <ListRow size="lg" label={authMessages.guestStatus} description={authMessages.guestStatusNotice} />
-                <ListRow
-                  size="lg"
-                  label={authMessages.kakaoLogin}
-                  onClick={() => navigate('/login')}
-                  trailing={<ChevronRightIcon className="h-4 w-4" />}
-                />
-              </>
-            )}
+            <ListRow size="lg" label={authMessages.logout} onClick={handleLogout} />
           </RowsCard>
         </section>
       )}

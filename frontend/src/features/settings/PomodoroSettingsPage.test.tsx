@@ -102,6 +102,23 @@ describe('PomodoroSettingsPage', () => {
     expect(screen.getByRole('button', { name: '카카오로 로그인' })).toBeInTheDocument()
   })
 
+  it('계정이 맨 위(뽀모도로 위)이고, 회원의 로그아웃은 화면 섹션 아래 맨 끝에 따로 있다', async () => {
+    useAuthStore.setState({
+      initialized: true,
+      state: { type: 'member', accessToken: 'token', user: { id: 'user-1', email: null, nickname: 'Glenn' } },
+    })
+    renderApp(<PomodoroSettingsPage />, { route: '/settings' })
+
+    const account = await screen.findByRole('heading', { level: 2, name: '계정' })
+    const pomodoro = screen.getByRole('heading', { level: 2, name: '뽀모도로' })
+    const display = screen.getByRole('heading', { level: 2, name: '화면' })
+    const logout = await screen.findByRole('button', { name: '로그아웃' })
+    const follows = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(account, pomodoro)).toBe(true)
+    expect(follows(display, logout)).toBe(true)
+    expect(account.closest('section')).not.toContainElement(logout)
+  })
+
   it('keeps the guest status and where guest records live in the account section', async () => {
     const user = userEvent.setup()
     useAuthStore.setState({ initialized: true, state: { type: 'guest', token: 'guest-token' } })
