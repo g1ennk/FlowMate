@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { PageHeader } from './PageHeader'
 
 describe('PageHeader', () => {
-  it('page 제목 한 줄을 고정 높이로 그린다', () => {
+  it('제목만 있으면 머리는 제목 줄 높이(24)이고 아래 상자에 12로 붙는다', () => {
     render(<PageHeader title="회고" />)
 
     expect(screen.getByRole('heading', { level: 1, name: '회고' })).toHaveClass('text-xl', 'font-bold')
-    expect(screen.getByRole('banner')).toHaveClass('h-10')
+    expect(screen.getByRole('banner')).toHaveClass('h-6', 'mb-3')
   })
 
   it('trailing을 제목 줄 오른쪽에 둔다', () => {

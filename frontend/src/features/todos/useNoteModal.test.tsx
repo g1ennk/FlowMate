@@ -147,7 +147,7 @@ describe('useNoteModal', () => {
     await act(() => result.current.handleDeleteNote())
 
     expect(mocked.mutateAsync).toHaveBeenCalledWith({ id: 'todo-1', patch: { note: null } })
-    expect(mocked.toast).toHaveBeenCalledWith(expect.any(Function), { id: 'note-deleted-todo-1', duration: 5000 })
+    expect(mocked.toast).toHaveBeenCalledWith(expect.any(Function), { id: 'note-deleted-todo-1', duration: 5000, position: 'top-center' })
     expect(mocked.toastSuccess).not.toHaveBeenCalled()
     expect(result.current.showNoteModal).toBe(false)
   })

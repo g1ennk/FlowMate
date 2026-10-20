@@ -1,11 +1,15 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import type { Toast } from 'react-hot-toast'
+import type { Toast, ToastPosition } from 'react-hot-toast'
 import { toast } from 'react-hot-toast'
 import { toastMessages } from '../lib/messages'
 
 // 되돌리기 토스트. 문구에는 대상 이름을 넣는다(toastMessages.todoDeleted 등, "'은행 들르기'를 삭제했어요").
 // 지운 행이 사라지면 포커스가 갈 곳이 없어 body로 떨어진다. takeFocus면 그때 되돌리기로 포커스를 옮겨
 // 키보드로 바로 되돌릴 수 있게 하고(토스트는 inert 바깥에 있다), 토스트가 사라질 때 포커스가 안에 있으면 returnFocus로 돌려준다.
+// 되돌리기 토스트는 화면 위에 띄운다. 아래에 뜨면 하단 탭과 목록 끝을 가려 거슬렸다(사용자 결정 2026-10-21).
+// 다른 토스트(성공, 실패)는 AppToaster 기본 위치(아래, 시트가 열려 있으면 위)를 따른다
+export const UNDO_TOAST_POSITION: ToastPosition = 'top-center'
+
 type UndoToastProps = {
   t: Toast
   message: string

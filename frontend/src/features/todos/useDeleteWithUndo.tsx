@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'react-hot-toast'
-import { UndoToast } from '../../ui/UndoToast'
+import { UNDO_TOAST_POSITION, UndoToast } from '../../ui/UndoToast'
 import { toastMessages } from '../../lib/messages'
 import { useDeleteTodo } from './hooks'
 import { useTimerStore } from '../timer/timerStore'
@@ -80,7 +80,7 @@ export function useDeleteWithUndo() {
           }}
         />
       ),
-      { id: key, duration: UNDO_MS },
+      { id: key, duration: UNDO_MS, position: UNDO_TOAST_POSITION },
     )
   }, [pause, resume, reset, getTimer, clearPendingAutoSessions])
 }

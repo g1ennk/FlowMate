@@ -2,15 +2,19 @@ import type { KeyboardEventHandler } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TodoItem, type TodoItemProps } from './TodoItem'
+import { REVEAL_WIDTH, useSwipeToDelete } from '../useSwipeToDelete'
 
 type SortableTodoItemProps = TodoItemProps & {
   id: string
+  // 왼쪽으로 밀어 지운다(터치). 없으면 밀리지 않는다
+  onSwipeDelete?: () => void
 }
 
 // 할 일 한 줄(li). 길게 눌러 끄는 포인터 리스너는 행 전체에 두고, 키보드 정렬용 속성(role=button, tabIndex)은
 // 행 위에 깐 보이지 않는 층에만 준다. 행 전체가 버튼이 되면 안의 버튼들과 겹쳐(nested-interactive) 이름이 반복해 읽힌다
 export function SortableTodoItem({
   id,
+  onSwipeDelete,
   ...props
 }: SortableTodoItemProps) {
   const {
@@ -33,6 +37,11 @@ export function SortableTodoItem({
   // 편집 중이거나 선택 모드이면 드래그 불가
   const canDrag = !props.isEditing && !props.selectMode
   const { onKeyDown, ...pointerListeners } = listeners ?? {}
+  const { rowRef, offset, isSwiping, handlers: swipeHandlers, onClickCapture, handleDelete } = useSwipeToDelete({
+    enabled: !!onSwipeDelete && canDrag && !isDragging,
+    onDelete: () => onSwipeDelete?.(),
+  })
+  const isShifted = offset !== 0
 
   return (
     <li
@@ -55,12 +64,41 @@ export function SortableTodoItem({
           className="pointer-events-none absolute inset-0 rounded-control"
         />
       )}
+      {/* 밀기 층. 내용을 왼쪽으로 옮기면 뒤의 빨간 "삭제"가 드러난다. 행 강조 면(-mx-2)까지 담도록 같은 폭으로 넓히고,
+          밀린 동안만 가로를 잘라 카드 밖으로 내용이 나가지 않게 한다. 세로 스크롤은 브라우저가 맡는다(pan-y) */}
       <div
-        className={`rounded-control transition-[box-shadow,opacity] duration-150 ease-out motion-reduce:transition-none ${
-          isDragging ? 'bg-surface-card shadow-float' : ''
-        }`}
+        ref={rowRef}
+        className={`relative -mx-2 touch-pan-y px-2 ${isShifted ? 'overflow-x-clip' : ''}`}
+        {...swipeHandlers}
       >
-        <TodoItem {...props} />
+        {isShifted && (
+          // 손짓 전용 보조 버튼이라 접근성 트리에서 뺀다(메뉴 시트에 같은 삭제가 있다)
+          <button
+            type="button"
+            aria-hidden
+            tabIndex={-1}
+            onClick={handleDelete}
+            className="absolute inset-y-0 right-0 flex items-center justify-end rounded-control bg-state-error-strong pr-5 text-sm font-medium whitespace-nowrap text-white"
+            style={{ width: Math.max(REVEAL_WIDTH, -offset + 8) }}
+          >
+            삭제
+          </button>
+        )}
+        <div
+          className={`relative rounded-control ${
+            isSwiping ? '' : 'transition-transform duration-200 ease-out motion-reduce:transition-none'
+          } ${isShifted ? '[&>div>div]:rounded-none [&>div>div]:bg-surface-card' : ''}`}
+          style={isShifted ? { transform: `translateX(${offset}px)` } : undefined}
+          onClickCapture={onClickCapture}
+        >
+          <div
+            className={`rounded-control transition-[box-shadow,opacity] duration-150 ease-out motion-reduce:transition-none ${
+              isDragging ? 'bg-surface-card shadow-float' : ''
+            }`}
+          >
+            <TodoItem {...props} />
+          </div>
+        </div>
       </div>
     </li>
   )

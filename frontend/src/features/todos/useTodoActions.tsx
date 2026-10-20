@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { toast } from 'react-hot-toast'
-import { UndoToast } from '../../ui/UndoToast'
+import { UNDO_TOAST_POSITION, UndoToast } from '../../ui/UndoToast'
 import type { Todo } from '../../api/types'
 import {
   useCreateSession,
@@ -131,7 +131,7 @@ export function useTodoActions(selectedDateKey: string) {
           }
         />
       ),
-      { id: `toggle-${id}`, duration: 3000 },
+      { id: `toggle-${id}`, duration: 3000, position: UNDO_TOAST_POSITION },
     )
   }
 

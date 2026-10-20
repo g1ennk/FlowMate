@@ -8,7 +8,7 @@ import { storageKeys } from '../../../lib/storageKeys'
 import { useAiReportSheet } from '../hooks/useAiReportSheet'
 import { clearReviewDraft, readReviewDraft, saveReviewDraft } from '../reviewDraft'
 import { KptText } from './KptText'
-import { UndoToast } from '../../../ui/UndoToast'
+import { UNDO_TOAST_POSITION, UndoToast } from '../../../ui/UndoToast'
 import { Button } from '../../../ui/Button'
 import { Card } from '../../../ui/Card'
 import { SectionHeader } from '../../../ui/SectionHeader'
@@ -275,7 +275,7 @@ export function ReviewTextarea({
                 )}
               />
             ),
-            { id: 'review-delete-success', duration: 5000 },
+            { id: 'review-delete-success', duration: 5000, position: UNDO_TOAST_POSITION },
           )
         },
         onError: () => {

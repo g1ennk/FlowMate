@@ -3,7 +3,7 @@ import { toast } from 'react-hot-toast'
 import { useUpdateTodo } from './hooks'
 import type { Todo } from '../../api/types'
 import { toastMessages } from '../../lib/messages'
-import { UndoToast } from '../../ui/UndoToast'
+import { UNDO_TOAST_POSITION, UndoToast } from '../../ui/UndoToast'
 import { focusTodoRow } from './rowFocus'
 
 const UNDO_MS = 5000
@@ -89,7 +89,7 @@ export function useNoteModal() {
           returnFocus={() => focusTodoRow(id)}
         />
       ),
-      { id: `note-deleted-${id}`, duration: UNDO_MS },
+      { id: `note-deleted-${id}`, duration: UNDO_MS, position: UNDO_TOAST_POSITION },
     )
   }
 

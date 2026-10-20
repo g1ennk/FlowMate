@@ -371,6 +371,8 @@ function TodosPage() {
         onSaveEdit={actions.handleSaveEdit}
         onCancelEdit={actions.handleCancelEdit}
         onOpenMenu={() => actions.setSelectedTodo(todo)}
+        // 왼쪽으로 밀어 지운다(사용자 결정 2026-10-21). 메뉴의 삭제와 같이 5초 안에 되돌릴 수 있다
+        onSwipeDelete={() => actions.handleDelete(todo.id, todo.title)}
         onStartFocus={(anchor) => startFocus.handleStartFocus(todo, anchor)}
         // 제목 아래 시간 줄. 기록이 있거나 진행 중인 할 일은 오른쪽 ▶ 없이 이것으로 타이머에 간다.
         // 진행 중(실행, 일시정지, 단계 대기)이면 그 타이머를 그대로 열고(일시정지는 화면에서 이어서 한다),

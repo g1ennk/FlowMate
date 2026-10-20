@@ -7,7 +7,6 @@ import { isImeComposing } from '../../../lib/keyboard'
 import { toastMessages } from '../../../lib/messages'
 import { isOffline } from '../../../lib/useOnlineStatus'
 import { userTextTitleClass } from '../../../lib/userTextStyles'
-import { Button } from '../../../ui/Button'
 
 const createSchema = z.object({
   title: z.string().min(1, '할 일을 입력하세요').max(200),
@@ -53,7 +52,6 @@ export function TodoInputForm({
     defaultValues: { title: '' },
   })
   const [charCount, setCharCount] = useState(0)
-  const [hasText, setHasText] = useState(false)
 
   // border-box라 scrollHeight(테두리 제외)에 위아래 테두리를 더해야 글자가 잘리지 않는다
   const resizeTodoInput = (node: HTMLTextAreaElement | null) => {
@@ -78,7 +76,6 @@ export function TodoInputForm({
 
   const updateTextState = (value: string) => {
     setCharCount(value.length)
-    setHasText(value.trim().length > 0)
   }
 
   // 제목을 바로 가져가고 입력창을 비워 다음 할 일을 이어서 칠 수 있게 한다.
@@ -112,7 +109,8 @@ export function TodoInputForm({
   const { ref: registerRef, onChange: registerOnChange, ...titleField } = register('title')
 
   return (
-    // 입력 중인 줄: 상자 없이 저장된 행과 같은 열에 글자를 쓴다(빈 체크, 캐럿, "추가" 버튼이 단서)
+    // 입력 중인 줄: 상자 없이 저장된 행과 같은 열에 글자를 쓴다(빈 체크와 캐럿이 단서).
+    // "추가" 버튼은 두지 않는다(사용자 결정 2026-10-21). Enter(휴대폰 키보드의 완료)로 추가하고, 다른 곳을 누르면 쓴 글을 추가하고 닫는다
     <div>
       {/* 할 일 행과 같은 열: 빈 체크는 앞 열(32) 가운데, 입력창은 글자 열부터(Task 21) */}
       <div className="flex items-start gap-list">
@@ -165,21 +163,8 @@ export function TodoInputForm({
           }}
           className={`min-w-0 flex-1 min-h-11 resize-none overflow-hidden px-0 py-3 ${userTextTitleClass} text-text-primary outline-none placeholder:text-text-secondary`}
           rows={1}
+          enterKeyHint="done"
         />
-        {hasText && (
-          <Button
-            size="sm"
-            className="mt-tight shrink-0"
-            // 누르는 순간 입력창 포커스가 빠지지 않게 해서, 이어서 다음 할 일을 칠 수 있게 한다
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              submitTitle()
-              focusTodoInputSoon()
-            }}
-          >
-            추가
-          </Button>
-        )}
       </div>
       {charCount >= MAX_LENGTH * 0.8 && (
         <p
