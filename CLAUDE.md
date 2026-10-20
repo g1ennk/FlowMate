@@ -70,7 +70,8 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 - **`store/`**: Zustand 전역 스토어 — `authStore` (게스트/멤버 인증 + 자동 refresh), `themeStore` (light/dark/system)
 - **`api/`**: `http.ts` (fetch 래퍼 + Bearer 자동 주입 + 401 singleton refresh + Zod 검증), 도메인별 API 모듈 (todos, timerApi,
   reviews, settings)
-- **`ui/`**: 커스텀 공통 컴포넌트 (BottomSheet, Calendar, Icons, Switch, InlineSegmentToggle)
+- **`ui/`**: 공통 부품 (Button, IconButton, TimerControl, Card, SectionHeader, PageHeader, ListRow, TextField, TextArea, EmptyState, SegmentToggle, BottomSheet, ConfirmSheet + useConfirmSheet, AppToaster, UndoToast, TopBanner, SystemMessage, Skeleton, Calendar, Icons, Switch). 열린 시트·타이머 풀스크린은 `overlayStack`(Escape는 맨 위만, 스크롤 잠금, 뒤 화면 inert, 토스트 위치)에 등록한다
+- **`lib/messages.ts`**: 토스트, 배너, 시스템 화면, 확인 시트 문구
 - **`lib/`**: queryKeys 팩토리, storageKeys 중앙관리, 시간/사운드/미니데이 헬퍼
 - **`mocks/`**: MSW 핸들러 (~900줄, localStorage 기반 persistence, `dev:mock` 모드용)
 
@@ -262,7 +263,7 @@ git branch -d hotfix/v1.10.1 && git push origin --delete hotfix/v1.10.1
 - `docs/`가 정식 문서, `agent/`는 로컬 참고용 (gitignored). README는 포트폴리오용
 - DB 스키마 변경은 반드시 Flyway 마이그레이션 (`V{N}__description.sql`)
 - 프로필: `local` (개발), `dev` (개발 서버), `prod` (운영) — 환경변수로 DB/CORS/쿠키보안 분리
-- 디자인 시스템: `.impeccable.md` 참고 — Pretendard 폰트, emerald(#10b981) 주색상, 4px 그리드, 모바일 퍼스트 (max 512px)
+- 디자인 시스템: `.impeccable.md` 참고 — 시스템 글꼴, emerald(#10b981) 주색상, 4px 그리드, 모바일 퍼스트 (max 512px)
 - 커밋 Co-Authored-By: FE 관련 커밋(scope `frontend` 또는 내용이 FE 중심)에만 `Co-Authored-By: Claude <noreply@anthropic.com>` 추가.
   BE/infra/docs/ci 커밋에는 붙이지 않음
 
