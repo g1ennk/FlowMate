@@ -96,12 +96,13 @@ describe('Calendar 헤더', () => {
     }
   })
 
-  it('달력은 둥근 카드 안에 있다', () => {
+  it('달력은 목록 카드와 같은 둥근 테두리 카드 안에 있다(그림자 없음)', () => {
     const { container } = render(
       <Calendar selectedDate={SELECTED} onSelectDate={() => {}} onMonthChange={() => {}} />,
     )
 
-    expect(container.firstElementChild).toHaveClass('rounded-card', 'bg-surface-card', 'p-card', 'shadow-sm')
+    expect(container.firstElementChild).toHaveClass('rounded-card', 'border-card-border', 'bg-surface-card', 'p-card')
+    expect(container.firstElementChild).not.toHaveClass('shadow-sm')
   })
 })
 

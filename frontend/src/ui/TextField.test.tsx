@@ -11,14 +11,14 @@ describe('TextField', () => {
     await userEvent.type(input, '오전')
 
     expect(input).toHaveValue('오전')
-    expect(input).toHaveClass('bg-surface-sunken', 'rounded-control', 'focus:border-focus-ring', 'focus:ring-1')
+    expect(input).toHaveClass('bg-surface-sunken', 'rounded-control', 'focus:border-text-primary', 'focus:ring-1')
   })
 
-  it('포커스 전 테두리는 3:1을 넘는 text-tertiary, 포커스 표시는 focus-ring 테두리에 붙은 ring 1(선 하나, 2px)로 다른 입력창과 같다(§3-5, §10, Task 21)', () => {
+  it('포커스 전 테두리는 3:1을 넘는 text-tertiary, 포커스 표시는 검정 테두리에 붙은 ring 1(선 하나, 2px)로 메모, 회고 입력과 같다(§3-5, §10)', () => {
     render(<TextField aria-label="할 일" placeholder="할 일 이름" />)
     const input = screen.getByRole('textbox', { name: '할 일' })
 
-    expect(input).toHaveClass('border-text-tertiary', 'focus:ring-1', 'focus:ring-focus-ring')
+    expect(input).toHaveClass('border-text-tertiary', 'focus:ring-1', 'focus:ring-text-primary')
     expect(input.className).not.toMatch(/border-border-strong|ring-focus-ring\/\d+/)
   })
 
@@ -48,11 +48,11 @@ describe('TextField', () => {
     expect(screen.getByRole('textbox', { name: '구간 이름' })).toBeDisabled()
   })
 
-  it('오류 상태에서는 빨간 테두리 밖에 focus-ring 2px 링을 둬 포커스가 또렷하다, 평소는 ring 1 그대로(Task 24)', () => {
+  it('오류 상태에서는 빨간 테두리 밖에 검정 2px 링을 둬 포커스가 또렷하다, 평소는 ring 1 그대로(Task 24)', () => {
     const { rerender } = render(<TextField aria-label="이름" error="필수" />)
     const input = screen.getByRole('textbox', { name: '이름' })
 
-    expect(input).toHaveClass('border-state-error-text', 'focus:ring-2', 'focus:ring-focus-ring')
+    expect(input).toHaveClass('border-state-error-text', 'focus:ring-2', 'focus:ring-text-primary')
     expect(input).not.toHaveClass('focus:ring-1')
 
     rerender(<TextField aria-label="이름" />)
