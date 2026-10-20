@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { useUpdateTodo } from './hooks'
 import type { Todo } from '../../api/types'
 import { useTimerStore, type TimerMode } from '../timer/timerStore'
 import { checkTimerConflict, getTimerConflictMessage } from '../timer/timerHelpers'
+import { toastMessages } from '../../lib/messages'
 
 export function useTimerOpenState() {
   const updateTodo = useUpdateTodo()
@@ -12,11 +13,10 @@ export function useTimerOpenState() {
 
   const [timerTodo, setTimerTodo] = useState<Todo | null>(null)
   const [timerMode, setTimerMode] = useState<TimerMode | null>(null)
-  const [timerErrorMessage, setTimerErrorMessage] = useState<string | null>(null)
 
   const handleOpenTimer = (todo: Todo, currentMode: TimerMode | null, setSelectedTodo: (todo: Todo | null) => void) => {
     if (todo.isDone) {
-      toast.error('완료된 태스크는 타이머를 시작할 수 없습니다', { id: 'completed-task-timer' })
+      toast.error(toastMessages.completedTodoTimer, { id: 'completed-task-timer' })
       return
     }
 
@@ -47,20 +47,15 @@ export function useTimerOpenState() {
     setTimerMode(null)
   }
 
-  useEffect(() => {
-    if (timerErrorMessage) {
-      const timer = setTimeout(() => {
-        setTimerErrorMessage(null)
-      }, 2000)
-      return () => clearTimeout(timer)
-    }
-  }, [timerErrorMessage])
+  // 타이머를 열 수 없는 이유를 알린다. 메뉴 시트가 열려 있으면 토스트는 화면 위에 뜬다
+  const showTimerError = (message: string) => {
+    toast.error(message, { id: 'timer-disabled-reason' })
+  }
 
   return {
     timerTodo,
     timerMode,
-    timerErrorMessage,
-    setTimerErrorMessage,
+    showTimerError,
     handleOpenTimer,
     handleCloseTimer,
   }

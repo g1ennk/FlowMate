@@ -9,6 +9,23 @@ type TodoTimerDisplayArgs = {
   flexiblePhase?: 'focus' | 'break_suggested' | 'break_free' | null
 }
 
+// 행에 보이는 시간이 남은 시간인지(뽀모도로, 추천 휴식 안쪽). 일시정지 행은 이때 "남음"을 붙여 기록(누적)과 구분한다
+export function isTodoDisplayTimeRemaining({
+  isDone,
+  isActiveTimer,
+  activeTimerRemainingMs,
+  breakElapsedMs,
+  breakTargetMs,
+  flexiblePhase,
+}: TodoTimerDisplayArgs) {
+  if (isDone || !isActiveTimer) return false
+  if (flexiblePhase === 'break_suggested' && breakTargetMs && breakElapsedMs !== undefined) {
+    return breakElapsedMs < breakTargetMs
+  }
+  if (flexiblePhase === 'break_free') return false
+  return activeTimerRemainingMs !== undefined
+}
+
 export function getTodoDisplayTimeSeconds({
   isDone,
   sessionFocusSeconds,
@@ -46,24 +63,4 @@ export function getTodoDisplayTimeSeconds({
   }
 
   return sessionFocusSeconds
-}
-
-export function formatTimerSeconds(totalFocusSeconds: number) {
-  const focusMin = Math.floor(totalFocusSeconds / 60)
-  const focusSec = totalFocusSeconds % 60
-  return `${focusMin}:${String(focusSec).padStart(2, '0')}`
-}
-
-export function formatTimerHoursMinutes(totalSeconds: number) {
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  if (hours > 0) return `${hours}시간 ${minutes}분`
-  return `${minutes}분`
-}
-
-export function formatTimerMinutesSeconds(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
 }

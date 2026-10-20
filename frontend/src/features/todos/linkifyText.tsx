@@ -6,7 +6,7 @@ const URL_PATTERN = /https?:\/\/[^\s<>"'\u3131-\u318E\uAC00-\uD7A3\u3000-\u303F\
 // globals.css의 레이어 밖 `a { color: inherit; text-decoration: none }`가 유틸리티보다 우선해 important로 덮는다.
 // skip-ink를 끄면 밑줄이 p, g, / 처럼 아래로 내려간 글자에서 끊기지 않고 이어진다
 const LINK_CLASS =
-  'rounded-sm text-accent-text! underline! [text-decoration-skip-ink:none] hover:decoration-2! focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+  'text-accent-text! underline! [text-decoration-skip-ink:none] hover:decoration-2! focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
 // 긴 URL이 단어 중간(`co.kr/le|arn`)이 아니라 경로 구분자 `/` 뒤에서 줄바꿈되도록 <wbr>을 넣는다.
 // 그래도 한 줄에 안 들어가는 조각은 부모의 break-words가 마지막 수단으로 자른다

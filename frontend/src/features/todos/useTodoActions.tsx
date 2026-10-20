@@ -9,12 +9,14 @@ import {
 } from './hooks'
 import { useTimerStore } from '../timer/timerStore'
 import { usePomodoroSettings } from '../settings/hooks'
-import { completeTaskFromTimer } from '../timer/completeHelpers'
+import { postSessions, tryCompleteTaskFromTimer } from '../timer/completeHelpers'
 import { normalizeSessionId } from '../../lib/sessionId'
 import { useNoteModal } from './useNoteModal'
 import { useDatePickerActions } from './useDatePickerActions'
 import { useTimerOpenState } from './useTimerOpenState'
 import { useDeleteWithUndo } from './useDeleteWithUndo'
+import { FAILURE_TOAST_MS, toastMessages } from '../../lib/messages'
+import { isOffline } from '../../lib/useOnlineStatus'
 
 export function useTodoActions(selectedDateKey: string) {
   const createSession = useCreateSession()
@@ -48,6 +50,7 @@ export function useTodoActions(selectedDateKey: string) {
 
   const handleToggleDone = async (
     id: string,
+    title: string,
     next: boolean,
     nextOrder?: number,
     previousOrder?: number,
@@ -55,38 +58,36 @@ export function useTodoActions(selectedDateKey: string) {
     if (next) {
       const timer = getTimer(id)
       if (timer && timer.status !== 'idle') {
-        try {
-          await completeTaskFromTimer({
-            todoId: id,
-            timer,
-            settings: settings ?? undefined,
-            pause,
-            reset,
-            getTimer,
-            syncSessionsImmediately: async (sessions) => {
-              for (const session of sessions) {
-                if (session.sessionFocusSeconds <= 0) continue
-                await createSession.mutateAsync({
-                  todoId: id,
-                  body: {
-                    sessionFocusSeconds: session.sessionFocusSeconds,
-                    breakSeconds: session.breakSeconds,
-                    clientSessionId: normalizeSessionId(session.clientSessionId),
-                  },
-                })
-              }
-            },
-            updateTodo: updateTodo.mutateAsync,
-            nextOrder,
-          })
-        } catch {
-          toast.error('타이머 저장에 실패했습니다. 다시 시도해주세요.', {
-            id: 'timer-save-failed',
-          })
+        const result = await tryCompleteTaskFromTimer({
+          todoId: id,
+          timer,
+          settings: settings ?? undefined,
+          pause,
+          reset,
+          getTimer,
+          syncSessionsImmediately: (sessions) =>
+            postSessions(sessions, (session) =>
+              createSession.mutateAsync({
+                todoId: id,
+                body: {
+                  sessionFocusSeconds: session.sessionFocusSeconds,
+                  breakSeconds: session.breakSeconds,
+                  clientSessionId: normalizeSessionId(session.clientSessionId),
+                },
+              }),
+            ),
+          updateTodo: updateTodo.mutateAsync,
+          nextOrder,
+        })
+        if (result !== 'completed') {
+          toast.error(
+            result === 'sessionSaveFailed' ? toastMessages.timerSessionSaveFailed : toastMessages.timerCompleteFailed,
+            { id: 'timer-save-failed', duration: FAILURE_TOAST_MS },
+          )
           return
         }
 
-        toast.success('타이머 저장 완료!', { id: 'timer-saved' })
+        toast.success(toastMessages.timerSaved, { id: 'timer-saved' })
         return
       }
     } else {
@@ -96,19 +97,28 @@ export function useTodoActions(selectedDateKey: string) {
       }
     }
 
-    updateTodo.mutate({
-      id,
-      patch: {
-        isDone: next,
-        ...(nextOrder === undefined ? {} : { dayOrder: nextOrder }),
+    updateTodo.mutate(
+      {
+        id,
+        patch: {
+          isDone: next,
+          ...(nextOrder === undefined ? {} : { dayOrder: nextOrder }),
+        },
       },
-    })
+      {
+        // 저장하지 못하면 행은 롤백된다. 되돌리기 토스트("완료했어요")를 남기지 않고 실패를 알린다
+        onError: () => {
+          toast.dismiss(`toggle-${id}`)
+          toast.error(toastMessages.todoUpdateFailed, { id: 'todo-update-failed' })
+        },
+      },
+    )
 
     toast(
       (t) => (
         <UndoToast
           t={t}
-          message={next ? '완료!' : '완료 취소'}
+          message={next ? toastMessages.todoCompleted(title) : toastMessages.todoUncompleted(title)}
           onUndo={() =>
             updateTodo.mutate({
               id,
@@ -127,9 +137,9 @@ export function useTodoActions(selectedDateKey: string) {
 
   const deleteWithUndo = useDeleteWithUndo()
 
-  const handleDelete = useCallback((id: string) => {
+  const handleDelete = useCallback((id: string, title: string) => {
     setSelectedTodo(null)
-    deleteWithUndo([id], '삭제됨')
+    deleteWithUndo([id], toastMessages.todoDeleted(title))
   }, [deleteWithUndo])
 
   const handleEdit = (id: string, currentTitle: string) => {
@@ -148,19 +158,24 @@ export function useTodoActions(selectedDateKey: string) {
 
   // 저장은 편집을 바로 끝내고 진행한다. Enter 뒤 blur가 따라와도 ref가 비어 있어 한 번만 저장한다.
   // 비우거나 바꾸지 않았다면 원래 제목으로 편집만 끝낸다 (iPhone에는 Esc가 없다).
+  // 오프라인이면 보내지 않고 고친 제목 그대로 편집을 이어 간다(연결된 뒤 말없이 저장되지 않게).
   const handleSaveEdit = async () => {
     const id = editingIdRef.current
     if (!id) return
     const title = editingTitle.trim()
     const unchanged = !title || title === editingOriginalTitleRef.current
+    if (!unchanged && isOffline()) {
+      toast.error(toastMessages.todoUpdateOffline, { id: 'todo-update-failed' })
+      return
+    }
     handleCancelEdit()
     if (unchanged) return
 
     try {
       await updateTodo.mutateAsync({ id, patch: { title } })
-      toast.success('수정됨', { id: 'todo-updated' })
+      toast.success(toastMessages.todoUpdated, { id: 'todo-updated' })
     } catch {
-      toast.error('수정하지 못했어요. 다시 시도해 주세요', { id: 'todo-update-failed' })
+      toast.error(toastMessages.todoUpdateFailed, { id: 'todo-update-failed' })
     }
   }
 
@@ -205,8 +220,7 @@ export function useTodoActions(selectedDateKey: string) {
     // 타이머 상태
     timerTodo: timerOpen.timerTodo,
     timerMode: timerOpen.timerMode,
-    timerErrorMessage: timerOpen.timerErrorMessage,
-    setTimerErrorMessage: timerOpen.setTimerErrorMessage,
+    showTimerError: timerOpen.showTimerError,
     datePickerOpen: datePicker.datePickerOpen,
     datePickerMode: datePicker.datePickerMode,
     datePickerTodo: datePicker.datePickerTodo,
@@ -222,9 +236,10 @@ export function useTodoActions(selectedDateKey: string) {
     handleCancelEdit,
     handleOpenNote,
     handleEditNote: noteModal.handleEditNote,
+    handleCancelNoteEdit: noteModal.handleCancelNoteEdit,
     handleSaveNote: noteModal.handleSaveNote,
     handleDeleteNote: noteModal.handleDeleteNote,
-    handleCloseNote: noteModal.handleCloseNote,
+    handleCloseNote: () => { void noteModal.handleCloseNote() },
     handleOpenTimer,
     handleCloseTimer: timerOpen.handleCloseTimer,
     closeDatePicker: datePicker.closeDatePicker,

@@ -1,12 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BottomSheet } from '../../../ui/BottomSheet'
+import { Button } from '../../../ui/Button'
 import { userTextDisplayClass, userTextInputClass } from '../../../lib/userTextStyles'
 import type { Todo } from '../../../api/types'
 import { findUrls, linkifyText } from '../linkifyText'
 
 type NoteModalProps = {
   isOpen: boolean
+  // 닫기(바깥 누르기, 끌어내리기, 보기 모드 Escape). 고친 내용이 있으면 저장하고 닫는다
   onClose: () => void
+  // 편집 중 Escape: 저장된 메모로 되돌리고 보기 모드로 돌아간다(시트는 열어 둔다)
+  onCancelEdit: () => void
   noteEditMode: boolean
   noteTodo: Todo | null
   noteText: string
@@ -17,9 +21,14 @@ type NoteModalProps = {
   onEditNote: () => void
 }
 
+// 보기와 편집이 같은 자리에 같은 글자 상자를 쓴다(줄바꿈 위치가 바뀌지 않게). 보기 모드는 테두리와 배경이 없고,
+// 편집 모드에서만 입력창 모양(sunken 배경, 3:1 테두리, 포커스 때 테두리에 붙은 ring-1로 선 하나. 회고 TextArea와 같다)을 보인다
+const BOX = 'rounded-control border p-3'
+
 export function NoteModal({
   isOpen,
   onClose,
+  onCancelEdit,
   noteEditMode,
   noteTodo,
   noteText,
@@ -42,7 +51,8 @@ export function NoteModal({
   }, [noteEditMode])
 
   const title = noteTodo ? noteTodo.title : '메모'
-  // 다크 모드 배경이 반투명이라 덮개 아래 textarea는 opacity-0으로 숨긴다 (포커스는 가능)
+  // 보기 모드의 글자는 덮개로 보여 주고, 덮개 아래 textarea는 opacity-0으로 숨긴다.
+  // 보기 모드 동안 textarea는 Tab 순서와 접근성 트리에서 빼고(tabIndex -1, aria-hidden), 편집은 글자를 누르거나 키보드용 숨은 버튼으로 시작한다
   const isViewOverlay = !noteEditMode && noteText.length > 0
   // 편집 모드: textarea 안에는 링크를 넣을 수 없어, 뒤에 같은 텍스트(미러)를 깔고 textarea 글자를 투명하게 해 링크를 보여준다
   const isEditMirror = noteEditMode && noteText.length > 0
@@ -77,74 +87,54 @@ export function NoteModal({
     textarea.setSelectionRange(length, length)
   }
 
+  // 저장된 메모가 있을 때만 편집 중 Escape가 되돌리기다. 새 메모는 되돌릴 글이 없어 보기 모드처럼 닫는다(닫으면 저장한다)
+  const handleEscape = () => {
+    if (isSaving) return
+    if (noteEditMode && noteTodo?.note) onCancelEdit()
+    else onClose()
+  }
+
   return (
     <BottomSheet
       isOpen={isOpen}
       // 저장 중에 닫으면 실패했을 때 입력이 사라지므로 닫기를 막는다
       onClose={isSaving ? () => {} : onClose}
-      panelClassName="min-h-[50dvh]"
+      onEscape={handleEscape}
+      title={title}
+      // 메모와 회고는 같은 편집 규칙을 쓴다(사용자 결정 2026-10-20): 글자를 눌러 고치고(보이는 편집 버튼 없음),
+      // 제목 줄 왼쪽에 빨간 "삭제"(저장된 메모를 고칠 때만), 오른쪽에 초록 "저장"(고치는 중에만)을 둔다
+      headerLeading={
+        noteEditMode && noteTodo?.note ? (
+          <Button variant="danger" size="sm" onClick={onDeleteNote} disabled={isSaving}>
+            삭제
+          </Button>
+        ) : undefined
+      }
+      headerAction={
+        noteEditMode ? (
+          <Button variant="accent" size="sm" onClick={onSaveNote} disabled={isSaving}>
+            저장
+          </Button>
+        ) : undefined
+      }
     >
-      <div className="mb-4 -mt-2">
-        <div className="grid grid-cols-[56px_minmax(0,1fr)_56px] items-center gap-2">
-          {noteEditMode ? (
-            <>
-              <button
-                onClick={onDeleteNote}
-                disabled={isSaving}
-                className="h-8 w-14 justify-self-start whitespace-nowrap rounded-md text-sm font-medium text-state-error transition-colors hover:bg-state-error-subtle hover:text-state-error-text disabled:opacity-50"
-              >
-                삭제
-              </button>
-              <h3
-                className="min-w-0 truncate text-center text-base font-semibold text-text-primary"
-                title={title}
-              >
-                {title}
-              </h3>
-              <button
-                onClick={onSaveNote}
-                disabled={isSaving}
-                className="h-8 w-14 justify-self-end whitespace-nowrap rounded-md text-sm font-medium text-text-primary transition-colors hover:bg-hover-strong hover:text-text-secondary disabled:opacity-50"
-              >
-                저장
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="h-8 w-14" />
-              <h3
-                className="min-w-0 truncate text-center text-base font-semibold text-text-primary"
-                title={title}
-              >
-                {title}
-              </h3>
-              <button
-                onClick={startEditing}
-                className="h-8 w-14 justify-self-end whitespace-nowrap rounded-md text-sm font-medium text-text-primary transition-colors hover:bg-hover-strong hover:text-text-secondary"
-              >
-                편집
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="relative mb-2">
+      <div className="relative">
         {/* 편집 미러: textarea와 박스·글꼴·줄바꿈 규칙을 똑같이 맞춘다(<wbr> 없음, 스크롤바 자리 고정, iOS 16px) */}
         {isEditMirror && (
           <div
             ref={mirrorRef}
             aria-hidden
-            className={`pointer-events-none absolute inset-0 overflow-hidden rounded-xl bg-state-warning-subtle border border-transparent p-3 ${userTextInputClass} whitespace-pre-wrap break-words text-text-secondary [scrollbar-gutter:stable] supports-[-webkit-touch-callout:none]:text-base`}
+            className={`pointer-events-none absolute inset-0 overflow-hidden ${BOX} border-transparent bg-surface-sunken ${userTextInputClass} whitespace-pre-wrap break-words text-text-primary [scrollbar-gutter:stable] supports-[-webkit-touch-callout:none]:text-base`}
           >
             {linkifyText(noteText, { pathBreaks: false })}
             {/* textarea는 끝 줄바꿈 뒤 빈 줄을 그리지만 div는 안 그리므로 높이를 맞춘다 */}
-            {'\u200b'}
+            {'​'}
           </div>
         )}
         <textarea
           ref={memoTextareaRef}
           value={noteText}
+          aria-label={`${title} 메모`}
           onChange={(e) => {
             onNoteTextChange(e.target.value)
             syncCaret(e.target)
@@ -159,16 +149,24 @@ export function NoteModal({
             startEditing()
           } : undefined}
           readOnly={!noteEditMode || isSaving}
-          tabIndex={isViewOverlay ? -1 : undefined}
-          aria-hidden={isViewOverlay || undefined}
-          placeholder="메모를 입력하세요..."
-          className={`relative block h-40 w-full resize-none rounded-xl border border-[var(--color-warning)] p-3 ${userTextInputClass} outline-none placeholder:text-text-tertiary [scrollbar-gutter:stable] ${
+          // 보기 모드에서는 빈 메모도 경계 없는 읽기 전용 입력창이라 Tab과 스크린리더 대상에서 뺀다(편집은 키보드용 숨은 버튼이나 탭)
+          tabIndex={noteEditMode ? undefined : -1}
+          aria-hidden={!noteEditMode || undefined}
+          placeholder="메모를 입력하세요"
+          className={`relative block h-40 w-full resize-none ${BOX} ${userTextInputClass} outline-none placeholder:text-text-secondary [scrollbar-gutter:stable] ${
+            noteEditMode
+              ? 'border-text-tertiary focus:border-text-primary focus:ring-1 focus:ring-text-primary'
+              : 'border-transparent'
+          } ${
+            // 미러가 있으면 배경은 뒤의 미러가 칠하고 textarea는 투명하게 둬 링크 색이 보이게 한다
             isEditMirror
-              ? 'bg-transparent text-transparent caret-text-secondary'
-              : 'bg-state-warning-subtle text-text-secondary'
+              ? 'bg-transparent text-transparent caret-text-primary'
+              : noteEditMode
+                ? 'bg-surface-sunken text-text-primary'
+                : 'bg-transparent text-text-primary'
           } ${isViewOverlay ? 'opacity-0' : ''}`}
         />
-        {/* 보기 모드: 링크를 누를 수 있게 textarea 위에 같은 모양의 텍스트를 덮는다.
+        {/* 보기 모드: 링크를 누를 수 있게 textarea 위에 같은 모양의 글자를 덮는다(상자 없음).
             click은 스크롤한 터치에서는 발생하지 않으므로, 긴 메모를 스크롤해도 편집으로 넘어가지 않는다.
             iOS는 전역 규칙으로 textarea가 16px이라 덮개 글자 크기도 맞춘다 */}
         {isViewOverlay && (
@@ -179,15 +177,25 @@ export function NoteModal({
               if (window.getSelection()?.toString()) return
               startEditing()
             }}
-            className={`absolute inset-0 cursor-text overflow-y-auto rounded-xl [scrollbar-gutter:stable] bg-state-warning-subtle border border-[var(--color-warning)] p-3 ${userTextDisplayClass} text-text-secondary supports-[-webkit-touch-callout:none]:text-base`}
+            className={`absolute inset-0 cursor-text overflow-y-auto ${BOX} border-transparent [scrollbar-gutter:stable] ${userTextDisplayClass} text-text-primary supports-[-webkit-touch-callout:none]:text-base`}
           >
             {linkifyText(noteText)}
           </div>
         )}
       </div>
-      {/* 높이를 미리 잡아 둬 버튼이 나타나고 사라질 때 아래 내용이 흔들리지 않게 한다 */}
+      {/* 보기 모드의 키보드 편집. 평소에는 숨기고 Tab으로 닿으면 보인다(회고의 "{제목} 수정"과 같다) */}
+      {!noteEditMode && (
+        <button
+          type="button"
+          onClick={startEditing}
+          className="sr-only text-xs text-text-secondary focus-visible:not-sr-only focus-visible:mt-list focus-visible:flex focus-visible:min-h-11 focus-visible:items-center"
+        >
+          {noteTodo ? `${noteTodo.title} 메모 수정` : '메모 수정'}
+        </button>
+      )}
+      {/* 편집 중에는 링크 열기 줄 자리를 늘 잡아 둬 커서가 링크를 드나들 때 시트 높이가 흔들리지 않게 한다 */}
       {noteEditMode && (
-        <div className="mb-4 h-6 px-1">
+        <div className="mt-list flex min-h-11 items-center">
           {activeUrl && (
             <a
               href={activeUrl}
@@ -196,18 +204,13 @@ export function NoteModal({
               title={activeUrl}
               // 데스크톱에서 누를 때 textarea 포커스(커서 위치)를 잃지 않게 한다
               onMouseDown={(e) => e.preventDefault()}
-              className="inline-flex max-w-full items-center gap-2 text-sm leading-6"
+              className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 text-sm leading-6"
             >
               <span className="shrink-0 font-medium text-accent-text">링크 열기</span>
-              <span className="truncate text-text-tertiary">{activeUrl.replace(/^https?:\/\//i, '')}</span>
+              <span className="truncate text-text-secondary">{activeUrl.replace(/^https?:\/\//i, '')}</span>
             </a>
           )}
         </div>
-      )}
-      {!noteEditMode && (
-        <p className="mb-4 px-1 text-xs text-text-tertiary">
-          탭하면 바로 편집 모드로 전환됩니다
-        </p>
       )}
     </BottomSheet>
   )

@@ -64,7 +64,7 @@ export function getTodoDateActionItems(
   return [
     {
       kind: relativeDateKind === 'today' ? 'move_to_tomorrow' : 'move_to_today',
-      label: relativeDateKind === 'today' ? '내일 하기' : '오늘하기',
+      label: relativeDateKind === 'today' ? '내일 하기' : '오늘 하기',
     },
     {
       kind: 'move_to_date',
