@@ -226,7 +226,8 @@ export function useDragAndDrop({
   }, [activeDragId, serverContainerItems])
 
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    // 마우스는 세로로 6px 끌면 시작한다. 가로로 먼저 8px 움직이면 끌기를 취소해 왼쪽으로 밀어 지우기(useSwipeToDelete)에 넘긴다
+    useSensor(MouseSensor, { activationConstraint: { distance: { y: 6 }, tolerance: { x: 8 } } }),
     // 행 전체를 길게 눌러 끈다. 스크롤하다 잠깐 멈춘 손가락이 끌기로 바뀌지 않게 250ms 동안 8px 안에 머물러야 시작한다
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),

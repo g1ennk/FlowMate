@@ -48,14 +48,17 @@ function AppLayout() {
         </div>
       </main>
 
+      {/* 하단 탭: 면과 위 선은 화면 폭 전체로 깔아 바닥에 붙은 막대로 보이게 하고(넓은 화면에서 따로 뜬 상자처럼 보이지 않게),
+          탭 세 개는 본문과 같은 폭(max-w-lg, page-x) 안에 둔다(사용자 결정 2026-10-21) */}
       <nav
         data-bottom-nav
-        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-lg items-center justify-around border-t border-border-default bg-surface-card px-card"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-border-default bg-surface-card"
         style={{
           height: 'calc(var(--bottom-nav-height) + var(--safe-bottom))',
           paddingBottom: 'var(--safe-bottom)',
         }}
       >
+        <div data-bottom-nav-tabs className="mx-auto flex h-full w-full max-w-lg items-center justify-around px-page-x">
         {tabs.map(({ to, label, Icon, ActiveIcon }) => (
           <NavLink
             key={to}
@@ -74,6 +77,7 @@ function AppLayout() {
             )}
           </NavLink>
         ))}
+        </div>
       </nav>
 
       <KeyboardShortcutsHelp isOpen={helpOpen} onClose={() => setHelpOpen(false)} />

@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TodoItem, type TodoItemProps } from './TodoItem'
 import { REVEAL_WIDTH, useSwipeToDelete } from '../useSwipeToDelete'
+import { TrashIcon } from '../../../ui/Icons'
 
 type SortableTodoItemProps = TodoItemProps & {
   id: string
@@ -37,7 +38,7 @@ export function SortableTodoItem({
   // 편집 중이거나 선택 모드이면 드래그 불가
   const canDrag = !props.isEditing && !props.selectMode
   const { onKeyDown, ...pointerListeners } = listeners ?? {}
-  const { rowRef, offset, isSwiping, handlers: swipeHandlers, onClickCapture, handleDelete } = useSwipeToDelete({
+  const { rowRef, offset, isSwiping, willDelete, handlers: swipeHandlers, onClickCapture, handleDelete } = useSwipeToDelete({
     enabled: !!onSwipeDelete && canDrag && !isDragging,
     onDelete: () => onSwipeDelete?.(),
   })
@@ -78,9 +79,13 @@ export function SortableTodoItem({
             aria-hidden
             tabIndex={-1}
             onClick={handleDelete}
-            className="absolute inset-y-0 right-0 flex items-center justify-end rounded-control bg-state-error-strong pr-5 text-sm font-medium whitespace-nowrap text-white"
+            // 절반을 넘기면 글자가 밀린 내용 바로 옆으로 붙는다(놓으면 지운다는 표시, iOS full swipe와 같다)
+            className={`absolute inset-y-0 right-0 flex items-center rounded-control bg-state-error-strong text-sm font-medium whitespace-nowrap text-white ${
+              willDelete ? 'justify-start pl-5' : 'justify-end pr-5'
+            }`}
             style={{ width: Math.max(REVEAL_WIDTH, -offset + 8) }}
           >
+            <TrashIcon className="mr-1 h-4 w-4" />
             삭제
           </button>
         )}

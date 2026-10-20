@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { REVEAL_WIDTH, useSwipeToDelete } from './useSwipeToDelete'
+import { act } from 'react'
+import { COMMIT_MS, REVEAL_WIDTH, useSwipeToDelete } from './useSwipeToDelete'
 
 function Row({ onDelete, onTap, enabled = true }: { onDelete: () => void; onTap?: () => void; enabled?: boolean }) {
   const { rowRef, offset, handlers, onClickCapture, handleDelete } = useSwipeToDelete({ enabled, onDelete })
@@ -42,10 +43,48 @@ describe('useSwipeToDelete', () => {
     expect(row).toHaveAttribute('data-offset', '0')
   })
 
-  it('행 폭의 절반을 넘겨 밀면 바로 지운다', () => {
-    const { onDelete, row } = setup()
-    swipe(row, -200)
-    expect(onDelete).toHaveBeenCalledTimes(1)
+  it('행 폭의 절반을 넘겨 밀면 행을 끝까지 밀어 낸 뒤 지운다', () => {
+    vi.useFakeTimers()
+    try {
+      const { onDelete, row } = setup()
+      swipe(row, -200)
+      expect(row).toHaveAttribute('data-offset', '-320')
+      expect(onDelete).not.toHaveBeenCalled()
+      act(() => { vi.advanceTimersByTime(COMMIT_MS) })
+      expect(onDelete).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('데스크톱: 마우스로 왼쪽으로 끌어도 삭제가 드러난다', () => {
+    const { row } = setup()
+    // jsdom에는 PointerEvent가 없어 MouseEvent에 pointerType을 붙인다
+    const down = new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 300, clientY: 100 })
+    Object.defineProperty(down, 'pointerType', { value: 'mouse' })
+    fireEvent(row, down)
+    // jsdom에 PointerEvent가 없어 좌표가 실리는 MouseEvent로 보낸다
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 270, clientY: 100 }))
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 240, clientY: 100 }))
+      window.dispatchEvent(new MouseEvent('pointerup'))
+    })
+    expect(row).toHaveAttribute('data-offset', String(-REVEAL_WIDTH))
+  })
+
+  it('데스크톱: 트랙패드 두 손가락 가로 밀기로도 드러나고, 세로 스크롤은 그대로 둔다', () => {
+    vi.useFakeTimers()
+    try {
+      const { row } = setup()
+      fireEvent.wheel(row, { deltaX: 0, deltaY: 40 })
+      expect(row).toHaveAttribute('data-offset', '0')
+      fireEvent.wheel(row, { deltaX: 30, deltaY: 2 })
+      fireEvent.wheel(row, { deltaX: 30, deltaY: 0 })
+      act(() => { vi.advanceTimersByTime(200) })
+      expect(row).toHaveAttribute('data-offset', String(-REVEAL_WIDTH))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('살짝만 밀면 제자리로 돌아간다', () => {

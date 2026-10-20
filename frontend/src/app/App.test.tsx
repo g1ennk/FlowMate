@@ -114,7 +114,8 @@ describe('AppLayout 하단 탭', () => {
   it('하단 탭 막대는 본문과 같은 최대 폭(512) 안에 놓인다', async () => {
     renderLayout()
     await screen.findByText('회고 화면')
-    expect(screen.getByRole('navigation')).toHaveClass('mx-auto', 'w-full', 'max-w-lg')
+    expect(screen.getByRole('navigation')).toHaveClass('inset-x-0', 'border-t')
+    expect(screen.getByRole('navigation').querySelector('[data-bottom-nav-tabs]')).toHaveClass('mx-auto', 'w-full', 'max-w-lg')
   })
 
   it('계획 아이콘은 빈 모양과 채운 모양의 선 길이가 같다', async () => {
