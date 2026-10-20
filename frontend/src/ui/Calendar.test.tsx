@@ -181,7 +181,7 @@ describe('Calendar 날짜 칸', () => {
     for (const cell of [pending, done, empty]) expect(cell.className).not.toMatch(/(^| )bg-/)
   })
 
-  it('오늘은 숫자 위에 작은 "오늘"을 두고, 고른 날은 초록 둥근 사각 테두리다', () => {
+  it('오늘은 칸 안에 "오늘" 글자 없이 숫자를 초록 굵은 글자로 쓰고, 고른 날은 초록 둥근 사각 테두리다', () => {
     const today = new Date()
     render(<Calendar selectedDate={today} viewMode="week" onSelectDate={() => {}} onMonthChange={() => {}} />)
 
@@ -190,9 +190,8 @@ describe('Calendar 날짜 칸', () => {
     expect(cell).toHaveAccessibleName(new RegExp(`^${today.getMonth() + 1}월 ${today.getDate()}일 .요일 오늘$`))
     expect(cell).toHaveClass('rounded-xl', 'ring-2', 'ring-accent')
     expect(cell.className).not.toMatch(/(^| )bg-/)
-    const label = within(cell).getByText('오늘')
-    expect(label).toHaveClass('text-accent-text')
-    expect(label.compareDocumentPosition(within(cell).getByText(String(today.getDate()))) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(cell).queryByText('오늘')).not.toBeInTheDocument()
+    expect(cell).toHaveClass('font-semibold', 'text-accent-text')
   })
 
   it('요일 머리 줄은 주 보기와 월 보기 모두 있고, 토요일은 파랑, 일요일은 빨강이다', () => {

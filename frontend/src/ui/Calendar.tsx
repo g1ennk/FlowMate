@@ -169,10 +169,13 @@ export function CalendarDayGrid({
             )
           }
 
-          // 할 일이 있는 날도 면을 칠하지 않고 숫자 아래 남은 개수(모두 끝나면 ✓)만 둔다(사용자 결정 2026-10-20)
-          const textClass = isSelected
-            ? 'font-semibold text-text-primary'
-            : weekendText ?? 'text-text-secondary'
+          // 할 일이 있는 날도 면을 칠하지 않고 숫자 아래 남은 개수(모두 끝나면 ✓)만 둔다(사용자 결정 2026-10-20).
+          // 오늘은 칸 안에 "오늘" 글자를 따로 두지 않고 숫자를 초록 굵은 글자로 쓴다. 칸이 세 줄로 꽉 차 보이지 않게 두 줄(숫자, 개수)까지만 둔다(사용자 결정 2026-10-21)
+          const textClass = isTodayDate
+            ? 'font-semibold text-accent-text'
+            : isSelected
+              ? 'font-semibold text-text-primary'
+              : weekendText ?? 'text-text-secondary'
 
           return (
             <button
@@ -186,11 +189,6 @@ export function CalendarDayGrid({
                 isSelected ? 'ring-2 ring-accent' : 'hover:ring-2 hover:ring-border-default'
               }`}
             >
-              {isTodayDate && (
-                <span aria-hidden className="text-[9px] font-semibold leading-none text-accent-text">
-                  오늘
-                </span>
-              )}
               <span aria-hidden>{date.getDate()}</span>
               {mark && (
                 <span
