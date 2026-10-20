@@ -1,66 +1,50 @@
+import { Button } from '../../../ui/Button'
+import { IconButton } from '../../../ui/IconButton'
 import { ChevronLeftIcon, ChevronRightIcon } from '../../../ui/Icons'
+import type { PeriodType } from '../reviewTypes'
+
+// 기간 이동 한 줄. 기간 고르기와 같은 카드 안, 구분선 위에 놓인다(ReviewPage, 사용자 결정 2026-10-20). 지금 기간이 아니면 지금으로 돌아가는 버튼을 보여 준다.
+
+const LABELS: Record<PeriodType, { prev: string; next: string; jump: string }> = {
+  daily: { prev: '이전 날', next: '다음 날', jump: '오늘' },
+  weekly: { prev: '이전 주', next: '다음 주', jump: '이번 주' },
+  monthly: { prev: '이전 달', next: '다음 달', jump: '이번 달' },
+}
 
 type PeriodNavigatorProps = {
+  period: PeriodType
   label: string
-  badge?: string
-  isCurrent?: boolean
-  jumpLabel?: string
-  onJumpToCurrent?: () => void
+  isCurrent: boolean
+  onJumpToCurrent: () => void
   onPrev: () => void
   onNext: () => void
-  reviewCount?: number
 }
 
 export function PeriodNavigator({
+  period,
   label,
-  badge,
-  isCurrent = false,
-  jumpLabel = '현재로 이동',
+  isCurrent,
   onJumpToCurrent,
   onPrev,
   onNext,
-  reviewCount,
 }: PeriodNavigatorProps) {
+  const labels = LABELS[period]
   return (
-    <div className="grid grid-cols-[36px_1fr_36px] items-center rounded-2xl bg-surface-card px-card py-card-item shadow-sm">
-      <button
-        type="button"
-        onClick={onPrev}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-text-tertiary hover:bg-hover-strong"
-      >
-        <ChevronLeftIcon className="h-5 w-5" />
-      </button>
-      <div className="flex min-w-0 flex-col items-center justify-center gap-1">
-        <div className="flex min-w-0 items-center justify-center gap-2">
-          <div className="truncate text-sm font-medium text-text-primary">{label}</div>
-          {badge && (
-            <span className="shrink-0 rounded-full bg-accent-subtle px-2 py-0.5 text-[11px] font-semibold text-accent">
-              {badge}
-            </span>
-          )}
-        </div>
-        {onJumpToCurrent && !isCurrent && (
-          <button
-            type="button"
-            onClick={onJumpToCurrent}
-            className="text-[11px] font-medium text-accent hover:text-accent-text"
-          >
-            {jumpLabel}
-          </button>
-        )}
-        {reviewCount !== undefined && reviewCount > 0 && (
-          <p className="text-[11px] text-text-tertiary">
-            이번 달 {reviewCount}일 기록
-          </p>
+    // 이전 화살표는 왼쪽 끝, 날짜는 가운데, 다음 화살표는 오른쪽 끝(사용자 결정 2026-10-20).
+    // 화살표 버튼 폭이 같아 날짜 묶음이 카드 가운데에 온다. 지금으로 돌아가는 버튼은 날짜 옆에 붙인다
+    <div className="flex min-h-11 items-center gap-list">
+      <IconButton label={labels.prev} className="-ml-2" onClick={onPrev}>
+        <ChevronLeftIcon />
+      </IconButton>
+      <div className="flex min-w-0 flex-1 items-center justify-center gap-list">
+        <p className="min-w-0 break-keep text-center text-base font-semibold text-text-primary">{label}</p>
+        {!isCurrent && (
+          <Button variant="secondary" size="sm" onClick={onJumpToCurrent}>{labels.jump}</Button>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onNext}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-text-tertiary hover:bg-hover-strong"
-      >
-        <ChevronRightIcon className="h-5 w-5" />
-      </button>
+      <IconButton label={labels.next} className="-mr-2" onClick={onNext}>
+        <ChevronRightIcon />
+      </IconButton>
     </div>
   )
 }

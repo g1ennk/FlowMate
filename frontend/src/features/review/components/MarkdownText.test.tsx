@@ -70,10 +70,4 @@ describe('MarkdownText', () => {
     const { container } = render(<MarkdownText content={'첫줄\n둘째줄'} />)
     expect(container.querySelector('br')).not.toBeNull()
   })
-
-  it('muted=true 면 text-text-tertiary 클래스를 적용한다', () => {
-    const { container } = render(<MarkdownText content="텍스트" muted />)
-    const p = container.querySelector('p')
-    expect(p?.className).toContain('text-text-tertiary')
-  })
 })

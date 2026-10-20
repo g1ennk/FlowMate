@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
-import { parseKpt, KPT_STYLES, type KptSegment, type KptTag } from '../kptParser'
-import { userTextDisplayClass } from '../../../lib/userTextStyles'
+import { parseKpt, LEGACY_KPT_HEADINGS, type KptSegment, type KptTag } from '../kptParser'
 import { MarkdownText } from './MarkdownText'
 
 type Group =
@@ -32,6 +31,11 @@ function groupSegments(segments: KptSegment[]): Group[] {
   return groups
 }
 
+function LegacyHeading({ children }: { children: string }) {
+  return <p className="text-sm font-semibold text-text-primary">{children}</p>
+}
+
+// 저장한 회고를 보여 준다. 예전 KPT 형식이면 라벨을 평범한 소제목으로 바꾸고, 아니면 글 그대로 보여 준다
 export function KptText({ content }: { content: string }) {
   const groups = useMemo(() => {
     const segments = parseKpt(content)
@@ -39,35 +43,21 @@ export function KptText({ content }: { content: string }) {
   }, [content])
 
   if (!groups) {
-    return <MarkdownText content={content} />
+    return <MarkdownText content={content} tone="primary" />
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-card-item">
       {groups.map((group, i) => {
         if (group.kind === 'plain') {
           if (!group.body.trim()) return null
-          return <MarkdownText key={i} content={group.body} />
+          return <MarkdownText key={i} content={group.body} tone="primary" />
         }
-        if (group.kind === 'quote') {
-          return (
-            <div key={i}>
-              <p className={`font-semibold ${userTextDisplayClass} text-text-tertiary`}>
-                ❓ Question
-              </p>
-              {group.body.trim() && <MarkdownText content={group.body} muted />}
-            </div>
-          )
-        }
-        const style = KPT_STYLES[group.type]
+        const heading = group.kind === 'quote' ? LEGACY_KPT_HEADINGS.quote : LEGACY_KPT_HEADINGS[group.type]
         return (
-          <div key={i}>
-            <p className={`${userTextDisplayClass} text-text-secondary`}>
-              <span className={`font-semibold ${style.colorClass}`}>
-                {style.icon} {style.label}
-              </span>
-            </p>
-            {group.body.trim() && <MarkdownText content={group.body} />}
+          <div key={i} className="space-y-tight">
+            <LegacyHeading>{heading}</LegacyHeading>
+            {group.body.trim() && <MarkdownText content={group.body} tone="primary" />}
           </div>
         )
       })}

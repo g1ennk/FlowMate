@@ -1,26 +1,33 @@
-import { formatFocusTime } from '../reviewUtils'
-import type { PeriodComparison } from '../reviewTypes'
+import { Card } from '../../../ui/Card'
+import { EmptyState } from '../../../ui/EmptyState'
+import { SectionHeader } from '../../../ui/SectionHeader'
+import { formatFocusLabel, type StatDelta, type StatDeltas } from '../reviewUtils'
 
 type StatsSummaryProps = {
   totalFocusSeconds: number
   totalFlows: number
   completedCount: number
-  comparison?: PeriodComparison
+  // 끝난 기간에만 오는 칸별 증감(buildStatDeltas). 없으면(진행 중인 기간) 증감 줄을 두지 않는다
+  deltas?: StatDeltas | null
   isCurrentPeriod?: boolean
-  hasReview?: boolean
-  onScrollToReview?: () => void
 }
 
-function renderDelta(value: number, unitFormatter?: (value: number) => string): React.ReactNode {
-  if (value === 0) {
-    return <span className="text-text-tertiary">변화 없음</span>
-  }
-  const sign = value > 0 ? '+' : '-'
-  const formatted = unitFormatter ? unitFormatter(Math.abs(value)) : String(Math.abs(value))
+// 집중 기록 카드. 사용자 결정(2026-10-20)으로 바꾸기 전 통계 카드 모양을 되살렸다: 세 칸을 세로선으로 나누고,
+// 칸마다 작은 라벨 아래 초록 숫자(accent-text, 4.5:1 이상)를 둔다. 끝난 기간이면 숫자 아래 증감을 붙인다:
+// 늘면 accent-text, 줄거나 같으면 무채색(§4-2, 빨강 아님). 보이는 글자는 "+25분"이고 스크린리더는 비교 대상까지 읽는다.
+// 집중 횟수 점과 "회고 쓰기" 링크는 두지 않는다. .impeccable.md §2-2(점), §8 회고(숫자 stat text-primary)와 다른 곳이다
+function StatCell({ label, value, delta }: { label: string; value: string; delta?: StatDelta }) {
   return (
-    <span className={value > 0 ? 'text-accent' : 'text-state-error'}>
-      {`${sign}${formatted}`}
-    </span>
+    <div className="min-w-0 px-3 py-2 first:pl-0 last:pr-0">
+      <p className="text-xs text-text-secondary">{label}</p>
+      <p className="mt-list break-keep text-sm font-medium tabular-nums text-accent-text">{value}</p>
+      {delta && (
+        <p className={`mt-tight break-keep text-xs tabular-nums ${delta.trend === 'up' ? 'text-accent-text' : 'text-text-secondary'}`}>
+          <span aria-hidden="true">{delta.text}</span>
+          <span className="sr-only">{delta.label}</span>
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -28,83 +35,27 @@ export function StatsSummary({
   totalFocusSeconds,
   totalFlows,
   completedCount,
-  comparison,
+  deltas,
   isCurrentPeriod = true,
-  hasReview,
-  onScrollToReview,
 }: StatsSummaryProps) {
   const isEmpty = totalFocusSeconds === 0 && totalFlows === 0 && completedCount === 0
 
-  const scrollButton = onScrollToReview ? (
-    <button
-      type="button"
-      onClick={onScrollToReview}
-      className="mt-card-item w-full text-center text-xs font-medium text-accent hover:text-accent-text"
-    >
-      {hasReview ? '회고 보기 ↓' : '회고 쓰기 ↓'}
-    </button>
-  ) : null
-
-  if (isEmpty) {
-    return (
-      <section className="rounded-2xl bg-surface-card p-card shadow-sm">
-        <h3 className="mb-2 text-sm font-semibold text-text-primary">집중 기록</h3>
-        <p className="py-2 text-center text-sm text-text-tertiary">
-          {isCurrentPeriod
-            ? '첫 Flow를 시작하면 집중 시간과 완료 기록이 여기에 표시돼요'
-            : '이 기간에는 집중 기록이 없어요'}
-        </p>
-        {scrollButton}
-      </section>
-    )
-  }
-
-  const focusDelta = comparison?.focusDelta
-  const flowDelta = comparison?.flowDelta
-  const completedDelta = comparison?.completedDelta
-
-  let focusLabel: string
-  if (totalFocusSeconds >= 60) {
-    focusLabel = formatFocusTime(totalFocusSeconds)
-  } else if (totalFocusSeconds > 0) {
-    focusLabel = '1분 미만'
-  } else {
-    focusLabel = '0분'
-  }
-
   return (
-    <section className="rounded-2xl bg-surface-card p-card shadow-sm">
-      <h3 className="mb-card-item text-sm font-semibold text-text-primary">집중 기록</h3>
-      <div className="grid grid-cols-3 divide-x divide-border-subtle">
-        <div className="px-3 py-2">
-          <p className="text-[11px] text-text-secondary">집중</p>
-          <p className="mt-2 text-sm font-medium text-accent">{focusLabel}</p>
-          {focusDelta !== undefined && (
-            <p className="mt-1 text-[11px] text-text-tertiary">
-              {renderDelta(focusDelta, formatFocusTime)}
-            </p>
-          )}
-        </div>
-        <div className="px-3 py-2">
-          <p className="text-[11px] text-text-secondary">Flow</p>
-          <p className="mt-2 text-sm font-medium text-accent">{totalFlows}회</p>
-          {flowDelta !== undefined && (
-            <p className="mt-1 text-[11px] text-text-tertiary">
-              {renderDelta(flowDelta, (v) => `${v}회`)}
-            </p>
-          )}
-        </div>
-        <div className="px-3 py-2">
-          <p className="text-[11px] text-text-secondary">완료</p>
-          <p className="mt-2 text-sm font-medium text-accent">{completedCount}개</p>
-          {completedDelta !== undefined && (
-            <p className="mt-1 text-[11px] text-text-tertiary">
-              {renderDelta(completedDelta, (v) => `${v}개`)}
-            </p>
-          )}
-        </div>
-      </div>
-      {scrollButton}
+    <section>
+      <SectionHeader title="집중 기록" />
+      {isEmpty ? (
+        <Card>
+          <EmptyState message={isCurrentPeriod ? '아직 집중 기록이 없어요' : '이 기간에는 집중 기록이 없어요'} className="py-0" />
+        </Card>
+      ) : (
+        <Card>
+          <div data-stat-grid className="grid grid-cols-3 divide-x divide-border-subtle">
+            <StatCell label="집중 시간" value={formatFocusLabel(totalFocusSeconds)} delta={deltas?.focus} />
+            <StatCell label="집중 횟수" value={`${totalFlows}회`} delta={deltas?.flow} />
+            <StatCell label="완료" value={`${completedCount}개`} delta={deltas?.completed} />
+          </div>
+        </Card>
+      )}
     </section>
   )
 }

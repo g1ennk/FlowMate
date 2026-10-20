@@ -1,59 +1,63 @@
-import { useState } from 'react'
 import { BottomSheet } from '../../../ui/BottomSheet'
+import { Button } from '../../../ui/Button'
+import { InlineStatus } from '../../../ui/InlineStatus'
+import { SectionHeader } from '../../../ui/SectionHeader'
 import type { AiReport } from '../../../api/aiReport'
-import { KPT_STYLES } from '../kptParser'
-import type { KptTag } from '../kptParser'
+import type { PeriodType } from '../reviewTypes'
 import { MarkdownText } from './MarkdownText'
+
+// AI 리포트는 그 기간의 요약이다(.impeccable.md §8). 회고와 따로 만들고 따로 보여 준다.
+// 그래서 이 시트는 읽기 전용이고, AI 글을 회고 입력창에 넣는 버튼이 없다.
+// 필드 이름(keep/problem/try)은 API 그대로이고 뜻은 "한 일 / 눈에 띈 점 / 해 볼 만한 것"이다.
 
 type AiReportSheetProps = {
   isOpen: boolean
   onClose: () => void
+  periodType: PeriodType
   report: AiReport | null
   isCached: boolean
   isRegenerating: boolean
   error?: string | null
-  hasExistingContent: boolean
-  onStartWithAi: () => void
-  onSaveAsIs: () => void
   onRegenerate: () => void
   onRetry?: () => void
+  // 시트를 닫고 회고 입력창으로 간다(실패했을 때 쓰는 다른 길)
+  onWriteYourself: () => void
   isPreview?: boolean
   isThinData?: boolean
   onLogin?: () => void
 }
 
+const TRY_HEADINGS: Record<PeriodType, string> = {
+  daily: '내일 해 볼 만한 것',
+  weekly: '다음 주에 해 볼 만한 것',
+  monthly: '다음 달에 해 볼 만한 것',
+}
+
+function getSections(periodType: PeriodType) {
+  return [
+    { key: 'keep', heading: '한 일' },
+    { key: 'problem', heading: '눈에 띈 점' },
+    { key: 'try', heading: TRY_HEADINGS[periodType] },
+  ] as const
+}
+
+function SectionHeading({ children }: { children: string }) {
+  return <SectionHeader title={children} size="sm" as="h3" />
+}
+
 function SkeletonLine({ width }: { width: string }) {
-  return <div className={`h-3.5 animate-pulse rounded bg-border-subtle ${width}`} />
+  return <div className={`h-4 rounded-control bg-border-default motion-safe:animate-pulse ${width}`} />
 }
 
-function KptSkeleton() {
-  return (
-    <div className="space-y-3">
-      {[
-        { colorClass: 'text-accent', label: '✅ Keep' },
-        { colorClass: 'text-state-warning', label: '⚠️ Problem' },
-        { colorClass: 'text-accent-text', label: '💡 Try' },
-      ].map(({ colorClass, label }) => (
-        <div key={label}>
-          <p className={`text-xs font-semibold ${colorClass}`}>{label}</p>
-          <div className="mt-1.5 space-y-1.5">
-            <SkeletonLine width="w-full" />
-            <SkeletonLine width="w-3/4" />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
+// 게스트 예시. 실제 리포트가 쓰는 단위(미니데이 구간, 집중 횟수, 완료 수)로만 쓴다
 const SAMPLE_REPORT: AiReport = {
   id: 'sample',
   type: 'DAILY',
   periodStart: '',
-  keep: '학습 카테고리 2개를 모두 완료했고, 뽀모도로 세션 간 휴식을 꾸준히 가져갔어요.',
-  problem: '개발 카테고리는 3개 중 1개만 완료. 3주째 비슷한 패턴이에요.',
-  try: '개발 작업을 오전 첫 세션에 배치해보세요.',
-  referenceQuestion: '개발 투두가 3주째 밀리고 있는데, 시작이 어려운 이유가 있을까요?',
+  keep: '오전 구간에 할 일 3개를 끝냈어요. 집중 4회, 1시간 40분이 기록됐어요.',
+  problem: '오후 구간에는 집중 기록이 없어요.',
+  try: '오후 구간 할 일 2개가 아직 남아 있어요.',
+  referenceQuestion: '오후에 시작이 늦어진 이유가 있었을까요?',
   promptVersion: null,
   createdAt: '',
 }
@@ -61,174 +65,77 @@ const SAMPLE_REPORT: AiReport = {
 export function AiReportSheet({
   isOpen,
   onClose,
+  periodType,
   report,
   isCached,
   isRegenerating,
-  hasExistingContent,
-  onStartWithAi,
-  onSaveAsIs,
   onRegenerate,
   onRetry,
+  onWriteYourself,
   error,
   isPreview,
   isThinData,
   onLogin,
 }: AiReportSheetProps) {
-  const [isConfirming, setIsConfirming] = useState(false)
-
   const displayReport = isPreview ? SAMPLE_REPORT : report
-  // 처음 생성하는 동안에는 시트를 먼저 열고 스켈레톤을 보여 준다.
+  // 처음 생성하는 동안에는 시트를 먼저 열고 뼈대를 보여 준다.
   const showSkeleton = isRegenerating || (!displayReport && !error)
-
-  // 참고해서 쓰기는 작성 중인 글 아래에 덧붙이기만 하므로 확인 없이 진행하고,
-  // 이대로 저장은 기존 회고나 작성 중인 글을 대체하므로 확인을 받는다.
-  const handleSaveAsIs = () => {
-    if (hasExistingContent && !isConfirming) {
-      setIsConfirming(true)
-      return
-    }
-    setIsConfirming(false)
-    onSaveAsIs()
-  }
-
-  const handleCancelConfirm = () => setIsConfirming(false)
+  const sections = getSections(periodType)
 
   const regenerateAction = isCached && !isPreview ? (
-    <button
-      type="button"
-      onClick={onRegenerate}
-      disabled={isRegenerating}
-      className="rounded-full px-3 py-1 text-xs font-medium text-text-tertiary transition-colors hover:text-text-secondary disabled:opacity-60"
-    >
+    <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isRegenerating}>
       {isRegenerating ? '생성 중...' : '다시 생성'}
-    </button>
+    </Button>
   ) : undefined
 
   return (
     <BottomSheet
       isOpen={isOpen}
-      onClose={() => { setIsConfirming(false); onClose() }}
-      title="AI 레포트"
+      onClose={onClose}
+      title={isPreview ? 'AI 리포트 예시' : 'AI 리포트'}
       headerAction={regenerateAction}
     >
-      <div className="space-y-4">
-        {isPreview && (
-          <p className="rounded-lg bg-accent-subtle py-1 text-center text-xs font-medium text-accent">
-            샘플 레포트입니다
-          </p>
-        )}
+      <div className="space-y-card">
         {!isPreview && isThinData && (
-          <div className="rounded-lg bg-state-warning-subtle px-3 py-2 text-center">
-            <p className="text-xs font-medium text-state-warning">
-              데이터가 적어 정확도가 낮을 수 있어요
-            </p>
-            <p className="mt-0.5 text-[11px] text-text-tertiary">
-              투두를 완료하면 더 정확한 분석을 받을 수 있어요
-            </p>
-          </div>
+          <p className="break-keep text-xs text-text-secondary">기록이 적어서 요약이 짧을 수 있어요</p>
         )}
-        {error && (
-          <div className="rounded-lg bg-state-error-subtle px-3 py-2 text-center">
-            <p className="text-xs font-medium text-state-error">{error}</p>
-          </div>
-        )}
+        {error && <InlineStatus message={error} />}
         {showSkeleton ? (
-          <div className="space-y-3">
-            <p className="text-center text-xs text-text-tertiary">보통 10~20초 걸려요</p>
-            <KptSkeleton />
+          <div className="space-y-card">
+            <p className="text-xs text-text-secondary">보통 10~20초 걸려요</p>
+            {sections.map(({ key, heading }) => (
+              <div key={key} className="space-y-list">
+                <SectionHeading>{heading}</SectionHeading>
+                <SkeletonLine width="w-full" />
+                <SkeletonLine width="w-3/4" />
+              </div>
+            ))}
           </div>
         ) : displayReport && (
-          <div className="space-y-3">
-            {(['keep', 'problem', 'try'] as const).map((key: KptTag) => {
-              const style = KPT_STYLES[key]
-              return (
-                <div key={key}>
-                  <p className={`text-xs font-semibold ${style.colorClass}`}>
-                    {style.icon} {style.label}
-                  </p>
-                  <div className="mt-1">
-                    <MarkdownText content={displayReport[key]} />
-                  </div>
-                </div>
-              )
-            })}
+          <div className="space-y-card">
+            {sections.map(({ key, heading }) => (
+              <section key={key} className="space-y-tight">
+                <SectionHeading>{heading}</SectionHeading>
+                <MarkdownText content={displayReport[key]} />
+              </section>
+            ))}
             {displayReport.referenceQuestion && (
-              <div>
-                <p className="text-xs font-semibold text-text-tertiary">
-                  ❓ Question
-                </p>
-                <div className="mt-1">
-                  <MarkdownText content={displayReport.referenceQuestion} muted />
-                </div>
-              </div>
+              <p className="break-keep border-t border-border-subtle pt-card-item text-sm text-text-secondary">
+                {displayReport.referenceQuestion}
+              </p>
             )}
           </div>
         )}
 
         {!displayReport ? (
-          error && !isRegenerating && onRetry && (
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={onRetry}
-                className="w-full rounded-xl bg-accent py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
-              >
-                다시 시도
-              </button>
+          error && !isRegenerating && (
+            <div className={`grid gap-list ${onRetry ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <Button variant="secondary" onClick={onWriteYourself}>직접 쓰기</Button>
+              {onRetry && <Button onClick={onRetry}>다시 시도</Button>}
             </div>
           )
-        ) : isPreview ? (
-          <div className="space-y-2 pt-2">
-            <button
-              type="button"
-              onClick={() => onLogin?.()}
-              className="w-full rounded-xl bg-accent py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover"
-            >
-              로그인하고 내 데이터로 받기
-            </button>
-          </div>
-        ) : isConfirming ? (
-          <div className="space-y-2 pt-2">
-            <p className="text-center text-sm text-text-secondary">
-              지금 회고를 AI 레포트로 바꿔요. 계속할까요?
-            </p>
-            <div className="grid grid-cols-2 gap-card-item">
-              <button
-                type="button"
-                onClick={handleCancelConfirm}
-                className="rounded-xl py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-hover"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveAsIs}
-                disabled={isRegenerating}
-                className="rounded-xl bg-state-error py-3 text-sm font-medium text-text-inverse transition-colors disabled:opacity-60"
-              >
-                덮어쓰기
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-2 pt-2">
-            <button
-              type="button"
-              onClick={onStartWithAi}
-              disabled={isRegenerating}
-              className="w-full rounded-xl bg-accent py-3 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-hover disabled:opacity-60"
-            >
-              참고해서 쓰기
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveAsIs}
-              disabled={isRegenerating}
-              className="w-full rounded-xl border border-border-default py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-hover disabled:opacity-60"
-            >
-              이대로 저장
-            </button>
-          </div>
+        ) : isPreview && (
+          <Button fullWidth onClick={() => onLogin?.()}>로그인하고 내 데이터로 받기</Button>
         )}
       </div>
     </BottomSheet>

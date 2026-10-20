@@ -2,9 +2,15 @@ import type { TaskItem } from '../reviewTypes'
 import { useEffect } from 'react'
 import { BottomSheet } from '../../../ui/BottomSheet'
 import { useTodoSessions } from '../../todos/hooks'
-import { formatFocusTime } from '../reviewUtils'
+import { formatFocusLabel, formatFocusTime, formatMonthDayLabel } from '../reviewUtils'
 import { queryKeys } from '../../../lib/queryKeys'
+import { systemMessages } from '../../../lib/messages'
+import { isWaitingOffline } from '../../../lib/queryStatus'
 import { queryClient } from '../../../app/queryClient'
+import { EmptyState } from '../../../ui/EmptyState'
+import { InlineStatus } from '../../../ui/InlineStatus'
+import { SectionHeader } from '../../../ui/SectionHeader'
+import { StatGrid, StatItem } from './StatItem'
 
 type SessionDetailSheetProps = {
   task: TaskItem | null
@@ -21,9 +27,11 @@ function formatSessionTime(value: string): string | null {
   }).format(date)
 }
 
+// 할 일 하나의 집중 기록. 상자는 시트 한 겹뿐이다: 제목, 숫자 세 개, 한 줄 요약, 세션 목록을 시트 면에 바로 둔다.
 export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheetProps) {
   const todoId = task?.id ?? ''
-  const { data, isLoading, isError } = useTodoSessions(todoId, isOpen && Boolean(todoId))
+  const sessionsQuery = useTodoSessions(todoId, isOpen && Boolean(todoId))
+  const { data, isLoading, isError, isFetching, refetch } = sessionsQuery
   const sessions = data?.items ?? []
   const totalFocusSeconds = sessions.reduce((sum, session) => sum + session.sessionFocusSeconds, 0)
   const totalBreakSeconds = sessions.reduce((sum, session) => sum + session.breakSeconds, 0)
@@ -31,17 +39,14 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
     (max, session) => Math.max(max, session.sessionFocusSeconds),
     0,
   )
-  let focusLabel: string | null = null
-  if (totalFocusSeconds >= 60) {
-    focusLabel = formatFocusTime(totalFocusSeconds)
-  } else if ((task?.focusSeconds ?? 0) >= 60) {
-    focusLabel = task?.focusTime ?? null
-  }
+  // 세션 목록이 아직 없으면 할 일에 모아 둔 집중 시간을 쓴다. 둘 다 없으면 "-"
+  const focusSeconds = totalFocusSeconds > 0 ? totalFocusSeconds : task?.focusSeconds ?? 0
+  const focusLabel = focusSeconds > 0 ? formatFocusLabel(focusSeconds) : '-'
   const breakRatioPercent =
     totalFocusSeconds > 0 ? Math.round((totalBreakSeconds / totalFocusSeconds) * 100) : 0
   const insightLabel =
     sessions.length > 0
-      ? `가장 긴 Flow ${formatFocusTime(longestFlowSeconds)} · 휴식 비율 ${breakRatioPercent}%`
+      ? `가장 긴 집중 ${formatFocusTime(longestFlowSeconds)}, 휴식 비율 ${breakRatioPercent}%`
       : null
 
   useEffect(() => {
@@ -57,82 +62,71 @@ export function SessionDetailSheet({ task, isOpen, onClose }: SessionDetailSheet
       isOpen={isOpen}
       onClose={onClose}
       title="세션 상세"
-      showHeaderDivider={false}
-      contentClassName="space-y-card"
+      contentClassName="space-y-section"
     >
-      <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-3">
-        <span className="text-sm font-semibold text-text-primary">{task.title}</span>
-        <p className="mt-1 text-xs text-text-tertiary">{task.date}</p>
-        <div className="mt-3 grid grid-cols-3 gap-card-item">
-          <div>
-            <p className="text-[11px] text-text-tertiary">총 집중</p>
-            {focusLabel && (
-              <p className="mt-1 text-base font-semibold text-text-primary">{focusLabel}</p>
-            )}
-          </div>
-          <div>
-            <p className="text-[11px] text-text-tertiary">Flow</p>
-            <p className="mt-1 text-base font-semibold text-accent">{task.flowCount}회</p>
-          </div>
-          <div>
-            <p className="text-[11px] text-text-tertiary">휴식</p>
-            <p className="mt-1 text-base font-semibold text-text-primary">
-              {totalBreakSeconds > 0 ? formatFocusTime(totalBreakSeconds) : '-'}
-            </p>
-          </div>
-        </div>
-        {insightLabel && (
-          <p className="mt-3 rounded-xl bg-accent-subtle px-3 py-2 text-xs font-medium text-accent-text">
-            {insightLabel}
-          </p>
-        )}
+      <div>
+        <p className="break-keep text-base font-semibold text-text-primary">{task.title}</p>
+        <p className="mt-tight text-xs text-text-secondary">{formatMonthDayLabel(task.date)}</p>
       </div>
 
-      <div className="space-y-list">
-        <h4 className="text-sm font-semibold text-text-primary">세션 기록</h4>
-        {isLoading ? (
-          <div className="rounded-xl border border-border-subtle px-3 py-4 text-center text-xs text-text-tertiary">
-            세션 기록 불러오는 중...
-          </div>
+      <div className="space-y-card-item">
+        <StatGrid>
+          {/* 핵심 숫자(총 집중, 집중 횟수)는 초록으로 크게, 휴식은 무채색. 집중 횟수는 점 없이 숫자만(사용자 결정 2026-10-20) */}
+          <StatItem value={focusLabel} label="총 집중" muted={focusLabel === '-'} emphasis />
+          <StatItem value={`${task.flowCount}회`} label="집중 횟수" muted={task.flowCount === 0} emphasis />
+          <StatItem
+            value={totalBreakSeconds > 0 ? formatFocusTime(totalBreakSeconds) : '-'}
+            label="휴식"
+            muted={totalBreakSeconds === 0}
+          />
+        </StatGrid>
+        {insightLabel && <p className="break-keep text-sm text-text-secondary">{insightLabel}</p>}
+      </div>
+
+      <div>
+        <SectionHeader title="세션 기록" as="h3" />
+        {isWaitingOffline(sessionsQuery) ? (
+          <InlineStatus kind="waiting" message={systemMessages.offlineLoadFailed('세션 기록')} />
+        ) : isLoading ? (
+          <p className="text-sm text-text-secondary">세션 기록을 불러오는 중...</p>
         ) : isError ? (
-          <div className="rounded-xl border border-border-subtle bg-state-error-subtle px-3 py-4 text-center text-xs text-state-error">
-            세션 목록을 불러오지 못했습니다.
-          </div>
+          <InlineStatus
+            message="세션 기록을 불러오지 못했어요"
+            actionLabel="다시 시도"
+            onAction={() => void refetch()}
+            actionDisabled={isFetching}
+          />
         ) : sessions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border-default px-3 py-4 text-center text-xs text-text-tertiary">
-            타이머로 집중하면 세션 기록이 쌓여요.
-          </div>
+          <EmptyState message="아직 세션 기록이 없어요" className="py-0" />
         ) : (
-          <div className="divide-y divide-border-subtle rounded-xl border border-border-subtle">
-            {sessions.map((session, index) => (
-              <div
-                key={`${task.id}-session-${session.id}`}
-                className="flex items-center justify-between px-3 py-2"
-              >
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium text-text-primary">
-                    Flow {session.sessionOrder ?? index + 1}
-                  </p>
-                  <p className="text-[11px] text-text-tertiary">
-                    {(() => {
-                      const startTime = formatSessionTime(session.createdAt)
-                      const breakLabel = session.breakSeconds > 0
-                        ? `휴식 ${formatFocusTime(session.breakSeconds)}`
-                        : '휴식 없음'
-                      return startTime
-                        ? `${startTime} 시작 · ${breakLabel}`
-                        : breakLabel
-                    })()}
-                  </p>
-                </div>
-                {session.sessionFocusSeconds >= 60 && (
-                  <span className="text-sm font-semibold text-accent">
-                    {formatFocusTime(session.sessionFocusSeconds)}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+          <ul>
+            {sessions.map((session, index) => {
+              const startTime = formatSessionTime(session.createdAt)
+              const breakLabel = session.breakSeconds > 0
+                ? `휴식 ${formatFocusTime(session.breakSeconds)}`
+                : '휴식 없음'
+              return (
+                <li
+                  key={`${task.id}-session-${session.id}`}
+                  className="flex min-h-11 items-center justify-between gap-card-item border-t border-border-subtle py-2 first:border-t-0"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">
+                      집중 {session.sessionOrder ?? index + 1}
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      {startTime ? `${startTime} 시작, ${breakLabel}` : breakLabel}
+                    </p>
+                  </div>
+                  {session.sessionFocusSeconds >= 60 && (
+                    <span className="shrink-0 text-sm text-text-primary">
+                      {formatFocusTime(session.sessionFocusSeconds)}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
         )}
       </div>
     </BottomSheet>
