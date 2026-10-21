@@ -243,6 +243,13 @@ export function ReviewTextarea({
     }
   }, [exitEdit, isDirty, isEditing, showEditor, isSheetOpenRef, sheetClosedAtRef])
 
+  // 카드에서 지금 있는 쪽(새 글 입력창이나 쓴 글 보기의 수정 버튼)으로 포커스를 옮긴다
+  const focusCard = () => {
+    containerRef.current
+      ?.querySelector<HTMLElement>(`textarea, button[aria-label="${title} 수정"]`)
+      ?.focus({ preventScroll: true })
+  }
+
   const executeDelete = () => {
     const deleted = review.data
     if (!deleted?.id) return
@@ -267,6 +274,13 @@ export function ReviewTextarea({
                     content: deleted.content,
                   },
                   {
+                    // 되살린 글이 그려지면 그동안 포커스를 받은 새 글 입력창이 사라진다. 포커스를 잃었으면 수정 버튼으로 옮긴다
+                    onSuccess: () => {
+                      window.setTimeout(() => {
+                        const active = document.activeElement
+                        if (!active || active === document.body || !active.isConnected) focusCard()
+                      }, 0)
+                    },
                     // 훅의 저장 실패 토스트를 더 구체적인 문구로 바꾼다.
                     onError: () => {
                       toast.error(toastMessages.reviewUndoFailed, { id: 'review-save-failed' })
@@ -276,11 +290,7 @@ export function ReviewTextarea({
                 // 지우면 누른 삭제 버튼이 사라지므로 되돌리기로 포커스를 옮기고, 토스트가 닫히면 카드로 돌려준다.
                 // 그때 카드는 새 글 입력창이거나(되살리기 전) 되살린 글 보기라 둘 중 있는 쪽으로 간다
                 takeFocus
-                returnFocus={() => {
-                  containerRef.current
-                    ?.querySelector<HTMLElement>(`textarea, button[aria-label="${title} 수정"]`)
-                    ?.focus({ preventScroll: true })
-                }}
+                returnFocus={focusCard}
               />
             ),
             { id: 'review-delete-success', duration: 5000, position: UNDO_TOAST_POSITION },

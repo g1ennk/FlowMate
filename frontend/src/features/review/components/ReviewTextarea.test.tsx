@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { Toaster, toast } from 'react-hot-toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../mocks/server'
@@ -700,6 +700,17 @@ describe('ReviewTextarea', () => {
       await waitFor(() => expect(calls.deletes).toHaveLength(1))
       // 누른 삭제 버튼이 사라져도 포커스가 body로 떨어지지 않고 되돌리기로 간다
       await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toHaveFocus())
+
+      // 되돌리면 다시 저장된 글 보기가 그려진 뒤 그 수정 버튼으로 포커스를 돌려준다.
+      // 저장 응답이 토스트가 닫힌 뒤에 와도(실제 네트워크) 입력창과 함께 포커스를 잃지 않는다
+      server.use(
+        http.put('/api/reviews', async () => {
+          await delay(100)
+          return undefined
+        }),
+      )
+      await user.click(screen.getByRole('button', { name: '되돌리기' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: '오늘 회고 수정' })).toHaveFocus())
     })
 
     it('삭제 후 새 글을 쓰러 들어가면 되돌리기 토스트를 닫는다', async () => {
