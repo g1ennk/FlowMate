@@ -1,6 +1,11 @@
 package kr.io.flowmate.config;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import kr.io.flowmate.timer.event.TimerStateChangedEvent;
+import kr.io.flowmate.timer.sse.CountingDiscardOldestPolicy;
+import kr.io.flowmate.timer.sse.MeteredRedisMessageListenerContainer;
+import kr.io.flowmate.timer.sse.SseMetrics;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -76,21 +81,29 @@ public class RedisConfig {
         return template;
     }
 
+    // 포화 시 가장 오래된 전송을 버리는 정책은 그대로 두고, 버린 수와 큐 상태를 지표로 내보낸다.
+    // 정책 변경(CallerRunsPolicy 등)은 이 지표로 포화가 확인된 뒤에 판단한다(#28 Phase C)
     @Bean(name = "sseDispatchExecutor", destroyMethod = "shutdown")
-    public ExecutorService sseDispatchExecutor() {
-        return new ThreadPoolExecutor(
+    public ExecutorService sseDispatchExecutor(MeterRegistry meterRegistry) {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
                 4, 8, 60L, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(200),
                 new CustomizableThreadFactory("sse-dispatch-"),
-                new ThreadPoolExecutor.DiscardOldestPolicy()
+                new CountingDiscardOldestPolicy(meterRegistry.counter(SseMetrics.DISPATCH_DROPPED))
         );
+        Gauge.builder(SseMetrics.DISPATCH_QUEUE_SIZE, executor, e -> e.getQueue().size())
+                .register(meterRegistry);
+        Gauge.builder(SseMetrics.DISPATCH_QUEUE_REMAINING, executor, e -> e.getQueue().remainingCapacity())
+                .register(meterRegistry);
+        return executor;
     }
 
     @Bean
     public RedisMessageListenerContainer redisMessageListenerContainer(
-            @Qualifier("subscriberConnectionFactory") RedisConnectionFactory factory
+            @Qualifier("subscriberConnectionFactory") RedisConnectionFactory factory,
+            MeterRegistry meterRegistry
     ) {
-        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        RedisMessageListenerContainer container = new MeteredRedisMessageListenerContainer(meterRegistry);
         container.setConnectionFactory(factory);
         container.setRecoveryInterval(5000L);
         return container;

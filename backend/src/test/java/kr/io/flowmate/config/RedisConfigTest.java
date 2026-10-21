@@ -1,7 +1,10 @@
 package kr.io.flowmate.config;
 
 import com.redis.testcontainers.RedisContainer;
+import io.micrometer.core.instrument.MeterRegistry;
 import kr.io.flowmate.timer.event.TimerStateChangedEvent;
+import kr.io.flowmate.timer.sse.CountingDiscardOldestPolicy;
+import kr.io.flowmate.timer.sse.SseMetrics;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -15,6 +18,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,8 +62,34 @@ class RedisConfigTest {
 
         // then
         assertThat(requiredBeanNames).allMatch(context::containsBean);
+        // 포화 정책은 discard-oldest 그대로이고, 버린 수만 센다
         assertThat(executor.getRejectedExecutionHandler())
-                .isInstanceOf(ThreadPoolExecutor.DiscardOldestPolicy.class);
+                .isInstanceOf(ThreadPoolExecutor.DiscardOldestPolicy.class)
+                .isInstanceOf(CountingDiscardOldestPolicy.class);
+    }
+
+    @Test
+    void SSE_전달_지표가_애플리케이션_MeterRegistry에_등록된다() {
+        // given
+        MeterRegistry meterRegistry = context.getBean(MeterRegistry.class);
+
+        // when
+        List<String> names = meterRegistry.getMeters().stream()
+                .map(meter -> meter.getId().getName())
+                .toList();
+
+        // then
+        assertThat(names).contains(
+                SseMetrics.PUBLISH,
+                SseMetrics.DISPATCH_QUEUE_SIZE,
+                SseMetrics.DISPATCH_QUEUE_REMAINING,
+                SseMetrics.DISPATCH_DROPPED,
+                SseMetrics.FANOUT,
+                SseMetrics.CONNECTIONS,
+                SseMetrics.SUBSCRIBER_FAILURES,
+                SseMetrics.SUBSCRIBER_LISTENING
+        );
+        assertThat(meterRegistry.get(SseMetrics.SUBSCRIBER_LISTENING).gauge().value()).isEqualTo(1);
     }
 
     @Test
