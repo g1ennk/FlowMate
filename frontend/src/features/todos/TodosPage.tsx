@@ -382,6 +382,7 @@ function TodosPage() {
           actions.handleOpenTimer(todo, current && current.status !== 'idle' ? current.mode : null)
         }}
         onOpenSessions={() => sessionDetail.open(todo)}
+        onOpenNote={() => actions.handleOpenNote(todo)}
         isFocusMenuOpen={startFocus.menuTodoId === todo.id}
         selectMode={batch.selectMode}
         isSelected={batch.selectedIds.has(todo.id)}

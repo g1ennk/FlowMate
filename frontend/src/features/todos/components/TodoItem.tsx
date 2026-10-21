@@ -49,6 +49,8 @@ export type TodoItemProps = {
   onOpenTimer?: () => void
   // 완료한 할 일의 시간 줄을 누르면 집중 기록(세션 상세)을 연다(사용자 결정 2026-10-20)
   onOpenSessions?: () => void
+  // 한 줄에 들어가는 짧은 메모 글자를 누르면 메모 시트를 연다(사용자 결정 2026-10-21). 넘치는 메모는 펼치기다
+  onOpenNote?: () => void
   // 이 행의 타이머 고르기 메뉴가 열려 있다(집중 시작 버튼의 aria-expanded)
   isFocusMenuOpen?: boolean
   selectMode?: boolean
@@ -77,6 +79,7 @@ export function TodoItem({
   onStartFocus,
   onOpenTimer,
   onOpenSessions,
+  onOpenNote,
   isFocusMenuOpen = false,
   selectMode = false,
   isSelected = false,
@@ -178,6 +181,9 @@ export function TodoItem({
   const onTintedRow = isHighlighted || (selectMode && isSelected)
   // 강조나 고른 행은 accent 면만 둔다. 따로 눌리는 곳도 회색 면을 켜지 않는다
   const subtargetHoverClass = onTintedRow ? 'cursor-pointer rounded-control' : SUBTARGET_HOVER_CLASS
+  // 메모 글자가 따로 눌리는 곳이 되는 경우: 넘치면 펼치기, 짧으면 메모 시트. 선택 모드에서는 행 고르기가 먼저다
+  const openShortNote = !isNoteClamped && !selectMode ? onOpenNote : undefined
+  const isNoteSubtarget = isNoteClamped || !!openShortNote
   const doneTextClass = onTintedRow ? 'text-text-secondary' : 'text-text-tertiary'
   const timeColorClass = isRunning
     ? isOnBreak
@@ -296,8 +302,8 @@ export function TodoItem({
         </span>
 
         {/* 내용. 제목 버튼의 터치 영역은 이 칸 전체(시간, 메모 글자 포함)로 넓힌다.
-            그 위에 따로 눌리는 것은 시간 줄 버튼(타이머 화면), 넘치는 메모 줄(펼치기), 메모 속 링크, 키보드용 펼치기 버튼이다.
-            모두 positioned라 덮개 위에 온다. 짧은 메모 줄은 덮개(메뉴) 영역에 남는다 */}
+            그 위에 따로 눌리는 것은 시간 줄 버튼(타이머 화면), 메모 줄(넘치면 펼치기, 짧으면 메모 시트), 메모 속 링크, 키보드용 펼치기 버튼이다.
+            모두 positioned라 덮개 위에 온다 */}
         <div className="relative min-w-0 flex-1 py-3">
           {selectMode ? (
             <span className={`block ${userTextTitleClass} wrap-anywhere ${isDone ? `${doneTextClass} line-through` : 'text-text-primary'}`}>
@@ -342,21 +348,22 @@ export function TodoItem({
           )}
 
           {/* 메모: 상자 없이 제목 아래 보조 글자 한 줄. 넘치면 메모 글자를 눌러 펼치고 접는다(펼침 아이콘 없음, 사용자 결정 2026-10-20).
-              넘치는 메모 줄은 relative라 제목 버튼 덮개 위에서 자기 탭을 받고, 짧은 메모는 덮개(메뉴) 영역에 남는다.
+              펼칠 것이 없는 짧은 메모는 눌러서 메모 시트를 연다(사용자 결정 2026-10-21). 둘 다 relative라 제목 버튼 덮개 위에서 자기 탭을 받는다.
               링크는 그대로 새 탭으로 열고 펼치지 않는다. 키보드와 스크린리더는 포커스 때만 보이는 버튼을 쓴다. 메모를 고치는 길은 메뉴의 "메모"다 */}
           {note && (
             <div className="mt-tight">
               <p
                 ref={noteRef}
-                data-row-subtarget={isNoteClamped || undefined}
+                data-row-subtarget={isNoteSubtarget || undefined}
                 className={`min-w-0 ${NOTE_TEXT_CLASS} [&_a]:relative ${isNoteOpen ? '' : 'line-clamp-1'} ${
-                  isNoteClamped ? `relative ${subtargetHoverClass}` : ''
+                  isNoteSubtarget ? `relative ${subtargetHoverClass}` : ''
                 }`}
                 onClick={
-                  isNoteClamped
+                  isNoteSubtarget
                     ? (e) => {
                         if ((e.target as HTMLElement).closest('a')) return
-                        setIsNoteOpen((prev) => !prev)
+                        if (openShortNote) openShortNote()
+                        else setIsNoteOpen((prev) => !prev)
                       }
                     : undefined
                 }

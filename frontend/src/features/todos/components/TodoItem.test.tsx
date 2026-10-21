@@ -87,13 +87,46 @@ describe('TodoItem 메모', () => {
     expect(getNoteText()).toHaveClass('line-clamp-1')
   })
 
-  it('짧은 메모 글자는 따로 누르는 곳이 아니라 제목 버튼(메뉴) 영역에 들어간다', () => {
+  // 펼칠 것이 없는 짧은 메모는 눌러서 메모 시트를 연다(사용자 결정 2026-10-21)
+  it('짧은 메모 글자를 누르면 메모 시트를 열고 메뉴는 열지 않는다', () => {
+    mockNoteOverflow(false)
+    const onOpenMenu = vi.fn()
+    const onOpenNote = vi.fn()
+    renderTodoItem({ note: '짧은 메모', onOpenMenu, onOpenNote })
+
+    const shortNote = screen.getByText('짧은 메모')
+    expect(shortNote).toHaveClass('relative')
+    fireEvent.click(shortNote)
+    expect(onOpenNote).toHaveBeenCalledTimes(1)
+    expect(onOpenMenu).not.toHaveBeenCalled()
+  })
+
+  it('긴 메모 글자는 메모 시트가 아니라 펼치기다', () => {
+    mockNoteOverflow(true)
+    const onOpenNote = vi.fn()
+    renderTodoItem({ note: LONG_NOTE, onOpenNote })
+
+    fireEvent.click(getNoteText())
+    expect(getNoteText()).not.toHaveClass('line-clamp-1')
+    expect(onOpenNote).not.toHaveBeenCalled()
+  })
+
+  it('메모 시트를 열 수 없으면 짧은 메모 글자는 제목 버튼(메뉴) 영역에 남는다', () => {
     mockNoteOverflow(false)
     renderTodoItem({ note: '짧은 메모' })
 
     expect(screen.getByRole('button', { name: 'ps: 1, 2번 유형 메뉴 열기' })).toHaveClass('after:absolute', 'after:inset-0')
     expect(screen.getByText('짧은 메모')).not.toHaveClass('relative')
     expect(screen.getByText('짧은 메모')).toHaveClass('[&_a]:relative')
+  })
+
+  it('선택 모드에서는 짧은 메모를 눌러도 메모 시트를 열지 않는다', () => {
+    mockNoteOverflow(false)
+    const onOpenNote = vi.fn()
+    renderTodoItem({ note: '짧은 메모', onOpenNote, selectMode: true, onSelect: vi.fn() })
+
+    fireEvent.click(screen.getByText('짧은 메모'))
+    expect(onOpenNote).not.toHaveBeenCalled()
   })
 
   it('메모 속 링크는 새 탭으로 열고 메뉴는 열지 않는다', () => {
@@ -478,9 +511,9 @@ describe('TodoItem 행 hover', () => {
     expect(sessionsButton).toHaveClass('hover:bg-hover-strong', 'cursor-pointer')
   })
 
-  it('넘치는 메모는 따로 눌리는 곳이고, 짧은 메모는 행(메뉴)의 일부라 표지가 없다', () => {
+  it('메모는 길이와 상관없이 따로 눌리는 곳이라 자기 hover 면을 갖는다', () => {
     mockNoteOverflow(true)
-    const { rerenderWith } = renderTodoItem({ note: LONG_NOTE })
+    const { rerenderWith } = renderTodoItem({ note: LONG_NOTE, onOpenNote: vi.fn() })
     const note = getNoteText()
     expect(note).toHaveAttribute('data-row-subtarget')
     expect(note).toHaveClass('hover:bg-hover-strong', 'cursor-pointer', '-mx-1', 'px-1')
@@ -488,6 +521,10 @@ describe('TodoItem 행 hover', () => {
     mockNoteOverflow(false)
     rerenderWith({ note: '짧은 메모' })
     const shortNote = screen.getByText('짧은 메모')
+    expect(shortNote).toHaveAttribute('data-row-subtarget')
+    expect(shortNote).toHaveClass('hover:bg-hover-strong', 'cursor-pointer', '-mx-1', 'px-1')
+    // 메모 시트를 열 수 없으면 짧은 메모는 행(메뉴)의 일부라 표지가 없다
+    rerenderWith({ note: '짧은 메모', onOpenNote: undefined })
     expect(shortNote).not.toHaveAttribute('data-row-subtarget')
     expect(shortNote).not.toHaveClass('hover:bg-hover-strong')
   })
