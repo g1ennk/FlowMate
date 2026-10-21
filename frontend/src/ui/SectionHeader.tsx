@@ -5,7 +5,7 @@ import { Button } from './Button'
 // md: 카드 밖에 두는 섹션 제목(16/600, text-primary). 오른쪽 액션은 ghost sm 버튼이고, 글자가 카드 오른쪽 끝에 맞도록 버튼 여백만큼 밖으로 뺀다.
 // sm: 시트 안에서 묶음을 나누는 제목(14/600, secondary). 시트 제목(16/600)보다 한 단계 낮다.
 // tone="timer"는 늘 어두운 타이머 시트 안에서 쓴다(timer-* 토큰만, §4-3). meta는 오른쪽에 두는 값 글자다(예: 사운드 비율 "반반").
-// trailing은 버튼이 여럿인 제목 줄(회고의 "삭제 · 저장")에서 action 대신 오른쪽에 둔다.
+// trailing은 버튼이 여럿인 제목 줄(회고의 "삭제"와 "수정" 또는 "저장")에서 action 대신 오른쪽에 둔다.
 // titleTrailing은 제목 바로 옆에 붙는 버튼이다(회고의 "AI 리포트"). 오른쪽 버튼이 생기고 사라져도 자리가 바뀌지 않는다.
 
 type SectionHeaderProps = {

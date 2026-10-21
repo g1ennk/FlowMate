@@ -52,7 +52,7 @@ export function NoteModal({
 
   const title = noteTodo ? noteTodo.title : '메모'
   // 보기 모드의 글자는 덮개로 보여 주고, 덮개 아래 textarea는 opacity-0으로 숨긴다.
-  // 보기 모드 동안 textarea는 Tab 순서와 접근성 트리에서 빼고(tabIndex -1, aria-hidden), 편집은 글자를 누르거나 키보드용 숨은 버튼으로 시작한다
+  // 보기 모드 동안 textarea는 Tab 순서와 접근성 트리에서 빼고(tabIndex -1, aria-hidden), 편집은 글자를 누르거나 제목 줄의 수정 버튼으로 시작한다
   const isViewOverlay = !noteEditMode && noteText.length > 0
   // 편집 모드: textarea 안에는 링크를 넣을 수 없어, 뒤에 같은 텍스트(미러)를 깔고 textarea 글자를 투명하게 해 링크를 보여준다
   const isEditMirror = noteEditMode && noteText.length > 0
@@ -101,10 +101,10 @@ export function NoteModal({
       onClose={isSaving ? () => {} : onClose}
       onEscape={handleEscape}
       title={title}
-      // 메모와 회고는 같은 편집 규칙을 쓴다(사용자 결정 2026-10-20): 글자를 눌러 고치고(보이는 편집 버튼 없음),
-      // 제목 줄 왼쪽에 빨간 "삭제"(저장된 메모를 고칠 때만), 오른쪽에 초록 "저장"(고치는 중에만)을 둔다
+      // 메모와 회고는 같은 편집 규칙을 쓴다(사용자 결정 2026-10-21): 제목 줄 왼쪽에 빨간 "삭제"(저장된 메모가 있으면 보기에서도),
+      // 오른쪽 끝에 주 행동을 둔다. 보기에서는 파란 "수정", 고치는 중에는 그 자리가 초록 "저장"이 된다. 글자를 눌러 고치는 길도 그대로다
       headerLeading={
-        noteEditMode && noteTodo?.note ? (
+        noteTodo?.note ? (
           <Button variant="danger" size="sm" onClick={onDeleteNote} disabled={isSaving}>
             삭제
           </Button>
@@ -115,7 +115,18 @@ export function NoteModal({
           <Button variant="accent" size="sm" onClick={onSaveNote} disabled={isSaving}>
             저장
           </Button>
-        ) : undefined
+        ) : (
+          // 보기 모드 textarea는 Tab에서 빠져 있어 키보드로 편집에 들어가는 길은 이 버튼이다
+          <Button
+            variant="info"
+            size="sm"
+            aria-label={noteTodo ? `${noteTodo.title} 메모 수정` : '메모 수정'}
+            onClick={startEditing}
+            disabled={isSaving}
+          >
+            수정
+          </Button>
+        )
       }
     >
       <div className="relative">
@@ -149,7 +160,7 @@ export function NoteModal({
             startEditing()
           } : undefined}
           readOnly={!noteEditMode || isSaving}
-          // 보기 모드에서는 빈 메모도 경계 없는 읽기 전용 입력창이라 Tab과 스크린리더 대상에서 뺀다(편집은 키보드용 숨은 버튼이나 탭)
+          // 보기 모드에서는 빈 메모도 경계 없는 읽기 전용 입력창이라 Tab과 스크린리더 대상에서 뺀다(편집은 제목 줄의 수정 버튼이나 탭)
           tabIndex={noteEditMode ? undefined : -1}
           aria-hidden={!noteEditMode || undefined}
           placeholder="메모를 입력하세요"
@@ -183,16 +194,6 @@ export function NoteModal({
           </div>
         )}
       </div>
-      {/* 보기 모드의 키보드 편집. 평소에는 숨기고 Tab으로 닿으면 보인다(회고의 "{제목} 수정"과 같다) */}
-      {!noteEditMode && (
-        <button
-          type="button"
-          onClick={startEditing}
-          className="sr-only text-xs text-text-secondary focus-visible:not-sr-only focus-visible:mt-list focus-visible:flex focus-visible:min-h-11 focus-visible:items-center"
-        >
-          {noteTodo ? `${noteTodo.title} 메모 수정` : '메모 수정'}
-        </button>
-      )}
       {/* 편집 중에는 링크 열기 줄 자리를 늘 잡아 둬 커서가 링크를 드나들 때 시트 높이가 흔들리지 않게 한다 */}
       {noteEditMode && (
         <div className="mt-list flex min-h-11 items-center">

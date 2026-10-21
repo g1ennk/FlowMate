@@ -6,7 +6,7 @@ import { Link, type LinkProps } from 'react-router-dom'
 // timer tone은 포커스 링 색을 포커스 전부터 timer-focus-ring으로 둔다(앱 테마 링이 타이머 위로 새지 않고, 전환 중에 글자색 링이 비치지 않는다)
 
 // accent: 배경 없는 초록 글자 버튼(accent-text). 회고 제목 줄의 "AI 리포트"와 메모/회고의 "저장"에 쓴다(둘 다 사용자 결정 2026-10-20)
-// info: 배경 없는 파란 글자 버튼(state-info-text). 할 일 메뉴 시트 제목 줄의 "수정"에만 쓴다(사용자 결정 2026-10-20)
+// info: 배경 없는 파란 글자 버튼(state-info-text). 제목 줄의 "수정"(할 일 메뉴 시트, 메모 시트, 회고)에만 쓴다(사용자 결정 2026-10-21)
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'accent' | 'danger' | 'info'
 export type ButtonSize = 'md' | 'sm'
 

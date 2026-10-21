@@ -1386,13 +1386,13 @@ describe('TodosPage ordering, editing and date flow', () => {
     expect(screen.queryByRole('textbox', { name: '할 일 A 메모' })).not.toBeInTheDocument()
   })
 
+  // 삭제는 편집에 들어가지 않아도 메모 시트 보기 모드 제목 줄에 있다(사용자 결정 2026-10-21)
   it('deletes a memo with an undo toast that names the todo, and undo brings the memo back', async () => {
     await renderPage({ items: [buildTodo({ title: '할 일 A', note: '기존 메모' })] })
     openSection('미분류')
     openNote('할 일 A')
     await wait(400)
 
-    fireEvent.click(screen.getByRole('button', { name: '할 일 A 메모 수정' }))
     fireEvent.click(screen.getByRole('button', { name: '삭제' }))
     await wait(700)
 

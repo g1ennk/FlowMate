@@ -273,6 +273,14 @@ export function ReviewTextarea({
                     },
                   },
                 )}
+                // 지우면 누른 삭제 버튼이 사라지므로 되돌리기로 포커스를 옮기고, 토스트가 닫히면 카드로 돌려준다.
+                // 그때 카드는 새 글 입력창이거나(되살리기 전) 되살린 글 보기라 둘 중 있는 쪽으로 간다
+                takeFocus
+                returnFocus={() => {
+                  containerRef.current
+                    ?.querySelector<HTMLElement>(`textarea, button[aria-label="${title} 수정"]`)
+                    ?.focus({ preventScroll: true })
+                }}
               />
             ),
             { id: 'review-delete-success', duration: 5000, position: UNDO_TOAST_POSITION },
@@ -401,7 +409,7 @@ export function ReviewTextarea({
           bare
           className={userTextDisplayClass}
         />
-        {/* 저장 상태 글자 줄. 쓴 글 보기의 아래 줄(숨은 수정 버튼)과 같은 높이로 늘 자리를 잡아 둬, 일간/주간/월간과
+        {/* 저장 상태 글자 줄. 쓴 글 보기의 아래 줄과 같은 높이로 늘 자리를 잡아 둬, 일간/주간/월간과
             비어 있음/쓰는 중/쓴 글 보기 어느 때나 카드 높이가 같은 틀(내용 120 + 아래 줄 44)을 쓴다(사용자 결정 2026-10-20) */}
         <div className="mt-list flex min-h-11 items-center">
           <p
@@ -416,8 +424,8 @@ export function ReviewTextarea({
   } else {
     body = (
       <>
-        {/* 메모처럼 쓴 글을 눌러 고친다(보이는 수정 버튼 없음, 사용자 결정 2026-10-20). 링크는 그대로 열고,
-            복사하려고 드래그로 고른 경우는 편집으로 넘어가지 않는다. 키보드는 포커스 때만 보이는 버튼을 쓴다 */}
+        {/* 메모처럼 쓴 글을 눌러서도 고친다(제목 줄의 수정 버튼과 같은 길). 링크는 그대로 열고,
+            복사하려고 드래그로 고른 경우는 편집으로 넘어가지 않는다 */}
         <div
           style={{ minHeight: MIN_TEXTAREA_HEIGHT }}
           className="cursor-text"
@@ -429,24 +437,19 @@ export function ReviewTextarea({
         >
           <KptText content={content} />
         </div>
-        <div className="mt-list flex min-h-11 items-center justify-between gap-card-item">
+        <div className="mt-list flex min-h-11 items-center">
           <p aria-live="polite" className="min-w-0 break-keep text-xs text-text-secondary">{statusText}</p>
-          <button
-            type="button"
-            onClick={enterEdit}
-            className="sr-only text-xs text-text-secondary focus-visible:not-sr-only"
-          >
-            {title} 수정
-          </button>
         </div>
       </>
     )
   }
 
-  // 제목 줄: "AI 리포트"는 제목 바로 옆(초록 글자), 오른쪽 묶음에는 "삭제"(빨강, 저장한 글을 고칠 때만) 다음 "저장"(초록, 고치는 중에만).
-  // 저장이 늘 오른쪽 끝이다. 메모 시트와 같은 규칙이다(사용자 결정 2026-10-20).
+  // 제목 줄: "AI 리포트"는 제목 바로 옆(초록 글자), 오른쪽 묶음에는 "삭제"(빨강, 저장한 글이 있으면 보기에서도) 다음 주 행동.
+  // 주 행동은 보기에서 "수정"(파랑), 고치는 중에는 "저장"(초록)이고 늘 오른쪽 끝이다. 메모 시트와 같은 규칙이다(사용자 결정 2026-10-21).
+  // 삭제가 보이면 그 뒤에 늘 수정이나 저장이 있다(저장한 글이 있으면 보기 아니면 고치는 중이다).
   // AI 리포트를 오른쪽 묶음에서 빼서 저장 버튼이 생기고 사라져도 AI 리포트 자리가 움직이지 않는다
-  const showDelete = showEditor && !!review.data?.id
+  const showDelete = isLoaded && hasSaved && !!review.data?.id
+  const showEdit = isLoaded && hasSaved && !showEditor
   const showSave = showEditor && (isDirty || isEditing)
   const aiButton = canRequestAi ? (
     <Button
@@ -461,7 +464,10 @@ export function ReviewTextarea({
   const headerButtons = (
     <>
       {showDelete && (
-        <Button variant="danger" size="sm" className={showSave ? '' : '-mr-3'} onClick={executeDelete} disabled={isSaving}>삭제</Button>
+        <Button variant="danger" size="sm" onClick={executeDelete} disabled={isSaving}>삭제</Button>
+      )}
+      {showEdit && (
+        <Button variant="info" size="sm" className="-mr-3" aria-label={`${title} 수정`} onClick={enterEdit} disabled={isSaving}>수정</Button>
       )}
       {showSave && (
         <Button variant="accent" size="sm" className="-mr-3" onClick={() => handleSave()} disabled={isSaving}>{saveFailed ? '다시 시도' : '저장'}</Button>
@@ -471,7 +477,7 @@ export function ReviewTextarea({
 
   return (
     <section ref={containerRef} aria-label={title}>
-      <SectionHeader title={title} titleTrailing={aiButton} trailing={showDelete || showSave ? headerButtons : undefined} />
+      <SectionHeader title={title} titleTrailing={aiButton} trailing={showDelete || showEdit || showSave ? headerButtons : undefined} />
       {/* 제목은 카드 밖, 쓰는 자리(입력창, 쓴 글, 불러오기 알림)는 집중 기록처럼 카드 한 장에 담는다(사용자 결정 2026-10-20) */}
       {/* 입력 중에는 카드가 곧 입력창이다. 안에 회색 상자를 두지 않고, 포커스는 카드 테두리를 진한 글자색(text-primary) 2px 선으로 바꿔 보인다(초록 아님, 사용자 결정 2026-10-20).
           입력창 포커스에만 켠다(focus-within이면 카드 안 다른 버튼으로 Tab해도 입력 중처럼 진해진다) */}

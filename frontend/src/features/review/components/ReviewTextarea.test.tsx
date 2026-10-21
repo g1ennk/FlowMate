@@ -192,16 +192,12 @@ describe('ReviewTextarea', () => {
       expect(content.nextElementSibling).toHaveClass('mt-list', 'min-h-11')
     })
 
-    it('쓴 회고는 메모처럼 글을 눌러 고치고, 보이는 수정 버튼은 없다', async () => {
+    it('쓴 회고는 메모처럼 글을 눌러서도 고친다', async () => {
       mockReviewApi(makeReview('저장한 회고 [참고 글](https://example.com/a)'))
       const user = userEvent.setup()
       renderTextarea()
 
       await screen.findByText('저장한 회고', { exact: false })
-      // 수정 버튼은 키보드용 하나뿐이고 포커스 전에는 숨어 있다
-      const editButtons = screen.getAllByRole('button', { name: /수정/ })
-      expect(editButtons).toHaveLength(1)
-      expect(editButtons[0]).toHaveClass('sr-only')
       // 링크를 누르면 편집으로 들어가지 않는다
       await user.click(screen.getByRole('link'))
       expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
@@ -210,16 +206,29 @@ describe('ReviewTextarea', () => {
       expect(await screen.findByRole('textbox')).toHaveValue('저장한 회고 [참고 글](https://example.com/a)')
     })
 
-    it('키보드로는 포커스 때만 보이는 버튼으로 쓴 회고를 고친다', async () => {
+    // 쓴 회고를 볼 때도 제목 줄 오른쪽에 삭제와 파란 수정을 둔다. 수정이 오른쪽 끝이다(사용자 결정 2026-10-21)
+    it('쓴 회고 보기에는 제목 줄에 삭제와 수정이 있고, 수정을 누르면 고친다', async () => {
       mockReviewApi(makeReview('저장한 회고'))
       const user = userEvent.setup()
       renderTextarea()
+      const heading = await screen.findByRole('heading', { name: '오늘 회고' })
       await screen.findByText('저장한 회고')
 
-      const edit = screen.getByRole('button', { name: '오늘 회고 수정' })
-      expect(edit).toHaveClass('sr-only', 'focus-visible:not-sr-only')
+      const row = heading.closest('.justify-between') as HTMLElement
+      const remove = within(row).getByRole('button', { name: '삭제' })
+      const edit = within(row).getByRole('button', { name: '오늘 회고 수정' })
+      expect(edit).not.toHaveClass('sr-only')
+      expect(edit).toHaveTextContent('수정')
+      expect(edit).toHaveClass('text-state-info-text')
+      expect(remove.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(screen.getAllByRole('button', { name: /수정/ })).toHaveLength(1)
+      expect(within(row).queryByRole('button', { name: '저장' })).not.toBeInTheDocument()
+
       await user.click(edit)
       expect(await screen.findByRole('textbox')).toHaveValue('저장한 회고')
+      // 고치는 중에는 수정 자리가 저장으로 바뀐다
+      expect(within(row).queryByRole('button', { name: '오늘 회고 수정' })).not.toBeInTheDocument()
+      expect(within(row).getByRole('button', { name: '삭제' })).toBeInTheDocument()
     })
 
     it('새 회고는 라벨이나 형식을 덧붙이지 않고 쓴 그대로 저장한다', async () => {
@@ -237,7 +246,7 @@ describe('ReviewTextarea', () => {
       expect(screen.queryByText('회고를 저장했어요')).not.toBeInTheDocument()
     })
 
-    it('새 글에는 삭제 버튼이 없고, 저장한 글을 고칠 때만 있다', async () => {
+    it('새 글에는 삭제 버튼이 없고, 저장한 글에는 보기와 고치는 중 모두 있다', async () => {
       mockReviewApi(null)
       const user = userEvent.setup()
       const { unmount } = renderTextarea()
@@ -249,6 +258,8 @@ describe('ReviewTextarea', () => {
 
       mockReviewApi(makeReview('저장한 회고'))
       renderTextarea()
+      await screen.findByText('저장한 회고')
+      expect(screen.getByRole('button', { name: '삭제' })).toBeInTheDocument()
       await openEditor(user, '저장한 회고')
       expect(screen.getByRole('button', { name: '삭제' })).toBeInTheDocument()
     })
@@ -665,6 +676,30 @@ describe('ReviewTextarea', () => {
 
       await waitFor(() => expect(calls.puts).toEqual(['지울 회고']))
       expect(await screen.findByText('지울 회고')).toBeInTheDocument()
+    })
+
+    it('보기에서 바로 삭제하면 되돌리기로 포커스를 옮기고, 지우는 동안 수정은 누를 수 없다', async () => {
+      const calls = mockReviewApi(makeReview('지울 회고'))
+      // 지우는 응답을 붙잡아 두는 동안 수정 버튼을 본다. 풀면 원래 목(서버에서 지움)으로 넘긴다
+      let release = () => {}
+      server.use(
+        http.delete('/api/reviews/:id', async () => {
+          await new Promise<void>((resolve) => { release = resolve })
+          // 아무것도 돌려주지 않으면 MSW가 다음 핸들러(mockReviewApi의 삭제)로 넘긴다
+          return undefined
+        }),
+      )
+      const user = userEvent.setup()
+      renderTextarea()
+      await screen.findByText('지울 회고')
+
+      await user.click(screen.getByRole('button', { name: '삭제' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: '오늘 회고 수정' })).toBeDisabled())
+      act(() => release())
+
+      await waitFor(() => expect(calls.deletes).toHaveLength(1))
+      // 누른 삭제 버튼이 사라져도 포커스가 body로 떨어지지 않고 되돌리기로 간다
+      await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toHaveFocus())
     })
 
     it('삭제 후 새 글을 쓰러 들어가면 되돌리기 토스트를 닫는다', async () => {

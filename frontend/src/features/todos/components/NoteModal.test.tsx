@@ -14,6 +14,7 @@ const renderNoteModal = ({
   const onEditNote = vi.fn()
   const onClose = vi.fn()
   const onCancelEdit = vi.fn()
+  const onDeleteNote = vi.fn()
   render(
     <NoteModal
       isOpen
@@ -24,12 +25,12 @@ const renderNoteModal = ({
       noteText={noteText}
       isSaving={isSaving}
       onNoteTextChange={vi.fn()}
-      onDeleteNote={vi.fn()}
+      onDeleteNote={onDeleteNote}
       onSaveNote={vi.fn()}
       onEditNote={onEditNote}
     />,
   )
-  return { onEditNote, onClose, onCancelEdit }
+  return { onEditNote, onClose, onCancelEdit, onDeleteNote }
 }
 
 // 보기 모드에서 링크를 감싼 덮개(링크 밖 영역)
@@ -86,14 +87,14 @@ describe('NoteModal 보기 모드', () => {
     expect(onEditNote).not.toHaveBeenCalled()
   })
 
-  // 회고처럼 보이는 편집 버튼은 없고, 키보드는 포커스 때만 보이는 버튼으로 편집에 들어간다(사용자 결정 2026-10-20)
-  it('보이는 편집 버튼 없이, 키보드용 숨은 버튼으로 편집 모드에 들어간다', () => {
+  // 보기 모드 제목 줄 오른쪽의 수정 버튼으로도 편집에 들어간다(사용자 결정 2026-10-21). 글자를 눌러 고치는 길은 그대로다
+  it('제목 줄의 보이는 수정 버튼으로 편집 모드에 들어간다', () => {
     const { onEditNote } = renderNoteModal({ noteTodo: { id: 'todo-1', title: '장보기', note: NOTE } as Todo })
 
-    expect(screen.queryByRole('button', { name: '편집' })).not.toBeInTheDocument()
-    const keyboardEdit = screen.getByRole('button', { name: '장보기 메모 수정' })
-    expect(keyboardEdit).toHaveClass('sr-only', 'focus-visible:not-sr-only')
-    fireEvent.click(keyboardEdit)
+    const edit = screen.getByRole('button', { name: '장보기 메모 수정' })
+    expect(edit).not.toHaveClass('sr-only')
+    expect(edit).toHaveTextContent('수정')
+    fireEvent.click(edit)
 
     expect(onEditNote).toHaveBeenCalledTimes(1)
     expect(getTextarea()).toHaveFocus()
@@ -167,6 +168,13 @@ describe('NoteModal 편집 모드', () => {
     expect(screen.queryByRole('link', { name: /링크 열기/ })).not.toBeInTheDocument()
   })
 
+  it('보기 모드에서도 저장 중(지우는 중)에는 수정과 삭제 버튼을 누를 수 없다', () => {
+    renderNoteModal({ isSaving: true, noteTodo: { id: 'todo-1', title: '할 일', note: NOTE } as Todo })
+
+    expect(screen.getByRole('button', { name: '할 일 메모 수정' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '삭제' })).toBeDisabled()
+  })
+
   it('저장 중에는 저장과 삭제 버튼을 누를 수 없다', () => {
     renderNoteModal({ noteEditMode: true, isSaving: true, noteTodo: { id: 'todo-1', title: '할 일', note: NOTE } as Todo })
 
@@ -215,15 +223,35 @@ describe('NoteModal 편집 모드', () => {
 describe('NoteModal 구성', () => {
   const todo = { id: 'todo-1', title: '장보기 목록 정리', note: NOTE } as Todo
 
-  it('시트 이름은 보이는 제목(할 일 이름)이고, 보기 모드에는 안내 문구와 삭제가 없다', () => {
+  it('시트 이름은 보이는 제목(할 일 이름)이고, 보기 모드에는 안내 문구가 없다', () => {
     renderNoteModal({ noteTodo: todo })
 
     expect(screen.getByRole('dialog', { name: '장보기 목록 정리' })).toBeInTheDocument()
     expect(screen.queryByText(/탭하면/)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '삭제' })).not.toBeInTheDocument()
     // 보기 모드 글자는 상자(배경, 테두리) 없이 보인다
     expect(getViewOverlay()).toHaveClass('border-transparent')
     expect(getViewOverlay().className).not.toMatch(/bg-surface/)
+  })
+
+  // 회고와 같은 규칙(사용자 결정 2026-10-21): 보기 모드도 제목 줄 왼쪽에 빨간 삭제, 오른쪽에 파란 수정을 둔다.
+  // 삭제는 고치기가 아니라 메모 전체를 지우는 일이라 편집에 들어가지 않아도 보인다
+  it('보기 모드는 제목 줄 왼쪽에 빨간 삭제, 오른쪽에 파란 수정을 두고 저장은 없다', () => {
+    const { onDeleteNote } = renderNoteModal({ noteTodo: todo })
+
+    const heading = screen.getByRole('heading', { name: '장보기 목록 정리' })
+    const header = heading.parentElement!
+    const edit = screen.getByRole('button', { name: '장보기 목록 정리 메모 수정' })
+    const remove = screen.getByRole('button', { name: '삭제' })
+    expect(header).toContainElement(edit)
+    expect(header).toContainElement(remove)
+    expect(remove.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(heading.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(edit).toHaveClass('text-state-info-text')
+    expect(remove).toHaveClass('text-state-error-text')
+    expect(screen.queryByRole('button', { name: '저장' })).not.toBeInTheDocument()
+
+    fireEvent.click(remove)
+    expect(onDeleteNote).toHaveBeenCalledTimes(1)
   })
 
   // 회고와 같은 규칙(사용자 결정 2026-10-20): 제목 줄 왼쪽에 빨간 삭제, 오른쪽에 초록 글자 저장. 입력 칸 아래 버튼 줄은 없다
@@ -261,11 +289,11 @@ describe('NoteModal 구성', () => {
     expect(linkRow.querySelectorAll('button')).toHaveLength(0)
   })
 
-  it('보기 모드는 제목 줄에 버튼이 없고, 보이는 닫기 X도 없다', () => {
+  it('보기 모드 제목 줄에는 삭제와 수정만 있고, 보이는 닫기 X는 없다', () => {
     renderNoteModal({ noteTodo: todo })
 
     const header = screen.getByRole('heading', { name: '장보기 목록 정리' }).parentElement!
-    expect(header.querySelectorAll('button')).toHaveLength(0)
+    expect([...header.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['삭제', '수정'])
     expect(header).not.toContainElement(screen.getByRole('button', { name: '닫기' }))
   })
 
