@@ -21,6 +21,7 @@ import kr.io.flowmate.auth.repository.UserRepository;
 import kr.io.flowmate.common.exception.AuthenticationFailedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,7 @@ public class AuthService {
     private final SocialAccountRepository socialAccountRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final RefreshTokenRevoker refreshTokenRevoker;
+    private final SocialAccountRegistrar socialAccountRegistrar;
     private final JwtProperties jwtProps;
 
     /**
@@ -116,24 +118,18 @@ public class AuthService {
         // 4. 사용자 정보 조회
         OAuthUserInfo userInfo = provider.getUserInfo(socialAccessToken);
 
-        // 5. SocialAccount 조회 -> 없으면 User + SocialAccount 신규 생성
+        // 5. SocialAccount 조회 -> 없으면 User + SocialAccount 신규 생성 (별도 트랜잭션)
         Optional<SocialAccount> existingAccount = socialAccountRepository
                 .findByProviderAndProviderUserId(providerName, userInfo.providerId());
-        boolean isNewUser = existingAccount.isEmpty();
 
-        SocialAccount socialAccount = existingAccount.orElseGet(() -> {
-            User newUser = userRepository.save(
-                    User.create(userInfo.email(), userInfo.nickname()));
-            return socialAccountRepository.save(
-                    SocialAccount.create(newUser.getId(), providerName, userInfo.providerId())
-            );
-        });
-
-        // 6. 기존 회원이면 소셜 프로필 동기화 (신규 회원은 create에서 이미 설정됨)
-        User user = userRepository.findById(socialAccount.getUserId())
-                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
-        if (!isNewUser) {
+        User user;
+        if (existingAccount.isPresent()) {
+            // 6. 기존 회원이면 소셜 프로필 동기화 (신규 회원은 create에서 이미 설정됨)
+            user = userRepository.findById(existingAccount.get().getUserId())
+                    .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
             user.updateProfile(userInfo.email(), userInfo.nickname());
+        } else {
+            user = registerOrFindRegistered(providerName, userInfo);
         }
 
         // 7. 새 Refresh Token 발급 -> SHA-256 해시 -> DB 저장
@@ -192,6 +188,21 @@ public class AuthService {
                     .ifPresent(RefreshToken::revoke);
         }
         clearRefreshCookie(httpResponse);
+    }
+
+    /**
+     * 신규 회원 생성. 같은 소셜 계정의 첫 로그인이 동시에 들어오면 진 요청은 uq_provider_user 충돌을 받는다.
+     * 충돌은 SocialAccountRegistrar의 별도 트랜잭션에서 나므로 로그인 트랜잭션은 rollback-only가 되지 않는다.
+     * 같은 트랜잭션에서 다시 읽으면 REPEATABLE READ 스냅샷 때문에 상대가 커밋한 행이 보이지 않으므로,
+     * 새 트랜잭션으로 먼저 가입한 회원을 읽어 그 회원으로 로그인시킨다.
+     */
+    private User registerOrFindRegistered(String providerName, OAuthUserInfo userInfo) {
+        try {
+            return socialAccountRegistrar.register(providerName, userInfo);
+        } catch (DataIntegrityViolationException e) {
+            return socialAccountRegistrar.findRegistered(providerName, userInfo.providerId())
+                    .orElseThrow(() -> e);
+        }
     }
 
     /* Helpers */

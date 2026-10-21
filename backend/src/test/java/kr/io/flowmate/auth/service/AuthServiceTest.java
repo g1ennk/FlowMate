@@ -23,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.nio.charset.StandardCharsets;
@@ -35,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +49,7 @@ class AuthServiceTest {
     @Mock private SocialAccountRepository socialAccountRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private RefreshTokenRevoker refreshTokenRevoker;
+    @Mock private SocialAccountRegistrar socialAccountRegistrar;
     @Mock private JwtProperties jwtProps;
     @Mock private OAuthProvider oAuthProvider;
 
@@ -100,11 +103,7 @@ class AuthServiceTest {
                 .thenReturn(Optional.empty());
 
         User newUser = User.create("test@kakao.com", "테스터");
-        when(userRepository.save(any(User.class))).thenReturn(newUser);
-
-        SocialAccount sa = SocialAccount.create(newUser.getId(), "kakao", "kakao-123");
-        when(socialAccountRepository.save(any(SocialAccount.class))).thenReturn(sa);
-        when(userRepository.findById(newUser.getId())).thenReturn(Optional.of(newUser));
+        when(socialAccountRegistrar.register(eq("kakao"), any(OAuthUserInfo.class))).thenReturn(newUser);
         when(jwtProps.getRefreshTtl()).thenReturn(1209600L);
         when(jwtProvider.generateAccessToken(newUser.getId())).thenReturn("access-jwt");
 
@@ -112,10 +111,45 @@ class AuthServiceTest {
 
         assertThat(result.accessToken()).isEqualTo("access-jwt");
         assertThat(result.user().nickname()).isEqualTo("테스터");
-        verify(userRepository).save(any(User.class));
+        verify(socialAccountRegistrar, never()).findRegistered(anyString(), anyString());
         verify(refreshTokenRepository).save(any(RefreshToken.class));
         // 로그인은 기존 RT를 revoke하지 않음 (디바이스별 공존)
         verify(refreshTokenRevoker, never()).revokeAll(anyString());
+    }
+
+    @Test
+    @DisplayName("login: 동시 첫 로그인에서 가입이 uq_provider_user 충돌이면 먼저 가입한 회원으로 로그인")
+    void login_concurrentFirstLogin_conflict_logsInAsRegisteredUser() {
+        stubValidStateAndOAuth();
+        when(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-123"))
+                .thenReturn(Optional.empty());
+
+        User winner = User.create("test@kakao.com", "테스터");
+        when(socialAccountRegistrar.register(eq("kakao"), any(OAuthUserInfo.class)))
+                .thenThrow(new DataIntegrityViolationException("uq_provider_user"));
+        when(socialAccountRegistrar.findRegistered("kakao", "kakao-123")).thenReturn(Optional.of(winner));
+        when(jwtProps.getRefreshTtl()).thenReturn(1209600L);
+        when(jwtProvider.generateAccessToken(winner.getId())).thenReturn("access-jwt");
+
+        LoginResponse result = authService.login("kakao", "code", "valid-state", httpResponse);
+
+        assertThat(result.user().id()).isEqualTo(winner.getId());
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("login: 가입 충돌 후에도 회원을 찾지 못하면 원래 충돌 예외를 그대로 던진다")
+    void login_conflictWithoutRegisteredUser_rethrows() {
+        stubValidStateAndOAuth();
+        when(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-123"))
+                .thenReturn(Optional.empty());
+        DataIntegrityViolationException conflict = new DataIntegrityViolationException("other constraint");
+        when(socialAccountRegistrar.register(eq("kakao"), any(OAuthUserInfo.class))).thenThrow(conflict);
+        when(socialAccountRegistrar.findRegistered("kakao", "kakao-123")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login("kakao", "code", "valid-state", httpResponse))
+                .isSameAs(conflict);
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
 
     @Test

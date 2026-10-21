@@ -14,6 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -65,8 +68,11 @@ public class SettingsService {
         return settingsRepository.findById(userId).orElse(UserSettings.createWithDefaults(userId));
     }
 
+    // 조회 후 INSERT 대신 "없으면 기본값 행 생성"을 한 문장으로 처리한다. 두 탭에서 동시에 처음 저장해도 충돌하지 않는다
     private UserSettings getOrCreate(String userId) {
-        return settingsRepository.findById(userId).orElseGet(() -> settingsRepository.save(UserSettings.createWithDefaults(userId)));
+        settingsRepository.insertDefaultsIfAbsent(userId, Instant.now().truncatedTo(ChronoUnit.SECONDS));
+        return settingsRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new IllegalStateException("설정 행을 찾을 수 없습니다."));
     }
 
 }
