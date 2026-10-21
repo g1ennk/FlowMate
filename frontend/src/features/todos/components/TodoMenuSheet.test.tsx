@@ -109,7 +109,8 @@ describe('TodoMenuSheet 구성', () => {
     act(() => useTimerStore.getState().clearAll())
   })
 
-  it('수정과 삭제는 제목 줄 양옆 글자 버튼이고(왼쪽 파란 수정, 오른쪽 빨간 삭제), 아래 목록은 타이머, 메모, 날짜만 둔다', () => {
+  // 메모 시트, 회고와 같이 왼쪽은 삭제, 오른쪽 끝은 주 행동이다(사용자 결정 2026-10-21)
+  it('수정과 삭제는 제목 줄 양옆 글자 버튼이고(왼쪽 빨간 삭제, 오른쪽 파란 수정), 아래 목록은 타이머, 메모, 날짜만 둔다', () => {
     const onEdit = vi.fn()
     const onDelete = vi.fn()
     renderMenu(todo, { onEdit, onDelete })
@@ -122,8 +123,8 @@ describe('TodoMenuSheet 구성', () => {
     expect(header).toContainElement(remove)
     expect(edit).toHaveTextContent(/^수정$/)
     expect(remove).toHaveTextContent(/^삭제$/)
-    expect(edit.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(heading.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(remove.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(heading.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(remove).toHaveClass('text-state-error-text')
     expect(edit).toHaveClass('text-state-info-text')
 

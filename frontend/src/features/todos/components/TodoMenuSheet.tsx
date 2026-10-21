@@ -100,7 +100,8 @@ function TimerMenuItems({ todo, onOpenTimer, showTimerError, getTodoTitle }: Tim
   )
 }
 
-// 메뉴 시트: 수정과 삭제는 메모 시트처럼 제목 줄 양옆 글자 버튼(왼쪽 파란 수정, 오른쪽 빨간 삭제, 사용자 결정 2026-10-20).
+// 메뉴 시트: 수정과 삭제는 메모 시트처럼 제목 줄 양옆 글자 버튼이다. 메모 시트, 회고와 같이 왼쪽은 빨간 삭제,
+// 오른쪽 끝은 주 행동인 파란 수정이다(사용자 결정 2026-10-21).
 // 아래는 목록 하나(설명 줄 없음): 타이머 → 집중 기록 → 메모 → 날짜
 export function TodoMenuSheet({
   selectedTodo,
@@ -126,24 +127,24 @@ export function TodoMenuSheet({
       headerLeading={
         selectedTodo ? (
           <Button
-            variant="info"
-            size="sm"
-            aria-label={`${selectedTodo.title} 수정`}
-            onClick={() => onEdit(selectedTodo.id, selectedTodo.title)}
-          >
-            수정
-          </Button>
-        ) : undefined
-      }
-      headerAction={
-        selectedTodo ? (
-          <Button
             variant="danger"
             size="sm"
             aria-label={`${selectedTodo.title} 삭제`}
             onClick={() => onDelete(selectedTodo.id, selectedTodo.title)}
           >
             삭제
+          </Button>
+        ) : undefined
+      }
+      headerAction={
+        selectedTodo ? (
+          <Button
+            variant="info"
+            size="sm"
+            aria-label={`${selectedTodo.title} 수정`}
+            onClick={() => onEdit(selectedTodo.id, selectedTodo.title)}
+          >
+            수정
           </Button>
         ) : undefined
       }
