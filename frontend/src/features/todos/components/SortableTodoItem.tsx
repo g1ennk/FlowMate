@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TodoItem, type TodoItemProps } from './TodoItem'
 import { DELETE_BUTTON_WIDTH, useSwipeToDelete } from '../useSwipeToDelete'
+import { isOptimisticTodo } from '../hooks'
 import { TrashIcon } from '../../../ui/Icons'
 
 type SortableTodoItemProps = TodoItemProps & {
@@ -35,8 +36,10 @@ export function SortableTodoItem({
     willChange: isDragging ? 'transform' : undefined,
   }
 
+  // 저장 응답 전에 먼저 그린 행은 서버에 아직 없어 누르거나 끌 수 없다(잠깐이라 모양은 그대로 둔다)
+  const isSaving = isOptimisticTodo(id)
   // 편집 중이거나 선택 모드이면 드래그 불가
-  const canDrag = !props.isEditing && !props.selectMode
+  const canDrag = !props.isEditing && !props.selectMode && !isSaving
   const { onKeyDown, ...pointerListeners } = listeners ?? {}
   const { rowRef, offset, isSwiping, handlers: swipeHandlers, onClickCapture, handleDelete } = useSwipeToDelete({
     enabled: !!onSwipeDelete && canDrag && !isDragging,
@@ -48,7 +51,9 @@ export function SortableTodoItem({
     <li
       ref={setNodeRef}
       style={style}
-      className={`relative touch-manipulation select-none ${isDragging ? 'z-50' : ''}`}
+      className={`relative touch-manipulation select-none ${isDragging ? 'z-50' : ''} ${isSaving ? 'pointer-events-none' : ''}`}
+      inert={isSaving || undefined}
+      aria-busy={isSaving || undefined}
       {...(canDrag ? pointerListeners : {})}
     >
       {canDrag && (

@@ -44,11 +44,55 @@ export function useTodoSessions(todoId: string, enabled: boolean = true) {
   })
 }
 
+// 저장 응답 전에 화면에 먼저 그린 할 일의 임시 id. 이 행은 저장될 때까지 누를 수 없다(서버에 없는 id라서)
+const optimisticTodoIds = new Set<string>()
+export function isOptimisticTodo(id: string) {
+  return optimisticTodoIds.has(id)
+}
+
+// 할 일 추가. Enter를 누르면 저장 응답(과 목록 재조회)을 기다리지 않고 바로 목록에 그린다.
+// 기다리면 입력창이 먼저 비고 잠시 뒤 행이 생기며 입력창이 한 줄 밀려 깜빡여 보였다(사용자 보고 2026-10-21).
+// 응답이 오면 임시 행을 서버 값으로 바꾸고, 실패하면 빼낸다(입력창은 글자를 되돌린다)
 export function useCreateTodo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: TodoCreateInput) => todoApi.create(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.todos() }),
+    onMutate: async (payload) => {
+      await qc.cancelQueries({ queryKey: queryKeys.todos() })
+      const now = new Date().toISOString()
+      const tempId = crypto.randomUUID()
+      optimisticTodoIds.add(tempId)
+      const optimistic: Todo = {
+        id: tempId,
+        title: payload.title,
+        note: payload.note ?? null,
+        date: payload.date,
+        miniDay: payload.miniDay,
+        dayOrder: payload.dayOrder,
+        isDone: false,
+        sessionCount: 0,
+        sessionFocusSeconds: 0,
+        timerMode: null,
+        createdAt: now,
+        updatedAt: now,
+      }
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) => (old ? { items: [...old.items, optimistic] } : old))
+      return { tempId }
+    },
+    onSuccess: (data, _payload, context) => {
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) =>
+        old ? { items: old.items.map((todo) => (todo.id === context?.tempId ? data : todo)) } : old,
+      )
+    },
+    onError: (_err, _payload, context) => {
+      qc.setQueryData<TodoList>(queryKeys.todos(), (old) =>
+        old ? { items: old.items.filter((todo) => todo.id !== context?.tempId) } : old,
+      )
+    },
+    onSettled: (_data, _err, _payload, context) => {
+      if (context?.tempId) optimisticTodoIds.delete(context.tempId)
+      return qc.invalidateQueries({ queryKey: queryKeys.todos() })
+    },
   })
 }
 
