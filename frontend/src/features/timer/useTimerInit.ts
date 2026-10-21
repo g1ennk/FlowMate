@@ -10,7 +10,6 @@ type UseTimerInitParams = {
   selectedMode: TimerMode | null
   baseSessionFocusSeconds: number
   settings: PomodoroSettings | undefined
-  endMusicSession: () => void
   onMounted: () => void
   onUnmounted: () => void
   onSelectedModeChange: (mode: TimerMode | null) => void
@@ -25,7 +24,6 @@ export function useTimerInit({
   selectedMode,
   baseSessionFocusSeconds,
   settings,
-  endMusicSession,
   onMounted,
   onUnmounted,
   onSelectedModeChange,
@@ -49,7 +47,6 @@ export function useTimerInit({
       const currentTimer = getTimer(todoId)
 
       if (currentTimer && currentTimer.status !== 'idle' && initialMode && initialMode !== currentTimer.mode) {
-        endMusicSession()
         commitPendingFocus(todoId)
         reset(todoId)
         onSelectedModeChange(initialMode)
@@ -84,7 +81,7 @@ export function useTimerInit({
       onSelectedModeChange(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, todoId, initialMode, settings, endMusicSession])
+  }, [isOpen, todoId, initialMode, settings])
 
   useEffect(() => {
     if (!isOpen || !settings || !todoId) return

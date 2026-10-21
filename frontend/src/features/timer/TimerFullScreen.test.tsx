@@ -148,17 +148,14 @@ describe('TimerFullScreen', () => {
 
     useTimerDisplayStore.getState().resetDisplay()
     useSoundscapeStore.getState().stopSession()
-    useSoundscapeStore.setState({ phase: 'stopped' })
+    useSoundscapeStore.setState({ enabled: false, phase: 'stopped' })
     localStorage.removeItem('flowmate/ui/sound-prefs')
   })
 
 
-  // 사운드 켜기/끄기는 사운드 시트 안에 있다. 시트를 열어 켜고 닫는다
+  // 사운드 켜기/끄기는 타이머 화면 사운드 줄의 스피커 버튼이다
   async function turnSoundOn(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByRole('button', { name: /^사운드 선택:/ }))
-    const sheet = await screen.findByRole('dialog', { name: '사운드' })
-    await user.click(within(sheet).getByRole('switch', { name: '사운드' }))
-    await user.click(within(sheet).getByRole('button', { name: '닫기' }))
+    await user.click(await screen.findByRole('button', { name: '사운드', pressed: false }))
   }
 
   // 완료 확인은 타이머 위에 뜨는 확인 시트다
@@ -204,10 +201,8 @@ describe('TimerFullScreen', () => {
     )
     expect(onClose).not.toHaveBeenCalled()
     expect(await screen.findByText('타이머 테스트')).toBeInTheDocument()
-    expect(useSoundscapeStore.getState()).toMatchObject({
-      enabled: false,
-      currentTrackId: null,
-    })
+    // 초기화는 켜 둔 선택을 지우지 않고 사운드 세션도 열어 둔다(조용해지는 건 단계가 바뀌어서다)
+    expect(useSoundscapeStore.getState()).toMatchObject({ enabled: true, active: true })
   })
 
   it('creates a session and completes the todo when finishing from stopwatch mode', async () => {
@@ -260,11 +255,6 @@ describe('TimerFullScreen', () => {
       })
       expect(mocked.timerStoreActions.reset).toHaveBeenCalledWith('todo-1')
       expect(onClose).toHaveBeenCalled()
-    })
-
-    expect(useSoundscapeStore.getState()).toMatchObject({
-      enabled: false,
-      currentTrackId: null,
     })
   })
 
@@ -563,40 +553,44 @@ describe('TimerFullScreen', () => {
     }
   })
 
-  it('resets the music session when closing fullscreen', async () => {
+  it('stops sound when the timer closes and plays it again on reopen without turning it off', async () => {
     const user = userEvent.setup()
-    const onClose = vi.fn()
+    const engine: SoundEngine = {
+      resume: vi.fn(),
+      setMasterVolume: vi.fn(),
+      play: vi.fn<SoundEngine['play']>().mockResolvedValue('ok'),
+      setVolume: vi.fn(),
+      fadeOutAndPause: vi.fn<SoundEngine['fadeOutAndPause']>().mockResolvedValue(undefined),
+      stop: vi.fn(),
+      onEnded: vi.fn(() => () => {}),
+      onError: vi.fn(() => () => {}),
+    }
+    setSoundEngineForTest(engine)
+    try {
+      Object.assign(mocked.timerState, {
+        status: 'running',
+        flexiblePhase: 'focus',
+      })
 
-    Object.assign(mocked.timerState, {
-      status: 'running',
-      flexiblePhase: 'focus',
-    })
+      const view = renderApp(renderTimer())
+      await turnSoundOn(user)
+      await waitFor(() => expect(engine.play).toHaveBeenCalledWith('music', expect.any(String), 1))
 
-    renderApp(
-      <TimerFullScreen
-        isOpen
-        onClose={onClose}
-        todoId="todo-1"
-        todoTitle="타이머 테스트"
-        sessionFocusSeconds={1500}
-        sessionCount={3}
-        initialMode="stopwatch"
-        isDone={false}
-      />,
-    )
+      view.rerender(renderTimer({ isOpen: false }))
+      await waitFor(() => expect(engine.stop).toHaveBeenCalledWith('music'))
+      expect(useSoundscapeStore.getState()).toMatchObject({ enabled: true, active: false, currentTrackId: null })
 
-    await turnSoundOn(user)
-
-    await user.click(screen.getByRole('button', { name: '타이머 닫기' }))
-
-    expect(onClose).toHaveBeenCalled()
-    expect(useSoundscapeStore.getState()).toMatchObject({
-      enabled: false,
-      currentTrackId: null,
-    })
+      vi.mocked(engine.play).mockClear()
+      view.rerender(renderTimer())
+      await waitFor(() => expect(engine.play).toHaveBeenCalledWith('music', expect.any(String), 1))
+      expect(useSoundscapeStore.getState()).toMatchObject({ enabled: true, active: true })
+      expect(await screen.findByRole('button', { name: '사운드', pressed: true })).toBeInTheDocument()
+    } finally {
+      setSoundEngineForTest(null)
+    }
   })
 
-  it('resets the music session when fullscreen unmounts without an explicit close action', async () => {
+  it('stops the music session when fullscreen unmounts without an explicit close action', async () => {
     const user = userEvent.setup()
 
     Object.assign(mocked.timerState, {
@@ -604,25 +598,15 @@ describe('TimerFullScreen', () => {
       flexiblePhase: 'focus',
     })
 
-    const view = renderApp(
-      <TimerFullScreen
-        isOpen
-        onClose={vi.fn()}
-        todoId="todo-1"
-        todoTitle="타이머 테스트"
-        sessionFocusSeconds={1500}
-        sessionCount={3}
-        initialMode="stopwatch"
-        isDone={false}
-      />,
-    )
+    const view = renderApp(renderTimer())
 
     await turnSoundOn(user)
 
     view.unmount()
 
     expect(useSoundscapeStore.getState()).toMatchObject({
-      enabled: false,
+      enabled: true,
+      active: false,
       currentTrackId: null,
     })
   })
@@ -1164,11 +1148,12 @@ describe('TimerFullScreen', () => {
       expect(mocked.timerStoreActions.startBreak).toHaveBeenCalledWith('todo-1', 300_000)
     })
 
-    it('사운드는 분위기 이름 버튼 하나만 두고, 켜기와 볼륨은 시트 안에 있다', async () => {
+    it('사운드 줄은 켜기/끄기, 볼륨, 분위기 이름을 타이머 화면에 바로 둔다', async () => {
       renderTimer('stopwatch')
       const fullscreen = await screen.findByRole('dialog', { name: '타이머 테스트 일반 타이머' })
-      expect(within(fullscreen).getByRole('button', { name: /^사운드 선택: 비 오는 카페/ })).toBeInTheDocument()
-      expect(within(fullscreen).queryByRole('slider')).not.toBeInTheDocument()
+      expect(within(fullscreen).getByRole('button', { name: '사운드', pressed: false })).toBeInTheDocument()
+      expect(within(fullscreen).getByRole('slider', { name: '전체 볼륨' })).toBeInTheDocument()
+      expect(within(fullscreen).getByRole('button', { name: '분위기 선택: 비 오는 카페' })).toBeInTheDocument()
       expect(within(fullscreen).queryByRole('button', { name: /배경 음악/ })).not.toBeInTheDocument()
     })
   })

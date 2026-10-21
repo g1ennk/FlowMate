@@ -14,14 +14,12 @@ import { FAILURE_TOAST_MS, toastMessages } from '../../lib/messages'
 type UseTimerCompletionParams = {
   todoId: string
   settings: PomodoroSettings | undefined
-  endMusicSession: () => void
   onClose: () => void
 }
 
 export function useTimerCompletion({
   todoId,
   settings,
-  endMusicSession,
   onClose,
 }: UseTimerCompletionParams) {
   const createSession = useCreateSession()
@@ -92,7 +90,6 @@ export function useTimerCompletion({
     }
 
     toast.success(toastMessages.timerTodoCompleted, { id: 'task-completed' })
-    endMusicSession()
     onClose()
     return true
   }, [
@@ -104,7 +101,6 @@ export function useTimerCompletion({
     createSession,
     updateTodo,
     getNextDoneOrder,
-    endMusicSession,
     onClose,
   ])
 

@@ -6,6 +6,8 @@ export type SoundPrefs = {
   presetId: string
   balance: number
   masterVolume: number
+  // 사운드를 켜 뒀는지. 새로고침이나 앱을 다시 연 뒤에도 기억한다
+  enabled: boolean
 }
 
 export const DEFAULT_MASTER_VOLUME = 0.35
@@ -24,6 +26,7 @@ export function defaultPrefs(): SoundPrefs {
     presetId: DEFAULT_PRESET_ID,
     balance: DEFAULT_BALANCE,
     masterVolume: DEFAULT_MASTER_VOLUME,
+    enabled: false,
   }
 }
 
@@ -57,6 +60,7 @@ export function parsePrefs(raw: string): SoundPrefs {
     presetId: retired?.presetId ?? storedId,
     balance: retired?.balance ?? storedBalance,
     masterVolume: isVolume(d.masterVolume) ? d.masterVolume : defaults.masterVolume,
+    enabled: typeof d.enabled === 'boolean' ? d.enabled : defaults.enabled,
   }
 }
 

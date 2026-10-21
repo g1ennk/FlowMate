@@ -31,7 +31,8 @@ import {
 export { DEFAULT_MASTER_VOLUME, type SoundPrefs } from './soundscapePrefs'
 
 export type SoundscapeState = SoundPrefs & {
-  enabled: boolean
+  // 타이머 화면이 열려 있는지. 켜 둔 사운드도 화면을 나가면 멈추고 돌아오면 이어 재생한다
+  active: boolean
   phase: SoundPhase
   currentTrackId: string | null
   failed: ChannelKey[]
@@ -46,13 +47,14 @@ export type SoundscapeActions = {
   setBalance(balance: number): void
   setMasterVolume(volume: number): void
   resetPrefs(): void
+  startSession(): void
   stopSession(): void
 }
 
 type SoundscapeStore = SoundscapeState & SoundscapeActions
 type ChannelPlan = { src: string; volume: number; loop: boolean }
 
-const PREF_KEYS: (keyof SoundPrefs)[] = ['presetId', 'balance', 'masterVolume']
+const PREF_KEYS: (keyof SoundPrefs)[] = ['presetId', 'balance', 'masterVolume', 'enabled']
 const noop = () => {}
 
 // 소리 실패는 타이머에 영향을 주지 않는다: 엔진 호출은 모두 여기를 거친다
@@ -65,8 +67,8 @@ function withEngine(fn: (engine: SoundEngine) => void) {
 }
 
 function prefsOf(state: SoundPrefs): SoundPrefs {
-  const { presetId, balance, masterVolume } = state
-  return { presetId, balance, masterVolume }
+  const { presetId, balance, masterVolume, enabled } = state
+  return { presetId, balance, masterVolume, enabled }
 }
 
 // 테마와 환경음은 고른 분위기에서 파생한다
@@ -80,12 +82,12 @@ function resolveTrackId(themeId: MusicThemeId, currentTrackId: string | null): s
   return pickNextTrack(tracks, currentTrackId)?.id ?? null
 }
 
-// 지금 들려야 하는 채널과 그 소스, 볼륨. 집중 중에만 들리고 휴식, 대기, 정지 중에는 모두 조용하다.
+// 지금 들려야 하는 채널과 그 소스, 볼륨. 타이머 화면에서 집중 중에만 들리고 휴식, 대기, 정지 중에는 모두 조용하다.
 // 밸런스 양 끝(음악만, 환경음만)은 한쪽을 아예 끄겠다는 선택이라 볼륨 0인 채널을 빼서 내려받지도 재생하지도 않는다.
 // 안쪽 단계에서는 볼륨이 0이 된 채널도 남긴다
 function audibleChannels(state: SoundscapeState): Map<ChannelKey, ChannelPlan> {
   const plans = new Map<ChannelKey, ChannelPlan>()
-  if (!state.enabled || state.phase !== 'focus') return plans
+  if (!state.enabled || !state.active || state.phase !== 'focus') return plans
   const mood = moodOf(state.presetId)
   const factors = balanceFactors(state.balance)
   const atEndpoint = state.balance === 0 || state.balance === 1
@@ -121,15 +123,20 @@ function setChannelBlocked(channel: ChannelKey, isBlocked: boolean) {
   if (useSoundscapeStore.getState().blocked !== blocked) useSoundscapeStore.setState({ blocked })
 }
 
+// 켜 두고 타이머 화면도 열려 있는 동안만 재생 결과를 반영한다. 닫힌 뒤 늦게 온 결과는 버린다
+function isLive(state: SoundscapeState) {
+  return state.enabled && state.active
+}
+
 function markFailed(channel: ChannelKey) {
   const state = useSoundscapeStore.getState()
-  if (!state.enabled || state.failed.includes(channel)) return
+  if (!isLive(state) || state.failed.includes(channel)) return
   useSoundscapeStore.setState({ failed: [...state.failed, channel] })
 }
 
 function handlePlayResult(channel: ChannelKey, result: PlayResult) {
   const state = useSoundscapeStore.getState()
-  if (!state.enabled) return
+  if (!isLive(state)) return
   if (result === 'ok') {
     if (state.failed.includes(channel)) {
       useSoundscapeStore.setState({ failed: state.failed.filter((k) => k !== channel) })
@@ -159,7 +166,7 @@ function advanceTrack() {
 // 음악 곡 하나가 실패해도 테마의 다른 곡으로 이어 간다. 모든 곡이 실패하면 멈추고 failed로 남긴다
 function handleMusicError() {
   const state = useSoundscapeStore.getState()
-  if (!state.enabled) return
+  if (!isLive(state)) return
   markFailed('music')
   if (state.currentTrackId) failedTrackIds.add(state.currentTrackId)
   advanceTrack()
@@ -205,9 +212,17 @@ export const useSoundscapeStore = create<SoundscapeStore>()((set, get) => {
     if (PREF_KEYS.some((key) => key in patch)) writePrefs(prefsOf(next))
   }
 
+  // 재생을 시작하기 전 준비. 사용자 탭 안에서 동기로 호출해야 iOS가 오디오를 허용한다
+  function prepare(): Pick<SoundscapeState, 'currentTrackId'> {
+    withEngine((engine) => engine.resume())
+    const state = get()
+    withEngine((engine) => engine.setMasterVolume(state.masterVolume))
+    return { currentTrackId: resolveTrackId(moodOf(state.presetId).themeId, state.currentTrackId) }
+  }
+
   return {
     ...readPrefs(),
-    enabled: false,
+    active: false,
     phase: 'stopped',
     currentTrackId: null,
     failed: [],
@@ -219,11 +234,7 @@ export const useSoundscapeStore = create<SoundscapeStore>()((set, get) => {
         commit({ enabled: false, failed: [], blocked: false })
         return
       }
-      // 사용자 탭 안에서 동기로 호출해야 iOS가 오디오를 허용한다
-      withEngine((engine) => engine.resume())
-      const state = get()
-      withEngine((engine) => engine.setMasterVolume(state.masterVolume))
-      commit({ enabled: true, currentTrackId: resolveTrackId(moodOf(state.presetId).themeId, state.currentTrackId) })
+      commit({ enabled: true, ...prepare() })
     },
 
     setPhase(phase) {
@@ -255,17 +266,31 @@ export const useSoundscapeStore = create<SoundscapeStore>()((set, get) => {
       commit({ masterVolume: clamped })
     },
 
+    // 분위기, 비율, 볼륨만 되돌린다. 켜 둔 사운드는 끄지 않는다
     resetPrefs() {
-      const defaults = defaultPrefs()
-      withEngine((engine) => engine.setMasterVolume(defaults.masterVolume))
-      commit({ ...defaults, currentTrackId: resolveTrackId(moodOf(defaults.presetId).themeId, get().currentTrackId) })
+      const { presetId, balance, masterVolume } = defaultPrefs()
+      withEngine((engine) => engine.setMasterVolume(masterVolume))
+      commit({ presetId, balance, masterVolume, currentTrackId: resolveTrackId(moodOf(presetId).themeId, get().currentTrackId) })
     },
 
+    // 타이머 화면이 열릴 때. 켜 둔 사운드면 집중 중에 바로 이어 재생한다.
+    // 꺼져 있으면 오디오를 깨우지 않는다(나중에 켜면 setEnabled가 준비한다)
+    startSession() {
+      const state = get()
+      if (state.active) return
+      if (!state.enabled) {
+        set({ active: true })
+        return
+      }
+      commit({ active: true, ...prepare() })
+    },
+
+    // 타이머 화면을 나갈 때. 소리는 바로 멈추고 켜 둔 선택은 남긴다
     stopSession() {
       withEngine((engine) => knownChannels.forEach((channel) => engine.stop(channel)))
       blockedChannels.clear()
       failedTrackIds.clear()
-      set({ enabled: false, currentTrackId: null, failed: [], blocked: false })
+      set({ active: false, currentTrackId: null, failed: [], blocked: false })
     },
   }
 })

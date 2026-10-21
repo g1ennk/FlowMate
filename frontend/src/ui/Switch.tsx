@@ -8,7 +8,7 @@ type SwitchProps = {
   tone?: 'surface' | 'timer'
   // 줄(label)에 더할 클래스. 설정 행처럼 줄 높이를 터치 영역으로 쓸 때 준다
   className?: string
-  // 스위치 밖에 둔 설명 글의 id(aria-describedby). 예: 사운드 시트의 "집중할 때 다시 재생돼요"
+  // 스위치 밖에 둔 설명 글의 id(aria-describedby)
   describedBy?: string
 }
 

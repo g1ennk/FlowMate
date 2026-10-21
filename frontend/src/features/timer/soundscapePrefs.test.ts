@@ -14,6 +14,7 @@ const valid = {
   presetId: 'fireside-piano',
   balance: 0.25,
   masterVolume: 0.4,
+  enabled: true,
 }
 
 afterEach(() => {
@@ -23,7 +24,7 @@ afterEach(() => {
 
 describe('defaultPrefs', () => {
   it('uses the default mood, middle balance and default master volume', () => {
-    expect(defaultPrefs()).toEqual({ presetId: 'rainy-cafe', balance: 0.5, masterVolume: 0.35 })
+    expect(defaultPrefs()).toEqual({ presetId: 'rainy-cafe', balance: 0.5, masterVolume: 0.35, enabled: false })
     expect(DEFAULT_MASTER_VOLUME).toBe(0.35)
   })
 })
@@ -57,7 +58,12 @@ describe('parsePrefs', () => {
       breakMode: 'ambient',
       presetId: null,
     }
-    expect(parsePrefs(JSON.stringify(old))).toEqual({ presetId: 'rainy-cafe', balance: 0.5, masterVolume: 0.4 })
+    expect(parsePrefs(JSON.stringify(old))).toEqual({
+      presetId: 'rainy-cafe',
+      balance: 0.5,
+      masterVolume: 0.4,
+      enabled: false,
+    })
   })
 
   it('keeps a valid preset id from old prefs and drops the old fields', () => {
@@ -69,7 +75,12 @@ describe('parsePrefs', () => {
       breakMode: 'silent',
       presetId: 'fireside-piano',
     }
-    expect(parsePrefs(JSON.stringify(old))).toEqual({ presetId: 'fireside-piano', balance: 0.5, masterVolume: 0.35 })
+    expect(parsePrefs(JSON.stringify(old))).toEqual({
+      presetId: 'fireside-piano',
+      balance: 0.5,
+      masterVolume: 0.35,
+      enabled: false,
+    })
   })
 
   it('ignores a stored breakMode', () => {
@@ -87,6 +98,7 @@ describe('parsePrefs', () => {
       presetId: newId,
       balance: 0,
       masterVolume: 0.4,
+      enabled: false,
     })
     expect(parsePrefs(JSON.stringify({ presetId: oldId })).balance).toBe(0)
   })
@@ -96,6 +108,7 @@ describe('parsePrefs', () => {
       presetId: 'rainy-cafe',
       balance: 1,
       masterVolume: 0.4,
+      enabled: false,
     })
     expect(parsePrefs(JSON.stringify({ presetId: oldId })).balance).toBe(1)
   })
@@ -119,8 +132,16 @@ describe('parsePrefs', () => {
   })
 
   it('replaces each invalid field independently', () => {
-    const parsed = parsePrefs(JSON.stringify({ ...valid, balance: 'x', masterVolume: 3 }))
-    expect(parsed).toEqual({ presetId: 'fireside-piano', balance: 0.5, masterVolume: DEFAULT_MASTER_VOLUME })
+    const parsed = parsePrefs(JSON.stringify({ ...valid, balance: 'x', masterVolume: 3, enabled: 'yes' }))
+    expect(parsed).toEqual({ presetId: 'fireside-piano', balance: 0.5, masterVolume: DEFAULT_MASTER_VOLUME, enabled: false })
+  })
+
+  it('keeps a stored on/off choice and treats a missing one as off', () => {
+    expect(parsePrefs(JSON.stringify({ ...valid, enabled: true })).enabled).toBe(true)
+    expect(parsePrefs(JSON.stringify({ ...valid, enabled: false })).enabled).toBe(false)
+    const rest: Partial<typeof valid> = { ...valid }
+    delete rest.enabled
+    expect(parsePrefs(JSON.stringify(rest)).enabled).toBe(false)
   })
 })
 

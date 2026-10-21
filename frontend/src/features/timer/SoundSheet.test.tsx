@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SoundSheet } from './SoundSheet'
 import { SOUND_PRESETS } from './soundCatalog'
 import { setSoundEngineForTest, type SoundEngine } from './soundEngine'
@@ -124,46 +124,13 @@ describe('SoundSheet', () => {
     expect(screen.queryByText('일부 소리를 불러오지 못했어요')).not.toBeInTheDocument()
   })
 
-  it('자동 재생이 막혔으면 시트에서도 눌러서 다시 재생할 수 있다', async () => {
-    const retryPlayback = vi.fn()
-    const original = useSoundscapeStore.getState().retryPlayback
-    onTestFinished(() => useSoundscapeStore.setState({ retryPlayback: original }))
-    useSoundscapeStore.setState({ enabled: true, blocked: true, retryPlayback })
-    render(<SoundSheet isOpen onClose={() => {}} />)
-
-    expect(screen.getByText('브라우저가 소리를 막았어요')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: '눌러서 재생' }))
-    expect(retryPlayback).toHaveBeenCalledTimes(1)
-
-    act(() => useSoundscapeStore.setState({ blocked: false }))
-    expect(screen.queryByRole('button', { name: '눌러서 재생' })).not.toBeInTheDocument()
-  })
-
-  it('휴식과 대기 중에 켜 두면 스위치 아래에 집중할 때 재생된다고 알린다', () => {
-    useSoundscapeStore.setState({ enabled: true, phase: 'break' })
-    render(<SoundSheet isOpen onClose={() => {}} />)
-    expect(screen.getByRole('switch', { name: '사운드' })).toBeChecked()
-    expect(screen.getByText('집중할 때 다시 재생돼요')).toBeInTheDocument()
-    // 안내는 스위치 설명으로 읽힌다(스위치에 포커스했을 때 왜 조용한지 함께 들린다)
-    expect(screen.getByRole('switch', { name: '사운드' })).toHaveAccessibleDescription('집중할 때 다시 재생돼요')
-
-    act(() => useSoundscapeStore.setState({ phase: 'waiting' }))
-    expect(screen.getByText('집중할 때 다시 재생돼요')).toBeInTheDocument()
-
-    act(() => useSoundscapeStore.setState({ phase: 'focus' }))
-    expect(screen.queryByText('집중할 때 다시 재생돼요')).not.toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: '사운드' })).not.toHaveAttribute('aria-describedby')
-
-    act(() => useSoundscapeStore.setState({ phase: 'break', enabled: false }))
-    expect(screen.queryByText('집중할 때 다시 재생돼요')).not.toBeInTheDocument()
-  })
-
   it('묶음 제목은 SectionHeader(h3)이고 비율 이름은 제목 줄 오른쪽에 있다', () => {
     render(<SoundSheet isOpen onClose={() => {}} />)
-    for (const name of ['볼륨', '분위기', '음악과 환경음']) {
+    for (const name of ['분위기', '음악과 환경음']) {
       expect(screen.getByRole('heading', { level: 3, name })).toBeInTheDocument()
     }
     expect(screen.getByRole('heading', { level: 3, name: '음악과 환경음' }).parentElement).toHaveTextContent('균형')
+    expect(screen.queryByRole('heading', { name: '볼륨' })).not.toBeInTheDocument()
   })
 
   it('has no break-time sound option', () => {
@@ -191,21 +158,15 @@ describe('SoundSheet', () => {
     expect(screen.queryAllByRole('link')).toHaveLength(0)
   })
 
-  it('turns sound on and off with the switch and sets the master volume (moved from the timer screen)', async () => {
-    const user = userEvent.setup()
+  // 켜기/끄기와 볼륨은 타이머 화면 사운드 줄로 옮겼다
+  it('has no on/off switch, master volume or blocked retry in the sheet', () => {
+    useSoundscapeStore.setState({ enabled: true, blocked: true, phase: 'break' })
     render(<SoundSheet isOpen onClose={() => {}} />)
-    const toggle = screen.getByRole('switch', { name: '사운드' })
-    expect(toggle).toHaveAttribute('aria-checked', 'false')
-    expect(screen.getByLabelText('전체 볼륨')).toBeDisabled()
-
-    await user.click(toggle)
-    expect(useSoundscapeStore.getState().enabled).toBe(true)
-    expect(screen.getByRole('switch', { name: '사운드' })).toHaveAttribute('aria-checked', 'true')
-
-    fireEvent.change(screen.getByLabelText('전체 볼륨'), { target: { value: '0.6' } })
-    expect(useSoundscapeStore.getState().masterVolume).toBe(0.6)
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('전체 볼륨')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '눌러서 재생' })).not.toBeInTheDocument()
+    expect(screen.queryByText('집중할 때 다시 재생돼요')).not.toBeInTheDocument()
     // 슬라이더의 터치 높이는 44다
-    expect(screen.getByLabelText('전체 볼륨')).toHaveClass('h-11')
     expect(screen.getByLabelText('음악과 환경음 비율')).toHaveClass('h-11')
   })
 
@@ -235,11 +196,14 @@ describe('SoundSheet', () => {
       const user = userEvent.setup()
       dirtyPrefs()
       render(<SoundSheet isOpen onClose={() => {}} />)
+      useSoundscapeStore.getState().setEnabled(true)
       await user.click(screen.getByRole('button', { name: '사운드 설정 초기화' }))
+      // 초기화는 켜 둔 사운드를 끄지 않는다
       expect(useSoundscapeStore.getState()).toMatchObject({
         presetId: 'rainy-cafe',
         balance: 0.5,
         masterVolume: 0.35,
+        enabled: true,
       })
       expect(screen.queryByText('초기화 확인')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: '사운드 설정 초기화' })).toBeInTheDocument()

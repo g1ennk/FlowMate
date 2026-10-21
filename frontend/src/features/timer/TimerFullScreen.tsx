@@ -104,7 +104,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   // effectiveMode = selectedMode ?? timer?.mode (early return 전에 계산 필요)
   const _resolvedMode = selectedMode ?? timer?.mode
   const soundPhase = getSoundPhase(timer, _resolvedMode)
-  const { endMusicSession } = useTimerMusicSession({
+  useTimerMusicSession({
     soundPhase,
     isOpen,
     todoId,
@@ -119,7 +119,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     selectedMode,
     baseSessionFocusSeconds,
     settings,
-    endMusicSession,
     onMounted: () => setMounted(true),
     onUnmounted: () => setMounted(false),
     onSelectedModeChange: setSelectedMode,
@@ -160,11 +159,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
     return () => window.clearInterval(intervalId)
   }, [isOpen, timer?.endAt])
 
-  const handleClose = () => {
-    endMusicSession()
-    onClose()
-  }
-
   const {
     handleComplete,
     handleStartBreak: startBreakHandler,
@@ -173,7 +167,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   } = useTimerCompletion({
     todoId,
     settings,
-    endMusicSession,
     onClose,
   })
 
@@ -237,7 +230,6 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
   const handleReset = () => {
     const timerBeforeReset = getTimer(todoId)
     setShowResetModal(false)
-    endMusicSession()
 
     // 진행 중 focus 누적분을 sync 큐로 보존한 뒤 타이머 제거
     commitPendingFocus(todoId)
@@ -450,7 +442,7 @@ export function TimerFullScreen(props: TimerFullScreenProps) {
           paddingTop: 'var(--top-banner-offset, var(--safe-top))',
         }}
       >
-        <IconButton tone="timer" label="타이머 닫기" onClick={handleClose}>
+        <IconButton tone="timer" label="타이머 닫기" onClick={onClose}>
           <ChevronLeftIcon />
         </IconButton>
         <div className="flex h-8 w-8 items-center justify-center">

@@ -26,7 +26,6 @@ function baseProps(overrides: Record<string, unknown> = {}) {
     selectedMode: null,
     baseSessionFocusSeconds: 0,
     settings,
-    endMusicSession: vi.fn(),
     onMounted: vi.fn(),
     onUnmounted: vi.fn(),
     onSelectedModeChange: vi.fn(),

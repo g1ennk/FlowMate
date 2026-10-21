@@ -38,9 +38,11 @@ async function load() {
   return import('./soundscapeStore')
 }
 
-async function loadStore() {
+// 타이머 화면이 열린 상태(active)로 시작한다. 화면 열고 닫기는 startSession/stopSession 테스트에서 다룬다
+async function loadStore({ active = true }: { active?: boolean } = {}) {
   const mod = await load()
   const store = mod.useSoundscapeStore
+  if (active) store.setState({ active: true })
   return { mod, store, actions: () => store.getState() }
 }
 
@@ -144,15 +146,28 @@ describe('soundscapeStore prefs', () => {
     expect((await load()).useSoundscapeStore.getState().presetId).toBe('fireside-piano')
   })
 
-  it('persists prefs but never enabled, phase, currentTrackId, failed or blocked', async () => {
+  it('persists prefs and the on/off choice but never active, phase, currentTrackId, failed or blocked', async () => {
     const { actions } = await loadStore()
     actions().setPhase('focus')
     actions().setEnabled(true)
     actions().applyPreset('fireside-piano')
     actions().setBalance(0.25)
     const stored = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')
-    expect(Object.keys(stored).sort()).toEqual(['balance', 'masterVolume', 'presetId'])
-    expect(stored).toMatchObject({ presetId: 'fireside-piano', balance: 0.25 })
+    expect(Object.keys(stored).sort()).toEqual(['balance', 'enabled', 'masterVolume', 'presetId'])
+    expect(stored).toMatchObject({ presetId: 'fireside-piano', balance: 0.25, enabled: true })
+    actions().setEnabled(false)
+    expect(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}').enabled).toBe(false)
+  })
+
+  it('restores a stored on choice on the next load and plays once the timer screen opens in focus', async () => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ presetId: 'rainy-cafe', balance: 0.5, masterVolume: 0.35, enabled: true }))
+    const { actions } = await loadStore({ active: false })
+    expect(actions()).toMatchObject({ enabled: true, active: false })
+    actions().setPhase('focus')
+    expect(fakeEngine.play).not.toHaveBeenCalled()
+    actions().startSession()
+    expect(fakeEngine.resume).toHaveBeenCalled()
+    expect(fakeEngine.play).toHaveBeenCalledWith('music', expect.any(String), 1)
   })
 
   it('plays a stored balance on the next load', async () => {
@@ -468,17 +483,19 @@ describe('soundscapeStore playback', () => {
     actions().applyPreset('fireside-piano')
     actions().setBalance(0.2)
     actions().setMasterVolume(0.8)
+    actions().setEnabled(true)
     actions().resetPrefs()
     expect(store.getState()).toMatchObject({
       presetId: 'rainy-cafe',
       balance: 0.5,
       masterVolume: 0.35,
-      enabled: false,
+      enabled: true,
     })
     expect(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({
       presetId: 'rainy-cafe',
       balance: 0.5,
       masterVolume: 0.35,
+      enabled: true,
     })
   })
 
@@ -585,7 +602,7 @@ describe('soundscapeStore playback', () => {
     await flush()
     for (let i = 0; i < 6; i++) fake.emitError('music')
     actions().stopSession()
-    actions().setEnabled(true)
+    actions().startSession()
     await flush()
     fakeEngine.play.mockClear()
     fake.emitError('music')
@@ -706,7 +723,7 @@ describe('soundscapeStore playback', () => {
     expect(fakeEngine.play).not.toHaveBeenCalled()
   })
 
-  it('stopSession stops all channels immediately, keeps prefs and phase', async () => {
+  it('stopSession stops all channels immediately, keeps prefs, the on choice and phase', async () => {
     const { actions } = await loadStore()
     actions().setPhase('focus')
     actions().setEnabled(true)
@@ -715,13 +732,47 @@ describe('soundscapeStore playback', () => {
     expect(fakeEngine.stop).toHaveBeenCalledWith('ambient:rain')
     expect(fakeEngine.stop).toHaveBeenCalledWith('ambient:cafe')
     expect(actions()).toMatchObject({
-      enabled: false,
+      enabled: true,
+      active: false,
       phase: 'focus',
       currentTrackId: null,
       presetId: 'rainy-cafe',
       blocked: false,
       failed: [],
     })
+  })
+
+  it('stays silent while the timer screen is closed, even when on and focusing', async () => {
+    const { actions } = await loadStore({ active: false })
+    actions().setPhase('focus')
+    actions().setEnabled(true)
+    expect(fakeEngine.play).not.toHaveBeenCalled()
+  })
+
+  it('plays again when the timer screen reopens after stopSession, without touching the on choice', async () => {
+    const { actions } = await loadStore()
+    actions().setPhase('focus')
+    actions().setEnabled(true)
+    actions().stopSession()
+    fakeEngine.play.mockClear()
+    actions().startSession()
+    expect(actions()).toMatchObject({ enabled: true, active: true })
+    expect(fakeEngine.play).toHaveBeenCalledWith('music', expect.any(String), 1)
+    expect(fakeEngine.play).toHaveBeenCalledWith('ambient:rain', '/sounds/ambient/rain.mp3', 0.5, { loop: true })
+  })
+
+  it('startSession keeps sound off without waking audio when it was turned off and is a no-op while already active', async () => {
+    const { actions } = await loadStore({ active: false })
+    actions().setPhase('focus')
+    actions().startSession()
+    expect(actions().active).toBe(true)
+    expect(fakeEngine.resume).not.toHaveBeenCalled()
+    expect(fakeEngine.play).not.toHaveBeenCalled()
+    actions().setEnabled(true)
+    expect(fakeEngine.play).toHaveBeenCalledWith('music', expect.any(String), 1)
+    fakeEngine.play.mockClear()
+    actions().startSession()
+    expect(fakeEngine.play).not.toHaveBeenCalled()
   })
 
   it('keeps working when localStorage throws', async () => {
