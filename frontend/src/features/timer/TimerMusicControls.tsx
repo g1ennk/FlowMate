@@ -36,7 +36,8 @@ export function TimerMusicControls() {
   }
 
   return (
-    <div className="relative mt-4 flex w-full max-w-xs flex-col items-center">
+    // 폭은 위 타이머 버튼 줄(버튼 56 × 3 + 간격 24 × 2 = 216)에 맞춰 양끝을 가지런히 한다
+    <div className="relative mt-4 flex w-full max-w-54 flex-col items-center">
       <div className="flex w-full items-center gap-card-item">
         {/* 탭 안에서 바로 켜야 iOS가 오디오를 허용한다 */}
         <IconButton
