@@ -17,6 +17,8 @@ type AiReportSheetProps = {
   report: AiReport | null
   isCached: boolean
   isRegenerating: boolean
+  // 다른 탭이나 기기에서 같은 리포트를 만드는 중이라 결과를 기다리는 상태
+  isWaitingOther?: boolean
   error?: string | null
   onRegenerate: () => void
   onRetry?: () => void
@@ -69,6 +71,7 @@ export function AiReportSheet({
   report,
   isCached,
   isRegenerating,
+  isWaitingOther,
   onRegenerate,
   onRetry,
   onWriteYourself,
@@ -102,7 +105,9 @@ export function AiReportSheet({
         {error && <InlineStatus message={error} />}
         {showSkeleton ? (
           <div className="space-y-card">
-            <p className="text-xs text-text-secondary">보통 10~20초 걸려요</p>
+            <p className="text-xs text-text-secondary">
+              {isWaitingOther ? '이미 만드는 중이에요. 끝나면 바로 보여 드릴게요' : '보통 10~20초 걸려요'}
+            </p>
             {sections.map(({ key, heading }) => (
               <div key={key} className="space-y-list">
                 <SectionHeading>{heading}</SectionHeading>

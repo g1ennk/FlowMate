@@ -925,9 +925,11 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 | `METHOD_NOT_ALLOWED`       | 405  | 경로는 존재하지만 HTTP 메서드가 미지원                                                      |
 | `CONFLICT`                 | 409  | 데드락 등 DB 잠금 획득 실패로 인한 일시적 충돌                                               |
 | `IDEMPOTENCY_CONFLICT`     | 409  | 동일 idempotency key 재사용 + payload 불일치 (세션 `sessionFocusSeconds` mismatch 등)   |
+| `REPORT_GENERATION_IN_PROGRESS` | 409 | 같은 `(type, periodStart)` 리포트를 다른 요청이 생성 중                                |
+| `REPORT_RATE_LIMITED`      | 429  | FlowMate 자체 생성 제한 (사용자 한도, 같은 기간 cooldown). `Retry-After` 헤더 포함              |
 | `AI_QUOTA_EXCEEDED`        | 429  | Gemini API quota 초과. `AI 서비스가 일시적으로 사용량이 초과되었습니다`                            |
-| `AI_SERVICE_UNAVAILABLE`   | 503  | Gemini API 503. `AI 서비스가 일시적으로 사용 불가 상태입니다. 잠시 후 다시 시도해 주세요`                 |
-| `REPORT_GENERATION_FAILED` | 500  | Gemini 응답 파싱 실패, 필수 필드 누락 (`AI report generation failed`)                    |
+| `AI_SERVICE_UNAVAILABLE`   | 503  | Gemini 5xx, timeout, 연결 실패. `AI 서비스가 일시적으로 사용 불가 상태입니다. 잠시 후 다시 시도해 주세요` |
+| `REPORT_GENERATION_FAILED` | 500  | Gemini 응답 파싱 실패, 필수 필드 누락, 429 외 4xx (`AI report generation failed`)          |
 | `BAD_REQUEST`              | 400  | 요청 본문 파싱 실패 (malformed JSON 등)                                               |
 | `INTERNAL_ERROR`           | 500  | 처리되지 않은 예외, 방어 코드 ISE                                                        |
 | `UNAUTHORIZED`             | 401  | Spring Security 인증 실패. body 가 비어 있을 수 있음                                     |
@@ -935,12 +937,12 @@ Guest JWT와 Member Access JWT 모두 사용 가능.
 
 참고:
 
-- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 등 DB 잠금 획득 실패) 에만 사용된다. 서버는 재시도하지 않는다. `IDEMPOTENCY_CONFLICT` 는 별도 code 로 구분.
+- `409 CONFLICT` 는 `CannotAcquireLockException`(데드락 등 DB 잠금 획득 실패) 에만 사용된다. 서버는 재시도하지 않는다. `IDEMPOTENCY_CONFLICT`, `REPORT_GENERATION_IN_PROGRESS` 는 별도 code 로 구분.
 - `GET /api/timer/sse` 는 SecurityFilter 가 아니라 controller 내부 검증을 사용하므로, invalid token / non-member 가
   `401 AUTHENTICATION_FAILED` 로 내려온다 (이전 버전에서는 400 이었고, Phase 2에서 semantic 정합 교체).
 - `UNAUTHORIZED`, `FORBIDDEN` 은 Spring Security 가 만드는 HTTP 상태이며, `ApiError.error.code` 를 항상 의미하지는 않는다. 서비스 레이어에서 던지는 도메인
   401 은 `AUTHENTICATION_FAILED` code 를 사용한다.
-- `429 TOO_MANY_REQUESTS` 는 AI 리포트 quota 보호 외에는 사용하지 않는다 (애플리케이션 자체 throttle 미적용).
+- `429 TOO_MANY_REQUESTS` 는 AI 리포트 생성에만 사용한다. 자체 제한은 `REPORT_RATE_LIMITED`, Gemini quota 초과는 `AI_QUOTA_EXCEEDED` 로 code 를 나눈다.
 
 ---
 
@@ -981,17 +983,36 @@ KPT 형식의 일간/주간/월간 회고 리포트를 Gemini API로 생성하�
 1. 기간 계산 (DAILY: 당일, WEEKLY: +6일, MONTHLY: 1일~말일)
 2. 해당 기간의 todos 조회 (todos 0개면 400 BAD_REQUEST + "생성할 데이터가 없습니다")
 3. MONTHLY인 경우 weekly reviews 추가 조회
-4. Gemini API 호출 (gemini-2.5-flash, `responseMimeType=application/json`)
-5. `(user_id, type, period_start)` UNIQUE 키 기준 upsert. 재호출 시 같은 row 덮어쓰기
+4. 같은 `(userId, type, periodStart)` 생성 lock 획득. 이미 생성 중이면 409
+5. 사용자 rate limit 확인. 초과하면 429 `REPORT_RATE_LIMITED`
+6. Gemini API 호출 (gemini-2.5-flash, `responseMimeType=application/json`)
+7. `(user_id, type, period_start)` UNIQUE 키 기준 upsert. 재호출 시 같은 row 덮어쓰기
+8. 성공하면 같은 기간 cooldown 시작
+
+기존 row가 있어도 서버는 바로 반환하지 않고 Gemini를 다시 호출한다. 이 엔드포인트를 다시 부르는 것은 사용자가 고른 "다시 생성"이다.
+
+**생성 제한**:
+
+| 항목 | 값 | 설명 |
+|----|----|----|
+| 동시 생성 | 같은 키 1건 | Redis lock (TTL 60초). 다른 요청은 409 |
+| 사용자 한도 | 1시간 10회 | 첫 요청부터 1시간 고정 window. Gemini를 부른 시도는 실패해도 센다 |
+| 같은 기간 cooldown | 30초 | 생성 성공 후에만 건다. 실패한 생성은 바로 다시 시도할 수 있다 |
+
+409로 거절된 요청은 사용자 한도를 쓰지 않는다. Redis 장애 시 lock과 rate limit은 fail-open이며, 데이터 정합성은 DB UNIQUE와 upsert가 지킨다.
+
+**Timeout budget**: Gemini 호출은 connection pool 대기 1초, connect 3초, read 45초로 최악 49초다. Nginx `/api` `proxy_read_timeout` 60초보다 먼저 끝나 504 대신 503 `AI_SERVICE_UNAVAILABLE`로 응답한다.
 
 **Responses**:
 
 - `200 OK`: Report 본문
 - `400 BAD_REQUEST`: todos 0개 또는 validation 오류
 - `401 UNAUTHORIZED`: 토큰 누락/만료/게스트 토큰
+- `409 REPORT_GENERATION_IN_PROGRESS`: 같은 리포트를 다른 요청이 생성 중. 잠시 뒤 8.2 GET으로 결과를 확인한다
+- `429 REPORT_RATE_LIMITED`: FlowMate 자체 제한. `Retry-After`(초) 헤더와 남은 시간을 담은 한국어 메시지
 - `429 AI_QUOTA_EXCEEDED`: Gemini quota 초과
-- `503 AI_SERVICE_UNAVAILABLE`: Gemini 일시 장애
-- `500 REPORT_GENERATION_FAILED`: Gemini 응답 파싱 실패
+- `503 AI_SERVICE_UNAVAILABLE`: Gemini 5xx, timeout, 연결 실패, connection pool 고갈
+- `500 REPORT_GENERATION_FAILED`: Gemini 응답 파싱 실패, 429 외 4xx
 
 ### 8.2 리포트 단건 조회
 

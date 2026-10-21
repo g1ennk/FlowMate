@@ -8,9 +8,12 @@ import kr.io.flowmate.common.exception.NotFoundException;
 import kr.io.flowmate.report.exception.AiServiceQuotaExceededException;
 import kr.io.flowmate.report.exception.AiServiceUnavailableException;
 import kr.io.flowmate.report.exception.ReportGenerationException;
+import kr.io.flowmate.report.exception.ReportGenerationInProgressException;
+import kr.io.flowmate.report.exception.ReportRateLimitedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -113,12 +116,30 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
     }
 
-    // Gemini API 503 — 한국어 메시지 그대로
+    // Gemini 5xx, timeout, 연결 실패 — 한국어 메시지 그대로
     @ExceptionHandler(AiServiceUnavailableException.class)
     public ResponseEntity<ApiError> handleAiUnavailable(AiServiceUnavailableException ex) {
         log.warn("AI service unavailable: {}", ex.getMessage());
         ApiError body = ApiError.of("AI_SERVICE_UNAVAILABLE", ex.getMessage());
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    // 같은 리포트를 다른 요청이 생성 중 → 409. 클라이언트는 잠시 뒤 GET으로 결과를 확인한다
+    @ExceptionHandler(ReportGenerationInProgressException.class)
+    public ResponseEntity<ApiError> handleReportInProgress(ReportGenerationInProgressException ex) {
+        log.info("Report generation in progress: {}", ex.getMessage());
+        ApiError body = ApiError.of("REPORT_GENERATION_IN_PROGRESS", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    // FlowMate 자체 생성 제한(사용자 한도, 같은 기간 cooldown) → 429. Gemini quota 초과(AI_QUOTA_EXCEEDED)와 code로 구분
+    @ExceptionHandler(ReportRateLimitedException.class)
+    public ResponseEntity<ApiError> handleReportRateLimited(ReportRateLimitedException ex) {
+        log.info("Report rate limited: reason={}, retryAfter={}s", ex.getReason(), ex.getRetryAfterSeconds());
+        ApiError body = ApiError.of("REPORT_RATE_LIMITED", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+            .body(body);
     }
 
     // Gemini 응답 파싱 실패 / 필수 필드 누락 등 → 500
