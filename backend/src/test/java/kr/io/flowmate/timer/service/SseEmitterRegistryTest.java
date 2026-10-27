@@ -1,5 +1,7 @@
 package kr.io.flowmate.timer.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import kr.io.flowmate.timer.sse.SseMetrics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,10 +29,12 @@ import static org.mockito.Mockito.verify;
 class SseEmitterRegistryTest {
 
     private SseEmitterRegistry registry;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
-        registry = new SseEmitterRegistry();
+        meterRegistry = new SimpleMeterRegistry();
+        registry = new SseEmitterRegistry(meterRegistry);
     }
 
     @AfterEach
@@ -85,6 +89,31 @@ class SseEmitterRegistryTest {
     }
 
     @Test
+    @DisplayName("broadcast: 연결마다 전송 성공과 실패를 따로 센다")
+    void broadcast_countsSuccessAndFailurePerEmitter() throws Exception {
+        SseEmitter healthy = mock(SseEmitter.class);
+        SseEmitter broken = mock(SseEmitter.class);
+        doThrow(new IOException("broken pipe")).when(broken).send(any(SseEmitter.SseEventBuilder.class));
+        injectEmitter("user-mixed", healthy);
+        injectEmitter("user-mixed", broken);
+
+        registry.broadcast("user-mixed", SseEmitter.event().name("timer-state").data("{}"));
+
+        assertThat(fanOutCount(SseMetrics.SUCCESS)).isEqualTo(1);
+        assertThat(fanOutCount(SseMetrics.FAILURE)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("connections gauge: 이 서버가 들고 있는 연결 수를 사용자 구분 없이 합쳐 보여 준다")
+    void connectionsGauge_sumsAllUsers() {
+        registry.register("user-a");
+        registry.register("user-a");
+        registry.register("user-b");
+
+        assertThat(meterRegistry.get(SseMetrics.CONNECTIONS).gauge().value()).isEqualTo(3);
+    }
+
+    @Test
     @DisplayName("removeEntry: 마지막 연결을 지우는 순간 같은 사용자가 새로 연결해도 새 연결이 맵에서 빠지지 않는다")
     void removeLastEntry_whileSameUserRegisters_keepsNewConnection() throws Exception {
         registry.register("user-race");
@@ -99,6 +128,10 @@ class SseEmitterRegistryTest {
         List<String> remaining = internalIdsOf("user-race");
         assertThat(remaining).hasSize(1);
         assertThat(remaining.get(0)).isNotEqualTo(firstId);
+    }
+
+    private double fanOutCount(String result) {
+        return meterRegistry.get(SseMetrics.FANOUT).tag(SseMetrics.RESULT, result).counter().count();
     }
 
     // 테스트 전용 헬퍼 — 실제 SseEmitter 를 직접 register 하면 heartbeat task 스케줄이 시작되어 테스트가 무거워진다.

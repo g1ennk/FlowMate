@@ -1,6 +1,10 @@
 package kr.io.flowmate.timer.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
+import kr.io.flowmate.timer.sse.SseMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -29,6 +33,15 @@ public class SseEmitterRegistry {
     private final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(
             new HeartbeatThreadFactory()
     );
+    private final Counter fanOutSuccess;
+    private final Counter fanOutFailure;
+
+    public SseEmitterRegistry(MeterRegistry meterRegistry) {
+        this.fanOutSuccess = meterRegistry.counter(SseMetrics.FANOUT, SseMetrics.RESULT, SseMetrics.SUCCESS);
+        this.fanOutFailure = meterRegistry.counter(SseMetrics.FANOUT, SseMetrics.RESULT, SseMetrics.FAILURE);
+        Gauge.builder(SseMetrics.CONNECTIONS, this, SseEmitterRegistry::connectionCount)
+                .register(meterRegistry);
+    }
 
     public SseEmitter register(String userId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
@@ -69,6 +82,7 @@ public class SseEmitterRegistry {
     // Redis 구독 후 sseDispatchExecutor 의 비동기 fan-out(SseLocalDispatcher)에서 호출되므로
     // DB 정본은 이미 커밋된 상태다. 전송 실패가 같은 사용자의 나머지 emitter 전송을
     // 끊지 않도록 어떤 예외든 삼키고 dead connection 만 정리한다.
+    // 실패가 안쪽에서 끝나므로 연결 단위 성공/실패 지표도 여기서 센다.
     public void broadcast(String userId, SseEmitter.SseEventBuilder event) {
         CopyOnWriteArrayList<ConnectionEntry> entries = connections.get(userId);
         if (entries == null) return;
@@ -76,7 +90,9 @@ public class SseEmitterRegistry {
         for (ConnectionEntry entry : entries) {
             try {
                 entry.emitter().send(event);
+                fanOutSuccess.increment();
             } catch (Exception e) {
+                fanOutFailure.increment();
                 log.warn("SSE 브로드캐스트 전송 실패, 연결 정리. userId={}", userId, e);
                 removeEntry(userId, entry.internalId());
             }
@@ -111,6 +127,14 @@ public class SseEmitterRegistry {
             log.debug("SSE heartbeat 전송 실패, 연결 정리. userId={}", userId, e);
             removeEntry(userId, internalId);
         }
+    }
+
+    private int connectionCount() {
+        int count = 0;
+        for (CopyOnWriteArrayList<ConnectionEntry> entries : connections.values()) {
+            count += entries.size();
+        }
+        return count;
     }
 
     private ConnectionEntry findEntry(String userId, String internalId) {
