@@ -18,11 +18,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -70,22 +72,23 @@ class SettingsServiceTest {
     }
 
     @Test
-    @DisplayName("updatePomodoro: row 없으면 save 1회 호출 (신규 INSERT)")
-    void updatePomodoro_rowMiss_savesNewEntity() {
+    @DisplayName("updatePomodoro: 기본값 행을 원자적으로 보장한 뒤 다시 읽어 수정 (save 호출 없음)")
+    void updatePomodoro_ensuresRowThenUpdatesLockedRow() {
         PomodoroSessionSettingsRequest request = new PomodoroSessionSettingsRequest();
         request.setFlowMin(30);
         request.setBreakMin(10);
         request.setLongBreakMin(20);
         request.setCycleEvery(3);
-
-        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
-        when(settingsRepository.save(any(UserSettings.class))).thenAnswer(inv -> inv.getArgument(0));
+        UserSettings created = UserSettings.createWithDefaults(USER_ID);
+        when(settingsRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(created));
 
         PomodoroSessionSettingsResponse response = settingsService.updatePomodoro(USER_ID, request);
 
         assertThat(response.flowMin()).isEqualTo(30);
         assertThat(response.breakMin()).isEqualTo(10);
-        verify(settingsRepository, times(1)).save(any(UserSettings.class));
+        assertThat(created.getFlowMin()).isEqualTo(30);
+        verify(settingsRepository, times(1)).insertDefaultsIfAbsent(eq(USER_ID), any(Instant.class));
+        verify(settingsRepository, never()).save(any());
     }
 
     @Test
@@ -97,7 +100,7 @@ class SettingsServiceTest {
         request.setBreakMin(8);
         request.setLongBreakMin(18);
         request.setCycleEvery(5);
-        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
+        when(settingsRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(existing));
 
         PomodoroSessionSettingsResponse response = settingsService.updatePomodoro(USER_ID, request);
 
@@ -115,7 +118,7 @@ class SettingsServiceTest {
         request.setBreakMin(5);
         request.setLongBreakMin(15);
         request.setCycleEvery(4);
-        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
+        when(settingsRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> settingsService.updatePomodoro(USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -129,7 +132,7 @@ class SettingsServiceTest {
         AutomationSettingsRequest request = new AutomationSettingsRequest();
         request.setAutoStartBreak(true);
         request.setAutoStartSession(false);
-        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
+        when(settingsRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(existing));
 
         AutomationSettingsResponse response = settingsService.updateAutomation(USER_ID, request);
 
@@ -148,7 +151,7 @@ class SettingsServiceTest {
                 dayRequest("낮", "06:00", "18:00"),
                 dayRequest("밤", "18:00", "24:00")
         );
-        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
+        when(settingsRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(existing));
 
         MiniDaysSettingsResponse response = settingsService.updateMiniDays(USER_ID, request);
 
@@ -167,7 +170,7 @@ class SettingsServiceTest {
                 dayRequest("오후", "12:00", "18:00"),
                 dayRequest("저녁", "18:00", "24:00")
         );
-        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
+        when(settingsRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> settingsService.updateMiniDays(USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)
