@@ -43,5 +43,17 @@ gemini:
   api-key: ${GEMINI_API_KEY}
   base-url: https://generativelanguage.googleapis.com/v1beta
   model: gemini-2.5-flash
-  connect-timeout-ms: 5000
-  read-timeout-ms: 60000
+  # Nginx /api proxy_read_timeout(60s)보다 먼저 끝나도록 잡는다.
+  # 최악 = connection-request 1s + connect 3s + read 45s = 49s
+  connection-request-timeout-ms: ${GEMINI_CONNECTION_REQUEST_TIMEOUT_MS:1000}
+  connect-timeout-ms: ${GEMINI_CONNECT_TIMEOUT_MS:3000}
+  read-timeout-ms: ${GEMINI_READ_TIMEOUT_MS:45000}
+  max-connections: ${GEMINI_MAX_CONNECTIONS:20}
+
+# AI 리포트 생성 보호 (Redis). Redis 장애 시 lock과 rate limit 모두 fail-open
+report:
+  guard:
+    lock-ttl: 60s        # Gemini 최악 49s + 저장 여유. 짧으면 시작 시 실패
+    user-limit: 10       # 사용자당 window 안 Gemini 호출 수
+    user-window: 1h
+    cooldown: 30s        # 같은 기간 리포트 생성 성공 후 재생성 대기

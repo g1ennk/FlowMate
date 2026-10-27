@@ -75,6 +75,12 @@ describe('AiReportSheet', () => {
     expect(screen.getByRole('heading', { name: '한 일' })).toBeInTheDocument()
   })
 
+  it('다른 곳에서 만드는 리포트를 기다리는 동안 생성 중 안내를 보여 준다', () => {
+    renderSheet({ report: null, isCached: false, isRegenerating: true, isWaitingOther: true })
+
+    expect(screen.getByText('이미 만드는 중이에요. 끝나면 바로 보여 드릴게요')).toBeInTheDocument()
+  })
+
   it('처음 생성에 실패하면 이유와 다시 시도, 직접 쓰기를 보여 준다', async () => {
     const onRetry = vi.fn()
     const onWriteYourself = vi.fn()

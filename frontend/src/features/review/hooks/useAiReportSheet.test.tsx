@@ -8,6 +8,7 @@ import type { AiReport } from '../../../api/aiReport'
 import { server } from '../../../mocks/server'
 import { useAuthStore } from '../../../store/authStore'
 import { createTestQueryClient } from '../../../test/renderApp'
+import { IN_PROGRESS_MAX_WAIT_MS, IN_PROGRESS_POLL_INTERVAL_MS } from './useAiReport'
 import { useAiReportSheet } from './useAiReportSheet'
 
 const REPORT: AiReport = {
@@ -46,6 +47,7 @@ describe('useAiReportSheet', () => {
 
   afterEach(() => {
     useAuthStore.setState(initialAuthStore, true)
+    vi.useRealTimers()
   })
 
   it('처음 생성할 때 결과를 기다리지 않고 시트를 바로 연다', async () => {
@@ -137,5 +139,126 @@ describe('useAiReportSheet', () => {
 
     expect(errorSpy).toHaveBeenCalledTimes(1)
     expect(errorSpy).toHaveBeenCalledWith('AI 리포트를 만들지 못했어요. 다시 시도해 주세요.', expect.anything())
+  })
+
+  it('같은 레포트를 다른 곳에서 만드는 중(409)이면 생성 중 안내를 띄우고 GET으로 결과를 받아 보여 준다', async () => {
+    let getCount = 0
+    let finish: () => void = () => {}
+    server.use(
+      http.get('/api/ai/report', () => {
+        getCount += 1
+        if (getCount === 1) return new HttpResponse(null, { status: 204 })
+        return new Promise<Response>((resolve) => {
+          finish = () => resolve(HttpResponse.json(REPORT))
+        })
+      }),
+      http.post('/api/ai/report/generate', () =>
+        HttpResponse.json({ error: { code: 'REPORT_GENERATION_IN_PROGRESS', message: 'busy' } }, { status: 409 }),
+      ),
+    )
+    const { result } = renderSheetHook()
+
+    let pending: Promise<void> = Promise.resolve()
+    act(() => { pending = result.current.requestAiReport() })
+    await waitFor(() => expect(result.current.isWaitingOther).toBe(true))
+    expect(result.current.isAiLoading).toBe(true)
+
+    await act(async () => {
+      finish()
+      await pending
+    })
+
+    expect(result.current.aiReport).toEqual(REPORT)
+    expect(result.current.isWaitingOther).toBe(false)
+    expect(result.current.aiError).toBeNull()
+  })
+
+  it('다시 생성이 409면 기존 레포트가 바뀔 때까지 기다린다', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const updated: AiReport = { ...REPORT, keep: '새로 잘한 점' }
+    let getCount = 0
+    let postCount = 0
+    server.use(
+      http.get('/api/ai/report', () => {
+        getCount += 1
+        // 1: 시트 열 때, 2: 409 직후(아직 이전 내용), 3: 다음 확인(새 내용)
+        return HttpResponse.json(getCount >= 3 ? updated : REPORT)
+      }),
+      http.post('/api/ai/report/generate', () => {
+        postCount += 1
+        return HttpResponse.json({ error: { code: 'REPORT_GENERATION_IN_PROGRESS' } }, { status: 409 })
+      }),
+    )
+    const { result } = renderSheetHook()
+    await act(async () => { await result.current.requestAiReport() })
+    expect(postCount).toBe(0)
+
+    let pending: Promise<void> = Promise.resolve()
+    act(() => { pending = result.current.handleRegenerate() })
+    await waitFor(() => expect(getCount).toBe(2))
+    expect(result.current.aiReport).toEqual(REPORT)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_PROGRESS_POLL_INTERVAL_MS)
+      await pending
+    })
+
+    expect(postCount).toBe(1)
+    expect(result.current.aiReport).toEqual(updated)
+  })
+
+  it('409 뒤 기다려도 결과가 없으면 아직 만드는 중이라고 안내한다', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    server.use(
+      http.get('/api/ai/report', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/ai/report/generate', () =>
+        HttpResponse.json({ error: { code: 'REPORT_GENERATION_IN_PROGRESS' } }, { status: 409 }),
+      ),
+    )
+    const { result } = renderSheetHook()
+
+    let pending: Promise<void> = Promise.resolve()
+    act(() => { pending = result.current.requestAiReport() })
+    await waitFor(() => expect(result.current.isWaitingOther).toBe(true))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_PROGRESS_MAX_WAIT_MS + IN_PROGRESS_POLL_INTERVAL_MS)
+      await pending
+    })
+
+    expect(result.current.aiError).toBe('아직 만드는 중이에요. 잠시 후 다시 확인해 주세요')
+    expect(result.current.retryAiReport).toBeDefined()
+  })
+
+  it('FlowMate 자체 제한(REPORT_RATE_LIMITED)은 서버 문구를 보여 주고 다시 시도를 내주지 않는다', async () => {
+    server.use(
+      http.get('/api/ai/report', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/ai/report/generate', () =>
+        HttpResponse.json(
+          { error: { code: 'REPORT_RATE_LIMITED', message: 'AI 레포트를 너무 자주 만들었어요. 12분 뒤에 다시 시도해 주세요' } },
+          { status: 429 },
+        ),
+      ),
+    )
+    const { result } = renderSheetHook()
+
+    await act(async () => { await result.current.requestAiReport() })
+
+    expect(result.current.aiError).toBe('AI 레포트를 너무 자주 만들었어요. 12분 뒤에 다시 시도해 주세요')
+    expect(result.current.retryAiReport).toBeUndefined()
+  })
+
+  it('Gemini 사용량 초과(AI_QUOTA_EXCEEDED)는 자체 제한과 다른 문구로 다시 시도를 남긴다', async () => {
+    server.use(
+      http.get('/api/ai/report', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/ai/report/generate', () =>
+        HttpResponse.json({ error: { code: 'AI_QUOTA_EXCEEDED', message: 'quota' } }, { status: 429 }),
+      ),
+    )
+    const { result } = renderSheetHook()
+
+    await act(async () => { await result.current.requestAiReport() })
+
+    expect(result.current.aiError).toBe('AI 사용량이 많아요. 잠시 후 다시 시도해 주세요')
+    expect(result.current.retryAiReport).toBeDefined()
   })
 })

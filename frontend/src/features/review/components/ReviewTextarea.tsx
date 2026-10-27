@@ -111,7 +111,7 @@ export function ReviewTextarea({
   }
 
   const {
-    aiReport, isAiLoading, canRegenerate, aiError,
+    aiReport, isAiLoading, isWaitingOther, canRegenerate, aiError,
     isSheetOpen, isPreview, isThinData, isMember,
     isSheetOpenRef, sheetClosedAtRef,
     closeSheet, requestAiReport, retryAiReport, handleRegenerate,
@@ -509,6 +509,7 @@ export function ReviewTextarea({
             report={aiReport}
             isCached={canRegenerate}
             isRegenerating={isAiLoading}
+            isWaitingOther={isWaitingOther}
             onRegenerate={handleRegenerate}
             onRetry={retryAiReport}
             onWriteYourself={handleWriteYourself}
