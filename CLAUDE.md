@@ -93,15 +93,20 @@ DTO 전략: Response DTO = Record (불변), Request DTO = Lombok `@Getter @Sette
 
 ## 인프라 & 배포
 
+> **2026-10-29 AWS 운영 종료.** 프로젝트는 포트폴리오로 마무리했다. dev/prod EC2, ECR, dev CloudFront 등은 정리 대상이고(목록과 상태는 `.superpowers/specs/2026-10-29-project-wrap-up-design.md`), deploy 워크플로 4개는 지웠다(CI 2개만 남음).
+> `flowmate.io.kr`은 prod CloudFront Function(`flowmate-redirect-to-github`)으로 GitHub 저장소에 301 리다이렉트한다. 이미 제출한 서류의 Live 링크 때문이며, 진행 중인 지원이 정리되면 도메인, 호스팅 영역, prod CloudFront, ACM을 정리한다.
+> 실행 환경은 맥 로컬 실사용 스택(`infra/local`, `fm-*` 함수, 8180)뿐이다. 마지막 prod DB 덤프는 `~/flowmate-backups/flowmate-prod-final-20261029.sql`.
+> 아래 dev/prod 설명은 운영 당시 기록이다.
+
 ### 환경 구성
 
 | 환경    | 트리거                              | 프론트엔드          | 백엔드            | 도메인                                         |
 |-------|----------------------------------|----------------|----------------|---------------------------------------------|
 | local | -                                | localhost:5173 | localhost:8080 | -                                           |
-| dev   | `main` push (자동, BE/FE 동시)       | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
-| prod  | tag `v*.*.*` push (자동, BE/FE 동시) | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
+| dev   | (종료) `main` push               | S3+CloudFront  | EC2 Docker     | dev.flowmate.io.kr / api.dev.flowmate.io.kr |
+| prod  | (종료) tag `v*.*.*` push         | S3+CloudFront  | EC2 Docker     | flowmate.io.kr / api.flowmate.io.kr         |
 
-### CI/CD (GitHub Actions, `.github/workflows/`)
+### CI/CD (GitHub Actions, `.github/workflows/`) — 운영 당시
 
 - **Dev (BE/FE)**: `main` push 시 자동. BE는 ECR push (`github.sha` 태그) → SSH `git reset --hard origin/main` →
   `docker compose up`. FE는 pnpm build → S3 sync → CloudFront invalidation.

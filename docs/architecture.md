@@ -3,6 +3,8 @@
 > Last updated: 2026-07-04
 >
 > 관련 문서: [API Reference](api.md), [Data Model](data-model.md)
+>
+> 2026년 10월 AWS 운영을 종료했습니다. 이 문서의 AWS 구성은 운영 당시 기준입니다.
 
 ## 1. AWS 기반 시스템 아키텍처
 

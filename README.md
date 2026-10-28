@@ -2,14 +2,19 @@
 
 Todo를 적는 순간부터 집중 세션을 실행하고, 타이머 기록을 회고까지 이어가는 생산성 웹 앱입니다.
 
-- [Live Demo](https://flowmate.io.kr): 실제 서비스 바로가기
 - [Architecture](docs/architecture.md): 시스템 구조, 인증 흐름, SSE 동기화, 배포 구조
 - [Data Model](docs/data-model.md): 핵심 엔터티, 관계, 물리 모델, 설계 근거
 - [API Docs](docs/api.md): 인증, Todo, 타이머, 설정, 회고 API 계약
 
+| 계획 | 타이머 | 회고 |
+|:---:|:---:|:---:|
+| <img src="frontend/src/assets/login/plan-light.webp" width="240" alt="계획 화면"> | <img src="frontend/src/assets/login/timer.webp" width="240" alt="타이머 화면"> | <img src="frontend/src/assets/login/review-light.webp" width="240" alt="회고 화면"> |
+
 ![FlowMate 시스템 아키텍처](docs/images/system-architecture.png)
 
 > AWS 기반 운영 구조 — S3 + CloudFront 프론트엔드, EC2 Docker Compose 백엔드
+>
+> 2026년 10월 AWS 운영을 종료했습니다. 위 구조는 운영 당시 기준입니다.
 
 ## 1. 프로젝트 배경
 
